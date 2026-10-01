@@ -1,0 +1,61 @@
+name: Bootstrap Revision Director
+
+on:
+  push:
+    paths:
+      - ".bootstrap.ready"
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout bootstrap payload
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct, verify, and test source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/revision-director-source /tmp/revision-director-source.zip
+          mkdir -p /tmp/revision-director-source
+          cat .bootstrap-payload/chunk-*.b64 | tr -d '\n\r' | base64 --decode > /tmp/revision-director-source.zip
+          echo "57b17d9edf38182e018493d9536811a625d5b6739ce0f4863793dcd782740a77  /tmp/revision-director-source.zip" | sha256sum -c -
+          unzip -q /tmp/revision-director-source.zip -d /tmp/revision-director-source
+          cd /tmp/revision-director-source
+          sha256sum -c CHECKSUMS.sha256
+          python3 tests/html-sanity.spec.py
+          node tests/pass-e1.spec.js
+          python3 tests/source-ownership.spec.py
+
+      - name: Publish clean repository history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout --orphan revision-director-import
+          git rm -rf . >/dev/null 2>&1 || true
+          cp -a /tmp/revision-director-source/. .
+
+          cat > .gitignore <<'EOF'
+          .DS_Store
+          __pycache__/
+          *.py[cod]
+          .pytest_cache/
+          .coverage
+          .idea/
+          .vscode/
+          *.log
+          EOF
+
+          git add -A
+          git commit -m "Import Revision Director VA7.1 Pass E1"
+          git branch -M main
+          git push --force origin main
