@@ -18,6 +18,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Pin project TypeScript toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global typescript@5.8.3 --no-audit --no-fund
+          test "$(tsc --version)" = "Version 5.8.3"
+
       - name: Verify archive and source
         shell: bash
         run: |
