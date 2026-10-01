@@ -1,0 +1,83 @@
+'use strict';
+const fs = require('fs');
+const vm = require('vm');
+const path = require('path');
+const { webcrypto } = require('crypto');
+
+const root = path.resolve(__dirname, '..');
+let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
+const hook = 'window.__RD_A2_TEST__ = { APP_VERSION, DB_NAME, DB_VERSION, DOCUMENT_SCHEMA_VERSION, BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, Store, defaultSettings, canonicalExamProfile, canonicalKnowledgeNode, canonicalAppSettings, canonicalDailyPlanRecord, AppDiagnostics, RevisionData, RevisionService };';
+if (!source.includes('void boot();')) throw new Error('Boot marker missing');
+source = source.replace('void boot();', hook);
+const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-5.4.1', 'index.umd.js'), 'utf8');
+const memoryStorage = new Map();
+const localStorage = {
+  getItem: (key) => memoryStorage.has(key) ? memoryStorage.get(key) : null,
+  setItem: (key, value) => memoryStorage.set(key, String(value)),
+  removeItem: (key) => memoryStorage.delete(key),
+};
+const context = { crypto: webcrypto, structuredClone, console, Date, Intl, URL, Blob, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array, localStorage, navigator: {} };
+context.window = context; context.self = context; context.globalThis = context;
+vm.createContext(context); vm.runInContext(vendor, context); vm.runInContext(source, context);
+const api = context.__RD_A2_TEST__;
+let checks = 0;
+function check(value, message) { checks += 1; if (!value) throw new Error(message); }
+function mustFail(fn, message) { checks += 1; try { fn(); } catch { return; } throw new Error(message); }
+
+check(api.APP_VERSION === 'va7.1-pass-e1', 'Pass A2 application version is wrong');
+check(api.DB_NAME === 'revision-director' && api.DB_VERSION === 2, 'Production database identity is wrong');
+check(api.BACKUP_FORMAT === 'revision-director-backup' && api.BACKUP_SCHEMA_VERSION === 2, 'Production backup identity is wrong');
+check(Object.values(api.Store).includes('metadata'), 'Metadata store is missing');
+const defaults = api.defaultSettings();
+check(defaults.schemaVersion === 1 && defaults.activeProfileId === '', 'Default settings are not clean production settings');
+check(!Object.prototype.hasOwnProperty.call(defaults, 'seededSamples'), 'Prototype seeding flag survived');
+
+const rawProfile = { schemaVersion:1, id:'  p  ', name:'  Exam   Profile  ', examDate:'2027-06-01', status:'active', createdAt:'2026-07-25T06:00:00+05:30', updatedAt:'2026-07-25T06:00:00+05:30' };
+const profile = api.canonicalExamProfile(rawProfile);
+check(profile.id === 'p' && profile.name === 'Exam Profile', 'Profile canonicalisation failed');
+check(profile.createdAt.endsWith('Z') && profile.updatedAt.endsWith('Z'), 'Profile dates were not canonicalised');
+mustFail(() => api.canonicalExamProfile({...rawProfile, schemaVersion:2}), 'Unsupported document schema was accepted');
+
+const node = api.canonicalKnowledgeNode({ schemaVersion:1, id:'n', profileId:'p', parentId:null, kind:'subject', name:'  Public   Administration ', normalizedName:'wrong', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt });
+check(node.name === 'Public Administration' && node.normalizedName === 'public administration', 'Node canonical name contract failed');
+const settings = api.canonicalAppSettings({ schemaVersion:1, key:'app', activeProfileId:'  p ', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4 });
+check(settings.activeProfileId === 'p', 'Settings canonicalisation failed');
+
+const plan = api.canonicalDailyPlanRecord({ schemaVersion:1, id:' d ', studyDayKey:'2026-07-25', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt, plannerVersion:' pass-d-2 ', versions:[{version:1,generatedAt:rawProfile.createdAt,capacityMinutes:60,reason:'initial',items:[]}], outcomes:[] });
+check(plan.id === 'd' && plan.plannerVersion === 'pass-d-2', 'Daily-plan canonicalisation failed');
+
+const diagnostics = new api.AppDiagnostics();
+diagnostics.record('test.same', 'test operation', new Error('same error'));
+diagnostics.record('test.same', 'test operation', new Error('same error'));
+check(diagnostics.list().length === 1 && diagnostics.list()[0].count === 2, 'Diagnostics did not deduplicate repeated failures');
+for (let index = 0; index < 60; index += 1) diagnostics.record(`test.${index}`, 'bounded test', new Error(`error ${index}`));
+check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound');
+
+(async () => {
+  const writes = [];
+  const rawRepo = {
+    put: async (store, value) => writes.push({store, value: structuredClone(value)}),
+    get: async () => undefined,
+    getAll: async () => [],
+  };
+  const data = new api.RevisionData(rawRepo, new api.AppDiagnostics());
+  await data.put(api.Store.Profiles, rawProfile);
+  check(writes[0].value.id === 'p' && writes[0].value.name === 'Exam Profile', 'Storage facade did not canonicalise writes');
+  rawRepo.put = async () => { throw new Error('disk unavailable'); };
+  let failed = false;
+  try { await data.put(api.Store.Profiles, rawProfile); } catch { failed = true; }
+  check(failed, 'Storage facade swallowed a write failure');
+  check(data.storageHealth().level === 'warning' && data.diagnostics().some((entry) => entry.code.includes('storage.put.profiles')), 'Storage failure was not surfaced through health and diagnostics');
+
+  const service = new api.RevisionService(data);
+  const emptyBackup = {
+    format:'revision-director-backup', schemaVersion:2, exportedAt:'2026-07-25T06:00:00.000Z', appVersion:'va7.1-pass-e1',
+    profiles:[], nodes:[], units:[], studyEvents:[], obligations:[], evidenceEvents:[], chunks:[], dailyPlans:[],
+    settings:{schemaVersion:1,key:'app',activeProfileId:'',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4},
+    activeRetrieval:null,
+  };
+  check(service.validateBackup(emptyBackup).profiles.length === 0, 'Clean empty production backup was rejected');
+  mustFail(() => service.validateBackup({...emptyBackup, format:'revision-director-va7-1'}), 'Legacy backup identity was accepted');
+  mustFail(() => service.validateBackup({...emptyBackup, settings:{...emptyBackup.settings, schemaVersion:2}}), 'Unsupported settings schema was accepted');
+  console.log(`PASS ${checks} Pass A2 production-contract and storage-facade checks`);
+})().catch((error) => { console.error(error); process.exitCode = 1; });

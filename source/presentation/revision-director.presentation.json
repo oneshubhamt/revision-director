@@ -1,0 +1,140 @@
+{
+  "format": "revision-director.presentation-manifest",
+  "version": 1,
+  "storageKey": "revisionDirector.presentation.v1",
+  "defaults": {
+    "presentation": "revision-current"
+  },
+  "profiles": {
+    "revision-current": {
+      "id": "revision-current",
+      "label": "Revision Director",
+      "contractVersion": 1,
+      "typography": "revision",
+      "shape": "tactical",
+      "material": "solid",
+      "depth": "layered",
+      "density": "standard",
+      "responsive": "adaptive",
+      "motion": "precise",
+      "charts": "analytical",
+      "immutable": true
+    }
+  },
+  "breakpoints": {
+    "wide": 1100,
+    "reviewCompact": 1000,
+    "analyticsCompact": 960,
+    "navigationCompact": 820,
+    "timerStack": 720,
+    "phone": 620,
+    "narrow": 560,
+    "smallPhone": 460
+  },
+  "tokens": {
+    "contractVersion": 1,
+    "namespace": "--rd-",
+    "public": {
+      "foundation": [
+        "--rd-color-canvas",
+        "--rd-color-surface-1",
+        "--rd-color-surface-2",
+        "--rd-color-surface-3",
+        "--rd-color-border-soft",
+        "--rd-color-border-mid",
+        "--rd-color-border-accent",
+        "--rd-color-accent-primary",
+        "--rd-color-accent-secondary",
+        "--rd-color-information",
+        "--rd-color-text-primary",
+        "--rd-color-text-secondary",
+        "--rd-color-text-muted",
+        "--rd-color-danger",
+        "--rd-color-warning",
+        "--rd-color-success"
+      ],
+      "typography": [
+        "--rd-font-mono",
+        "--rd-font-condensed",
+        "--rd-font-body",
+        "--rd-font-display"
+      ],
+      "surfaces": [
+        "--rd-surface-neutral",
+        "--rd-surface-accent-soft",
+        "--rd-surface-danger-soft",
+        "--rd-surface-information-soft",
+        "--rd-shadow-floating"
+      ],
+      "geometry": [
+        "--rd-radius-default",
+        "--rd-layout-sidebar-width",
+        "--rd-touch-target-minimum",
+        "--rd-safe-area-top",
+        "--rd-safe-area-right",
+        "--rd-safe-area-bottom",
+        "--rd-safe-area-left"
+      ],
+      "motion": [
+        "--rd-motion-fast",
+        "--rd-motion-standard"
+      ],
+      "charts": [
+        "--rd-chart-primary",
+        "--rd-chart-secondary",
+        "--rd-chart-information",
+        "--rd-chart-danger",
+        "--rd-chart-warning",
+        "--rd-chart-success"
+      ]
+    },
+    "aliases": {
+      "--rd-color-canvas": "--bg",
+      "--rd-color-surface-1": "--s1",
+      "--rd-color-surface-2": "--s2",
+      "--rd-color-surface-3": "--s3",
+      "--rd-color-border-soft": "--line-soft",
+      "--rd-color-border-mid": "--line-mid",
+      "--rd-color-border-accent": "--line-accent",
+      "--rd-color-accent-primary": "--acc",
+      "--rd-color-accent-secondary": "--acc2",
+      "--rd-color-information": "--acc3",
+      "--rd-color-text-primary": "--txt",
+      "--rd-color-text-secondary": "--txt2",
+      "--rd-color-text-muted": "--mut",
+      "--rd-color-danger": "--urg",
+      "--rd-color-warning": "--warn",
+      "--rd-color-success": "--ok",
+      "--rd-font-mono": "--f-mono",
+      "--rd-font-condensed": "--f-cond",
+      "--rd-font-body": "--f-body",
+      "--rd-font-display": "--f-display",
+      "--rd-surface-neutral": "--surface",
+      "--rd-surface-accent-soft": "--accent-soft",
+      "--rd-surface-danger-soft": "--danger-soft",
+      "--rd-surface-information-soft": "--cyan-soft",
+      "--rd-shadow-floating": "--shadow",
+      "--rd-radius-default": "--radius",
+      "--rd-layout-sidebar-width": "--sidebar",
+      "--rd-chart-primary": "--acc",
+      "--rd-chart-secondary": "--acc2",
+      "--rd-chart-information": "--acc3",
+      "--rd-chart-danger": "--urg",
+      "--rd-chart-warning": "--warn",
+      "--rd-chart-success": "--ok"
+    }
+  },
+  "invariants": {
+    "defaultProfileImmutable": true,
+    "exactPixelReference": "revision-current",
+    "domOrder": "application-owned",
+    "focusOrder": "application-owned",
+    "semanticStateMeaning": {
+      "primary": "accent",
+      "information": "information",
+      "success": "success",
+      "warning": "warning",
+      "danger": "danger"
+    }
+  }
+}
