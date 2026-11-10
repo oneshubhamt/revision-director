@@ -5,7 +5,7 @@ const path = require('path');
 const { webcrypto } = require('crypto');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsSchedulers, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsScheduler, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -58,7 +58,7 @@ const brought = api.buildPlanningCandidate(joined('bring',1.5,10,3,10),[],settin
 check(brought && brought.dueState === 'brought-forward', 'Near-exam lookahead must permit controlled bring-forward');
 
 async function testFsrsPlanning() {
-  await api.prepareFsrsSchedulers(.9);
+  await api.prepareFsrsScheduler(.9);
   const memoryPolicy = new api.FsrsMemoryPolicy(() => .9);
   const memoryState = memoryPolicy.createInitialState(ref.toISOString(), 'memory');
   const memoryObligation = { ...obligation('memory',0,12,'memory-recall'), type:'memory-recall', workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'}, policyState:memoryState };
