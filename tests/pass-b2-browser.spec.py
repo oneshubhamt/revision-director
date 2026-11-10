@@ -63,6 +63,24 @@ def state_get(page, store: str, key: str):
     }""", [store, key])
 
 
+def recovery_debug(page):
+    return page.evaluate("""() => {
+      const local = window.__RD_B1_QA_STATE__.local || {};
+      let emergency = null;
+      let diagnostics = null;
+      try {
+        const raw = local['revision-director:active-retrieval:v1'];
+        emergency = raw ? JSON.parse(raw) : null;
+      } catch (error) { emergency = {parseError:String(error)}; }
+      try {
+        const raw = local['revision-director:diagnostics:v1'];
+        diagnostics = raw ? JSON.parse(raw) : null;
+      } catch (error) { diagnostics = [{parseError:String(error)}]; }
+      const indexed = window.__RD_B1_QA_STATE__.databases['revision-director']?.stores?.activeRetrieval?.records ?? [];
+      return {emergency, diagnostics, indexed:structuredClone(indexed)};
+    }""")
+
+
 def boot_frame(page):
     page.evaluate("""() => {
       const old=document.querySelector('#app'); if(old) old.remove();
@@ -157,7 +175,10 @@ def main() -> None:
         timer_before_focus = session["elapsedMs"]
         frame.evaluate("__RD_TEST_CLOCK__.advance(130001)"); frame.evaluate("window.dispatchEvent(new Event('focus'))"); wait(frame)
         check(frame.locator("#gap-overlay").is_visible(), "120-second inactive gap was not detected")
-        wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "gap-pending")
+        try:
+            wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "gap-pending")
+        except AssertionError as error:
+            raise AssertionError(f"{error} · recovery={json.dumps(recovery_debug(page), default=str)[:12000]}") from error
         pending = active_session(page)["timeRuntime"]
         check(pending["pendingGap"]["gapMs"] > 120000, "Pending gap was not durably saved")
         frame.locator('[data-gap-action="focus"]').click(); wait(frame, 220)
