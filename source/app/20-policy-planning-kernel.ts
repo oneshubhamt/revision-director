@@ -2,32 +2,22 @@
     readonly id: string;
     readonly type: ObligationType;
     createInitialState(firstDueAt: ISODateTime, cardId: string): PolicyState;
-    preview(obligation: RevisionObligation, now: Date, history?: readonly EvidenceEvent[]): SchedulePreview[];
-    complete(obligation: RevisionObligation, rating: Rating, evidence: ObjectiveEvidence, now: Date, history?: readonly EvidenceEvent[]): PolicyCompletion;
+    preview(obligation: RevisionObligation, now: Date): SchedulePreview[];
+    complete(obligation: RevisionObligation, rating: Rating, evidence: ObjectiveEvidence, now: Date): PolicyCompletion;
   }
 
-  function fsrsModelForCard(card: StoredFsrsCard): FsrsModelVersion {
-    return card.model ?? FSRS_LEGACY_MODEL;
-  }
-
-  function fsrsScheduleStatusForState(state: number): FsrsScheduleStatus {
-    const api = runtimeFsrs();
-    if (state === api.State.New) return "new";
-    if (state === api.State.Review) return "review";
-    return "learning";
-  }
-
-  function requiredFsrs7StabilityFast(value: number | undefined): number {
-    assert(value !== undefined && Number.isFinite(value), "FSRS-7 memory state is missing fast stability.");
+  function requiredFsrs7StabilityFast(value: number): number {
+    assert(Number.isFinite(value), "FSRS-7 memory state is missing fast stability.");
     return value;
   }
 
-  function serializeFsrsCard(card: FsrsCardRuntime, model: FsrsModelVersion): StoredFsrsCard {
+  function serializeFsrsCard(card: FsrsCardRuntime): StoredFsrsCard {
     const stored: StoredFsrsCard = {
-      model,
+      model: FSRS_MODEL,
       cardId: card.cardId,
       dueAt: card.dueAt.toISOString(),
       stability: card.stability,
+      stabilityFast: requiredFsrs7StabilityFast(card.stabilityFast),
       difficulty: card.difficulty,
       scheduledDays: card.scheduledDays,
       learningSteps: card.learningStep,
@@ -36,51 +26,40 @@
       state: card.state,
       scheduleStatus: card.scheduleStatus,
     };
-    if (model === FSRS_PRIMARY_MODEL) stored.stabilityFast = requiredFsrs7StabilityFast(card.stabilityFast);
     if (card.lastReviewAt) stored.lastReviewAt = card.lastReviewAt.toISOString();
     return stored;
   }
 
-  function normalizeStoredFsrsCard(card: StoredFsrsCard, cardId: string): StoredFsrsCard {
-    const model = fsrsModelForCard(card);
-    if (model === FSRS_PRIMARY_MODEL) requiredFsrs7StabilityFast(card.stabilityFast);
+  function hydrateFsrsCard(card: StoredFsrsCard, obligationId: string): FsrsCardRuntime {
+    assert(card.model === FSRS_MODEL, "Memory obligation does not use the current FSRS-7 model.");
+    assert(card.cardId === obligationId, "FSRS card identity does not match its obligation.");
     return {
-      ...card,
-      model,
-      cardId: card.cardId ?? cardId,
-      scheduleStatus: card.scheduleStatus ?? fsrsScheduleStatusForState(card.state),
+      cardId: card.cardId,
+      dueAt: new Date(card.dueAt),
+      lastReviewAt: card.lastReviewAt ? new Date(card.lastReviewAt) : null,
+      stability: card.stability,
+      stabilityFast: requiredFsrs7StabilityFast(card.stabilityFast),
+      difficulty: card.difficulty,
+      scheduledDays: card.scheduledDays,
+      learningStep: card.learningSteps,
+      reps: card.reps,
+      lapses: card.lapses,
+      state: card.state,
+      scheduleStatus: card.scheduleStatus,
     };
   }
 
-  function hydrateFsrsCard(card: StoredFsrsCard, fallbackCardId: string): FsrsCardRuntime {
-    const normalized = normalizeStoredFsrsCard(card, fallbackCardId);
-    const hydrated: FsrsCardRuntime = {
-      cardId: normalized.cardId!,
-      dueAt: new Date(normalized.dueAt),
-      lastReviewAt: normalized.lastReviewAt ? new Date(normalized.lastReviewAt) : null,
-      stability: normalized.stability,
-      difficulty: normalized.difficulty,
-      scheduledDays: normalized.scheduledDays,
-      learningStep: normalized.learningSteps,
-      reps: normalized.reps,
-      lapses: normalized.lapses,
-      state: normalized.state,
-      scheduleStatus: normalized.scheduleStatus!,
-    };
-    if (normalized.stabilityFast !== undefined) hydrated.stabilityFast = normalized.stabilityFast;
-    return hydrated;
-  }
-
-  function fsrsConfigSnapshot(model: FsrsModelVersion, desiredRetention: number): FsrsConfigSnapshot {
+  function fsrsConfigSnapshot(desiredRetention: number): FsrsConfigSnapshot {
     return {
-      model,
+      model: FSRS_MODEL,
       desiredRetention,
-      fractionalDays: model === FSRS_PRIMARY_MODEL,
+      fractionalDays: true,
       enableFuzz: false,
-      enableShortTerm: false,
-      learningSteps: [],
-      relearningSteps: [],
-      allowModelOverride: model === FSRS_PRIMARY_MODEL,
+      enableShortTerm: true,
+      learningSteps: [...FSRS_LEARNING_STEPS],
+      relearningSteps: [...FSRS_RELEARNING_STEPS],
+      graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
+      allowModelOverride: true,
       maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
       clearStatsOnForget: false,
       weightsSource: "ts-fsrs-package-default",
@@ -89,136 +68,35 @@
 
   const FSRS_SCHEDULER_CACHE = new Map<string, FsrsSchedulerRuntime>();
 
-  function fsrsSchedulerCacheKey(model: FsrsModelVersion, desiredRetention: number): string {
-    return `${model}:${desiredRetention.toFixed(6)}`;
+  function fsrsSchedulerCacheKey(desiredRetention: number): string {
+    return desiredRetention.toFixed(6);
   }
 
-  async function prepareFsrsSchedulers(desiredRetention: number): Promise<void> {
+  async function prepareFsrsScheduler(desiredRetention: number): Promise<void> {
     assert(Number.isFinite(desiredRetention) && desiredRetention > 0 && desiredRetention < 1, "Desired retention is invalid.");
-    const api = runtimeFsrs();
-    await Promise.all(([FSRS_LEGACY_MODEL, FSRS_PRIMARY_MODEL] as const).map(async (model) => {
-      const key = fsrsSchedulerCacheKey(model, desiredRetention);
-      if (FSRS_SCHEDULER_CACHE.has(key)) return;
-      const scheduler = await api.DefaultScheduler({
-        version: model,
-        desiredRetention,
-        enableShortTerm: false,
-        learningSteps: [],
-        relearningSteps: [],
-        allowModelOverride: model === FSRS_PRIMARY_MODEL,
-        enableFuzz: false,
-        maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
-        clearStatsOnForget: false,
-      });
-      const probe = scheduler.newCard({ cardId: `revision-director-probe-${model.toLowerCase()}` });
-      if (model === FSRS_PRIMARY_MODEL) requiredFsrs7StabilityFast(probe.stabilityFast);
-      else assert(probe.stabilityFast === undefined, "FSRS-6 scheduler unexpectedly returned FSRS-7 state.");
-      FSRS_SCHEDULER_CACHE.set(key, scheduler);
-    }));
-  }
-
-  function fsrsScheduler(model: FsrsModelVersion, desiredRetention: number): FsrsSchedulerRuntime {
-    const scheduler = FSRS_SCHEDULER_CACHE.get(fsrsSchedulerCacheKey(model, desiredRetention));
-    assert(scheduler, `${model} scheduler has not been initialized for the current retention setting.`);
-    return scheduler;
-  }
-
-  function fsrsHistoryFor(obligationId: string, events: readonly EvidenceEvent[]): EvidenceEvent[] {
-    return events
-      .filter((event) => event.obligationId === obligationId && event.obligationType === "memory-recall")
-      .sort((a, b) => a.reviewedAt.localeCompare(b.reviewedAt) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-  }
-
-  function completeLegacyFsrsHistory(current: StoredFsrsCard, history: readonly EvidenceEvent[]): boolean {
-    if (history.length !== current.reps || history.length === 0) return false;
-    const newState = runtimeFsrs().State.New;
-    let priorAfter: StoredFsrsCard | undefined;
-    for (let index = 0; index < history.length; index += 1) {
-      const event = history[index]!;
-      const before = event.beforePolicyState.fsrsCard;
-      const after = event.afterPolicyState.fsrsCard;
-      if (!before || !after || before.reps !== index || after.reps !== index + 1) return false;
-      if (index === 0 && (
-        before.lastReviewAt !== undefined ||
-        before.lapses !== 0 ||
-        before.stability !== 0 ||
-        before.difficulty !== 0 ||
-        before.scheduledDays !== 0 ||
-        before.learningSteps !== 0 ||
-        before.state !== newState
-      )) return false;
-      if (after.lastReviewAt !== event.reviewedAt || ![1, 2, 3, 4].includes(event.confirmedRating)) return false;
-      if (priorAfter) {
-        if (
-          before.reps !== priorAfter.reps ||
-          before.lapses !== priorAfter.lapses ||
-          before.lastReviewAt !== priorAfter.lastReviewAt ||
-          before.stability !== priorAfter.stability ||
-          before.difficulty !== priorAfter.difficulty ||
-          before.scheduledDays !== priorAfter.scheduledDays ||
-          before.learningSteps !== priorAfter.learningSteps ||
-          before.state !== priorAfter.state
-        ) return false;
-      }
-      priorAfter = after;
-    }
-    const finalAfter = priorAfter!;
-    return (
-      finalAfter.reps === current.reps &&
-      finalAfter.lapses === current.lapses &&
-      finalAfter.lastReviewAt === current.lastReviewAt &&
-      finalAfter.stability === current.stability &&
-      finalAfter.difficulty === current.difficulty &&
-      finalAfter.scheduledDays === current.scheduledDays &&
-      finalAfter.learningSteps === current.learningSteps &&
-      finalAfter.state === current.state
-    );
-  }
-
-  function prepareFsrsCard(obligation: RevisionObligation, events: readonly EvidenceEvent[], desiredRetention: number): StoredFsrsCard {
-    const stored = obligation.policyState.fsrsCard;
-    assert(stored, "Memory obligation has no FSRS card state.");
-    const current = normalizeStoredFsrsCard(stored, obligation.id);
-    if (fsrsModelForCard(current) === FSRS_PRIMARY_MODEL) return current;
-
-    const api = runtimeFsrs();
-    const fsrs7 = fsrsScheduler(FSRS_PRIMARY_MODEL, desiredRetention);
-    if (current.state === api.State.New && current.reps === 0 && !current.lastReviewAt) {
-      const initial = fsrs7.newCard({ now: new Date(current.dueAt), cardId: current.cardId! });
-      return {
-        ...current,
-        model: FSRS_PRIMARY_MODEL,
-        stability: initial.stability,
-        stabilityFast: requiredFsrs7StabilityFast(initial.stabilityFast),
-        difficulty: initial.difficulty,
-      };
-    }
-
-    if (!current.lastReviewAt || current.reps <= 0) return current;
-    const history = fsrsHistoryFor(obligation.id, events);
-    if (!completeLegacyFsrsHistory(current, history)) return current;
-    const reviewTimes = history.map((event) => new Date(event.reviewedAt));
-    if (reviewTimes.some((time) => !Number.isFinite(time.getTime()))) return current;
-    const lastReview = reviewTimes.at(-1);
-    if (!lastReview || lastReview.getTime() !== new Date(current.lastReviewAt).getTime()) return current;
-
-    let previous: Date | undefined;
-    const modelHistory = history.map((event, index) => {
-      const reviewTime = reviewTimes[index]!;
-      const deltaT = previous ? Math.max(0, (reviewTime.getTime() - previous.getTime()) / DAY_MS) : 0;
-      previous = reviewTime;
-      return { rating: event.confirmedRating, deltaT };
+    const key = fsrsSchedulerCacheKey(desiredRetention);
+    if (FSRS_SCHEDULER_CACHE.has(key)) return;
+    const scheduler = await runtimeFsrs().DefaultScheduler({
+      version: FSRS_MODEL,
+      desiredRetention,
+      enableShortTerm: true,
+      learningSteps: FSRS_LEARNING_STEPS,
+      relearningSteps: FSRS_RELEARNING_STEPS,
+      graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
+      allowModelOverride: true,
+      enableFuzz: false,
+      maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
+      clearStatsOnForget: false,
     });
-    const states = fsrs7.model.forward({ history: modelHistory });
-    const memory = states.at(-1);
-    assert(memory && Number.isFinite(memory.stability) && Number.isFinite(memory.difficulty), "FSRS-7 history replay did not produce a valid memory state.");
-    return {
-      ...current,
-      model: FSRS_PRIMARY_MODEL,
-      stability: memory.stability,
-      stabilityFast: requiredFsrs7StabilityFast(memory.stabilityFast),
-      difficulty: memory.difficulty,
-    };
+    const probe = scheduler.newCard({ cardId: "revision-director-fsrs7-probe" });
+    requiredFsrs7StabilityFast(probe.stabilityFast);
+    FSRS_SCHEDULER_CACHE.set(key, scheduler);
+  }
+
+  function fsrsScheduler(desiredRetention: number): FsrsSchedulerRuntime {
+    const scheduler = FSRS_SCHEDULER_CACHE.get(fsrsSchedulerCacheKey(desiredRetention));
+    assert(scheduler, "FSRS-7 scheduler has not been initialized for the current retention setting.");
+    return scheduler;
   }
 
   const PLANNER_WEIGHTS = Object.freeze({
@@ -530,21 +408,19 @@
     };
   }
 
-  function fsrsRetrievability(obligation: RevisionObligation, reference: Date, desiredRetention: number, events: readonly EvidenceEvent[] = []): number | undefined {
+  function fsrsRetrievability(obligation: RevisionObligation, reference: Date, desiredRetention: number): number | undefined {
     if (obligation.type !== "memory-recall" || !obligation.policyState.fsrsCard) return undefined;
-    const stored = prepareFsrsCard(obligation, events, desiredRetention);
+    const stored = obligation.policyState.fsrsCard;
     if (stored.reps === 0 || !stored.lastReviewAt) return undefined;
-    const model = fsrsModelForCard(stored);
-    const scheduler = fsrsScheduler(model, desiredRetention);
     const elapsedDays = Math.max(0, (reference.getTime() - new Date(stored.lastReviewAt).getTime()) / DAY_MS);
-    const memoryState: FsrsMemoryStateRuntime = { stability: stored.stability, difficulty: stored.difficulty };
-    if (model === FSRS_PRIMARY_MODEL) {
-      memoryState.stabilityFast = requiredFsrs7StabilityFast(stored.stabilityFast);
-    }
-    // FSRS-7 is explicitly fractional-time. Preserve legacy FSRS-6's whole elapsed-day
-    // behavior for cards whose history is incomplete and therefore cannot migrate safely.
-    const modelElapsedDays = model === FSRS_PRIMARY_MODEL ? elapsedDays : Math.floor(elapsedDays);
-    const retrievability = scheduler.model.forgettingCurve(memoryState, modelElapsedDays);
+    const retrievability = fsrsScheduler(desiredRetention).model.forgettingCurve(
+      {
+        stability: stored.stability,
+        stabilityFast: requiredFsrs7StabilityFast(stored.stabilityFast),
+        difficulty: stored.difficulty,
+      },
+      elapsedDays,
+    );
     return clamp(Number(retrievability), 0, 1);
   }
 
@@ -597,7 +473,7 @@
     const dueAt = new Date(item.obligation.dueAt);
     if (dueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
     const temporalRisk = temporalDueRisk(dueAt, dayStart, dayEnd, lookaheadDays);
-    const retrievability = fsrsRetrievability(item.obligation, reference, settings.desiredRetention, evidenceEvents);
+    const retrievability = fsrsRetrievability(item.obligation, reference, settings.desiredRetention);
     const memoryRisk = retrievability === undefined ? 0 : clamp((settings.desiredRetention - retrievability) / Math.max(settings.desiredRetention - 0.5, 0.1), 0, 1);
     const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
     const factors: PlanningFactors = {

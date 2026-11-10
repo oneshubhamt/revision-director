@@ -21,8 +21,10 @@
   const TIME_HISTORY_LIMIT = 200;
   const PLANNER_VERSION = "pass-d-2";
   const FSRS_PACKAGE_VERSION = "6.0.0" as const;
-  const FSRS_PRIMARY_MODEL: FsrsModelVersion = "FSRS-7";
-  const FSRS_LEGACY_MODEL: FsrsModelVersion = "FSRS-6";
+  const FSRS_MODEL: FsrsModelVersion = "FSRS-7";
+  const FSRS_LEARNING_STEPS = ["1d"] as const;
+  const FSRS_RELEARNING_STEPS = ["1d"] as const;
+  const FSRS_GRADUATING_INTERVAL_DAYS = 1 as const;
   const FSRS_MAXIMUM_INTERVAL_DAYS = 36_500;
   const DAY_MS = 86_400_000;
 
