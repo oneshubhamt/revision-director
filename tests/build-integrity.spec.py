@@ -33,7 +33,7 @@ check("source ownership manifest", source_manifest.get("schemaVersion") == 1 and
 check("source order contiguous", [item["order"] for item in source_parts] == list(range(len(source_parts))))
 check("source parts unique", len(source_paths) == len(set(source_paths)))
 check("source parts present", all(path.is_file() and path.stat().st_size > 0 for path in source_paths))
-check("legacy TypeScript monolith removed", not (ROOT / "source/revision-director.va7.ts").exists())
+check("obsolete monolith absent", not (ROOT / "source/revision-director.va7.ts").exists())
 check("build-time composite is ephemeral", not (ROOT / "build/generated/revision-director.combined.ts").exists())
 check("manifest owns expected layers", all(token in {path.name for path in source_paths} for token in [
     "00-runtime-boundary.ts", "05-presentation-engine.ts", "10-domain-model.ts", "11-domain-kernel.ts",
@@ -97,7 +97,7 @@ check("application storage facade", "class RevisionData" in ts and "class Indexe
 check("storage health contracts", "interface StorageHealthSnapshot" in ts and "navigator.storage" in ts and "persisted" in ts and "estimate" in ts)
 check("bounded diagnostics", "while (this.records.length > 50)" in ts and "JSON.stringify(this.records).length > 32_000" in ts)
 check("metadata verifies production database", "Database metadata does not match this production database." in ts and "canonicalAppMetadata" in ts)
-check("no legacy DB names", all(name not in html for name in ["revision-director-va1", "revision-director-va2", "revision-director-va3", "revision-director-va7-1"]))
+check("single canonical DB identity", all(name not in html for name in ["revision-director-va1", "revision-director-va2", "revision-director-va3", "revision-director-va7-1"]))
 check("knowledge hierarchy", 'type KnowledgeNodeKind = "subject" | "section" | "topic"' in ts and 'interface KnowledgeUnit' in ts and 'async ensureHierarchy' in ts)
 check("six obligation types", all(value in ts for value in [
     '"memory-recall"', '"concept-reconstruction"', '"application-practice"',
@@ -136,7 +136,7 @@ check("relational backup validation", "Section must belong to a subject in the s
 check("six retrieval workflows", all(value in ts for value in ['"recall"', '"reconstruction"', '"questions"', '"diagram"', '"answer-writing"', '"relearning"']))
 check("workflow separated from policy", "interface WorkflowSpec" in ts and "workflow: WorkflowSpec" in ts and "defaultWorkflowForType" in ts)
 check("workflow-specific evidence", "type WorkflowResult" in ts and "workflowEvidence" in ts and "validateWorkflowResult" in ts)
-check("workflow-policy compatibility", "function compatibleWorkflows" in ts and 'if (type === "memory-recall") return ["recall"]' in ts and 'if (type === "performance-practice") return ["answer-writing", "diagram", "questions"]' in ts)
+check("workflow-policy routing", "function compatibleWorkflows" in ts and 'if (type === "memory-recall") return ["recall"]' in ts and 'if (type === "performance-practice") return ["answer-writing", "diagram", "questions"]' in ts)
 check("closed-book relearning verification", "Complete relearning verification with the source closed" in ts)
 check("diagram canvas", 'id="diagram-canvas"' in ts and "initializeDiagramCanvas" in ts)
 check("answer-writing constraints", "completedWithinTime" in ts and "wordLimit" in ts and "timeLimitMinutes" in ts)

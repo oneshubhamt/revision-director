@@ -25,6 +25,11 @@ jobs:
       - name: Install locked toolchain
         run: npm ci
 
+      - name: Install browser QA runtime
+        run: |
+          python3 -m pip install playwright
+          python3 -m playwright install --with-deps chromium
+
       - name: Build with TypeScript 7
         run: npm run build
 
@@ -57,7 +62,17 @@ jobs:
           python3 tests/build-integrity.spec.py
           python3 tests/html-sanity.spec.py
           python3 tests/source-ownership.spec.py
-          python3 tests/full-qa-supplement.spec.py
+
+      - name: Python regression and browser suites
+        run: |
+          set -euo pipefail
+          for f in tests/*.spec.py; do
+            case "$f" in
+              tests/build-integrity.spec.py|tests/html-sanity.spec.py|tests/source-ownership.spec.py) continue ;;
+            esac
+            echo "==> $f"
+            python3 "$f"
+          done
 
       - name: Non-browser JavaScript regressions
         run: |
