@@ -4,8 +4,9 @@
     return element;
   }
 
-  function downloadBlob(filename: string, content: BlobPart, type: string): void {
-    const blob = new Blob([content], { type });
+  function downloadBlob(filename: string, content: BlobPart | Uint8Array, type: string): void {
+    const part: BlobPart = content instanceof Uint8Array ? ownedArrayBuffer(content) : content;
+    const blob = new Blob([part], { type });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;

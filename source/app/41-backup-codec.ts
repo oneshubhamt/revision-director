@@ -396,7 +396,7 @@
     private static async hashBytes(bytes: Uint8Array, algorithm: BackupArchiveHashAlgorithm): Promise<string> {
       if (algorithm === "sha256") {
         if (globalThis.crypto?.subtle) {
-          const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+          const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
           return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
         }
         return this.sha256Fallback(bytes);
@@ -455,13 +455,13 @@
     }
 
     private static async compress(bytes: Uint8Array): Promise<Uint8Array> {
-      const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
+      const stream = new Blob([ownedArrayBuffer(bytes)]).stream().pipeThrough(new CompressionStream("gzip"));
       return this.readStreamBounded(stream, BACKUP_ARCHIVE_MAX_FILE_BYTES, "Backup exceeds the file-size limit.");
     }
 
     private static async decompressBounded(bytes: Uint8Array): Promise<Uint8Array> {
       assert(typeof DecompressionStream !== "undefined", "This browser cannot decompress gzip backups.");
-      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+      const stream = new Blob([ownedArrayBuffer(bytes)]).stream().pipeThrough(new DecompressionStream("gzip"));
       return this.readStreamBounded(stream, BACKUP_ARCHIVE_MAX_EXPANDED_BYTES, "Backup exceeds the expanded-size limit.");
     }
 

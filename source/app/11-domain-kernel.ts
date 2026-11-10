@@ -45,6 +45,12 @@
     return structuredClone(value);
   }
 
+  function ownedArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
   function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
   }
