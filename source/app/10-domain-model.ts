@@ -100,7 +100,7 @@
     stabilityFast: number;
     difficulty: number;
     scheduledDays: number;
-    learningSteps: number;
+    learningStep: number;
     reps: number;
     lapses: number;
     state: number;

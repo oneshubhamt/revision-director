@@ -245,7 +245,7 @@
           "stabilityFast": 0,
           "difficulty": 0,
           "scheduledDays": 0,
-          "learningSteps": 0,
+          "learningStep": 0,
           "reps": 0,
           "lapses": 0,
           "state": 0,
