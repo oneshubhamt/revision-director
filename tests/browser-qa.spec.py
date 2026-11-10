@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from datetime import date, timedelta
 from tempfile import TemporaryDirectory
 import os
 import json
@@ -111,7 +112,14 @@ def open_page(browser, viewport=None, baseline: bool = False):
     if baseline:
         page.locator('[data-pane="settings"]').click()
         page.wait_for_timeout(120)
-        restore_selected_backup(page, BASELINE_BACKUP)
+        payload = decode_file(BASELINE_BACKUP)
+        test_exam_date = (date.today() + timedelta(days=14)).isoformat()
+        for profile in payload["profiles"]:
+            profile["examDate"] = test_exam_date
+        with TemporaryDirectory() as tmpdir:
+            current_fixture = Path(tmpdir) / "browser-baseline-current.rdbackup"
+            current_fixture.write_bytes(encode_payload(payload))
+            restore_selected_backup(page, current_fixture)
         check("restored" in page.locator("#toast").inner_text().lower(), "Baseline fixture restore failed")
     return page, errors
 
