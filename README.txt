@@ -11,6 +11,7 @@ The deployable remains self-contained:
 - fractional-day dual-trace FSRS-7 memory state, including `stabilityFast`;
 - one-day learning and relearning steps keep long-form revision away from seconds/minutes-scale flashcard intervals while `allowModelOverride` preserves longer FSRS-7 model intervals;
 - `Again` creates the app's corrective-relearning workflow; successful closed-book repair advances the original memory obligation through FSRS-7 rather than a fixed interval;
+- a known exam date adds a planner-only final-memory checkpoint in the last three days when an FSRS due date would otherwise fall after the exam; this never rewrites FSRS card state and is suppressed after a review inside that final window;
 - current schemas are strict: unsupported database, backup or FSRS shapes are rejected rather than transformed;
 - embedded presentation manifest and pre-paint bootstrap;
 - no CDN, network-loaded asset, framework or runtime module loader.

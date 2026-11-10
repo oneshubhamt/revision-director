@@ -424,6 +424,17 @@
     return clamp(Number(retrievability), 0, 1);
   }
 
+  function finalMemoryExamDeadline(item: JoinedObligation): Date | undefined {
+    if (item.obligation.type !== "memory-recall") return undefined;
+    const exam = examDateTime(item.profile);
+    if (!exam) return undefined;
+    const card = item.obligation.policyState.fsrsCard;
+    assert(card, "Memory obligation has no FSRS-7 state.");
+    const finalWindowStart = new Date(exam.getTime() - FINAL_MEMORY_REVIEW_WINDOW_DAYS * DAY_MS);
+    if (card.lastReviewAt && new Date(card.lastReviewAt).getTime() >= finalWindowStart.getTime()) return undefined;
+    return exam;
+  }
+
   function temporalDueRisk(dueAt: Date, dayStart: Date, dayEnd: Date, lookaheadDays: number): number {
     if (dueAt.getTime() < dayStart.getTime()) {
       const overdueDays = (dayStart.getTime() - dueAt.getTime()) / DAY_MS;
@@ -470,10 +481,13 @@
     const daysToExam = daysToExamination(item.profile, reference);
     if (examDateTime(item.profile) && daysToExam < 0) return undefined;
     const lookaheadDays = planningLookaheadDays(daysToExam);
-    const dueAt = new Date(item.obligation.dueAt);
+    const policyDueAt = new Date(item.obligation.dueAt);
+    const memoryExamDeadline = finalMemoryExamDeadline(item);
+    const examBoundMemory = Boolean(memoryExamDeadline && policyDueAt.getTime() > memoryExamDeadline.getTime());
+    const planningDueAt = examBoundMemory ? memoryExamDeadline! : policyDueAt;
     const synthesisReady = item.obligation.chunking?.status === "synthesis-ready";
-    if (!synthesisReady && dueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
-    const temporalRisk = temporalDueRisk(dueAt, dayStart, dayEnd, lookaheadDays);
+    if (!synthesisReady && planningDueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
+    const temporalRisk = temporalDueRisk(planningDueAt, dayStart, dayEnd, lookaheadDays);
     const retrievability = fsrsRetrievability(item.obligation, reference, settings.desiredRetention);
     const memoryRisk = retrievability === undefined ? 0 : clamp((settings.desiredRetention - retrievability) / Math.max(settings.desiredRetention - 0.5, 0.1), 0, 1);
     const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
@@ -485,8 +499,8 @@
       examinationProximity: examinationProximityScore(daysToExam),
       weeklyBalance,
     };
-    const dueState: PlannedQueueItem["dueState"] = dueAt.getTime() < dayStart.getTime() ? "overdue" : dueAt.getTime() < dayEnd.getTime() ? "due" : "brought-forward";
-    const daysFromDue = (reference.getTime() - dueAt.getTime()) / DAY_MS;
+    const dueState: PlannedQueueItem["dueState"] = planningDueAt.getTime() < dayStart.getTime() ? "overdue" : planningDueAt.getTime() < dayEnd.getTime() ? "due" : "brought-forward";
+    const daysFromDue = (reference.getTime() - planningDueAt.getTime()) / DAY_MS;
     return {
       joined: item,
       factors,
@@ -498,6 +512,7 @@
       ...(retrievability === undefined ? {} : { retrievability }),
       reasons: [
         ...(chunk ? [`split scope: ${chunk.scope}`] : item.obligation.chunking?.status === "synthesis-ready" ? ["final synthesis after split work"] : []),
+        ...(examBoundMemory ? ["final memory review before exam"] : []),
         ...planningReasons(item, factors, dueState, daysFromDue, daysToExam),
         ...(weeklyBalance >= 0.7 ? ["subject underrepresented this week"] : []),
       ].slice(0, 6),

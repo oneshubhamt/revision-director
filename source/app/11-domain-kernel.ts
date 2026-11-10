@@ -26,6 +26,7 @@
   const FSRS_RELEARNING_STEPS = ["1d"] as const;
   const FSRS_GRADUATING_INTERVAL_DAYS = 1 as const;
   const FSRS_MAXIMUM_INTERVAL_DAYS = 36_500;
+  const FINAL_MEMORY_REVIEW_WINDOW_DAYS = 3;
   const DAY_MS = 86_400_000;
 
   function assert(condition: unknown, message: string): asserts condition {

@@ -192,6 +192,7 @@ Pass B3 retains:
 
 - six obligation types and six retrieval workflows;
 - exact `ts-fsrs@6.0.0` only for memory recall, using FSRS-7 exclusively with fractional-time dual-trace memory, one-day learning/relearning middleware for long-form revision, and corrective relearning on `Again`;
+- exam deadlines remain a planner concern: when FSRS would schedule memory beyond a known exam, planning offers one final review opportunity in the last three days without mutating the FSRS due state;
 - separate deterministic policies for other obligation types;
 - append-only Evidence Events;
 - adaptive duration learning;

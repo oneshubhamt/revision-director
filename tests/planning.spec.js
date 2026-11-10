@@ -75,6 +75,24 @@ async function testFsrsPlanning() {
   const r = api.fsrsRetrievability(memoryObligation, later, .9);
   check(typeof r === 'number' && r > 0 && r < 1, 'Reviewed memory obligations must use FSRS-7 retrievability');
   check(memoryObligation.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'Planning must consume persisted FSRS-7 dual-trace state');
+
+  const easy = memoryPolicy.complete({...memoryObligation, policyState:memoryState}, api.Rating.Easy, {completeness:4,independence:4,application:4,errorTypes:[],correctionNote:''}, ref);
+  const examBoundObligation = {...memoryObligation, dueAt:easy.dueAt, policyState:easy.policyState};
+  delete examBoundObligation.policyState.fsrsCard.lastReviewAt;
+  examBoundObligation.policyState.fsrsCard.reps = 0;
+  const examBoundJoined = {
+    obligation:examBoundObligation,
+    unit:{...unit('memory-exam'),id:'memory-unit',profileId:'memory-profile'},
+    profile:profile('memory-profile',2),
+    subject:'S',section:'C',topic:'T'
+  };
+  examBoundJoined.obligation.unitId='memory-unit';
+  const examCandidate = api.buildPlanningCandidate(examBoundJoined,[],settings,ref);
+  check(examCandidate && examCandidate.reasons.includes('final memory review before exam'), 'FSRS due dates beyond a known exam must create one final pre-exam memory opportunity');
+  check(examBoundJoined.obligation.dueAt === easy.dueAt, 'Exam-horizon planning must not rewrite the FSRS policy due date');
+  examBoundJoined.obligation.policyState.fsrsCard.lastReviewAt = ref.toISOString();
+  examBoundJoined.obligation.policyState.fsrsCard.reps = 1;
+  check(api.buildPlanningCandidate(examBoundJoined,[],settings,ref) === undefined, 'A memory review already completed inside the final exam window must not be forced again');
 }
 
 const item = (id, score, mins, type='concept-reconstruction', dueState='due') => ({joined:{obligation:{id,type,dueAt:ref.toISOString(),expectedMinutes:mins},unit:{},profile:{}},score,dueState,executionMinutes:mins,factors:{dueRisk:.8,examImportance:1,weakness:.5,reviewDuration:.8,examinationProximity:.7,weeklyBalance:.5}});
