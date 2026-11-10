@@ -289,6 +289,21 @@
     globalWorkflowSamples: number;
   }
 
+  interface ReturnedMemoryTransition {
+    obligationId: string;
+    rating: Rating.Good;
+    beforeDueAt: ISODateTime;
+    afterDueAt: ISODateTime;
+    beforePolicyState: PolicyState;
+    afterPolicyState: PolicyState;
+    policyId: string;
+    schedulerPackage: "ts-fsrs";
+    schedulerVersion: "6.0.0";
+    schedulerModel: FsrsModelVersion;
+    schedulerConfig: FsrsConfigSnapshot;
+    reviewLog: Record<string, unknown>;
+  }
+
   interface EvidenceEvent {
     schemaVersion: DocumentSchemaVersion;
     id: string;
@@ -316,6 +331,7 @@
     durationObservation: DurationObservation;
     timing: TimingEvidenceSummary;
     followUpObligationId?: string;
+    returnedMemoryTransition?: ReturnedMemoryTransition;
     createdAt: ISODateTime;
   }
 

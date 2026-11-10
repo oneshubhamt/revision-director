@@ -290,9 +290,13 @@ async function testRelearningLifecycle() {
   lifecycle.obligationsForUnit = async () => [relearn];
   await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, confirmedRating:3 }, nextDay);
   check(calls[0][1].status === 'completed', 'Relearning must complete after two successful cycles');
+  const returnedTransition = calls[0][2].returnedMemoryTransition;
+  check(returnedTransition?.obligationId === 'original' && returnedTransition?.rating === api.Rating.Good, 'Successful relearning must record the returned-memory FSRS transition');
+  check(returnedTransition?.schedulerModel === 'FSRS-7' && returnedTransition?.schedulerVersion === '6.0.0', 'Returned-memory transition must preserve exact FSRS-7 provenance');
   const resumed = calls[0][4];
   check(resumed?.status === 'active', 'Original obligation must reactivate atomically');
   check(resumed?.policyState.fsrsCard.dueAt === resumed?.dueAt, 'Reactivated FSRS due state must stay synchronized');
+  check(returnedTransition?.afterDueAt === resumed?.dueAt && returnedTransition?.afterPolicyState.fsrsCard.dueAt === resumed?.dueAt, 'Returned-memory transition must exactly describe the reactivated FSRS state');
   check(resumed?.policyState.fsrsCard.model === 'FSRS-7', 'Reactivated memory must remain FSRS-7');
   const resumedDays = (new Date(resumed.dueAt) - nextDay) / 86400000;
   check(resumedDays >= 2.9 && resumedDays <= 3.1, 'Successful relearning must advance the original through FSRS-7 rather than a fixed app interval');

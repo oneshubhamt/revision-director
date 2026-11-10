@@ -678,6 +678,7 @@
 
       let followUp: RevisionObligation | undefined;
       let relatedObligation: RevisionObligation | undefined;
+      let returnedMemoryTransition: ReturnedMemoryTransition | undefined;
       if (completion.followUpType === "relearn" && obligation.type !== "relearn") {
         obligation.status = "suspended";
         obligation.suspensionReason = "relearning";
@@ -727,9 +728,26 @@
           const original = await this.repo.get<RevisionObligation>(Store.Obligations, obligation.returnObligationId);
           if (original) {
             if (original.type === "memory-recall") {
+              const returnedBeforeDueAt = original.dueAt;
+              const returnedBeforePolicyState = clone(original.policyState);
               const resumed = this.router.get("memory-recall").complete(original, Rating.Good, normalizedDraft, reviewedAt);
+              assert(resumed.schedulerConfig && resumed.reviewLog, "Returned memory review lacks FSRS-7 provenance.");
               original.dueAt = resumed.dueAt;
               original.policyState = resumed.policyState;
+              returnedMemoryTransition = {
+                obligationId: original.id,
+                rating: Rating.Good,
+                beforeDueAt: returnedBeforeDueAt,
+                afterDueAt: resumed.dueAt,
+                beforePolicyState: returnedBeforePolicyState,
+                afterPolicyState: clone(resumed.policyState),
+                policyId: resumed.policyId,
+                schedulerPackage: "ts-fsrs",
+                schedulerVersion: FSRS_PACKAGE_VERSION,
+                schedulerModel: FSRS_MODEL,
+                schedulerConfig: clone(resumed.schedulerConfig),
+                reviewLog: clone(resumed.reviewLog),
+              };
             } else {
               original.dueAt = addDays(reviewedAt, 3).toISOString();
             }
@@ -783,6 +801,7 @@
         event.schedulerModel = FSRS_MODEL;
       }
       if (followUp) event.followUpObligationId = followUp.id;
+      if (returnedMemoryTransition) event.returnedMemoryTransition = returnedMemoryTransition;
 
       const dailyPlan = await this.completedPlanRecord(obligation.id, undefined, roundTo(timing.totalActiveMs / 60_000, 1), reviewedAt, event.id);
       await this.repo.recordReview(unit, obligation, event, followUp, relatedObligation, chunkUpdates, dailyPlan, commitGuard, postCommitSession);
@@ -1062,6 +1081,32 @@
           assert(config.graduatingInterval === FSRS_GRADUATING_INTERVAL_DAYS && config.allowModelOverride === true, "Memory evidence interval policy is invalid.");
           assert(config.maximumInterval === FSRS_MAXIMUM_INTERVAL_DAYS && config.clearStatsOnForget === false && config.weightsSource === "ts-fsrs-package-default", "Memory evidence FSRS configuration is incomplete.");
         } else assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined, "Non-memory evidence cannot claim FSRS provenance.");
+
+        const returned = event.returnedMemoryTransition;
+        const relearnReturnId = obligation.type === "relearn" ? obligation.returnObligationId : undefined;
+        const returnedTarget = relearnReturnId ? obligationMap.get(relearnReturnId) : undefined;
+        const shouldReturnMemory =
+          obligation.type === "relearn" &&
+          returnedTarget?.type === "memory-recall" &&
+          event.confirmedRating >= Rating.Good &&
+          objectiveScore("relearn", event.evidence) >= 2.7 &&
+          event.beforePolicyState.successStreak >= 1;
+        assert(Boolean(returned) === shouldReturnMemory, "Returned-memory scheduler transition presence is inconsistent with relearning completion.");
+        if (returned) {
+          assert(returned.obligationId === returnedTarget!.id, "Returned-memory transition targets the wrong obligation.");
+          assert(returned.rating === Rating.Good, "Returned-memory transition must record a Good closed-book repair.");
+          validDate(returned.beforeDueAt, "Returned-memory prior due date");
+          validDate(returned.afterDueAt, "Returned-memory next due date");
+          assert(returned.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Returned-memory policy provenance is invalid.");
+          assert(returned.schedulerPackage === "ts-fsrs" && returned.schedulerVersion === FSRS_PACKAGE_VERSION && returned.schedulerModel === FSRS_MODEL, "Returned-memory scheduler provenance is invalid.");
+          assert(returned.schedulerConfig.model === FSRS_MODEL && returned.schedulerConfig.fractionalDays === true && returned.schedulerConfig.enableShortTerm === true, "Returned-memory scheduler configuration is invalid.");
+          assert(returned.schedulerConfig.learningSteps[0] === "1d" && returned.schedulerConfig.relearningSteps[0] === "1d" && returned.schedulerConfig.allowModelOverride === true, "Returned-memory interval policy is invalid.");
+          for (const state of [returned.beforePolicyState, returned.afterPolicyState]) {
+            assert(state.engine === "ts-fsrs" && state.version === FSRS_PACKAGE_VERSION && state.fsrsCard?.model === FSRS_MODEL, "Returned-memory policy state is invalid.");
+            assert(state.fsrsCard.cardId === returned.obligationId, "Returned-memory card identity is invalid.");
+            requiredFsrs7StabilityFast(state.fsrsCard.stabilityFast);
+          }
+        }
       }
       const chunksByObligation = new Map<string, ObligationChunk[]>();
       for (const chunk of chunks) {
