@@ -77,6 +77,6 @@ check("compiled runtime present", (ROOT / "dist/app.js").is_file() and (ROOT / "
 check("deployable HTML present", (ROOT / "index.html").is_file() and (ROOT / "index.html").stat().st_size > 0)
 check("generated composite removed", not (ROOT / "build/generated/revision-director.combined.ts").exists())
 check("strict compile target retained", '"strict": true' in (SOURCE / "tsconfig.json").read_text())
-check("single compiled outFile retained", '"outFile": "../dist/app.js"' in (SOURCE / "tsconfig.json").read_text())
+check("TypeScript 7 single-entry compile retained", all(token in (SOURCE / "tsconfig.json").read_text() for token in ['"module": "preserve"', '"rootDir": "../build/generated"', '"outDir": "../build/generated-js"', '"../build/generated/revision-director.combined.ts"']))
 
 print(f"PASS {len(checks)} source-ownership checks")
