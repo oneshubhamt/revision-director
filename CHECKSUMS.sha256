@@ -41,8 +41,8 @@ f6b20b1a2ca826eccef8504b7aac41cc193ec01dbcf0be4a1aac9200c002019f  ./STAGE_D_FULL
 a14da7c5dcf14ae7c4d9d2c6798d59f0b838a050c672f5e75fdd16a0ce683902  ./TARGETED_VERIFICATION.md
 7b721af5536a584af62c4c00e3536bd1449fd05c9efdb7dadb78b45221044ceb  ./THIRD_PARTY_NOTICES.md
 ea60d9cd901b4c79a9a49a0e775453784952cd41458390d506bc405155211f40  ./build/build.py
-a67dfcd5769a2bb973883a9a8af2f68e73ee7ab66e3492d8dc1618812101a418  ./dist/app.js
-de5e9e77f13a063ea050cd623806903ad5c3a9a74d03912a2e7a8127c294fc3a  ./index.html
+627172d4b4797c59077e2c7e4e072f080647d97c6d93551ee5a43eb4db959467  ./dist/app.js
+b7a95ce524a7015e74fc13e7c676d7b4b8cad8e75554e54c7d367eab0030e051  ./index.html
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
 f38655fabcfb48b05943e86660eee56722d2daab96c2143509c99dd681089111  ./source/app/00-runtime-boundary.ts
@@ -61,7 +61,7 @@ fa38685c28c308526f81f89575b461d0a0aeed05e9b058bfe2d29ef7529444b5  ./source/app/4
 eba12a08e6d1e70767d7ebf2cf072d7b804965ded35ebdeeba0743128ad329ab  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 89eb13f0327eca56a67ec8f2624738cb7351dbd3d0532ddcd746c0a0512dfff2  ./source/app/45-ui-runtime.ts
-da39b39d5d9b89d958658a42441ceb6f5f930b5691c7308464402c159b3ec7a2  ./source/app/50-ui-controller.ts
+872a58d666c4df5405cfa47ed9ed82e9c8fbeb56620f17a21806ea3cb656e2cf  ./source/app/50-ui-controller.ts
 b09c2088aa4b962db0f3652ab8a88e4ed9ade0f42bfff292fceebaf7b0d81468  ./source/app/55-extension-runtime.ts
 b58701c0554a5faf53e68eb68c5ca7f02c3ae0cbca5c5b4819db2e0dbf7bda33  ./source/app/60-public-bridge-bootstrap.ts
 9c6de9f955c791d9b51ac85e9cb4b9f5296b150479e85e446cf79c40619bde6c  ./source/app/source-manifest.json
@@ -72,7 +72,7 @@ cf5149111fd5ba6f92b217864bc65d261a644b1a3aad7380684b0bd53b9a02b6  ./source/revis
 2f6c2d7cb64066bce84e35dd7816288986416b33e22933aa0d2148c937454889  ./source/tsconfig.json
 c42534ef23a478e715bcc71931fe01923ffec33163a1cd363a222f2a39137093  ./tests/backup_fixture_codec.py
 b29a0280057e56b38ecf95313b6ff453011358aea87d36551db7476cc7989310  ./tests/browser-qa.spec.py
-3da38fda38cbfb7a30a159f84c449f2d33eb6160d6054ab171b02468a79d035f  ./tests/build-integrity.spec.py
+fbf33d2591fa0325266f91aa6022119a2f944a6d4872d0ca2fb8e63120084b04  ./tests/build-integrity.spec.py
 a174e6aa38e4b08ac0621cad3aa1729c7ffe22768a2b635bca436447bb162a2b  ./tests/fixtures/browser-baseline.json
 5d55d747355cd5d0be398852596389d2a3851df66737bf5f85f794e9b03f8774  ./tests/fixtures/browser-baseline.rdbackup
 d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-qa-supplement.spec.py
