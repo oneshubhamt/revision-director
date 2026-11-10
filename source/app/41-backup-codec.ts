@@ -251,7 +251,6 @@
       };
       const payload = validate(candidate);
       const warnings: string[] = [];
-      if (manifest.appVersion !== APP_VERSION) warnings.push(`Created by ${manifest.appVersion}; current version is ${APP_VERSION}.`);
       if (manifest.hashAlgorithm === "fnv1a64") warnings.push("Integrity uses the local-runtime fallback hash because Web Crypto was unavailable when the backup was created.");
       const stateChecksum = await this.stateFingerprint(payload, manifest.hashAlgorithm);
       assert(stateChecksum === manifest.stateChecksum, "Backup state checksum failed verification.");
@@ -303,6 +302,7 @@
       assert(typeof input === "object" && input !== null, "Backup manifest is missing.");
       const value = input as Partial<BackupArchiveManifest>;
       assert(value.kind === "manifest" && value.format === BACKUP_ARCHIVE_FORMAT && value.version === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
+      assert(value.appVersion === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
       assert(value.payloadFormat === BACKUP_FORMAT && value.payloadSchemaVersion === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
       assert(value.compression === "none" || value.compression === "gzip", "Backup compression metadata is invalid.");
       assert(value.hashAlgorithm === "sha256" || value.hashAlgorithm === "fnv1a64", "Backup hash algorithm is unsupported.");

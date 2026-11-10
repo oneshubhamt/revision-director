@@ -34,8 +34,8 @@
     static async open(): Promise<IndexedDbRepository> {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = (event) => {
+        assert(event.oldVersion === 0, "Existing Revision Director database schema is unsupported. Clear site data before opening this build.");
         const db = request.result;
-        if (event.oldVersion === 0 || !db.objectStoreNames || db.objectStoreNames.length === 0) {
           const profiles = db.createObjectStore(Store.Profiles, { keyPath: "id" });
           profiles.createIndex("status", "status");
 
@@ -77,9 +77,6 @@
           db.createObjectStore(Store.Settings, { keyPath: "key" });
           db.createObjectStore(Store.Metadata, { keyPath: "key" });
           db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
-          return;
-        }
-        if (!db.objectStoreNames.contains(Store.ActiveRetrieval)) db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
       };
       const db = await requestResult(request);
       db.onversionchange = () => db.close();

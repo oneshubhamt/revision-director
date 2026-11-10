@@ -162,11 +162,7 @@
       if (existing) {
         const canonical = canonicalAppMetadata(existing);
         assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
-        if (canonical.applicationVersion !== APP_VERSION) {
-          canonical.applicationVersion = APP_VERSION;
-          canonical.updatedAt = nowIso();
-          await this.repository.put(Store.Metadata, canonical);
-        }
+        assert(canonical.applicationVersion === APP_VERSION, "Database metadata belongs to a different Revision Director build. Clear site data before opening this build.");
         return;
       }
       const time = nowIso();
