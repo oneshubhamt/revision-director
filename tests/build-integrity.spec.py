@@ -174,7 +174,7 @@ check("D2 forensic rescue", "revision-director-forensic-rescue" in ts and ".rdre
 check("mobile six-item nav", "grid-template-columns:repeat(6,1fr)" in css)
 
 check("Pass C planning factors", all(term in ts for term in ["dueRisk", "examImportance", "weakness", "reviewDuration", "examinationProximity"]))
-check("FSRS retrievability used only for memory risk", "function fsrsRetrievability" in ts and 'obligation.type !== "memory-recall"' in ts and ".model.forgettingCurve(" in ts and "modelElapsedDays" in ts)
+check("FSRS retrievability used only for memory risk", "function fsrsRetrievability" in ts and 'obligation.type !== "memory-recall"' in ts and ".model.forgettingCurve(" in ts and "elapsedDays" in ts and "stabilityFast" in ts)
 check("capacity-bounded planner", "function choosePlanItems" in ts and "Int32Array(capacity + 1)" in ts and "dailyCapacityMinutes" in ts)
 check("daily plan service", "async dailyPlan" in ts and "buildPlanningCandidate" in ts)
 check("transparent planner UI", "Why score" in ts and "factorMeter" in ts and "Deferred by capacity" in ts)
