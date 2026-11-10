@@ -255,8 +255,11 @@ async function testTriggerEvidenceLookup() {
 }
 
 async function testRelearningLifecycle() {
+  await api.prepareFsrsScheduler(.9);
+  const memory = new api.FsrsMemoryPolicy(() => .9);
   const unit = { id:'u', profileId:'p', topicNodeId:'t', title:'U', scope:'scope', source:'', importance:3, status:'active', createdAt:due, updatedAt:due, evidenceCount:0, lapseCount:0 };
   const original = { ...obligation('memory-recall', memory, 'recall'), id:'original', unitId:'u', priority:1 };
+  original.policyState.fsrsCard.cardId = 'original';
   const calls = [];
   const repo = { get: async (_store, key) => key === 'original' ? original : undefined, dailyPlanByStudyDay: async()=>undefined, recordReview: async (...args) => { calls.push(args); } };
   const lifecycle = new api.RevisionService(repo);
@@ -271,17 +274,26 @@ async function testRelearningLifecycle() {
   check(calls[0][1].status === 'suspended' && calls[0][1].suspensionReason === 'relearning', 'Failed original must be paused for relearning');
   check(calls[0][3]?.type === 'relearn' && calls[0][3]?.workflow.kind === 'relearning', 'Failed review must create a proper relearning workflow');
   check(calls[0][3]?.returnObligationId === 'original', 'Relearning must return to its exact original');
+  check(Math.abs((new Date(calls[0][1].dueAt) - new Date(due)) / 86400000 - 1) < .001, 'Failed FSRS memory must retain the one-day scheduler due date while suspended');
 
+  const failedState = structuredClone(calls[0][1].policyState);
+  original.policyState = failedState;
+  original.dueAt = calls[0][1].dueAt;
   const relearnPolicy = new api.RelearnPolicy();
-  const relearn = { ...obligation('relearn', relearnPolicy, 'relearning'), id:'relearn', unitId:'u', returnObligationId:'original', policyState:{ ...relearnPolicy.createInitialState(due), successStreak:1 } };
+  const nextDay = new Date(new Date(due).getTime() + 86400000);
+  const relearn = { ...obligation('relearn', relearnPolicy, 'relearning'), id:'relearn', unitId:'u', returnObligationId:'original', policyState:{ ...relearnPolicy.createInitialState(nextDay.toISOString()), successStreak:1 } };
   original.status = 'suspended'; original.suspensionReason='relearning';
   calls.length = 0;
   lifecycle.obligation = async () => relearn;
   lifecycle.obligationsForUnit = async () => [relearn];
-  await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, confirmedRating:3 }, new Date(due));
+  await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, confirmedRating:3 }, nextDay);
   check(calls[0][1].status === 'completed', 'Relearning must complete after two successful cycles');
-  check(calls[0][4]?.status === 'active', 'Original obligation must reactivate atomically');
-  check(calls[0][4]?.policyState.fsrsCard.dueAt === calls[0][4]?.dueAt, 'Reactivated FSRS due state must stay synchronized');
+  const resumed = calls[0][4];
+  check(resumed?.status === 'active', 'Original obligation must reactivate atomically');
+  check(resumed?.policyState.fsrsCard.dueAt === resumed?.dueAt, 'Reactivated FSRS due state must stay synchronized');
+  check(resumed?.policyState.fsrsCard.model === 'FSRS-7', 'Reactivated memory must remain FSRS-7');
+  const resumedDays = (new Date(resumed.dueAt) - nextDay) / 86400000;
+  check(resumedDays >= 2.9 && resumedDays <= 3.1, 'Successful relearning must advance the original through FSRS-7 rather than a fixed app interval');
 }
 
 
