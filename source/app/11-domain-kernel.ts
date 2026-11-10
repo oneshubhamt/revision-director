@@ -1,6 +1,6 @@
   const APP_VERSION = "va7.1-pass-e1";
   const DB_NAME = "revision-director";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const DOCUMENT_SCHEMA_VERSION: DocumentSchemaVersion = 1;
   const BACKUP_FORMAT = "revision-director-backup" as const;
   const BACKUP_SCHEMA_VERSION = 2 as const;

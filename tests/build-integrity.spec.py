@@ -80,7 +80,7 @@ check("strict runtime", '"use strict";' in ts[:100])
 check("no TS namespace", "namespace RD" not in ts and "namespace RevisionDirector" not in ts)
 check("no compiled RD global", not re.search(r"\bvar\s+RD\b", js))
 check("temporary FSRS global removed", 'delete (window as Window & { FSRS?: FsrsUmdRuntime }).FSRS' in ts)
-check("production database identity", 'const DB_NAME = "revision-director"' in ts and 'const DB_VERSION = 2' in ts)
+check("production database identity", 'const DB_NAME = "revision-director"' in ts and 'const DB_VERSION = 3' in ts)
 check("document schema version contract", 'type DocumentSchemaVersion = 1' in ts and 'const DOCUMENT_SCHEMA_VERSION: DocumentSchemaVersion = 1' in ts)
 check("all durable documents versioned", all(token in ts for token in [
     "interface ExamProfile", "interface KnowledgeNode", "interface KnowledgeUnit", "interface StudyEvent",
