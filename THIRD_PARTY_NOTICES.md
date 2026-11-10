@@ -1,13 +1,23 @@
 # Third-party notices
 
-## ts-fsrs 5.4.1
+## ts-fsrs 6.0.0
 
 - Project: `open-spaced-repetition/ts-fsrs`
-- Package: `ts-fsrs@5.4.1`
+- Package: `ts-fsrs@6.0.0`
 - Licence: MIT
-- Vendored artifact: `vendor/ts-fsrs-5.4.1/index.umd.js`
-- SHA-256: `f03ac8b053711ec7211d01674083082b21e75612ce7fb4b9e39f2bb9533210ed`
+- Vendored artifact: `vendor/ts-fsrs-6.0.0/index.umd.js`
+- SHA-256: `6ef23308221a59a524c18153e665480159bc4e26e9d437a70d9e1e912cc54554`
 
 The official UMD artifact is embedded into the production HTML at build time.
-The original package metadata, checksum manifest and full licence text are
-retained in `vendor/ts-fsrs-5.4.1/`.
+The package metadata, checksum manifest and full MIT licence text are retained in
+`vendor/ts-fsrs-6.0.0/`.
+
+## @open-spaced-repetition/srs-kit 1.0.0
+
+`ts-fsrs@6.0.0` bundles `@open-spaced-repetition/srs-kit@1.0.0` into its
+browser UMD artifact.
+
+- Project: `open-spaced-repetition/ts-fsrs`
+- Package: `@open-spaced-repetition/srs-kit@1.0.0`
+- Licence: BSD-3-Clause
+- Licence text: `licences/srs-kit-BSD-3-Clause.txt`

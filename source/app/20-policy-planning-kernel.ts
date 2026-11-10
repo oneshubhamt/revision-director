@@ -11,7 +11,6 @@
       dueAt: card.due.toISOString(),
       stability: card.stability,
       difficulty: card.difficulty,
-      elapsedDays: card.elapsed_days,
       scheduledDays: card.scheduled_days,
       learningSteps: card.learning_steps,
       reps: card.reps,
@@ -27,7 +26,6 @@
       due: new Date(card.dueAt),
       stability: card.stability,
       difficulty: card.difficulty,
-      elapsed_days: card.elapsedDays,
       scheduled_days: card.scheduledDays,
       learning_steps: card.learningSteps,
       reps: card.reps,
@@ -359,7 +357,7 @@
       relearning_steps: [],
     };
     const parameters = typeof api.generatorParameters === "function" ? api.generatorParameters(raw) : raw;
-    const retrievability = api.fsrs(parameters).get_retrievability(hydrateFsrsCard(obligation.policyState.fsrsCard), reference, false);
+    const retrievability = api.fsrs(parameters).retrievability(hydrateFsrsCard(obligation.policyState.fsrsCard), reference);
     return clamp(Number(retrievability), 0, 1);
   }
 

@@ -20,7 +20,7 @@
   const REVIEW_OWNER_TAKEOVER_WAIT_MS = 1_800;
   const TIME_HISTORY_LIMIT = 200;
   const PLANNER_VERSION = "pass-d-2";
-  const FSRS_PACKAGE_VERSION = "5.4.1" as const;
+  const FSRS_PACKAGE_VERSION = "6.0.0" as const;
   const DAY_MS = 86_400_000;
 
   function assert(condition: unknown, message: string): asserts condition {
@@ -500,7 +500,7 @@
   }
 
   function runtimeFsrs(): FsrsUmdRuntime {
-    assert(typeof FSRS === "object" && FSRS !== null, "Embedded ts-fsrs 5.4.1 failed to initialize. The deployment file may be damaged.");
+    assert(typeof FSRS === "object" && FSRS !== null, "Embedded ts-fsrs 6.0.0 failed to initialize. The deployment file may be damaged.");
     assert(typeof FSRS.fsrs === "function" && typeof FSRS.createEmptyCard === "function", "Invalid ts-fsrs runtime.");
     return FSRS;
   }

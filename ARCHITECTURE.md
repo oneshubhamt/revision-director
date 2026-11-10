@@ -191,7 +191,7 @@ next active target. Timing summaries are part of that same committed record.
 Pass B3 retains:
 
 - six obligation types and six retrieval workflows;
-- exact `ts-fsrs@5.4.1` only for memory recall;
+- exact `ts-fsrs@6.0.0` only for memory recall;
 - separate deterministic policies for other obligation types;
 - append-only Evidence Events;
 - adaptive duration learning;

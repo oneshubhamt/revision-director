@@ -15,10 +15,10 @@ CSS = SOURCE_DIR / "revision-director.va7.css"
 PRESENTATION_MANIFEST = SOURCE_DIR / "presentation/revision-director.presentation.json"
 PRESENTATION_PREPAINT = SOURCE_DIR / "presentation/prepaint.js"
 APP_JS = ROOT / "dist/app.js"
-VENDOR_DIR = ROOT / "vendor/ts-fsrs-5.4.1"
+VENDOR_DIR = ROOT / "vendor/ts-fsrs-6.0.0"
 VENDOR_JS = VENDOR_DIR / "index.umd.js"
 VENDOR_PACKAGE = VENDOR_DIR / "package.json"
-EXPECTED_VENDOR_SHA256 = "f03ac8b053711ec7211d01674083082b21e75612ce7fb4b9e39f2bb9533210ed"
+EXPECTED_VENDOR_SHA256 = "6ef23308221a59a524c18153e665480159bc4e26e9d437a70d9e1e912cc54554"
 
 
 def assemble_typescript() -> str:
@@ -91,7 +91,7 @@ def build_html() -> None:
     profiles = presentation_manifest.get("profiles", {})
     if not isinstance(default_id, str) or default_id not in profiles or profiles[default_id].get("immutable") is not True:
         raise SystemExit("Presentation manifest default must exist and be immutable.")
-    if metadata.get("name") != "ts-fsrs" or metadata.get("version") != "5.4.1" or metadata.get("license") != "MIT":
+    if metadata.get("name") != "ts-fsrs" or metadata.get("version") != "6.0.0" or metadata.get("license") != "MIT":
         raise SystemExit("Unexpected ts-fsrs package metadata.")
     actual_hash = hashlib.sha256(VENDOR_JS.read_bytes()).hexdigest()
     if actual_hash != EXPECTED_VENDOR_SHA256:
@@ -109,7 +109,7 @@ def build_html() -> None:
     html = html.replace("<!-- INLINE_CSS -->", f"<style>\n{css}\n</style>")
     html = html.replace(
         "<!-- INLINE_VENDOR_JS -->",
-        f'<script data-vendor="ts-fsrs@5.4.1" data-sha256="{actual_hash}">\n{vendor}\n</script>',
+        f'<script data-vendor="ts-fsrs@6.0.0" data-sha256="{actual_hash}">\n{vendor}\n</script>',
     )
     html = html.replace("<!-- INLINE_JS -->", f"<script>\n{js}\n</script>")
     (ROOT / "index.html").write_text(html)

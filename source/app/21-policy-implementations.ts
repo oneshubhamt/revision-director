@@ -76,8 +76,6 @@
         dueAt: result.log.due.toISOString(),
         stability: result.log.stability,
         difficulty: result.log.difficulty,
-        elapsedDays: result.log.elapsed_days,
-        lastElapsedDays: result.log.last_elapsed_days,
         scheduledDays: result.log.scheduled_days,
         learningSteps: result.log.learning_steps,
         reviewedAt: result.log.review.toISOString(),

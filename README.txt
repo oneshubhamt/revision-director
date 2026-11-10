@@ -7,7 +7,7 @@ Open or deploy only:
 The deployable remains self-contained:
 - embedded CSS;
 - compiled strict TypeScript application logic;
-- exact embedded ts-fsrs@5.4.1 UMD runtime;
+- exact embedded ts-fsrs@6.0.0 UMD runtime;
 - embedded presentation manifest and pre-paint bootstrap;
 - no CDN, network-loaded asset, framework or runtime module loader.
 

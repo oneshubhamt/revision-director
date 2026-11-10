@@ -1,0 +1,158 @@
+{
+  "name": "ts-fsrs",
+  "private": false,
+  "version": "6.0.0",
+  "description": "ts-fsrs is a versatile package written in TypeScript that supports ES modules, CommonJS, and UMD. It implements the Free Spaced Repetition Scheduler (FSRS) algorithm, enabling developers to integrate FSRS into their flashcard applications to enhance the user learning experience.",
+  "types": "dist/index.d.mts",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "default": "./dist/index.mjs"
+    },
+    "./reschedule": {
+      "require": {
+        "types": "./dist/reschedule.d.cts",
+        "default": "./dist/reschedule.cjs"
+      },
+      "import": {
+        "types": "./dist/reschedule.d.mts",
+        "default": "./dist/reschedule.mjs"
+      },
+      "default": "./dist/reschedule.mjs"
+    },
+    "./middlewares": {
+      "require": {
+        "types": "./dist/middlewares/index.d.cts",
+        "default": "./dist/middlewares/index.cjs"
+      },
+      "import": {
+        "types": "./dist/middlewares/index.d.mts",
+        "default": "./dist/middlewares/index.mjs"
+      },
+      "default": "./dist/middlewares/index.mjs"
+    },
+    "./models/fsrs-3": {
+      "require": {
+        "types": "./dist/models/fsrs-3.d.cts",
+        "default": "./dist/models/fsrs-3.cjs"
+      },
+      "import": {
+        "types": "./dist/models/fsrs-3.d.mts",
+        "default": "./dist/models/fsrs-3.mjs"
+      },
+      "default": "./dist/models/fsrs-3.mjs"
+    },
+    "./models/fsrs-5": {
+      "require": {
+        "types": "./dist/models/fsrs-5.d.cts",
+        "default": "./dist/models/fsrs-5.cjs"
+      },
+      "import": {
+        "types": "./dist/models/fsrs-5.d.mts",
+        "default": "./dist/models/fsrs-5.mjs"
+      },
+      "default": "./dist/models/fsrs-5.mjs"
+    },
+    "./models/fsrs-7": {
+      "require": {
+        "types": "./dist/models/fsrs-7.d.cts",
+        "default": "./dist/models/fsrs-7.cjs"
+      },
+      "import": {
+        "types": "./dist/models/fsrs-7.d.mts",
+        "default": "./dist/models/fsrs-7.mjs"
+      },
+      "default": "./dist/models/fsrs-7.mjs"
+    },
+    "./models/fsrs-6": {
+      "require": {
+        "types": "./dist/models/fsrs-6.d.cts",
+        "default": "./dist/models/fsrs-6.cjs"
+      },
+      "import": {
+        "types": "./dist/models/fsrs-6.d.mts",
+        "default": "./dist/models/fsrs-6.mjs"
+      },
+      "default": "./dist/models/fsrs-6.mjs"
+    },
+    "./models/fsrs-4dot5": {
+      "require": {
+        "types": "./dist/models/fsrs-4dot5.d.cts",
+        "default": "./dist/models/fsrs-4dot5.cjs"
+      },
+      "import": {
+        "types": "./dist/models/fsrs-4dot5.d.mts",
+        "default": "./dist/models/fsrs-4dot5.mjs"
+      },
+      "default": "./dist/models/fsrs-4dot5.mjs"
+    },
+    "./models/fsrs-4": {
+      "require": {
+        "types": "./dist/models/fsrs-4.d.cts",
+        "default": "./dist/models/fsrs-4.cjs"
+      },
+      "import": {
+        "types": "./dist/models/fsrs-4.d.mts",
+        "default": "./dist/models/fsrs-4.mjs"
+      },
+      "default": "./dist/models/fsrs-4.mjs"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "check": "biome check ./src",
+    "check:fix": "biome check --write ./src",
+    "dev": "tsdown --watch --no-clean",
+    "test": "vitest run --config=vitest.config.ts --passWithNoTests",
+    "test:coverage": "vitest run --config=vitest.config.ts --passWithNoTests --coverage",
+    "bench": "vitest bench --run --config=vitest.config.ts",
+    "typecheck": "tsc --noEmit --pretty false && tsc --project bench/tsconfig.json --noEmit --pretty false && tsc --project __tests__/tsconfig.json --noEmit --pretty false",
+    "test::publish": "yalc publish",
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@open-spaced-repetition/srs-kit": "1.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.6.7",
+    "decimal.js": "^10.6.0",
+    "tsdown": "0.23.1"
+  },
+  "author": "ishiko",
+  "license": "MIT",
+  "keywords": [
+    "SuperMemo",
+    "Anki",
+    "FSRS"
+  ],
+  "files": [
+    "dist",
+    "CHANGELOG.md",
+    "README.md",
+    "README_CN.md",
+    "README_JA.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-spaced-repetition/ts-fsrs.git",
+    "directory": "packages/fsrs"
+  },
+  "bugs": {
+    "url": "https://github.com/open-spaced-repetition/ts-fsrs/issues"
+  },
+  "homepage": "https://github.com/open-spaced-repetition/ts-fsrs#readme",
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

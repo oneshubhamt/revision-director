@@ -279,7 +279,7 @@
     const REVIEW_OWNER_TAKEOVER_WAIT_MS = 1_800;
     const TIME_HISTORY_LIMIT = 200;
     const PLANNER_VERSION = "pass-d-2";
-    const FSRS_PACKAGE_VERSION = "5.4.1";
+    const FSRS_PACKAGE_VERSION = "6.0.0";
     const DAY_MS = 86_400_000;
     function assert(condition, message) {
         if (!condition)
@@ -766,7 +766,7 @@
         assert(typeof evidence.correctionNote === "string", "Evidence correction note is invalid.");
     }
     function runtimeFsrs() {
-        assert(typeof FSRS === "object" && FSRS !== null, "Embedded ts-fsrs 5.4.1 failed to initialize. The deployment file may be damaged.");
+        assert(typeof FSRS === "object" && FSRS !== null, "Embedded ts-fsrs 6.0.0 failed to initialize. The deployment file may be damaged.");
         assert(typeof FSRS.fsrs === "function" && typeof FSRS.createEmptyCard === "function", "Invalid ts-fsrs runtime.");
         return FSRS;
     }
@@ -1248,7 +1248,6 @@
             dueAt: card.due.toISOString(),
             stability: card.stability,
             difficulty: card.difficulty,
-            elapsedDays: card.elapsed_days,
             scheduledDays: card.scheduled_days,
             learningSteps: card.learning_steps,
             reps: card.reps,
@@ -1264,7 +1263,6 @@
             due: new Date(card.dueAt),
             stability: card.stability,
             difficulty: card.difficulty,
-            elapsed_days: card.elapsedDays,
             scheduled_days: card.scheduledDays,
             learning_steps: card.learningSteps,
             reps: card.reps,
@@ -1599,7 +1597,7 @@
             relearning_steps: [],
         };
         const parameters = typeof api.generatorParameters === "function" ? api.generatorParameters(raw) : raw;
-        const retrievability = api.fsrs(parameters).get_retrievability(hydrateFsrsCard(obligation.policyState.fsrsCard), reference, false);
+        const retrievability = api.fsrs(parameters).retrievability(hydrateFsrsCard(obligation.policyState.fsrsCard), reference);
         return clamp(Number(retrievability), 0, 1);
     }
     function temporalDueRisk(dueAt, dayStart, dayEnd, lookaheadDays) {
@@ -1844,8 +1842,6 @@
                 dueAt: result.log.due.toISOString(),
                 stability: result.log.stability,
                 difficulty: result.log.difficulty,
-                elapsedDays: result.log.elapsed_days,
-                lastElapsedDays: result.log.last_elapsed_days,
                 scheduledDays: result.log.scheduled_days,
                 learningSteps: result.log.learning_steps,
                 reviewedAt: result.log.review.toISOString(),

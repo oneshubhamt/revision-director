@@ -17,10 +17,10 @@ shell = (ROOT / "source/revision-director.shell.html").read_text()
 css = (ROOT / "source/revision-director.va7.css").read_text()
 js = (ROOT / "dist/app.js").read_text()
 html = (ROOT / "index.html").read_text()
-vendor_path = ROOT / "vendor/ts-fsrs-5.4.1/index.umd.js"
+vendor_path = ROOT / "vendor/ts-fsrs-6.0.0/index.umd.js"
 vendor = vendor_path.read_text()
-package = json.loads((ROOT / "vendor/ts-fsrs-5.4.1/package.json").read_text())
-expected_hash = "f03ac8b053711ec7211d01674083082b21e75612ce7fb4b9e39f2bb9533210ed"
+package = json.loads((ROOT / "vendor/ts-fsrs-6.0.0/package.json").read_text())
+expected_hash = "6ef23308221a59a524c18153e665480159bc4e26e9d437a70d9e1e912cc54554"
 actual_hash = hashlib.sha256(vendor_path.read_bytes()).hexdigest()
 
 checks: list[tuple[str, bool]] = []
@@ -68,11 +68,11 @@ check("44-pixel interaction contract", "min-height:44px" in css and ".file-btn{m
 check("reduced-motion contract", "@media (prefers-reduced-motion:reduce)" in css)
 check("safe-area contract", "env(safe-area-inset-bottom)" in css and "viewport-fit=cover" in shell)
 check("compact content reserves navigation", "height:calc(100dvh - 64px - env(safe-area-inset-bottom))" in css and "overflow-y:auto" in css)
-check("vendor metadata", package.get("name") == "ts-fsrs" and package.get("version") == "5.4.1" and package.get("license") == "MIT")
+check("vendor metadata", package.get("name") == "ts-fsrs" and package.get("version") == "6.0.0" and package.get("license") == "MIT")
 check("vendor checksum", actual_hash == expected_hash)
-check("embedded vendor marker", f'data-vendor="ts-fsrs@5.4.1" data-sha256="{expected_hash}"' in html)
-check("embedded vendor exact parity", f'<script data-vendor="ts-fsrs@5.4.1" data-sha256="{expected_hash}">\n{vendor}\n</script>' in html)
-check("vendor loads before app", html.index('data-vendor="ts-fsrs@5.4.1"') < html.rindex(f"<script>\n{js}\n</script>"))
+check("embedded vendor marker", f'data-vendor="ts-fsrs@6.0.0" data-sha256="{expected_hash}"' in html)
+check("embedded vendor exact parity", f'<script data-vendor="ts-fsrs@6.0.0" data-sha256="{expected_hash}">\n{vendor}\n</script>' in html)
+check("vendor loads before app", html.index('data-vendor="ts-fsrs@6.0.0"') < html.rindex(f"<script>\n{js}\n</script>"))
 check("inline CSS parity", f"<style>\n{css}\n</style>" in html)
 check("inline JS parity", f"<script>\n{js}\n</script>" in html)
 check("sealed source IIFE", ts.lstrip().startswith('(() => {'))

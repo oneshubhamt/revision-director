@@ -9,13 +9,13 @@ const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflow
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-5.4.1', 'index.umd.js'), 'utf8');
+const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
 const context = { crypto: webcrypto, structuredClone, console, Date, Intl, URL, Blob, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise };
 context.window = context;
 context.self = context;
 context.globalThis = context;
 vm.createContext(context);
-vm.runInContext(vendor, context, { filename: 'ts-fsrs-5.4.1.umd.js' });
+vm.runInContext(vendor, context, { filename: 'ts-fsrs-6.0.0.umd.js' });
 if (!context.FSRS || typeof context.FSRS.fsrs !== 'function') throw new Error('Real ts-fsrs runtime did not load');
 vm.runInContext(source, context, { filename: 'app.js' });
 
@@ -118,9 +118,9 @@ const memory = new api.FsrsMemoryPolicy(() => .9);
 const memoryObligation = obligation('memory-recall', memory, 'recall');
 const memoryPreviews = memory.preview(memoryObligation, new Date(due));
 check(memoryPreviews.length === 4, 'FSRS must preview four outcomes');
-check(memoryPreviews.map(item => Math.round(item.intervalDays)).join(',') === '1,2,3,8', 'Adapter must consume real ts-fsrs 5.4.1 previews');
+check(memoryPreviews.map(item => Math.round(item.intervalDays)).join(',') === '1,2,3,8', 'Adapter must consume real ts-fsrs 6.0.0 previews');
 const memoryComplete = memory.complete(memoryObligation, 3, evidence(3,3,1), new Date(due));
-check(memoryComplete.policyId === 'memory/ts-fsrs@5.4.1', 'FSRS policy must be pinned');
+check(memoryComplete.policyId === 'memory/ts-fsrs@6.0.0', 'FSRS policy must be pinned');
 check(memoryComplete.policyState.fsrsCard.reps === 1, 'FSRS card state must persist');
 check(memoryComplete.schedulerConfig.requestRetention === .9 && memoryComplete.schedulerConfig.enableFuzz === false && memoryComplete.schedulerConfig.enableShortTerm === false, 'FSRS configuration snapshot must be preserved');
 check(context.FSRS === undefined, 'Temporary FSRS global must be removed after private capture');

@@ -7,14 +7,13 @@
    */
 
   /* ========================================================================== 
-     EXACT ts-fsrs 5.4.1 UMD CONTRACT
+     EXACT ts-fsrs 6.0.0 UMD CONTRACT
      ========================================================================== */
 
   interface FsrsCardRuntime {
     due: Date;
     stability: number;
     difficulty: number;
-    elapsed_days: number;
     scheduled_days: number;
     learning_steps: number;
     reps: number;
@@ -29,8 +28,6 @@
     due: Date;
     stability: number;
     difficulty: number;
-    elapsed_days: number;
-    last_elapsed_days: number;
     scheduled_days: number;
     learning_steps: number;
     review: Date;
@@ -44,7 +41,7 @@
   interface FsrsSchedulerRuntime {
     repeat(card: FsrsCardRuntime, now: Date): Record<number, FsrsRecordRuntime>;
     next(card: FsrsCardRuntime, now: Date, grade: number): FsrsRecordRuntime;
-    get_retrievability(card: FsrsCardRuntime, now?: Date, format?: false): number;
+    retrievability(card: FsrsCardRuntime, now?: Date): number;
   }
 
   interface FsrsUmdRuntime {

@@ -96,7 +96,6 @@
     dueAt: ISODateTime;
     stability: number;
     difficulty: number;
-    elapsedDays: number;
     scheduledDays: number;
     learningSteps: number;
     reps: number;
@@ -299,7 +298,7 @@
     afterPolicyState: PolicyState;
     policyId: string;
     schedulerPackage?: "ts-fsrs";
-    schedulerVersion?: "5.4.1";
+    schedulerVersion?: "6.0.0";
     schedulerConfig?: FsrsConfigSnapshot;
     reviewLog?: Record<string, unknown>;
     durationObservation: DurationObservation;
