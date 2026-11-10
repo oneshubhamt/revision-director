@@ -131,10 +131,11 @@ def main() -> None:
         check(session["timeRuntime"]["pauseHistory"][0]["durationMs"] == 30000, "Persisted pause duration is wrong")
 
         # Backward wall-clock movement is rebased rather than subtracted.
+        # Use the real lifecycle-return path to reconcile and persist the clock event;
+        # pause/resume is a user control, not a persistence flush mechanism.
         before_back = session["elapsedMs"]
-        frame.evaluate("__RD_TEST_CLOCK__.advance(-10000)"); wait(frame)
-        frame.evaluate("__RD_TEST_CLOCK__.advance(20000)"); wait(frame)
-        frame.locator('[data-action="toggle-pause"]').click(); frame.locator('[data-action="toggle-pause"]').click(); wait(frame, 220)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(-10000); window.dispatchEvent(new Event('focus'))"); wait(frame, 220)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(20000); window.dispatchEvent(new Event('focus'))"); wait(frame, 220)
         session = active_session(page)
         check(session["timeRuntime"]["backwardClockCount"] >= 1, "Backward-clock event was not persisted")
         check(session["elapsedMs"] >= before_back, "Backward clock reduced active time")
