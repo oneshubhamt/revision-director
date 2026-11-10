@@ -97,7 +97,9 @@ check(normalized.completeness === 4 && normalized.independence === 4 && normaliz
 mustFail(() => api.validateWorkflowResult({...relearnResult,sourceClosedForVerification:false},'relearning'), 'Relearning verification must remain closed-book');
 
 check(api.suggestRating('memory-recall', evidence(0,0,0)) === 1, 'Failure should suggest Again');
-check(api.suggestRating('memory-recall', evidence(4,4,4)) === 4, 'Strong evidence should suggest Easy');
+check(api.suggestRating('memory-recall', evidence(3,4,2)) === 2, 'Incomplete recall should suggest Hard even when uncued');
+check(api.suggestRating('memory-recall', evidence(4,3,2)) === 2, 'Cued recall should suggest Hard even when complete');
+check(api.suggestRating('memory-recall', evidence(4,4,4)) === 3, 'Complete independent recall should default to Good; Easy remains a user judgement');
 check(api.suggestRating('application-practice', evidence(3,3,3,85)) >= 3, 'Good application evidence should pass');
 check(api.suggestRating('application-practice', evidence(3,3,3,85,['application-failure','conceptual-misunderstanding'])) <= 3, 'Errors should reduce suggestion');
 

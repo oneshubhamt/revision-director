@@ -490,6 +490,14 @@
   }
 
   function suggestRating(type: ObligationType, evidence: ObjectiveEvidence): Rating {
+    if (type === "memory-recall") {
+      // FSRS ratings describe recall quality, not a generic rubric percentile.
+      // Objective evidence can identify failure, partial/cued recall and solid recall;
+      // "Easy" remains a user judgement for unusually effortless retrieval.
+      if (evidence.completeness <= 1 || evidence.independence <= 1) return Rating.Again;
+      if (evidence.completeness < 4 || evidence.independence < 4 || evidence.errorTypes.length > 0) return Rating.Hard;
+      return Rating.Good;
+    }
     const score = objectiveScore(type, evidence);
     if (score < 1.45) return Rating.Again;
     if (score < 2.45) return Rating.Hard;

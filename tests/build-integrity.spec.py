@@ -118,6 +118,7 @@ check("FSRS-7 only", 'type FsrsModelVersion = "FSRS-7"' in ts and 'const FSRS_MO
 check("FSRS-7 dual trace", "stabilityFast: number" in ts and "requiredFsrs7StabilityFast" in ts)
 check("FSRS-7 long-form interval policy", "fractionalDays: true" in ts and "enableShortTerm: true" in ts and 'learningSteps: ["1d"]' in ts and 'relearningSteps: ["1d"]' in ts and "graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS" in ts and "allowModelOverride: true" in ts)
 check("Again routes to corrective relearning", 'if (rating === Rating.Again) completion.followUpType = "relearn"' in ts)
+check("FSRS rating semantics", 'if (type === "memory-recall")' in ts and '"Easy" remains a user judgement' in ts and "partial or cued recall" in ts)
 check("strict current data only", "event.oldVersion === 0" in ts and "canonical.applicationVersion === APP_VERSION" in ts and "candidate.appVersion === APP_VERSION" in ts)
 check("policy router", "class SchedulerPolicyRouter" in ts)
 check("immutable Study Event semantics", "interface StudyEvent" in ts and "studyEvents" in ts)
