@@ -1,13 +1,12 @@
-# FSRS-7 scheduling integration
+# FSRS-7 clean-slate scheduling
 
-- Replaced the deprecated legacy FSRS adapter with the modern `DefaultScheduler` API.
-- Made FSRS-7 the primary memory-recall model, with dual-trace `stabilityFast` state and fractional-day retrievability.
-- Kept Revision Director's substantial retrieval-session semantics by disabling explicit flashcard learning/relearning steps while retaining FSRS-7's intrinsic fast trace.
-- Routed `Again` through the app's next-day corrective-relearning workflow so seconds-scale flashcard failure intervals never leak into long-form revision scheduling.
-- Added verified FSRS-6 to FSRS-7 memory replay from continuous Evidence Event history without changing existing due dates or counters.
-- Kept unverifiable legacy cards on an explicit FSRS-6 fallback instead of fabricating FSRS-7 state.
-- Warmed both scheduler models on startup, retention changes and backup restore so restored settings cannot leave the scheduler cache stale.
-- Added exact scheduler model/config provenance and migration-focused regression coverage.
+- Removed all FSRS backward-compatibility, history-replay and dual-model code.
+- FSRS-7 is now the only memory model and malformed/non-current FSRS state is rejected.
+- Uses the modern `DefaultScheduler` API with fractional-day dual-trace state and exact scheduler provenance.
+- Uses one-day learning/relearning middleware, one-day graduation, model override enabled, fuzz disabled and package-default FSRS-7 weights.
+- `Again` creates corrective relearning; successful closed-book repair updates the original memory obligation through FSRS-7 rather than a fixed three-day rule.
+- Removed IndexedDB schema-upgrade behavior, metadata auto-rewriting and cross-build backup tolerance; current formats are strict.
+- Updated regression coverage around current FSRS-7 behavior rather than historical data shapes.
 
 ---
 

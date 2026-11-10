@@ -102,7 +102,7 @@ Stores:
 - metadata;
 - activeRetrieval.
 
-No prototype database, sample seeding or migration path is present.
+No prototype database, sample seeding, schema-upgrade path or backward-data compatibility layer is present.
 
 ## Storage and recovery boundary
 
@@ -191,7 +191,7 @@ next active target. Timing summaries are part of that same committed record.
 Pass B3 retains:
 
 - six obligation types and six retrieval workflows;
-- exact `ts-fsrs@6.0.0` only for memory recall, using FSRS-7 as the primary model with fractional-time dual-trace memory, an application-level next-day relearning route for `Again`, and a fail-safe FSRS-6 route for legacy cards whose complete review history cannot be proven;
+- exact `ts-fsrs@6.0.0` only for memory recall, using FSRS-7 exclusively with fractional-time dual-trace memory, one-day learning/relearning middleware for long-form revision, and corrective relearning on `Again`;
 - separate deterministic policies for other obligation types;
 - append-only Evidence Events;
 - adaptive duration learning;
