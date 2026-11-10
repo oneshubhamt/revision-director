@@ -63,12 +63,15 @@ jobs:
           python3 tests/html-sanity.spec.py
           python3 tests/source-ownership.spec.py
 
+      - name: Pass B2 durability gate
+        run: python3 tests/pass-b2-browser.spec.py
+
       - name: Python regression and browser suites
         run: |
           set -euo pipefail
           for f in tests/*.spec.py; do
             case "$f" in
-              tests/build-integrity.spec.py|tests/html-sanity.spec.py|tests/source-ownership.spec.py) continue ;;
+              tests/build-integrity.spec.py|tests/html-sanity.spec.py|tests/source-ownership.spec.py|tests/pass-b2-browser.spec.py) continue ;;
             esac
             echo "==> $f"
             python3 "$f"
