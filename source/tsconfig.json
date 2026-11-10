@@ -1,16 +1,24 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "none",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "preserve",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "useUnknownInCatchVariables": true,
     "skipLibCheck": true,
-    "outFile": "../dist/app.js",
-    "removeComments": false
+    "removeComments": false,
+    "rootDir": "../build/generated",
+    "outDir": "../build/generated-js",
+    "types": []
   },
-  "files": ["../build/generated/revision-director.combined.ts"]
+  "files": [
+    "../build/generated/revision-director.combined.ts"
+  ]
 }

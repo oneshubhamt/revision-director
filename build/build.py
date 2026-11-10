@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import hashlib
+import os
 import json
 import subprocess
 
@@ -9,7 +10,11 @@ SOURCE_DIR = ROOT / "source"
 SOURCE_MANIFEST = SOURCE_DIR / "app/source-manifest.json"
 GENERATED_DIR = ROOT / "build/generated"
 GENERATED_TS = GENERATED_DIR / "revision-director.combined.ts"
+GENERATED_JS_DIR = ROOT / "build/generated-js"
+GENERATED_JS = GENERATED_JS_DIR / "revision-director.combined.js"
 TSCONFIG = SOURCE_DIR / "tsconfig.json"
+TSC = ROOT / "node_modules/.bin" / ("tsc.cmd" if os.name == "nt" else "tsc")
+EXPECTED_TYPESCRIPT_VERSION = "7.0.2"
 SHELL = SOURCE_DIR / "revision-director.shell.html"
 CSS = SOURCE_DIR / "revision-director.va7.css"
 PRESENTATION_MANIFEST = SOURCE_DIR / "presentation/revision-director.presentation.json"
@@ -57,15 +62,35 @@ def assemble_typescript() -> str:
 
 def compile_typescript(source: str) -> None:
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    GENERATED_JS_DIR.mkdir(parents=True, exist_ok=True)
     GENERATED_TS.write_text(source)
     try:
-        subprocess.run(["tsc", "-p", str(TSCONFIG)], cwd=ROOT, check=True)
+        if not TSC.is_file():
+            raise SystemExit("Local TypeScript compiler is missing. Run \`npm ci\` first.")
+        version = subprocess.run(
+            [str(TSC), "--version"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if version != f"Version {EXPECTED_TYPESCRIPT_VERSION}":
+            raise SystemExit(
+                f"Expected TypeScript {EXPECTED_TYPESCRIPT_VERSION}, got {version or 'unknown'}."
+            )
+        subprocess.run([str(TSC), "-p", str(TSCONFIG)], cwd=ROOT, check=True)
+        if not GENERATED_JS.is_file():
+            raise SystemExit("TypeScript did not emit the expected JavaScript file.")
+        APP_JS.parent.mkdir(parents=True, exist_ok=True)
+        GENERATED_JS.replace(APP_JS)
     finally:
         GENERATED_TS.unlink(missing_ok=True)
-        try:
-            GENERATED_DIR.rmdir()
-        except OSError:
-            pass
+        GENERATED_JS.unlink(missing_ok=True)
+        for directory in (GENERATED_JS_DIR, GENERATED_DIR):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
 
 
 def build_html() -> None:

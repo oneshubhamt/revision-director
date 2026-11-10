@@ -52,3 +52,11 @@ PASS E1 EXTENSIONS
 REPORTS
   PASS_E1_AUDIT.md
   PASS_E1_TARGETED_QA.md
+
+
+DEVELOPMENT TOOLCHAIN
+- Node.js 26.13.0 (pinned by .nvmrc; Node 26 is enforced by package.json).
+- npm 11.20.0.
+- TypeScript 7.0.2, installed project-locally and locked by package-lock.json.
+- Run `npm ci` once, then `npm run build`.
+- The build rejects a missing or mismatched TypeScript compiler; it does not use a global `tsc`.

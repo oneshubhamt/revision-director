@@ -5,5 +5,12 @@
     "node": ">=26.13.0 <27",
     "npm": ">=11.20.0 <12"
   },
-  "packageManager": "npm@11.20.0"
+  "packageManager": "npm@11.20.0",
+  "scripts": {
+    "build": "python3 build/build.py",
+    "test:build": "python3 tests/build-integrity.spec.py"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
 }
