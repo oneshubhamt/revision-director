@@ -374,7 +374,6 @@
           if (pending[0]) nextChunk.set(obligation.id, pending[0]);
           else if (obligation.chunking.completedChunks >= obligation.chunking.totalChunks) {
             obligation.chunking.status = "synthesis-ready";
-            obligation.dueAt = nowIso();
             obligation.updatedAt = nowIso();
             await this.repo.put(Store.Obligations, obligation);
           }
@@ -581,7 +580,6 @@
       obligation.chunking.completedChunks += 1;
       if (obligation.chunking.completedChunks >= obligation.chunking.totalChunks) {
         obligation.chunking.status = "synthesis-ready";
-        obligation.dueAt = completedAt.toISOString();
       }
       obligation.updatedAt = completedAt.toISOString();
       const dailyPlan = await this.completedPlanRecord(obligation.id, chunk.id, actualMinutes, completedAt);

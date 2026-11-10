@@ -191,7 +191,7 @@ check("must-split UI", "Critical work requiring split" in ts and "required overr
 check("duration learning model", "interface DurationObservation" in ts and "function durationObservationFor" in ts and "durationSampleCount" in ts)
 check("weekly balance factor", "weeklyBalance" in ts and "weeklySubjectBalanceScores" in ts and "interleaveSelected" in ts)
 check("automatic chunking", "interface ObligationChunk" in ts and "createAutomaticChunks" in ts and "synthesis-ready" in ts)
-check("parent scheduling protected", "completing this chunk records execution only" in ts and "completeChunk" in ts)
+check("parent scheduling protected", "completing this chunk records execution only" in ts and "completeChunk" in ts and 'const synthesisReady = item.obligation.chunking?.status === "synthesis-ready"' in ts and "obligation.dueAt = completedAt.toISOString()" not in ts)
 check("persisted daily plans", "interface DailyPlanRecord" in ts and 'DailyPlans: "dailyPlans"' in ts and "persistDailyPlan" in ts)
 check("plan versions and outcomes", "versions: DailyPlanVersion[]" in ts and "outcomes: DailyPlanOutcome[]" in ts)
 check("profile-qualified weekly balance", "function subjectBalanceKey" in ts and "subjectBalanceKey(item.profile.id, item.subject)" in ts)

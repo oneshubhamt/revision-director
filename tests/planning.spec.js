@@ -57,6 +57,12 @@ check(api.buildPlanningCandidate(joined('outside',3,10,3,200),[],settings,ref) =
 const brought = api.buildPlanningCandidate(joined('bring',1.5,10,3,10),[],settings,ref);
 check(brought && brought.dueState === 'brought-forward', 'Near-exam lookahead must permit controlled bring-forward');
 
+const synthesisReady = joined('synthesis',3,20,3,200);
+synthesisReady.obligation.chunking = {cycleId:'syn',status:'synthesis-ready',originalMinutes:20,synthesisMinutes:5,capacityMinutes:10,totalChunks:2,completedChunks:2,createdAt:ref.toISOString()};
+const synthesisCandidate = api.buildPlanningCandidate(synthesisReady,[],settings,ref);
+check(synthesisCandidate && synthesisCandidate.executionMinutes === 5, 'Synthesis-ready work must be immediately plannable without rewriting the policy due date');
+check(synthesisReady.obligation.dueAt === new Date(ref.getTime()+3*86400000).toISOString(), 'Planning synthesis readiness must not mutate the policy due date');
+
 async function testFsrsPlanning() {
   await api.prepareFsrsScheduler(.9);
   const memoryPolicy = new api.FsrsMemoryPolicy(() => .9);

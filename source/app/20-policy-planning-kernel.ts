@@ -471,7 +471,8 @@
     if (examDateTime(item.profile) && daysToExam < 0) return undefined;
     const lookaheadDays = planningLookaheadDays(daysToExam);
     const dueAt = new Date(item.obligation.dueAt);
-    if (dueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
+    const synthesisReady = item.obligation.chunking?.status === "synthesis-ready";
+    if (!synthesisReady && dueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
     const temporalRisk = temporalDueRisk(dueAt, dayStart, dayEnd, lookaheadDays);
     const retrievability = fsrsRetrievability(item.obligation, reference, settings.desiredRetention);
     const memoryRisk = retrievability === undefined ? 0 : clamp((settings.desiredRetention - retrievability) / Math.max(settings.desiredRetention - 0.5, 0.1), 0, 1);
