@@ -1,4 +1,4 @@
-  const APP_VERSION = "va7.1-pass-e1";
+  const APP_VERSION = "va7.1-pass-f1";
   const DB_NAME = "revision-director";
   const DB_VERSION = 3;
   const DOCUMENT_SCHEMA_VERSION: DocumentSchemaVersion = 1;

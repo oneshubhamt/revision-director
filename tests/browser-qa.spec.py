@@ -306,7 +306,7 @@ def scenario_keyboard_accessibility(browser) -> None:
 
 def scenario_bridge(browser) -> None:
     page, errors = open_page(browser, baseline=True)
-    check(page.evaluate("RevisionDirector.version") == "va7.1-pass-e1", "Public API version mismatch")
+    check(page.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version mismatch")
     invalid = [
         {"area":"A","task":"T","measure":"M","durationMinutes":10,"activityMode":"evil"},
         {"area":"A","task":"T","measure":"M","durationMinutes":10,"understanding":99},

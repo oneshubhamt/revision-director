@@ -22,7 +22,7 @@ class FakeService{
 }
 class FakeOwnership{constructor(){this.mutable=true}canMutate(){return this.mutable}snapshot(){return {state:this.mutable?'primary':'secondary',tabId:'tab',canMutate:this.mutable,revision:1}}}
 (async()=>{
- check(T.APP_VERSION==='va7.1-pass-e1','E1 app identity wrong');
+ check(T.APP_VERSION==='va7.1-pass-f1','E1 app identity wrong');
  check(T.REVISION_DIRECTOR_PUBLIC_API_VERSION===1,'Public API version wrong');
  check(Object.isFrozen(T.REVISION_DIRECTOR_CAPABILITIES),'Capabilities are not frozen');
  const service=new FakeService(),ownership=new FakeOwnership();
@@ -66,7 +66,7 @@ class FakeOwnership{constructor(){this.mutable=true}canMutate(){return this.muta
  check(status.registered.some(x=>x.name==='Failed Plugin'&&x.state==='failed'),'Failure status missing');
  check(status.registered.find(x=>x.name==='Retry Plugin').attempts===2,'Attempt cap status wrong');
  check(Object.isFrozen(api.data)&&Object.isFrozen(api.data.contract),'Data contract not frozen');
- check(api.data.contract.application==='revision-director'&&api.data.contract.applicationVersion==='va7.1-pass-e1','Public data contract wrong');
+ check(api.data.contract.application==='revision-director'&&api.data.contract.applicationVersion==='va7.1-pass-f1','Public data contract wrong');
  check(api.runtime.ownership().canMutate===true&&api.runtime.storageHealth().level==='healthy','Runtime summaries wrong');
  console.log(`PASS ${checks} Pass E1 public-capability and plugin-runtime checks`);
 })().catch(e=>{console.error(e);process.exitCode=1});
