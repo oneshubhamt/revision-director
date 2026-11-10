@@ -280,8 +280,10 @@
     const TIME_HISTORY_LIMIT = 200;
     const PLANNER_VERSION = "pass-d-2";
     const FSRS_PACKAGE_VERSION = "6.0.0";
-    const FSRS_PRIMARY_MODEL = "FSRS-7";
-    const FSRS_LEGACY_MODEL = "FSRS-6";
+    const FSRS_MODEL = "FSRS-7";
+    const FSRS_LEARNING_STEPS = ["1d"];
+    const FSRS_RELEARNING_STEPS = ["1d"];
+    const FSRS_GRADUATING_INTERVAL_DAYS = 1;
     const FSRS_MAXIMUM_INTERVAL_DAYS = 36_500;
     const DAY_MS = 86_400_000;
     function assert(condition, message) {
@@ -1246,27 +1248,17 @@
             return canonicalActiveRetrievalSession(value);
         return canonicalAppMetadata(value);
     }
-    function fsrsModelForCard(card) {
-        return card.model ?? FSRS_LEGACY_MODEL;
-    }
-    function fsrsScheduleStatusForState(state) {
-        const api = runtimeFsrs();
-        if (state === api.State.New)
-            return "new";
-        if (state === api.State.Review)
-            return "review";
-        return "learning";
-    }
     function requiredFsrs7StabilityFast(value) {
-        assert(value !== undefined && Number.isFinite(value), "FSRS-7 memory state is missing fast stability.");
+        assert(Number.isFinite(value), "FSRS-7 memory state is missing fast stability.");
         return value;
     }
-    function serializeFsrsCard(card, model) {
+    function serializeFsrsCard(card) {
         const stored = {
-            model,
+            model: FSRS_MODEL,
             cardId: card.cardId,
             dueAt: card.dueAt.toISOString(),
             stability: card.stability,
+            stabilityFast: requiredFsrs7StabilityFast(card.stabilityFast),
             difficulty: card.difficulty,
             scheduledDays: card.scheduledDays,
             learningSteps: card.learningStep,
@@ -1275,187 +1267,73 @@
             state: card.state,
             scheduleStatus: card.scheduleStatus,
         };
-        if (model === FSRS_PRIMARY_MODEL)
-            stored.stabilityFast = requiredFsrs7StabilityFast(card.stabilityFast);
         if (card.lastReviewAt)
             stored.lastReviewAt = card.lastReviewAt.toISOString();
         return stored;
     }
-    function normalizeStoredFsrsCard(card, cardId) {
-        const model = fsrsModelForCard(card);
-        if (model === FSRS_PRIMARY_MODEL)
-            requiredFsrs7StabilityFast(card.stabilityFast);
+    function hydrateFsrsCard(card, obligationId) {
+        assert(card.model === FSRS_MODEL, "Memory obligation does not use the current FSRS-7 model.");
+        assert(card.cardId === obligationId, "FSRS card identity does not match its obligation.");
         return {
-            ...card,
-            model,
-            cardId: card.cardId ?? cardId,
-            scheduleStatus: card.scheduleStatus ?? fsrsScheduleStatusForState(card.state),
+            cardId: card.cardId,
+            dueAt: new Date(card.dueAt),
+            lastReviewAt: card.lastReviewAt ? new Date(card.lastReviewAt) : null,
+            stability: card.stability,
+            stabilityFast: requiredFsrs7StabilityFast(card.stabilityFast),
+            difficulty: card.difficulty,
+            scheduledDays: card.scheduledDays,
+            learningStep: card.learningSteps,
+            reps: card.reps,
+            lapses: card.lapses,
+            state: card.state,
+            scheduleStatus: card.scheduleStatus,
         };
     }
-    function hydrateFsrsCard(card, fallbackCardId) {
-        const normalized = normalizeStoredFsrsCard(card, fallbackCardId);
-        const hydrated = {
-            cardId: normalized.cardId,
-            dueAt: new Date(normalized.dueAt),
-            lastReviewAt: normalized.lastReviewAt ? new Date(normalized.lastReviewAt) : null,
-            stability: normalized.stability,
-            difficulty: normalized.difficulty,
-            scheduledDays: normalized.scheduledDays,
-            learningStep: normalized.learningSteps,
-            reps: normalized.reps,
-            lapses: normalized.lapses,
-            state: normalized.state,
-            scheduleStatus: normalized.scheduleStatus,
-        };
-        if (normalized.stabilityFast !== undefined)
-            hydrated.stabilityFast = normalized.stabilityFast;
-        return hydrated;
-    }
-    function fsrsConfigSnapshot(model, desiredRetention) {
+    function fsrsConfigSnapshot(desiredRetention) {
         return {
-            model,
+            model: FSRS_MODEL,
             desiredRetention,
-            fractionalDays: model === FSRS_PRIMARY_MODEL,
+            fractionalDays: true,
             enableFuzz: false,
-            enableShortTerm: false,
-            learningSteps: [],
-            relearningSteps: [],
-            allowModelOverride: model === FSRS_PRIMARY_MODEL,
+            enableShortTerm: true,
+            learningSteps: ["1d"],
+            relearningSteps: ["1d"],
+            graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
+            allowModelOverride: true,
             maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
             clearStatsOnForget: false,
             weightsSource: "ts-fsrs-package-default",
         };
     }
     const FSRS_SCHEDULER_CACHE = new Map();
-    function fsrsSchedulerCacheKey(model, desiredRetention) {
-        return `${model}:${desiredRetention.toFixed(6)}`;
+    function fsrsSchedulerCacheKey(desiredRetention) {
+        return desiredRetention.toFixed(6);
     }
-    async function prepareFsrsSchedulers(desiredRetention) {
+    async function prepareFsrsScheduler(desiredRetention) {
         assert(Number.isFinite(desiredRetention) && desiredRetention > 0 && desiredRetention < 1, "Desired retention is invalid.");
-        const api = runtimeFsrs();
-        await Promise.all([FSRS_LEGACY_MODEL, FSRS_PRIMARY_MODEL].map(async (model) => {
-            const key = fsrsSchedulerCacheKey(model, desiredRetention);
-            if (FSRS_SCHEDULER_CACHE.has(key))
-                return;
-            const scheduler = await api.DefaultScheduler({
-                version: model,
-                desiredRetention,
-                enableShortTerm: false,
-                learningSteps: [],
-                relearningSteps: [],
-                allowModelOverride: model === FSRS_PRIMARY_MODEL,
-                enableFuzz: false,
-                maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
-                clearStatsOnForget: false,
-            });
-            const probe = scheduler.newCard({ cardId: `revision-director-probe-${model.toLowerCase()}` });
-            if (model === FSRS_PRIMARY_MODEL)
-                requiredFsrs7StabilityFast(probe.stabilityFast);
-            else
-                assert(probe.stabilityFast === undefined, "FSRS-6 scheduler unexpectedly returned FSRS-7 state.");
-            FSRS_SCHEDULER_CACHE.set(key, scheduler);
-        }));
-    }
-    function fsrsScheduler(model, desiredRetention) {
-        const scheduler = FSRS_SCHEDULER_CACHE.get(fsrsSchedulerCacheKey(model, desiredRetention));
-        assert(scheduler, `${model} scheduler has not been initialized for the current retention setting.`);
-        return scheduler;
-    }
-    function fsrsHistoryFor(obligationId, events) {
-        return events
-            .filter((event) => event.obligationId === obligationId && event.obligationType === "memory-recall")
-            .sort((a, b) => a.reviewedAt.localeCompare(b.reviewedAt) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-    }
-    function completeLegacyFsrsHistory(current, history) {
-        if (history.length !== current.reps || history.length === 0)
-            return false;
-        const newState = runtimeFsrs().State.New;
-        let priorAfter;
-        for (let index = 0; index < history.length; index += 1) {
-            const event = history[index];
-            const before = event.beforePolicyState.fsrsCard;
-            const after = event.afterPolicyState.fsrsCard;
-            if (!before || !after || before.reps !== index || after.reps !== index + 1)
-                return false;
-            if (index === 0 && (before.lastReviewAt !== undefined ||
-                before.lapses !== 0 ||
-                before.stability !== 0 ||
-                before.difficulty !== 0 ||
-                before.scheduledDays !== 0 ||
-                before.learningSteps !== 0 ||
-                before.state !== newState))
-                return false;
-            if (after.lastReviewAt !== event.reviewedAt || ![1, 2, 3, 4].includes(event.confirmedRating))
-                return false;
-            if (priorAfter) {
-                if (before.reps !== priorAfter.reps ||
-                    before.lapses !== priorAfter.lapses ||
-                    before.lastReviewAt !== priorAfter.lastReviewAt ||
-                    before.stability !== priorAfter.stability ||
-                    before.difficulty !== priorAfter.difficulty ||
-                    before.scheduledDays !== priorAfter.scheduledDays ||
-                    before.learningSteps !== priorAfter.learningSteps ||
-                    before.state !== priorAfter.state)
-                    return false;
-            }
-            priorAfter = after;
-        }
-        const finalAfter = priorAfter;
-        return finalAfter.reps === current.reps &&
-            finalAfter.lapses === current.lapses &&
-            finalAfter.lastReviewAt === current.lastReviewAt &&
-            finalAfter.stability === current.stability &&
-            finalAfter.difficulty === current.difficulty &&
-            finalAfter.scheduledDays === current.scheduledDays &&
-            finalAfter.learningSteps === current.learningSteps &&
-            finalAfter.state === current.state;
-    }
-    function prepareFsrsCard(obligation, events, desiredRetention) {
-        const stored = obligation.policyState.fsrsCard;
-        assert(stored, "Memory obligation has no FSRS card state.");
-        const current = normalizeStoredFsrsCard(stored, obligation.id);
-        if (fsrsModelForCard(current) === FSRS_PRIMARY_MODEL)
-            return current;
-        const api = runtimeFsrs();
-        const fsrs7 = fsrsScheduler(FSRS_PRIMARY_MODEL, desiredRetention);
-        if (current.state === api.State.New && current.reps === 0 && !current.lastReviewAt) {
-            const initial = fsrs7.newCard({ now: new Date(current.dueAt), cardId: current.cardId });
-            return {
-                ...current,
-                model: FSRS_PRIMARY_MODEL,
-                stability: initial.stability,
-                stabilityFast: requiredFsrs7StabilityFast(initial.stabilityFast),
-                difficulty: initial.difficulty,
-            };
-        }
-        if (!current.lastReviewAt || current.reps <= 0)
-            return current;
-        const history = fsrsHistoryFor(obligation.id, events);
-        if (!completeLegacyFsrsHistory(current, history))
-            return current;
-        const reviewTimes = history.map((event) => new Date(event.reviewedAt));
-        if (reviewTimes.some((time) => !Number.isFinite(time.getTime())))
-            return current;
-        const lastReview = reviewTimes.at(-1);
-        if (!lastReview || lastReview.getTime() !== new Date(current.lastReviewAt).getTime())
-            return current;
-        let previous;
-        const modelHistory = history.map((event, index) => {
-            const reviewTime = reviewTimes[index];
-            const deltaT = previous ? Math.max(0, (reviewTime.getTime() - previous.getTime()) / DAY_MS) : 0;
-            previous = reviewTime;
-            return { rating: event.confirmedRating, deltaT };
+        const key = fsrsSchedulerCacheKey(desiredRetention);
+        if (FSRS_SCHEDULER_CACHE.has(key))
+            return;
+        const scheduler = await runtimeFsrs().DefaultScheduler({
+            version: FSRS_MODEL,
+            desiredRetention,
+            enableShortTerm: true,
+            learningSteps: FSRS_LEARNING_STEPS,
+            relearningSteps: FSRS_RELEARNING_STEPS,
+            graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
+            allowModelOverride: true,
+            enableFuzz: false,
+            maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
+            clearStatsOnForget: false,
         });
-        const states = fsrs7.model.forward({ history: modelHistory });
-        const memory = states.at(-1);
-        assert(memory && Number.isFinite(memory.stability) && Number.isFinite(memory.difficulty), "FSRS-7 history replay did not produce a valid memory state.");
-        return {
-            ...current,
-            model: FSRS_PRIMARY_MODEL,
-            stability: memory.stability,
-            stabilityFast: requiredFsrs7StabilityFast(memory.stabilityFast),
-            difficulty: memory.difficulty,
-        };
+        const probe = scheduler.newCard({ cardId: "revision-director-fsrs7-probe" });
+        requiredFsrs7StabilityFast(probe.stabilityFast);
+        FSRS_SCHEDULER_CACHE.set(key, scheduler);
+    }
+    function fsrsScheduler(desiredRetention) {
+        const scheduler = FSRS_SCHEDULER_CACHE.get(fsrsSchedulerCacheKey(desiredRetention));
+        assert(scheduler, "FSRS-7 scheduler has not been initialized for the current retention setting.");
+        return scheduler;
     }
     const PLANNER_WEIGHTS = Object.freeze({
         dueRisk: 0.30,
@@ -1767,20 +1645,18 @@
             chunks,
         };
     }
-    function fsrsRetrievability(obligation, reference, desiredRetention, events = []) {
+    function fsrsRetrievability(obligation, reference, desiredRetention) {
         if (obligation.type !== "memory-recall" || !obligation.policyState.fsrsCard)
             return undefined;
-        const stored = prepareFsrsCard(obligation, events, desiredRetention);
+        const stored = obligation.policyState.fsrsCard;
         if (stored.reps === 0 || !stored.lastReviewAt)
             return undefined;
-        const model = fsrsModelForCard(stored);
-        const scheduler = fsrsScheduler(model, desiredRetention);
         const elapsedDays = Math.max(0, (reference.getTime() - new Date(stored.lastReviewAt).getTime()) / DAY_MS);
-        const memoryState = { stability: stored.stability, difficulty: stored.difficulty };
-        if (model === FSRS_PRIMARY_MODEL)
-            memoryState.stabilityFast = requiredFsrs7StabilityFast(stored.stabilityFast);
-        const modelElapsedDays = model === FSRS_PRIMARY_MODEL ? elapsedDays : Math.floor(elapsedDays);
-        const retrievability = scheduler.model.forgettingCurve(memoryState, modelElapsedDays);
+        const retrievability = fsrsScheduler(desiredRetention).model.forgettingCurve({
+            stability: stored.stability,
+            stabilityFast: requiredFsrs7StabilityFast(stored.stabilityFast),
+            difficulty: stored.difficulty,
+        }, elapsedDays);
         return clamp(Number(retrievability), 0, 1);
     }
     function temporalDueRisk(dueAt, dayStart, dayEnd, lookaheadDays) {
@@ -1842,7 +1718,7 @@
         if (dueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS)
             return undefined;
         const temporalRisk = temporalDueRisk(dueAt, dayStart, dayEnd, lookaheadDays);
-        const retrievability = fsrsRetrievability(item.obligation, reference, settings.desiredRetention, evidenceEvents);
+        const retrievability = fsrsRetrievability(item.obligation, reference, settings.desiredRetention);
         const memoryRisk = retrievability === undefined ? 0 : clamp((settings.desiredRetention - retrievability) / Math.max(settings.desiredRetention - 0.5, 0.1), 0, 1);
         const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
         const factors = {
@@ -1957,15 +1833,14 @@
         constructor(desiredRetention) {
             this.desiredRetention = desiredRetention;
         }
-        config(model) {
-            return fsrsConfigSnapshot(model, this.desiredRetention());
+        config() {
+            return fsrsConfigSnapshot(this.desiredRetention());
         }
-        scheduler(model) {
-            return fsrsScheduler(model, this.desiredRetention());
+        scheduler() {
+            return fsrsScheduler(this.desiredRetention());
         }
         createInitialState(firstDueAt, cardId) {
-            const scheduler = this.scheduler(FSRS_PRIMARY_MODEL);
-            const card = scheduler.newCard({ now: new Date(firstDueAt), cardId });
+            const card = this.scheduler().newCard({ now: new Date(firstDueAt), cardId });
             return {
                 engine: "ts-fsrs",
                 version: FSRS_PACKAGE_VERSION,
@@ -1973,34 +1848,27 @@
                 successStreak: 0,
                 failureCount: 0,
                 lastIntervalDays: 0,
-                fsrsCard: serializeFsrsCard(card, FSRS_PRIMARY_MODEL),
+                fsrsCard: serializeFsrsCard(card),
             };
         }
-        preview(obligation, now, history = []) {
-            const stored = prepareFsrsCard(obligation, history, this.desiredRetention());
-            const model = fsrsModelForCard(stored);
-            const scheduler = this.scheduler(model);
+        preview(obligation, now) {
+            const card = obligation.policyState.fsrsCard;
+            assert(card, "Memory obligation has no FSRS-7 card state.");
             const previews = [];
-            for (const candidate of scheduler.preview({ card: hydrateFsrsCard(stored, obligation.id), now })) {
+            for (const candidate of this.scheduler().preview({ card: hydrateFsrsCard(card, obligation.id), now })) {
                 const rating = validateRating(candidate.grade);
-                if (rating === Rating.Again) {
-                    const dueAt = addDays(now, 1).toISOString();
-                    previews.push({ rating, dueAt, intervalDays: 1, label: "relearn · 1d" });
-                    continue;
-                }
                 const dueAt = candidate.card.dueAt.toISOString();
                 previews.push({ rating, dueAt, intervalDays: daysBetween(candidate.card.dueAt, now), label: intervalLabel(dueAt, now) });
             }
             return previews.sort((a, b) => a.rating - b.rating);
         }
-        complete(obligation, rating, evidence, now, history = []) {
-            const stored = prepareFsrsCard(obligation, history, this.desiredRetention());
-            const model = fsrsModelForCard(stored);
+        complete(obligation, rating, evidence, now) {
+            const card = obligation.policyState.fsrsCard;
+            assert(card, "Memory obligation has no FSRS-7 card state.");
             const api = runtimeFsrs();
-            const schedulerConfig = this.config(model);
             const grade = rating === Rating.Again ? api.Rating.Again : rating === Rating.Hard ? api.Rating.Hard : rating === Rating.Good ? api.Rating.Good : api.Rating.Easy;
-            const result = this.scheduler(model).review({ card: hydrateFsrsCard(stored, obligation.id), now, grade });
-            const next = serializeFsrsCard(result.card, model);
+            const result = this.scheduler().review({ card: hydrateFsrsCard(card, obligation.id), now, grade });
+            const next = serializeFsrsCard(result.card);
             const state = {
                 engine: "ts-fsrs",
                 version: FSRS_PACKAGE_VERSION,
@@ -2011,27 +1879,26 @@
                 fsrsCard: next,
             };
             const log = {
-                model,
+                model: FSRS_MODEL,
                 rating: result.revlog.rating,
                 state: result.revlog.state,
                 dueAt: result.revlog.dueAt.toISOString(),
                 lastReviewAt: result.revlog.lastReviewAt?.toISOString() ?? null,
                 reviewTime: result.revlog.reviewTime.toISOString(),
                 stability: result.revlog.stability,
+                stabilityFast: requiredFsrs7StabilityFast(result.revlog.stabilityFast),
                 difficulty: result.revlog.difficulty,
                 scheduledDays: result.revlog.scheduledDays,
                 learningStep: result.revlog.learningStep,
             };
-            if (result.revlog.stabilityFast !== undefined)
-                log.stabilityFast = result.revlog.stabilityFast;
             if (result.revlog.scheduleStatus !== undefined)
                 log.scheduleStatus = result.revlog.scheduleStatus;
             const completion = {
                 dueAt: next.dueAt,
                 policyState: state,
-                policyId: `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/${model.toLowerCase()}`,
+                policyId: `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`,
                 reviewLog: log,
-                schedulerConfig,
+                schedulerConfig: this.config(),
             };
             if (rating === Rating.Again)
                 completion.followUpType = "relearn";
@@ -2204,8 +2071,8 @@
         static async open() {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
             request.onupgradeneeded = (event) => {
+                assert(event.oldVersion === 0, "Existing Revision Director database schema is unsupported. Clear site data before opening this build.");
                 const db = request.result;
-                if (event.oldVersion === 0 || !db.objectStoreNames || db.objectStoreNames.length === 0) {
                     const profiles = db.createObjectStore(Store.Profiles, { keyPath: "id" });
                     profiles.createIndex("status", "status");
                     const nodes = db.createObjectStore(Store.Nodes, { keyPath: "id" });
@@ -2239,10 +2106,7 @@
                     db.createObjectStore(Store.Settings, { keyPath: "key" });
                     db.createObjectStore(Store.Metadata, { keyPath: "key" });
                     db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
-                    return;
-                }
-                if (!db.objectStoreNames.contains(Store.ActiveRetrieval))
-                    db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
+
             };
             const db = await requestResult(request);
             db.onversionchange = () => db.close();
@@ -2610,11 +2474,7 @@
             if (existing) {
                 const canonical = canonicalAppMetadata(existing);
                 assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
-                if (canonical.applicationVersion !== APP_VERSION) {
-                    canonical.applicationVersion = APP_VERSION;
-                    canonical.updatedAt = nowIso();
-                    await this.repository.put(Store.Metadata, canonical);
-                }
+                assert(canonical.applicationVersion === APP_VERSION, "Database metadata belongs to a different Revision Director build. Clear site data before opening this build.");
                 return;
             }
             const time = nowIso();
@@ -3384,7 +3244,7 @@
         async initialize() {
             const stored = await this.repo.get(Store.Settings, "app");
             this.settings = stored ?? defaultSettings();
-            await prepareFsrsSchedulers(this.settings.desiredRetention);
+            await prepareFsrsScheduler(this.settings.desiredRetention);
             if (!stored)
                 await this.repo.put(Store.Settings, this.settings);
             const profiles = await this.profiles();
@@ -3417,7 +3277,7 @@
             }
             else
                 assert(next.activeProfileId === "", "Create an active exam profile before selecting a default profile.");
-            await prepareFsrsSchedulers(next.desiredRetention);
+            await prepareFsrsScheduler(next.desiredRetention);
             this.settings = canonicalAppSettings(next);
             await this.repo.put(Store.Settings, this.settings);
         }
@@ -4016,10 +3876,7 @@
         }
         async preview(obligationId, now = new Date()) {
             const obligation = await this.obligation(obligationId);
-            const history = obligation.type === "memory-recall"
-                ? await this.repo.getByIndex(Store.EvidenceEvents, "obligationId", obligation.id)
-                : [];
-            return this.router.get(obligation.type).preview(obligation, now, history);
+            return this.router.get(obligation.type).preview(obligation, now);
         }
         async recordEvidence(obligationId, draft, reviewedAt = new Date(), commitGuard, postCommitSession) {
             const timing = canonicalTimingEvidenceSummary(draft.timing, draft.elapsedMs);
@@ -4039,7 +3896,7 @@
             const beforePolicyState = clone(obligation.policyState);
             const beforeDueAt = obligation.dueAt;
             const suggested = suggestRating(obligation.type, normalizedDraft);
-            const completion = this.router.get(obligation.type).complete(obligation, confirmed, normalizedDraft, reviewedAt, priorEvidence);
+            const completion = this.router.get(obligation.type).complete(obligation, confirmed, normalizedDraft, reviewedAt);
             obligation.dueAt = completion.dueAt;
             obligation.policyState = completion.policyState;
             obligation.updatedAt = reviewedAt.toISOString();
@@ -4114,9 +3971,14 @@
                 if (obligation.returnObligationId) {
                     const original = await this.repo.get(Store.Obligations, obligation.returnObligationId);
                     if (original) {
-                        original.dueAt = addDays(reviewedAt, 3).toISOString();
-                        if (original.policyState.fsrsCard)
-                            original.policyState.fsrsCard.dueAt = original.dueAt;
+                        if (original.type === "memory-recall") {
+                            const resumed = this.router.get("memory-recall").complete(original, Rating.Good, normalizedDraft, reviewedAt);
+                            original.dueAt = resumed.dueAt;
+                            original.policyState = resumed.policyState;
+                        }
+                        else {
+                            original.dueAt = addDays(reviewedAt, 3).toISOString();
+                        }
                         original.status = "active";
                         delete original.suspensionReason;
                         original.updatedAt = reviewedAt.toISOString();
@@ -4164,8 +4026,8 @@
                 event.schedulerPackage = "ts-fsrs";
                 event.schedulerVersion = FSRS_PACKAGE_VERSION;
                 const card = obligation.policyState.fsrsCard;
-                assert(card, "Memory evidence cannot be committed without FSRS card state.");
-                event.schedulerModel = fsrsModelForCard(card);
+                assert(card?.model === FSRS_MODEL, "Memory evidence cannot be committed without current FSRS-7 state.");
+                event.schedulerModel = FSRS_MODEL;
             }
             if (followUp)
                 event.followUpObligationId = followUp.id;
@@ -4253,7 +4115,7 @@
         }
         async restoreBackupPayload(payload, activeTreatment) {
             const validated = this.validateBackup(payload);
-            await prepareFsrsSchedulers(validated.settings.desiredRetention);
+            await prepareFsrsScheduler(validated.settings.desiredRetention);
             await this.repo.replaceFromBackup(validated, activeTreatment);
             this.settings = clone(validated.settings);
         }
@@ -4264,6 +4126,7 @@
             assert(typeof input === "object" && input !== null, "Backup must be an object.");
             const candidate = input;
             assert(candidate.format === BACKUP_FORMAT && candidate.schemaVersion === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
+            assert(candidate.appVersion === APP_VERSION, "This backup was not created by the current Revision Director build.");
             assert(Array.isArray(candidate.profiles) && Array.isArray(candidate.nodes) && Array.isArray(candidate.units), "Backup collections are missing.");
             assert(Array.isArray(candidate.studyEvents) && Array.isArray(candidate.obligations) && Array.isArray(candidate.evidenceEvents), "Backup history is missing.");
             assert(Array.isArray(candidate.chunks) && Array.isArray(candidate.dailyPlans), "Backup planning history is missing.");
@@ -4402,16 +4265,15 @@
                 validateWorkflowSpec(obligation.workflow, obligation.type);
                 assert(obligation.policyState.engine === engineFor[obligation.type], "Obligation policy does not match its type.");
                 if (obligation.type === "memory-recall") {
-                    assert(typeof obligation.policyState.version === "string" && obligation.policyState.version.length > 0 && obligation.policyState.fsrsCard, "Memory obligation has invalid FSRS state.");
+                    assert(obligation.policyState.version === FSRS_PACKAGE_VERSION && obligation.policyState.fsrsCard, "Memory obligation has invalid FSRS-7 state.");
                     const fsrsCard = obligation.policyState.fsrsCard;
+                    assert(fsrsCard.model === FSRS_MODEL, "Memory obligation uses an unsupported scheduler model.");
+                    assert(fsrsCard.cardId === obligation.id, "FSRS card identity does not match its obligation.");
+                    assert(fsrsCard.scheduleStatus === "new" || fsrsCard.scheduleStatus === "learning" || fsrsCard.scheduleStatus === "review" || fsrsCard.scheduleStatus === "suspended", "FSRS card schedule status is invalid.");
+                    requiredFsrs7StabilityFast(fsrsCard.stabilityFast);
                     validDate(fsrsCard.dueAt, "FSRS card");
                     if (fsrsCard.lastReviewAt)
                         validDate(fsrsCard.lastReviewAt, "FSRS last review");
-                    const model = fsrsModelForCard(fsrsCard);
-                    if (model === FSRS_PRIMARY_MODEL)
-                        requiredFsrs7StabilityFast(fsrsCard.stabilityFast);
-                    if (fsrsCard.cardId)
-                        assert(fsrsCard.cardId === obligation.id, "FSRS card identity does not match its obligation.");
                 }
                 if (obligation.parentObligationId)
                     assert(obligationMap.has(obligation.parentObligationId), "Obligation references a missing parent.");
@@ -4452,21 +4314,15 @@
                 if (event.followUpObligationId)
                     assert(obligationMap.has(event.followUpObligationId), "Evidence event references a missing follow-up obligation.");
                 if (event.obligationType === "memory-recall") {
-                    assert(event.schedulerPackage === "ts-fsrs" && typeof event.schedulerVersion === "string" && event.schedulerVersion.length > 0, "Memory evidence lacks scheduler provenance.");
-                    const schedulerModel = event.schedulerModel ?? FSRS_LEGACY_MODEL;
-                    assert(schedulerModel === FSRS_LEGACY_MODEL || schedulerModel === FSRS_PRIMARY_MODEL, "Memory evidence names an unsupported FSRS model.");
+                    assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION && event.schedulerModel === FSRS_MODEL, "Memory evidence lacks exact FSRS-7 provenance.");
                     const config = event.schedulerConfig;
                     assert(config, "Memory evidence lacks scheduler configuration.");
-                    const retention = "desiredRetention" in config ? config.desiredRetention : config.requestRetention;
-                    assert(Number.isFinite(retention) && retention >= 0.75 && retention <= 0.97, "Memory evidence lacks a valid scheduler retention.");
-                    assert(config.enableFuzz === false && config.enableShortTerm === false, "Memory evidence scheduler flags are invalid.");
-                    assert(Array.isArray(config.learningSteps) && config.learningSteps.length === 0 && Array.isArray(config.relearningSteps) && config.relearningSteps.length === 0, "Memory evidence learning-step configuration is invalid.");
-                    if ("model" in config) {
-                        assert(config.model === schedulerModel, "Memory evidence model/config provenance disagrees.");
-                        assert(config.fractionalDays === (schedulerModel === FSRS_PRIMARY_MODEL), "Memory evidence fractional-day policy is invalid.");
-                        assert(config.allowModelOverride === (schedulerModel === FSRS_PRIMARY_MODEL), "Memory evidence model-override policy is invalid.");
-                        assert(config.maximumInterval === FSRS_MAXIMUM_INTERVAL_DAYS && config.clearStatsOnForget === false && config.weightsSource === "ts-fsrs-package-default", "Memory evidence FSRS configuration is incomplete.");
-                    }
+                    assert(config.model === FSRS_MODEL && config.fractionalDays === true, "Memory evidence model configuration is invalid.");
+                    assert(Number.isFinite(config.desiredRetention) && config.desiredRetention >= 0.75 && config.desiredRetention <= 0.97, "Memory evidence lacks a valid scheduler retention.");
+                    assert(config.enableFuzz === false && config.enableShortTerm === true, "Memory evidence scheduler flags are invalid.");
+                    assert(config.learningSteps.length === 1 && config.learningSteps[0] === "1d" && config.relearningSteps.length === 1 && config.relearningSteps[0] === "1d", "Memory evidence learning-step configuration is invalid.");
+                    assert(config.graduatingInterval === FSRS_GRADUATING_INTERVAL_DAYS && config.allowModelOverride === true, "Memory evidence interval policy is invalid.");
+                    assert(config.maximumInterval === FSRS_MAXIMUM_INTERVAL_DAYS && config.clearStatsOnForget === false && config.weightsSource === "ts-fsrs-package-default", "Memory evidence FSRS configuration is incomplete.");
                 }
                 else
                     assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined, "Non-memory evidence cannot claim FSRS provenance.");
@@ -4819,8 +4675,6 @@
             };
             const payload = validate(candidate);
             const warnings = [];
-            if (manifest.appVersion !== APP_VERSION)
-                warnings.push(`Created by ${manifest.appVersion}; current version is ${APP_VERSION}.`);
             if (manifest.hashAlgorithm === "fnv1a64")
                 warnings.push("Integrity uses the local-runtime fallback hash because Web Crypto was unavailable when the backup was created.");
             const stateChecksum = await this.stateFingerprint(payload, manifest.hashAlgorithm);
@@ -4867,6 +4721,7 @@
             assert(typeof input === "object" && input !== null, "Backup manifest is missing.");
             const value = input;
             assert(value.kind === "manifest" && value.format === BACKUP_ARCHIVE_FORMAT && value.version === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
+            assert(value.appVersion === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
             assert(value.payloadFormat === BACKUP_FORMAT && value.payloadSchemaVersion === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
             assert(value.compression === "none" || value.compression === "gzip", "Backup compression metadata is invalid.");
             assert(value.hashAlgorithm === "sha256" || value.hashAlgorithm === "fnv1a64", "Backup hash algorithm is unsupported.");
@@ -6797,7 +6652,7 @@
           ${this.pluginSettingsCard()}
           <section class="panel settings-card"><h3>Storage health</h3><div class="dependency-status"><span>IndexedDB</span><strong class="${storage.indexedDbAvailable ? "ok" : "bad"}">${storage.indexedDbAvailable ? "Available" : "Unavailable"}</strong></div><div class="dependency-status"><span>Persistence</span><strong class="${storage.persistence === "granted" ? "ok" : ""}">${escapeHtml(persistenceLabel)}</strong></div><p class="helper">${escapeHtml(storageUsage)} · ${storage.diagnosticCount} bounded diagnostic record${storage.diagnosticCount === 1 ? "" : "s"}.</p><button class="mini-btn" type="button" data-action="refresh-storage">REFRESH STORAGE STATUS</button></section>
           <section class="panel settings-card wide"><h3>Exam horizons</h3><p class="helper">Proximity affects cross-exam priority and how far the planner may bring an obligation forward. Profiles whose examination date has passed are automatically excluded until the date is updated for a new cycle.</p><div class="profile-planner-list">${profiles.filter((profile) => profile.status !== "archived").map((profile) => { const passed = Boolean(examDateTime(profile)) && daysToExamination(profile, planningReference) < 0; return `<div class="profile-planner-row" data-profile-editor="${profile.id}"><label>Profile<input data-profile-name value="${escapeHtml(profile.name)}"></label><label>Examination date<input data-profile-date type="date" value="${escapeHtml(profile.examDate)}"></label><label>Planning status<select data-profile-status><option value="active" ${profile.status === "active" ? "selected" : ""}>Active</option><option value="suspended" ${profile.status === "suspended" ? "selected" : ""}>Paused</option></select><small>${passed ? "Exam passed — excluded automatically" : profile.status === "suspended" ? "Paused manually" : "Included in planning"}</small></label><button class="mini-btn" type="button" data-action="save-profile" data-id="${profile.id}">SAVE</button></div>`; }).join("")}</div></section>
-          <section class="panel settings-card wide"><h3>Policy router</h3><div class="engine-list"><div><dt>Memory recall</dt><dd>ts-fsrs 6.0.0 · FSRS-7 with safe FSRS-6 fallback</dd></div><div><dt>Concept reconstruction</dt><dd>Mastery policy v1</dd></div><div><dt>Application practice</dt><dd>Application policy v1</dd></div><div><dt>Performance practice</dt><dd>Performance policy v1</dd></div><div><dt>Relearn</dt><dd>Relearning policy v1</dd></div><div><dt>Freshness review</dt><dd>Freshness horizon policy v1</dd></div></div></section>
+          <section class="panel settings-card wide"><h3>Policy router</h3><div class="engine-list"><div><dt>Memory recall</dt><dd>ts-fsrs 6.0.0 · FSRS-7</dd></div><div><dt>Concept reconstruction</dt><dd>Mastery policy v1</dd></div><div><dt>Application practice</dt><dd>Application policy v1</dd></div><div><dt>Performance practice</dt><dd>Performance policy v1</dd></div><div><dt>Relearn</dt><dd>Relearning policy v1</dd></div><div><dt>Freshness review</dt><dd>Freshness horizon policy v1</dd></div></div></section>
           <section class="panel settings-card wide"><h3>Retrieval workflows</h3><div class="engine-list"><div><dt>Recall</dt><dd>Closed-book response + checkpoints + cueing</dd></div><div><dt>Reconstruction</dt><dd>Structure + relationships + checkpoints</dd></div><div><dt>Questions / application</dt><dd>Attempted, correct, partial, novel and cueing</dd></div><div><dt>Diagram practice</dt><dd>Canvas or paper + labels, form and process</dd></div><div><dt>Answer writing</dt><dd>Demand, structure, content, evidence and time</dd></div><div><dt>Relearning</dt><dd>Diagnose → repair → closed-book verification</dd></div></div></section>
           <button class="btn primary settings-save" type="submit">SAVE SETTINGS</button>
         </form>`;
@@ -7832,7 +7687,7 @@
         renderRestorePreview(candidate) {
             const inspection = candidate.inspection;
             const active = candidate.payload.activeRetrieval;
-            const warnings = inspection.warnings.length ? `<div class="restore-step restore-warning"><h3>Compatibility warnings</h3>${inspection.warnings.map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}</div>` : "";
+            const warnings = inspection.warnings.length ? `<div class="restore-step restore-warning"><h3>Verification notes</h3>${inspection.warnings.map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}</div>` : "";
             const activeSection = active ? `<section class="restore-step"><h3>Unfinished retrieval in backup</h3><p>${escapeHtml(active.activeTargetId)} · ${escapeHtml(this.phaseLabel(active.phase))} · revision ${active.revision}</p><div class="restore-session-options"><label class="restore-check"><input type="radio" name="restore-active-treatment" value="restore">Restore this unfinished retrieval after replacement</label><label class="restore-check"><input type="radio" name="restore-active-treatment" value="discard">Discard it and restore records only</label></div></section>` : `<section class="restore-step"><h3>Active retrieval</h3><p>This backup contains no unfinished retrieval session.</p></section>`;
             this.restorePreview.innerHTML = `
         <section class="restore-step"><h3>Verified restore preview</h3><p>The file has been decoded, integrity-checked and relationally validated. No application data has been changed.</p><div class="restore-summary">
