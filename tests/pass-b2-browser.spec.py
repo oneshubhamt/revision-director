@@ -41,6 +41,19 @@ def wait(frame, ms=1150):
     frame.wait_for_timeout(ms)
 
 
+def wait_until(frame, predicate, timeout=6000):
+    import time
+    deadline = time.monotonic() + timeout / 1000
+    while time.monotonic() < deadline:
+        try:
+            if predicate():
+                return
+        except Exception:
+            pass
+        frame.wait_for_timeout(80)
+    raise AssertionError("Timed out waiting for persisted browser state")
+
+
 def state_get(page, store: str, key: str):
     return page.evaluate("""([store,key]) => {
       const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
@@ -144,8 +157,9 @@ def main() -> None:
         timer_before_focus = session["elapsedMs"]
         frame.evaluate("__RD_TEST_CLOCK__.advance(130001)"); frame.evaluate("window.dispatchEvent(new Event('focus'))"); wait(frame)
         check(frame.locator("#gap-overlay").is_visible(), "120-second inactive gap was not detected")
+        wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "gap-pending")
         pending = active_session(page)["timeRuntime"]
-        check(pending["state"] == "gap-pending" and pending["pendingGap"]["gapMs"] > 120000, "Pending gap was not durably saved")
+        check(pending["pendingGap"]["gapMs"] > 120000, "Pending gap was not durably saved")
         frame.locator('[data-gap-action="focus"]').click(); wait(frame, 220)
         session = active_session(page)
         check(session["elapsedMs"] >= timer_before_focus + 130000, "Focus classification did not add active time")
