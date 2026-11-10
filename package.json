@@ -1,0 +1,9 @@
+{
+  "name": "revision-director",
+  "private": true,
+  "engines": {
+    "node": ">=26.13.0 <27",
+    "npm": ">=11.20.0 <12"
+  },
+  "packageManager": "npm@11.20.0"
+}
