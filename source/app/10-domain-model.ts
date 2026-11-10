@@ -291,7 +291,7 @@
 
   interface ReturnedMemoryTransition {
     obligationId: string;
-    rating: Rating.Good;
+    rating: 3;
     beforeDueAt: ISODateTime;
     afterDueAt: ISODateTime;
     beforePolicyState: PolicyState;
