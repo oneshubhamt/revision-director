@@ -21,6 +21,9 @@
   const TIME_HISTORY_LIMIT = 200;
   const PLANNER_VERSION = "pass-d-2";
   const FSRS_PACKAGE_VERSION = "6.0.0" as const;
+  const FSRS_PRIMARY_MODEL: FsrsModelVersion = "FSRS-7";
+  const FSRS_LEGACY_MODEL: FsrsModelVersion = "FSRS-6";
+  const FSRS_MAXIMUM_INTERVAL_DAYS = 36_500;
   const DAY_MS = 86_400_000;
 
   function assert(condition: unknown, message: string): asserts condition {
@@ -501,7 +504,7 @@
 
   function runtimeFsrs(): FsrsUmdRuntime {
     assert(typeof FSRS === "object" && FSRS !== null, "Embedded ts-fsrs 6.0.0 failed to initialize. The deployment file may be damaged.");
-    assert(typeof FSRS.fsrs === "function" && typeof FSRS.createEmptyCard === "function", "Invalid ts-fsrs runtime.");
+    assert(typeof FSRS.DefaultScheduler === "function", "Invalid ts-fsrs v6 scheduler runtime.");
     return FSRS;
   }
 

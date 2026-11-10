@@ -5,10 +5,10 @@ const path = require('path');
 const { webcrypto } = require('crypto');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsSchedulers, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-5.4.1', 'index.umd.js'), 'utf8');
+const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
 const context = { crypto: webcrypto, structuredClone, console, Date, Intl, URL, Blob, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array };
 context.window = context; context.self = context; context.globalThis = context;
 vm.createContext(context); vm.runInContext(vendor, context); vm.runInContext(source, context);
@@ -57,15 +57,19 @@ check(api.buildPlanningCandidate(joined('outside',3,10,3,200),[],settings,ref) =
 const brought = api.buildPlanningCandidate(joined('bring',1.5,10,3,10),[],settings,ref);
 check(brought && brought.dueState === 'brought-forward', 'Near-exam lookahead must permit controlled bring-forward');
 
-const memoryPolicy = new api.FsrsMemoryPolicy(() => .9);
-const memoryState = memoryPolicy.createInitialState(ref.toISOString());
-const memoryObligation = { ...obligation('memory',0,12,'memory-recall'), type:'memory-recall', workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'}, policyState:memoryState };
-check(api.fsrsRetrievability(memoryObligation, ref, .9) === undefined, 'New FSRS obligations must not claim measured retrievability');
-const completion = memoryPolicy.complete(memoryObligation, api.Rating.Good, {completeness:4,independence:4,application:3,errorTypes:[],correctionNote:''}, ref);
-memoryObligation.policyState = completion.policyState;
-const later = new Date(ref.getTime()+3*86400000);
-const r = api.fsrsRetrievability(memoryObligation, later, .9);
-check(typeof r === 'number' && r > 0 && r < 1, 'Reviewed memory obligations must use real ts-fsrs retrievability');
+async function testFsrsPlanning() {
+  await api.prepareFsrsSchedulers(.9);
+  const memoryPolicy = new api.FsrsMemoryPolicy(() => .9);
+  const memoryState = memoryPolicy.createInitialState(ref.toISOString(), 'memory');
+  const memoryObligation = { ...obligation('memory',0,12,'memory-recall'), type:'memory-recall', workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'}, policyState:memoryState };
+  check(api.fsrsRetrievability(memoryObligation, ref, .9) === undefined, 'New FSRS obligations must not claim measured retrievability');
+  const completion = memoryPolicy.complete(memoryObligation, api.Rating.Good, {completeness:4,independence:4,application:3,errorTypes:[],correctionNote:''}, ref);
+  memoryObligation.policyState = completion.policyState;
+  const later = new Date(ref.getTime()+3*86400000);
+  const r = api.fsrsRetrievability(memoryObligation, later, .9);
+  check(typeof r === 'number' && r > 0 && r < 1, 'Reviewed memory obligations must use FSRS-7 retrievability');
+  check(memoryObligation.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'Planning must consume persisted FSRS-7 dual-trace state');
+}
 
 const item = (id, score, mins, type='concept-reconstruction', dueState='due') => ({joined:{obligation:{id,type,dueAt:ref.toISOString(),expectedMinutes:mins},unit:{},profile:{}},score,dueState,executionMinutes:mins,factors:{dueRisk:.8,examImportance:1,weakness:.5,reviewDuration:.8,examinationProximity:.7,weeklyBalance:.5}});
 let packed = api.choosePlanItems([item('x',90,40),item('y',80,20),item('z',50,20)],60);
@@ -80,6 +84,7 @@ packed = api.choosePlanItems([item('critical-fit-top',99,30,'relearn','overdue')
 check(packed.selected.some(i=>i.joined.obligation.id==='critical-fit-top') && packed.mustSplit.some(i=>i.joined.obligation.id==='oversized-lower'), 'A lower-ranked oversized critical item must be separated as must-split, not ordinary deferral');
 
 (async () => {
+  await testFsrsPlanning();
   const service = new api.RevisionService({});
   service.settings = settings;
   service.joinedObligations = async () => [joined('a',-1,40,3,20),joined('b',0,20,2,100),joined('c',0,30,1,200)];

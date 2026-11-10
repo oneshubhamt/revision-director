@@ -9,6 +9,7 @@
     async initialize(): Promise<void> {
       const stored = await this.repo.get<AppSettings>(Store.Settings, "app");
       this.settings = stored ?? defaultSettings();
+      await prepareFsrsSchedulers(this.settings.desiredRetention);
       if (!stored) await this.repo.put(Store.Settings, this.settings);
       const profiles = await this.profiles();
       const active = profiles.filter((profile) => profile.status === "active");
@@ -43,6 +44,7 @@
         const profile = await this.repo.get<ExamProfile>(Store.Profiles, next.activeProfileId);
         assert(profile?.status === "active", "Default exam profile is invalid.");
       } else assert(next.activeProfileId === "", "Create an active exam profile before selecting a default profile.");
+      await prepareFsrsSchedulers(next.desiredRetention);
       this.settings = canonicalAppSettings(next);
       await this.repo.put(Store.Settings, this.settings);
     }
@@ -234,9 +236,10 @@
       parseDate(draft.dueAt);
       const policy = this.router.get(draft.type);
       const time = nowIso();
+      const id = uid("obligation");
       const obligation: RevisionObligation = {
         schemaVersion: DOCUMENT_SCHEMA_VERSION,
-        id: uid("obligation"),
+        id,
         unitId: draft.unitId,
         type: draft.type,
         status: "active",
@@ -249,7 +252,7 @@
         workflow: clone(draft.workflow),
         freshnessDays: clamp(Math.round(draft.freshnessDays), 1, 3650),
         priority: 0,
-        policyState: policy.createInitialState(draft.dueAt),
+        policyState: policy.createInitialState(draft.dueAt, id),
         createdAt: time,
         updatedAt: time,
       };
@@ -625,7 +628,10 @@
 
     async preview(obligationId: string, now = new Date()): Promise<SchedulePreview[]> {
       const obligation = await this.obligation(obligationId);
-      return this.router.get(obligation.type).preview(obligation, now);
+      const history = obligation.type === "memory-recall"
+        ? await this.repo.getByIndex<EvidenceEvent>(Store.EvidenceEvents, "obligationId", obligation.id)
+        : [];
+      return this.router.get(obligation.type).preview(obligation, now, history);
     }
 
     async recordEvidence(obligationId: string, draft: EvidenceDraft, reviewedAt = new Date(), commitGuard?: ActiveCommitGuard, postCommitSession?: ActiveRetrievalSession): Promise<EvidenceEvent> {
@@ -646,7 +652,7 @@
       const beforePolicyState = clone(obligation.policyState);
       const beforeDueAt = obligation.dueAt;
       const suggested = suggestRating(obligation.type, normalizedDraft);
-      const completion = this.router.get(obligation.type).complete(obligation, confirmed, normalizedDraft, reviewedAt);
+      const completion = this.router.get(obligation.type).complete(obligation, confirmed, normalizedDraft, reviewedAt, priorEvidence);
 
       obligation.dueAt = completion.dueAt;
       obligation.policyState = completion.policyState;
@@ -685,9 +691,10 @@
           const dueAt = addDays(reviewedAt, 1).toISOString();
           const policy = this.router.get("relearn");
           const time = reviewedAt.toISOString();
+          const followUpId = uid("obligation");
           followUp = {
             schemaVersion: DOCUMENT_SCHEMA_VERSION,
-            id: uid("obligation"),
+            id: followUpId,
             unitId: unit.id,
             type: "relearn",
             status: "active",
@@ -705,7 +712,7 @@
             },
             freshnessDays: obligation.freshnessDays,
             priority: obligation.priority + 2,
-            policyState: policy.createInitialState(dueAt),
+            policyState: policy.createInitialState(dueAt, followUpId),
             parentObligationId: obligation.id,
             returnObligationId: obligation.id,
             createdAt: time,
@@ -771,6 +778,9 @@
       if (obligation.type === "memory-recall") {
         event.schedulerPackage = "ts-fsrs";
         event.schedulerVersion = FSRS_PACKAGE_VERSION;
+        const card = obligation.policyState.fsrsCard;
+        assert(card, "Memory evidence cannot be committed without FSRS card state.");
+        event.schedulerModel = fsrsModelForCard(card);
       }
       if (followUp) event.followUpObligationId = followUp.id;
 
@@ -867,6 +877,7 @@
 
     async restoreBackupPayload(payload: BackupPayload, activeTreatment: BackupActiveSessionTreatment): Promise<void> {
       const validated = this.validateBackup(payload);
+      await prepareFsrsSchedulers(validated.settings.desiredRetention);
       await this.repo.replaceFromBackup(validated, activeTreatment);
       this.settings = clone(validated.settings);
     }
@@ -999,8 +1010,13 @@
         validateWorkflowSpec(obligation.workflow, obligation.type);
         assert(obligation.policyState.engine === engineFor[obligation.type], "Obligation policy does not match its type.");
         if (obligation.type === "memory-recall") {
-          assert(obligation.policyState.version === FSRS_PACKAGE_VERSION && obligation.policyState.fsrsCard, "Memory obligation has invalid FSRS state.");
-          validDate(obligation.policyState.fsrsCard.dueAt, "FSRS card");
+          assert(typeof obligation.policyState.version === "string" && obligation.policyState.version.length > 0 && obligation.policyState.fsrsCard, "Memory obligation has invalid FSRS state.");
+          const fsrsCard = obligation.policyState.fsrsCard;
+          validDate(fsrsCard.dueAt, "FSRS card");
+          if (fsrsCard.lastReviewAt) validDate(fsrsCard.lastReviewAt, "FSRS last review");
+          const model = fsrsModelForCard(fsrsCard);
+          if (model === FSRS_PRIMARY_MODEL) requiredFsrs7StabilityFast(fsrsCard.stabilityFast);
+          if (fsrsCard.cardId) assert(fsrsCard.cardId === obligation.id, "FSRS card identity does not match its obligation.");
         }
         if (obligation.parentObligationId) assert(obligationMap.has(obligation.parentObligationId), "Obligation references a missing parent.");
         if (obligation.returnObligationId) assert(obligationMap.has(obligation.returnObligationId), "Relearning obligation references a missing return obligation.");
@@ -1034,11 +1050,22 @@
         assert(event.beforePolicyState.engine === engineFor[event.obligationType] && event.afterPolicyState.engine === engineFor[event.obligationType], "Evidence policy states do not match the obligation type.");
         if (event.followUpObligationId) assert(obligationMap.has(event.followUpObligationId), "Evidence event references a missing follow-up obligation.");
         if (event.obligationType === "memory-recall") {
-          assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION, "Memory evidence lacks exact scheduler provenance.");
-          assert(event.schedulerConfig && Number.isFinite(event.schedulerConfig.requestRetention) && event.schedulerConfig.requestRetention >= 0.75 && event.schedulerConfig.requestRetention <= 0.97, "Memory evidence lacks a valid scheduler configuration.");
-          assert(event.schedulerConfig.enableFuzz === false && event.schedulerConfig.enableShortTerm === false, "Memory evidence scheduler flags are invalid.");
-          assert(Array.isArray(event.schedulerConfig.learningSteps) && event.schedulerConfig.learningSteps.length === 0 && Array.isArray(event.schedulerConfig.relearningSteps) && event.schedulerConfig.relearningSteps.length === 0, "Memory evidence learning-step configuration is invalid.");
-        } else assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerConfig === undefined, "Non-memory evidence cannot claim FSRS provenance.");
+          assert(event.schedulerPackage === "ts-fsrs" && typeof event.schedulerVersion === "string" && event.schedulerVersion.length > 0, "Memory evidence lacks scheduler provenance.");
+          const schedulerModel = event.schedulerModel ?? FSRS_LEGACY_MODEL;
+          assert(schedulerModel === FSRS_LEGACY_MODEL || schedulerModel === FSRS_PRIMARY_MODEL, "Memory evidence names an unsupported FSRS model.");
+          const config = event.schedulerConfig;
+          assert(config, "Memory evidence lacks scheduler configuration.");
+          const retention = "desiredRetention" in config ? config.desiredRetention : config.requestRetention;
+          assert(Number.isFinite(retention) && retention >= 0.75 && retention <= 0.97, "Memory evidence lacks a valid scheduler retention.");
+          assert(config.enableFuzz === false && config.enableShortTerm === false, "Memory evidence scheduler flags are invalid.");
+          assert(Array.isArray(config.learningSteps) && config.learningSteps.length === 0 && Array.isArray(config.relearningSteps) && config.relearningSteps.length === 0, "Memory evidence learning-step configuration is invalid.");
+          if ("model" in config) {
+            assert(config.model === schedulerModel, "Memory evidence model/config provenance disagrees.");
+            assert(config.fractionalDays === (schedulerModel === FSRS_PRIMARY_MODEL), "Memory evidence fractional-day policy is invalid.");
+            assert(config.allowModelOverride === (schedulerModel === FSRS_PRIMARY_MODEL), "Memory evidence model-override policy is invalid.");
+            assert(config.maximumInterval === FSRS_MAXIMUM_INTERVAL_DAYS && config.clearStatsOnForget === false && config.weightsSource === "ts-fsrs-package-default", "Memory evidence FSRS configuration is incomplete.");
+          }
+        } else assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined, "Non-memory evidence cannot claim FSRS provenance.");
       }
       const chunksByObligation = new Map<string, ObligationChunk[]>();
       for (const chunk of chunks) {

@@ -10,7 +10,7 @@ const { webcrypto } = require('crypto');
   const hook = 'window.__RD_B3_TEST__ = { APP_VERSION, REVIEW_OWNER_STORAGE_KEY, REVIEW_OWNER_CHANNEL, REVIEW_OWNER_HEARTBEAT_MS, REVIEW_OWNER_STALE_MS, REVIEW_OWNER_TAKEOVER_WAIT_MS, ReviewOwnershipCoordinator, RevisionData, AppDiagnostics };';
   if (!source.includes('void boot();')) throw new Error('Boot marker missing');
   source = source.replace('void boot();', hook);
-  const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-5.4.1', 'index.umd.js'), 'utf8');
+  const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
 
   class FakeBroadcastChannel {
     static groups = new Map();

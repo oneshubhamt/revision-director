@@ -109,8 +109,15 @@ check("eleven durable stores", all(value in ts for value in [
     'EvidenceEvents: "evidenceEvents"', 'Chunks: "chunks"', 'DailyPlans: "dailyPlans"', 'Settings: "settings"',
     'Metadata: "metadata"', 'ActiveRetrieval: "activeRetrieval"'
 ]))
-check("exact FSRS adapter", 'readonly id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}`' in ts)
+check("exact FSRS-7 adapter", 'readonly id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`' in ts)
 check("FSRS limited to memory", 'readonly type: ObligationType = "memory-recall"' in ts)
+check("modern FSRS scheduler API", "DefaultScheduler(options: FsrsDefaultSchedulerOptions)" in ts and "prepareFsrsSchedulers" in ts and ".review({ card:" in ts and ".preview({ card:" in ts)
+check("FSRS scheduler warmup lifecycle", "await prepareFsrsSchedulers(this.settings.desiredRetention)" in ts and "await prepareFsrsSchedulers(next.desiredRetention)" in ts and "await prepareFsrsSchedulers(validated.settings.desiredRetention)" in ts)
+check("no deprecated FSRS scheduler API", all(token not in ts for token in ["api.fsrs(", ".createEmptyCard(", "generatorParameters("]))
+check("FSRS-7 dual trace", "stabilityFast" in ts and 'const FSRS_PRIMARY_MODEL: FsrsModelVersion = "FSRS-7"' in ts and "requiredFsrs7StabilityFast" in ts)
+check("FSRS-7 fractional model policy", "fractionalDays: model === FSRS_PRIMARY_MODEL" in ts and "enableShortTerm: false" in ts and "learningSteps: []" in ts and "relearningSteps: []" in ts)
+check("Again routes to application relearning", 'label: "relearn · 1d"' in ts and 'if (rating === Rating.Again) completion.followUpType = "relearn"' in ts)
+check("safe legacy FSRS migration", "completeLegacyFsrsHistory" in ts and "model.forward({ history: modelHistory })" in ts and "if (!completeLegacyFsrsHistory(current, history)) return current" in ts)
 check("policy router", "class SchedulerPolicyRouter" in ts)
 check("immutable Study Event semantics", "interface StudyEvent" in ts and "studyEvents" in ts)
 check("atomic unit and first obligation", "createUnitWithObligation" in ts and "this.db.transaction([Store.Units, Store.Obligations]" in ts)
@@ -166,7 +173,7 @@ check("D2 forensic rescue", "revision-director-forensic-rescue" in ts and ".rdre
 check("mobile six-item nav", "grid-template-columns:repeat(6,1fr)" in css)
 
 check("Pass C planning factors", all(term in ts for term in ["dueRisk", "examImportance", "weakness", "reviewDuration", "examinationProximity"]))
-check("FSRS retrievability used only for memory risk", "function fsrsRetrievability" in ts and 'obligation.type !== "memory-recall"' in ts and ".retrievability(" in ts)
+check("FSRS retrievability used only for memory risk", "function fsrsRetrievability" in ts and 'obligation.type !== "memory-recall"' in ts and ".model.forgettingCurve(" in ts and "modelElapsedDays" in ts)
 check("capacity-bounded planner", "function choosePlanItems" in ts and "Int32Array(capacity + 1)" in ts and "dailyCapacityMinutes" in ts)
 check("daily plan service", "async dailyPlan" in ts and "buildPlanningCandidate" in ts)
 check("transparent planner UI", "Why score" in ts and "factorMeter" in ts and "Deferred by capacity" in ts)

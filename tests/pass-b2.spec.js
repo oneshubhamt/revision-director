@@ -9,7 +9,7 @@ let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
 const hook = 'window.__RD_B2_TEST__ = { APP_VERSION, INACTIVE_GAP_THRESHOLD_MS, TIME_HISTORY_LIMIT, phaseTimeSnapshot, timingEvidenceSummary, canonicalTimingEvidenceSummary, canonicalPhaseTimeRuntimeSnapshot, canonicalActiveRetrievalSession, PhaseTimeRuntime, durationObservationFor };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-5.4.1', 'index.umd.js'), 'utf8');
+const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
 const context = { crypto: webcrypto, structuredClone, console, Date, Intl, URL, Blob, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array, localStorage:{getItem(){return null},setItem(){},removeItem(){}}, navigator:{} };
 context.window=context; context.self=context; context.globalThis=context;
 vm.createContext(context); vm.runInContext(vendor, context); vm.runInContext(source, context);

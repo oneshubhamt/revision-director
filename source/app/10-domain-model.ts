@@ -93,14 +93,19 @@
   }
 
   interface StoredFsrsCard {
+    // model/cardId/scheduleStatus/stabilityFast are absent only on legacy FSRS-6 records.
+    model?: FsrsModelVersion;
+    cardId?: string;
     dueAt: ISODateTime;
     stability: number;
+    stabilityFast?: number;
     difficulty: number;
     scheduledDays: number;
     learningSteps: number;
     reps: number;
     lapses: number;
     state: number;
+    scheduleStatus?: FsrsScheduleStatus;
     lastReviewAt?: ISODateTime;
   }
 
@@ -258,13 +263,29 @@
     correctionNote: string;
   }
 
-  interface FsrsConfigSnapshot {
+  interface LegacyFsrsConfigSnapshot {
     requestRetention: number;
     enableFuzz: false;
     enableShortTerm: false;
     learningSteps: number[];
     relearningSteps: number[];
   }
+
+  interface FsrsConfigSnapshot {
+    model: FsrsModelVersion;
+    desiredRetention: number;
+    fractionalDays: boolean;
+    enableFuzz: false;
+    enableShortTerm: false;
+    learningSteps: string[];
+    relearningSteps: string[];
+    allowModelOverride: boolean;
+    maximumInterval: number;
+    clearStatsOnForget: false;
+    weightsSource: "ts-fsrs-package-default";
+  }
+
+  type PersistedFsrsConfigSnapshot = FsrsConfigSnapshot | LegacyFsrsConfigSnapshot;
 
   interface DurationObservation {
     plannedMinutes: number;
@@ -298,8 +319,9 @@
     afterPolicyState: PolicyState;
     policyId: string;
     schedulerPackage?: "ts-fsrs";
-    schedulerVersion?: "6.0.0";
-    schedulerConfig?: FsrsConfigSnapshot;
+    schedulerVersion?: string;
+    schedulerModel?: FsrsModelVersion;
+    schedulerConfig?: PersistedFsrsConfigSnapshot;
     reviewLog?: Record<string, unknown>;
     durationObservation: DurationObservation;
     timing: TimingEvidenceSummary;

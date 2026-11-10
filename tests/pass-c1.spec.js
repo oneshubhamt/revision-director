@@ -9,7 +9,7 @@ let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
 const hook = 'window.__RD_C1_TEST__ = { APP_VERSION, PRESENTATION_KERNEL };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-5.4.1', 'index.umd.js'), 'utf8');
+const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
 const memory = new Map();
 const localStorage = {
   getItem: key => memory.has(String(key)) ? memory.get(String(key)) : null,

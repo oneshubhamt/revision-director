@@ -7,7 +7,10 @@ Open or deploy only:
 The deployable remains self-contained:
 - embedded CSS;
 - compiled strict TypeScript application logic;
-- exact embedded ts-fsrs@6.0.0 UMD runtime;
+- exact embedded ts-fsrs@6.0.0 UMD runtime, with FSRS-7 as the primary memory model;
+- model-driven FSRS-7 scheduling uses fractional elapsed time and its intrinsic fast-memory trace; explicit flashcard-style learning/relearning steps remain disabled;
+- an `Again` rating is intentionally handled by Revision Director's corrective-relearning policy (next-day repair) rather than exposing FSRS-7's raw seconds-scale failure interval for a long-form revision session;
+- legacy FSRS-6 memory is replayed into FSRS-7 only when its complete review chain can be verified; ambiguous legacy state stays on FSRS-6 rather than being guessed;
 - embedded presentation manifest and pre-paint bootstrap;
 - no CDN, network-loaded asset, framework or runtime module loader.
 

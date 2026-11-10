@@ -9,7 +9,7 @@ let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
 const hook = 'window.__RD_B1_TEST__ = { APP_VERSION, DB_VERSION, Store, ACTIVE_RETRIEVAL_ID, ACTIVE_RETRIEVAL_RECOVERY_KEY, ACTIVE_RETRIEVAL_RECOVERY_FORMAT, ACTIVE_RETRIEVAL_DEBOUNCE_MS, ACTIVE_RETRIEVAL_RECOVERY_MAX_CHARS, ACTIVE_RETRIEVAL_RECOVERY_TEXT_CHARS, ACTIVE_RETRIEVAL_RECOVERY_POINTS, canonicalReviewDraftSnapshot, canonicalActiveRetrievalSession, canonicalActiveRetrievalEnvelope, newerActiveRetrieval, compactActiveRetrievalSession, ActiveRetrievalPersistence };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-5.4.1', 'index.umd.js'), 'utf8');
+const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
 const memoryStorage = new Map();
 const localStorage = {
   getItem: (key) => memoryStorage.has(key) ? memoryStorage.get(key) : null,

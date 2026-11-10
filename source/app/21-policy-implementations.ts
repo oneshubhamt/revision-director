@@ -1,93 +1,88 @@
   class FsrsMemoryPolicy implements SchedulerPolicy {
-    readonly id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}`;
+    readonly id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`;
     readonly type: ObligationType = "memory-recall";
 
     constructor(private readonly desiredRetention: () => number) {}
 
-    private config(): FsrsConfigSnapshot {
-      return {
-        requestRetention: this.desiredRetention(),
-        enableFuzz: false,
-        enableShortTerm: false,
-        learningSteps: [],
-        relearningSteps: [],
-      };
+    private config(model: FsrsModelVersion): FsrsConfigSnapshot {
+      return fsrsConfigSnapshot(model, this.desiredRetention());
     }
 
-    private scheduler(config = this.config()): FsrsSchedulerRuntime {
-      const api = runtimeFsrs();
-      const raw = {
-        request_retention: config.requestRetention,
-        enable_fuzz: config.enableFuzz,
-        enable_short_term: config.enableShortTerm,
-        learning_steps: config.learningSteps,
-        relearning_steps: config.relearningSteps,
-      };
-      const params = typeof api.generatorParameters === "function" ? api.generatorParameters(raw) : raw;
-      return api.fsrs(params);
+    private scheduler(model: FsrsModelVersion): FsrsSchedulerRuntime {
+      return fsrsScheduler(model, this.desiredRetention());
     }
 
-    createInitialState(firstDueAt: ISODateTime): PolicyState {
-      const card = runtimeFsrs().createEmptyCard(new Date(firstDueAt));
-      card.due = new Date(firstDueAt);
+    createInitialState(firstDueAt: ISODateTime, cardId: string): PolicyState {
+      const scheduler = this.scheduler(FSRS_PRIMARY_MODEL);
+      const card = scheduler.newCard({ now: new Date(firstDueAt), cardId });
       return {
         engine: "ts-fsrs",
         version: FSRS_PACKAGE_VERSION,
-        stage: 0,
+        stage: card.state,
         successStreak: 0,
         failureCount: 0,
         lastIntervalDays: 0,
-        fsrsCard: serializeFsrsCard(card),
+        fsrsCard: serializeFsrsCard(card, FSRS_PRIMARY_MODEL),
       };
     }
 
-    preview(obligation: RevisionObligation, now: Date): SchedulePreview[] {
-      const card = obligation.policyState.fsrsCard;
-      assert(card, "Memory obligation has no FSRS card state.");
-      const previews = this.scheduler(this.config()).repeat(hydrateFsrsCard(card), now);
-      return ([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as Rating[]).map((rating) => {
-        const record = previews[rating];
-        assert(record, `ts-fsrs did not return preview for rating ${rating}.`);
-        const dueAt = record.card.due.toISOString();
-        return { rating, dueAt, intervalDays: daysBetween(record.card.due, now), label: intervalLabel(dueAt, now) };
-      });
+    preview(obligation: RevisionObligation, now: Date, history: readonly EvidenceEvent[] = []): SchedulePreview[] {
+      const stored = prepareFsrsCard(obligation, history, this.desiredRetention());
+      const model = fsrsModelForCard(stored);
+      const scheduler = this.scheduler(model);
+      const previews: SchedulePreview[] = [];
+      for (const candidate of scheduler.preview({ card: hydrateFsrsCard(stored, obligation.id), now })) {
+        const rating = validateRating(candidate.grade);
+        if (rating === Rating.Again) {
+          const dueAt = addDays(now, 1).toISOString();
+          previews.push({ rating, dueAt, intervalDays: 1, label: "relearn · 1d" });
+          continue;
+        }
+        const dueAt = candidate.card.dueAt.toISOString();
+        previews.push({ rating, dueAt, intervalDays: daysBetween(candidate.card.dueAt, now), label: intervalLabel(dueAt, now) });
+      }
+      return previews.sort((a, b) => a.rating - b.rating);
     }
 
-    complete(obligation: RevisionObligation, rating: Rating, evidence: ObjectiveEvidence, now: Date): PolicyCompletion {
-      const card = obligation.policyState.fsrsCard;
-      assert(card, "Memory obligation has no FSRS card state.");
+    complete(obligation: RevisionObligation, rating: Rating, evidence: ObjectiveEvidence, now: Date, history: readonly EvidenceEvent[] = []): PolicyCompletion {
+      const stored = prepareFsrsCard(obligation, history, this.desiredRetention());
+      const model = fsrsModelForCard(stored);
       const api = runtimeFsrs();
-      const schedulerConfig = this.config();
+      const schedulerConfig = this.config(model);
       const grade = rating === Rating.Again ? api.Rating.Again : rating === Rating.Hard ? api.Rating.Hard : rating === Rating.Good ? api.Rating.Good : api.Rating.Easy;
-      const result = this.scheduler(schedulerConfig).next(hydrateFsrsCard(card), now, grade);
-      const next = serializeFsrsCard(result.card);
+      const result = this.scheduler(model).review({ card: hydrateFsrsCard(stored, obligation.id), now, grade });
+      const next = serializeFsrsCard(result.card, model);
       const state: PolicyState = {
         engine: "ts-fsrs",
         version: FSRS_PACKAGE_VERSION,
         stage: result.card.state,
         successStreak: rating >= Rating.Good ? obligation.policyState.successStreak + 1 : 0,
         failureCount: obligation.policyState.failureCount + (rating === Rating.Again ? 1 : 0),
-        lastIntervalDays: result.card.scheduled_days,
+        lastIntervalDays: result.card.scheduledDays,
         fsrsCard: next,
       };
       const log: Record<string, unknown> = {
-        rating: result.log.rating,
-        state: result.log.state,
-        dueAt: result.log.due.toISOString(),
-        stability: result.log.stability,
-        difficulty: result.log.difficulty,
-        scheduledDays: result.log.scheduled_days,
-        learningSteps: result.log.learning_steps,
-        reviewedAt: result.log.review.toISOString(),
+        model,
+        rating: result.revlog.rating,
+        state: result.revlog.state,
+        dueAt: result.revlog.dueAt.toISOString(),
+        lastReviewAt: result.revlog.lastReviewAt?.toISOString() ?? null,
+        reviewTime: result.revlog.reviewTime.toISOString(),
+        stability: result.revlog.stability,
+        difficulty: result.revlog.difficulty,
+        scheduledDays: result.revlog.scheduledDays,
+        learningStep: result.revlog.learningStep,
       };
+      if (result.revlog.stabilityFast !== undefined) log.stabilityFast = result.revlog.stabilityFast;
+      if (result.revlog.scheduleStatus !== undefined) log.scheduleStatus = result.revlog.scheduleStatus;
       const completion: PolicyCompletion = {
         dueAt: next.dueAt,
         policyState: state,
-        policyId: this.id,
+        policyId: `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/${model.toLowerCase()}`,
         reviewLog: log,
         schedulerConfig,
       };
-      if (rating === Rating.Again && objectiveScore(obligation.type, evidence) < 1.5) completion.followUpType = "relearn";
+      if (rating === Rating.Again) completion.followUpType = "relearn";
       return completion;
     }
   }
