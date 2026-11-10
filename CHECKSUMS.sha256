@@ -41,8 +41,8 @@ f6b20b1a2ca826eccef8504b7aac41cc193ec01dbcf0be4a1aac9200c002019f  ./STAGE_D_FULL
 a14da7c5dcf14ae7c4d9d2c6798d59f0b838a050c672f5e75fdd16a0ce683902  ./TARGETED_VERIFICATION.md
 7b721af5536a584af62c4c00e3536bd1449fd05c9efdb7dadb78b45221044ceb  ./THIRD_PARTY_NOTICES.md
 ea60d9cd901b4c79a9a49a0e775453784952cd41458390d506bc405155211f40  ./build/build.py
-627172d4b4797c59077e2c7e4e072f080647d97c6d93551ee5a43eb4db959467  ./dist/app.js
-b7a95ce524a7015e74fc13e7c676d7b4b8cad8e75554e54c7d367eab0030e051  ./index.html
+3900e7aa404558d1f487b9a78ca5c78481e4ab1e70e12c1088230967f81a9ab5  ./dist/app.js
+cbcab95d33bd7810a1f72c079e92eb1e8db4b09de84ea6752fe2349f5a296793  ./index.html
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
 f38655fabcfb48b05943e86660eee56722d2daab96c2143509c99dd681089111  ./source/app/00-runtime-boundary.ts
@@ -61,7 +61,7 @@ fa38685c28c308526f81f89575b461d0a0aeed05e9b058bfe2d29ef7529444b5  ./source/app/4
 eba12a08e6d1e70767d7ebf2cf072d7b804965ded35ebdeeba0743128ad329ab  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 89eb13f0327eca56a67ec8f2624738cb7351dbd3d0532ddcd746c0a0512dfff2  ./source/app/45-ui-runtime.ts
-872a58d666c4df5405cfa47ed9ed82e9c8fbeb56620f17a21806ea3cb656e2cf  ./source/app/50-ui-controller.ts
+0130b9657119e2b90e63773bf58ac90b666f6b327b304423d15eb30665af36ee  ./source/app/50-ui-controller.ts
 b09c2088aa4b962db0f3652ab8a88e4ed9ade0f42bfff292fceebaf7b0d81468  ./source/app/55-extension-runtime.ts
 b58701c0554a5faf53e68eb68c5ca7f02c3ae0cbca5c5b4819db2e0dbf7bda33  ./source/app/60-public-bridge-bootstrap.ts
 9c6de9f955c791d9b51ac85e9cb4b9f5296b150479e85e446cf79c40619bde6c  ./source/app/source-manifest.json
