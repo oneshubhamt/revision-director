@@ -134,7 +134,7 @@ def main() -> None:
         check("restored" in frame.locator("#toast").inner_text().lower(), "Baseline fixture restore failed")
 
         frame.locator('[data-pane="today"]').click(); wait(frame, 200)
-        frame.locator('[data-action="review-one"]').first.click(); wait(frame, 300)
+        frame.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click(); wait(frame, 300)
         check(frame.locator('[data-action="toggle-pause"]').count() == 1, "Pause control is missing")
         initial = frame.locator("#review-timer").inner_text()
         check(initial in ("0:00", "0:01"), f"Unexpected initial timer: {initial}")
