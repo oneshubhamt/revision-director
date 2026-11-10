@@ -43,7 +43,7 @@ INDEXEDDB_SHIM = r"""
     clear(){return asyncReq(this.tx,()=>{this.data.records.clear();return undefined})}
   }
   class DB { constructor(name,version){this.name=name;this.version=version;this._stores=new Map();this.onversionchange=null} createObjectStore(n,opts){const d=new StoreData(n,opts);this._stores.set(n,d);return new ObjStore(new Tx(this,[n],'versionchange'),d)} transaction(names,mode){return new Tx(this,names,mode)} close(){} }
-  Object.defineProperty(window,'indexedDB',{configurable:true,value:{open(name,version){const r=new Req();setTimeout(()=>{let db=databases.get(name);const fresh=!db;if(!db){db=new DB(name,version||1);databases.set(name,db)}r.result=db;if(fresh&&r.onupgradeneeded)r.onupgradeneeded({target:r});setTimeout(()=>r.onsuccess&&r.onsuccess({target:r}),0)},0);return r}}});
+  Object.defineProperty(window,'indexedDB',{configurable:true,value:{open(name,version){const r=new Req();setTimeout(()=>{let db=databases.get(name);const fresh=!db;if(!db){db=new DB(name,version||1);databases.set(name,db)}r.result=db;if(fresh&&r.onupgradeneeded)r.onupgradeneeded({target:r,oldVersion:0,newVersion:version||1});setTimeout(()=>r.onsuccess&&r.onsuccess({target:r}),0)},0);return r}}});
 })();
 </script>
 """
