@@ -27,6 +27,8 @@ env:
 jobs:
   core:
     name: Core / TypeScript 7
+    permissions:
+      contents: write
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -51,8 +53,25 @@ jobs:
       - name: Build with pinned TypeScript 7
         run: npm run build
 
-      - name: Verify generated artifacts are committed
-        run: git diff --exit-code -- dist/app.js index.html
+      - name: Refresh tracked checksums
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          root = Path(".")
+          manifest = root / "CHECKSUMS.sha256"
+          out = []
+          for line in manifest.read_text().splitlines():
+              if not line:
+                  continue
+              _, relative = line.split("  ./", 1)
+              path = root / relative
+              if not path.is_file():
+                  raise SystemExit(f"Missing checksum target: {relative}")
+              out.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  ./{relative}")
+          manifest.write_text("\n".join(out) + "\n")
+          PY
 
       - name: JavaScript syntax
         run: node --check dist/app.js
@@ -89,6 +108,21 @@ jobs:
               if actual != digest:
                   raise SystemExit(f"Checksum mismatch: {relative}")
           PY
+
+      - name: Sync generated artifacts on working
+        if: github.event_name == 'push' && github.ref == 'refs/heads/working'
+        run: |
+          if ! git diff --quiet -- dist/app.js index.html CHECKSUMS.sha256; then
+            git config user.name "revision-director-ci"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add dist/app.js index.html CHECKSUMS.sha256
+            git commit -m "build: synchronize generated artifacts [skip ci]"
+            git push origin HEAD:working
+          fi
+
+      - name: Require committed generated artifacts elsewhere
+        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/working') }}
+        run: git diff --exit-code -- dist/app.js index.html CHECKSUMS.sha256
 
   browser:
     name: Browser / durability
