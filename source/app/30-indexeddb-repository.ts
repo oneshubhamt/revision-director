@@ -11,7 +11,21 @@
     Metadata: "metadata",
     ActiveRetrieval: "activeRetrieval",
   } as const);
-  type StoreName = typeof Store[keyof typeof Store];
+  interface StoreValueMap {
+    [Store.Profiles]: ExamProfile;
+    [Store.Nodes]: KnowledgeNode;
+    [Store.Units]: KnowledgeUnit;
+    [Store.StudyEvents]: StudyEvent;
+    [Store.Obligations]: RevisionObligation;
+    [Store.EvidenceEvents]: EvidenceEvent;
+    [Store.Chunks]: ObligationChunk;
+    [Store.DailyPlans]: DailyPlanRecord;
+    [Store.Settings]: AppSettings;
+    [Store.Metadata]: AppMetadata;
+    [Store.ActiveRetrieval]: ActiveRetrievalSession;
+  }
+  type StoreName = keyof StoreValueMap;
+  type StoreValue<S extends StoreName> = StoreValueMap[S];
 
   function requestResult<T>(request: IDBRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -83,27 +97,27 @@
       return new IndexedDbRepository(db);
     }
 
-    async get<T>(store: StoreName, key: IDBValidKey): Promise<T | undefined> {
+    async get<S extends StoreName>(store: S, key: IDBValidKey): Promise<StoreValue<S> | undefined> {
       const tx = this.db.transaction(store, "readonly");
       const value = await requestResult(tx.objectStore(store).get(key));
       await transactionDone(tx);
-      return value as T | undefined;
+      return value as StoreValue<S> | undefined;
     }
 
-    async getAll<T>(store: StoreName): Promise<T[]> {
+    async getAll<S extends StoreName>(store: S): Promise<StoreValue<S>[]> {
       const tx = this.db.transaction(store, "readonly");
       const values = await requestResult(tx.objectStore(store).getAll());
       await transactionDone(tx);
-      return values as T[];
+      return values as StoreValue<S>[];
     }
 
-    async put<T>(store: StoreName, value: T): Promise<void> {
+    async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
       const tx = this.db.transaction(store, "readwrite");
       tx.objectStore(store).put(value);
       await transactionDone(tx);
     }
 
-    async putMany<T>(store: StoreName, values: T[]): Promise<void> {
+    async putMany<S extends StoreName>(store: S, values: StoreValue<S>[]): Promise<void> {
       const tx = this.db.transaction(store, "readwrite");
       const target = tx.objectStore(store);
       for (const value of values) target.put(value);
@@ -133,16 +147,16 @@
 
 
     async findNode(profileId: string, parentId: string | null, kind: KnowledgeNodeKind, name: string): Promise<KnowledgeNode | undefined> {
-      const candidates = await this.getByIndex<KnowledgeNode>(Store.Nodes, "profileId", profileId);
+      const candidates = await this.getByIndex(Store.Nodes, "profileId", profileId);
       const normalized = normalizeName(name);
       return candidates.find((node) => node.parentId === parentId && node.kind === kind && node.normalizedName === normalized);
     }
 
-    async getByIndex<T>(store: StoreName, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<T[]> {
+    async getByIndex<S extends StoreName>(store: S, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<StoreValue<S>[]> {
       const tx = this.db.transaction(store, "readonly");
       const result = await requestResult(tx.objectStore(store).index(indexName).getAll(query));
       await transactionDone(tx);
-      return result as T[];
+      return result as StoreValue<S>[];
     }
 
     async putObligationWithChunks(obligation: RevisionObligation, chunks: ObligationChunk[]): Promise<void> {
@@ -229,7 +243,7 @@
     async rawDump(): Promise<Record<StoreName, unknown[]>> {
       const stores = Object.values(Store) as StoreName[];
       const dump = {} as Record<StoreName, unknown[]>;
-      for (const store of stores) dump[store] = await this.getAll<unknown>(store);
+      for (const store of stores) dump[store] = await this.getAll(store);
       return dump;
     }
 

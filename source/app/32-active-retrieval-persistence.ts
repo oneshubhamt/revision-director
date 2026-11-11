@@ -126,7 +126,7 @@
       const local = this.readLocal();
       let indexed: ActiveRetrievalSession | undefined;
       try {
-        indexed = await this.data.get<ActiveRetrievalSession>(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID);
+        indexed = await this.data.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID);
       } catch (error) {
         this.data.recordDiagnostic("active-retrieval.indexeddb.read", "read active retrieval", error);
       }

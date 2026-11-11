@@ -166,7 +166,7 @@
     }
 
     private async ensureMetadata(): Promise<void> {
-      const existing = await this.repository.get<AppMetadata>(Store.Metadata, "database");
+      const existing = await this.repository.get(Store.Metadata, "database");
       if (existing) {
         const canonical = canonicalAppMetadata(existing);
         assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
@@ -196,26 +196,26 @@
       }
     }
 
-    private normalize<T>(store: StoreName, value: T): T {
-      return canonicalDocument(documentKindForStore(store), value as DurableDocument) as T;
+    private normalize<S extends StoreName>(store: S, value: StoreValue<S>): StoreValue<S> {
+      return canonicalDocument(documentKindForStore(store), value) as StoreValue<S>;
     }
 
-    async get<T>(store: StoreName, key: IDBValidKey): Promise<T | undefined> {
+    async get<S extends StoreName>(store: S, key: IDBValidKey): Promise<StoreValue<S> | undefined> {
       return this.operation(`get.${store}`, async () => {
-        const value = await this.repository.get<T>(store, key);
+        const value = await this.repository.get(store, key);
         return value === undefined ? undefined : this.normalize(store, value);
       });
     }
 
-    async getAll<T>(store: StoreName): Promise<T[]> {
-      return this.operation(`getAll.${store}`, async () => (await this.repository.getAll<T>(store)).map((value) => this.normalize(store, value)));
+    async getAll<S extends StoreName>(store: S): Promise<StoreValue<S>[]> {
+      return this.operation(`getAll.${store}`, async () => (await this.repository.getAll(store)).map((value) => this.normalize(store, value)));
     }
 
-    async put<T>(store: StoreName, value: T): Promise<void> {
+    async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
       await this.operation(`put.${store}`, () => this.repository.put(store, this.normalize(store, value)));
     }
 
-    async putMany<T>(store: StoreName, values: T[]): Promise<void> {
+    async putMany<S extends StoreName>(store: S, values: StoreValue<S>[]): Promise<void> {
       await this.operation(`putMany.${store}`, () => this.repository.putMany(store, values.map((value) => this.normalize(store, value))));
     }
 
@@ -232,13 +232,13 @@
     }
 
     async findNode(profileId: string, parentId: string | null, kind: KnowledgeNodeKind, name: string): Promise<KnowledgeNode | undefined> {
-      const candidates = await this.getByIndex<KnowledgeNode>(Store.Nodes, "profileId", profileId);
+      const candidates = await this.getByIndex(Store.Nodes, "profileId", profileId);
       const normalized = normalizeName(name);
       return candidates.find((node) => node.parentId === parentId && node.kind === kind && node.normalizedName === normalized);
     }
 
-    async getByIndex<T>(store: StoreName, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<T[]> {
-      return this.operation(`index.${store}.${indexName}`, async () => (await this.repository.getByIndex<T>(store, indexName, query)).map((value) => this.normalize(store, value)));
+    async getByIndex<S extends StoreName>(store: S, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<StoreValue<S>[]> {
+      return this.operation(`index.${store}.${indexName}`, async () => (await this.repository.getByIndex(store, indexName, query)).map((value) => this.normalize(store, value)));
     }
 
     async putObligationWithChunks(obligation: RevisionObligation, chunks: ObligationChunk[]): Promise<void> {

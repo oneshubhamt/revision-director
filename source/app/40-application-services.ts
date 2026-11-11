@@ -7,7 +7,7 @@
     }
 
     async initialize(): Promise<void> {
-      const stored = await this.repo.get<AppSettings>(Store.Settings, "app");
+      const stored = await this.repo.get(Store.Settings, "app");
       this.settings = stored ?? defaultSettings();
       await prepareFsrsScheduler(this.settings.desiredRetention);
       if (!stored) await this.repo.put(Store.Settings, this.settings);
@@ -41,7 +41,7 @@
       assert(Number.isInteger(next.studyDayBoundaryHour) && next.studyDayBoundaryHour >= 0 && next.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
       const activeProfiles = (await this.profiles()).filter((profile) => profile.status === "active");
       if (activeProfiles.length > 0) {
-        const profile = await this.repo.get<ExamProfile>(Store.Profiles, next.activeProfileId);
+        const profile = await this.repo.get(Store.Profiles, next.activeProfileId);
         assert(profile?.status === "active", "Default exam profile is invalid.");
       } else assert(next.activeProfileId === "", "Create an active exam profile before selecting a default profile.");
       await prepareFsrsScheduler(next.desiredRetention);
@@ -50,11 +50,11 @@
     }
 
     async profiles(): Promise<ExamProfile[]> {
-      return (await this.repo.getAll<ExamProfile>(Store.Profiles)).sort((a, b) => a.name.localeCompare(b.name));
+      return (await this.repo.getAll(Store.Profiles)).sort((a, b) => a.name.localeCompare(b.name));
     }
 
     async profile(id: string): Promise<ExamProfile> {
-      const profile = await this.repo.get<ExamProfile>(Store.Profiles, id);
+      const profile = await this.repo.get(Store.Profiles, id);
       assert(profile, "Exam profile not found.");
       return profile;
     }
@@ -101,7 +101,7 @@
     }
 
     async nodes(): Promise<KnowledgeNode[]> {
-      return this.repo.getAll<KnowledgeNode>(Store.Nodes);
+      return this.repo.getAll(Store.Nodes);
     }
 
     async ensureNode(profileId: string, parentId: string | null, kind: KnowledgeNodeKind, name: string): Promise<KnowledgeNode> {
@@ -139,21 +139,21 @@
     }
 
     async hierarchyPath(topicNodeId: string): Promise<{ subject: string; section: string; topic: string }> {
-      const topic = await this.repo.get<KnowledgeNode>(Store.Nodes, topicNodeId);
+      const topic = await this.repo.get(Store.Nodes, topicNodeId);
       assert(topic?.kind === "topic", "Topic node not found.");
-      const section = topic.parentId ? await this.repo.get<KnowledgeNode>(Store.Nodes, topic.parentId) : undefined;
+      const section = topic.parentId ? await this.repo.get(Store.Nodes, topic.parentId) : undefined;
       assert(section?.kind === "section", "Section node not found.");
-      const subject = section.parentId ? await this.repo.get<KnowledgeNode>(Store.Nodes, section.parentId) : undefined;
+      const subject = section.parentId ? await this.repo.get(Store.Nodes, section.parentId) : undefined;
       assert(subject?.kind === "subject", "Subject node not found.");
       return { subject: subject.name, section: section.name, topic: topic.name };
     }
 
     async units(): Promise<KnowledgeUnit[]> {
-      return (await this.repo.getAll<KnowledgeUnit>(Store.Units)).sort((a, b) => a.title.localeCompare(b.title));
+      return (await this.repo.getAll(Store.Units)).sort((a, b) => a.title.localeCompare(b.title));
     }
 
     async unit(id: string): Promise<KnowledgeUnit> {
-      const unit = await this.repo.get<KnowledgeUnit>(Store.Units, id);
+      const unit = await this.repo.get(Store.Units, id);
       assert(unit, "Knowledge unit not found.");
       return unit;
     }
@@ -216,17 +216,17 @@
     }
 
     async obligations(): Promise<RevisionObligation[]> {
-      return this.repo.getAll<RevisionObligation>(Store.Obligations);
+      return this.repo.getAll(Store.Obligations);
     }
 
     async obligation(id: string): Promise<RevisionObligation> {
-      const obligation = await this.repo.get<RevisionObligation>(Store.Obligations, id);
+      const obligation = await this.repo.get(Store.Obligations, id);
       assert(obligation, "Revision obligation not found.");
       return obligation;
     }
 
     async obligationsForUnit(unitId: string): Promise<RevisionObligation[]> {
-      return (await this.repo.getByIndex<RevisionObligation>(Store.Obligations, "unitId", unitId)).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+      return (await this.repo.getByIndex(Store.Obligations, "unitId", unitId)).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
     }
 
     private buildObligation(draft: ObligationDraft, relation?: { parentObligationId?: string; returnObligationId?: string }): RevisionObligation {
@@ -308,22 +308,22 @@
     }
 
     async chunks(): Promise<ObligationChunk[]> {
-      return this.repo.getAll<ObligationChunk>(Store.Chunks);
+      return this.repo.getAll(Store.Chunks);
     }
 
     async chunk(id: string): Promise<ObligationChunk> {
-      const chunk = await this.repo.get<ObligationChunk>(Store.Chunks, id);
+      const chunk = await this.repo.get(Store.Chunks, id);
       assert(chunk, "Split-session chunk not found.");
       return chunk;
     }
 
     async chunksForObligation(obligationId: string): Promise<ObligationChunk[]> {
-      return (await this.repo.getByIndex<ObligationChunk>(Store.Chunks, "obligationId", obligationId))
+      return (await this.repo.getByIndex(Store.Chunks, "obligationId", obligationId))
         .sort((a, b) => a.ordinal - b.ordinal);
     }
 
     async dailyPlanHistory(): Promise<DailyPlanRecord[]> {
-      return (await this.repo.getAll<DailyPlanRecord>(Store.DailyPlans)).sort((a, b) => b.studyDayKey.localeCompare(a.studyDayKey));
+      return (await this.repo.getAll(Store.DailyPlans)).sort((a, b) => b.studyDayKey.localeCompare(a.studyDayKey));
     }
 
     private async ensureAutomaticChunking(joined: JoinedObligation[], capacityMinutes: number, reference: Date): Promise<Map<string, ObligationChunk>> {
@@ -480,7 +480,7 @@
     private async manualPlanItem(obligationId: string, chunkId?: string): Promise<DailyPlanItemSnapshot | undefined> {
       const joined = (await this.joinedObligations()).find((item) => item.obligation.id === obligationId);
       if (!joined) return undefined;
-      const chunk = chunkId ? await this.repo.get<ObligationChunk>(Store.Chunks, chunkId) : undefined;
+      const chunk = chunkId ? await this.repo.get(Store.Chunks, chunkId) : undefined;
       if (chunkId && !chunk) return undefined;
       return {
         key: planItemKey(obligationId, chunkId),
@@ -570,7 +570,7 @@
     }
 
     async completeChunk(chunkId: string, timing: TimingEvidenceSummary, note = "", completedAt = new Date(), commitGuard?: ActiveCommitGuard, postCommitSession?: ActiveRetrievalSession): Promise<ObligationChunk> {
-      const chunk = await this.repo.get<ObligationChunk>(Store.Chunks, chunkId);
+      const chunk = await this.repo.get(Store.Chunks, chunkId);
       assert(chunk && chunk.status === "pending", "This split session is no longer pending.");
       const obligation = await this.obligation(chunk.obligationId);
       assert(obligation.chunking?.cycleId === chunk.cycleId && obligation.chunking.status === "chunking", "Split-session state is inconsistent.");
@@ -726,7 +726,7 @@
       if (relearningMastered) {
         obligation.status = "completed";
         if (obligation.returnObligationId) {
-          const original = await this.repo.get<RevisionObligation>(Store.Obligations, obligation.returnObligationId);
+          const original = await this.repo.get(Store.Obligations, obligation.returnObligationId);
           if (original) {
             if (original.type === "memory-recall") {
               const returnedBeforeDueAt = original.dueAt;
@@ -811,7 +811,7 @@
     }
 
     async studyEvents(): Promise<StudyEvent[]> {
-      return (await this.repo.getAll<StudyEvent>(Store.StudyEvents)).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+      return (await this.repo.getAll(Store.StudyEvents)).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
     }
 
     async logStudyEvent(draft: StudyEventDraft): Promise<StudyEvent> {
@@ -849,7 +849,7 @@
     }
 
     async evidenceEvents(): Promise<EvidenceEvent[]> {
-      return (await this.repo.getAll<EvidenceEvent>(Store.EvidenceEvents)).sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt));
+      return (await this.repo.getAll(Store.EvidenceEvents)).sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt));
     }
 
     async triggeringEvidence(relearningObligationId: string): Promise<EvidenceEvent | undefined> {
@@ -861,7 +861,7 @@
     }
 
     async currentActiveRetrieval(): Promise<ActiveRetrievalSession | null> {
-      return await this.repo.get<ActiveRetrievalSession>(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null;
+      return await this.repo.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null;
     }
 
     async exportBackup(): Promise<BackupPayload> {
@@ -879,7 +879,7 @@
         chunks: await this.chunks(),
         dailyPlans: await this.dailyPlanHistory(),
         settings: this.getSettings(),
-        activeRetrieval: await this.repo.get<ActiveRetrievalSession>(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null,
+        activeRetrieval: await this.repo.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null,
       };
     }
 
