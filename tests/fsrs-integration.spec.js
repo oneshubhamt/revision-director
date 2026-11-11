@@ -62,7 +62,7 @@ function directEvent(payload, before, completion, rating, reviewedAt, sequence){
   return {
     schemaVersion:1,id:'memory-evidence-'+sequence,profileId:unit.profileId,unitId:before.unitId,
     obligationId:before.id,obligationType:'memory-recall',reviewedAt,elapsedMs:600000,
-    evidence:ratingEvidence(rating),workflow:clone(recallWorkflow),workflowResult:recallResult(rating),
+    evidence:ratingEvidence(rating),workflow:'recall',workflowResult:recallResult(rating),
     suggestedRating:rating,confirmedRating:rating,beforeDueAt:before.dueAt,afterDueAt:completion.dueAt,
     beforePolicyState:clone(before.policyState),afterPolicyState:clone(completion.policyState),
     policyId:completion.policyId,schedulerPackage:'ts-fsrs',schedulerVersion:'6.0.0',schedulerModel:'FSRS-7',
