@@ -148,7 +148,7 @@
     if (value === undefined) return Object.freeze({});
     assert(typeof value === "object" && value !== null && !Array.isArray(value), "Plugin capability requirements must be an object.");
     const out: Record<string, number> = Object.create(null);
-    for (const [rawKey, rawMinimum] of Object.entries(value as Record<string, unknown>)) {
+    for (const [rawKey, rawMinimum] of Object.entries(requireRecord(value, "Plugin capability requirements"))) {
       const key = publicPluginText(rawKey, 64);
       assert(/^[a-z][a-zA-Z0-9]*$/.test(key), "Plugin capability names are invalid.");
       const minimum = Number(rawMinimum);
@@ -226,11 +226,12 @@
       });
     }
 
-    async register(plugin: RevisionDirectorPluginDefinition): Promise<boolean> {
-      if (!plugin || typeof plugin !== "object" || typeof plugin.setup !== "function") return false;
-      const name = publicPluginText(plugin.name, 80);
+    async register(input: unknown): Promise<boolean> {
+      if (!isRecord(input) || typeof input["setup"] !== "function") return false;
+      const setup = input["setup"];
+      const name = publicPluginText(input["name"], 80);
       if (!/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/.test(name)) return false;
-      const version = publicPluginText(plugin.version, 40);
+      const version = publicPluginText(input["version"], 40);
       const previous = this.registrations.get(name);
       if (previous?.state === "registered") return true;
       if (previous?.state === "incompatible") return false;
@@ -238,7 +239,7 @@
       if (attempts >= PLUGIN_MAX_REGISTRATION_ATTEMPTS) return false;
       const nextAttempt = attempts + 1;
       let requirements: Readonly<Record<string, number>>;
-      try { requirements = publicPluginRequirements(plugin.requires); }
+      try { requirements = publicPluginRequirements(input["requires"]); }
       catch (error) {
         this.setRegistration({ name, version, state: "failed", attempts: nextAttempt, detail: publicPluginText(error instanceof Error ? error.message : error, 240), updatedAt: nowIso() });
         return false;
@@ -258,7 +259,7 @@
       this.registrationRevision += 1;
       this.setRegistration({ name, version, state: "registering", attempts: nextAttempt, detail: "", updatedAt: nowIso() });
       try {
-        const result = await plugin.setup(this.requirePublicApi());
+        const result = await setup(this.requirePublicApi());
         const active = result !== false;
         this.setRegistration({ name, version, state: active ? "registered" : "inactive", attempts: nextAttempt, detail: active ? "" : "Plugin setup returned inactive.", updatedAt: nowIso() });
         return active;
@@ -371,58 +372,88 @@
       })));
     }
 
-    private async importStudyEvent(payload: StudyDirectorStudyPayload): Promise<Readonly<{ id: string }>> {
+    private async importStudyEvent(input: unknown): Promise<Readonly<{ id: string }>> {
       assert(this.ownership.canMutate(), "Revision Director is read-only in this tab. Take control before importing study data.");
-      assert(typeof payload === "object" && payload !== null, "Study payload is required.");
-      assert(typeof payload.area === "string" && typeof payload.task === "string" && typeof payload.measure === "string", "Study payload requires area, task and measure.");
-      assert(Number.isFinite(payload.durationMinutes), "Study payload requires durationMinutes.");
-      assert(payload.activityMode === undefined || ["learn", "review", "practice", "test"].includes(payload.activityMode), "Study payload activityMode is invalid.");
-      assert(payload.understanding === undefined || [1, 2, 3, 4].includes(payload.understanding), "Study payload understanding is invalid.");
-      const occurredAt = payload.occurredAt ? parseDate(payload.occurredAt).toISOString() : nowIso();
+      const payload = requireRecord(input, "Study payload");
+      const area = payload["area"], task = payload["task"], measure = payload["measure"];
+      assert(typeof area === "string" && typeof task === "string" && typeof measure === "string", "Study payload requires area, task and measure.");
+      const durationMinutes = payload["durationMinutes"];
+      assert(typeof durationMinutes === "number" && Number.isFinite(durationMinutes), "Study payload requires durationMinutes.");
+      const activityMode = payload["activityMode"] === undefined ? "learn" : literalChoice(payload["activityMode"], ACTIVITY_MODES, "Study payload activityMode");
+      const understanding = payload["understanding"] === undefined ? 3 : literalChoice(payload["understanding"], UNDERSTANDING_LEVELS, "Study payload understanding");
+      const occurredAtValue = payload["occurredAt"];
+      assert(occurredAtValue === undefined || typeof occurredAtValue === "string", "Study payload occurredAt is invalid.");
+      const occurredAt = occurredAtValue ? parseDate(occurredAtValue).toISOString() : nowIso();
       const profiles = await this.service.profiles();
-      const profileId = payload.profileId || this.service.getSettings().activeProfileId || profiles[0]?.id;
+      const requestedProfileId = payload["profileId"];
+      assert(requestedProfileId === undefined || typeof requestedProfileId === "string", "Study payload profileId is invalid.");
+      const profileId = requestedProfileId || this.service.getSettings().activeProfileId || profiles[0]?.id;
       assert(profileId, "No exam profile exists.");
+      const optionalText = (key: string): string => {
+        const value = payload[key];
+        assert(value === undefined || typeof value === "string", `Study payload ${key} is invalid.`);
+        return value ?? "";
+      };
       const event = await this.service.logStudyEvent({
         profileId,
         occurredAt,
-        activityMode: payload.activityMode ?? "learn",
-        area: payload.area,
-        task: payload.task,
-        measure: payload.measure,
-        source: payload.source ?? "",
-        durationMinutes: payload.durationMinutes,
-        understanding: payload.understanding ?? 3,
+        activityMode,
+        area,
+        task,
+        measure,
+        source: optionalText("source"),
+        durationMinutes,
+        understanding,
         linkedUnitIds: [],
-        notes: payload.notes ?? "",
+        notes: optionalText("notes"),
         origin: "study-director",
       });
       return Object.freeze({ id: event.id });
     }
 
-    private async createRevisionCandidate(payload: RevisionCandidatePayload): Promise<Readonly<{ unitId: string }>> {
+    private async createRevisionCandidate(input: unknown): Promise<Readonly<{ unitId: string }>> {
       assert(this.ownership.canMutate(), "Revision Director is read-only in this tab. Take control before creating revision candidates.");
-      assert(typeof payload === "object" && payload !== null, "Revision candidate is required.");
-      assert([payload.subject, payload.section, payload.topic, payload.title, payload.scope, payload.protocol, payload.successCriteria].every((value) => typeof value === "string" && value.trim()), "Revision candidate is incomplete.");
+      const payload = requireRecord(input, "Revision candidate");
+      const requiredText = (key: string): string => {
+        const value = payload[key];
+        assert(typeof value === "string" && value.trim().length > 0, `Revision candidate ${key} is required.`);
+        return value;
+      };
+      const subject = requiredText("subject");
+      const section = requiredText("section");
+      const topic = requiredText("topic");
+      const title = requiredText("title");
+      const scope = requiredText("scope");
+      const protocol = requiredText("protocol");
+      const successCriteria = requiredText("successCriteria");
+      const requestedProfileId = payload["profileId"];
+      assert(requestedProfileId === undefined || typeof requestedProfileId === "string", "Revision candidate profileId is invalid.");
       const profiles = await this.service.profiles();
-      const profileId = payload.profileId || this.service.getSettings().activeProfileId || profiles[0]?.id;
+      const profileId = requestedProfileId || this.service.getSettings().activeProfileId || profiles[0]?.id;
       assert(profileId, "No exam profile exists.");
-      const obligationType = payload.obligationType ?? "memory-recall";
+      const obligationType = payload["obligationType"] === undefined ? "memory-recall" : literalChoice(payload["obligationType"], OBLIGATION_TYPES, "Revision candidate obligation type");
+      const expectedMinutesValue = payload["expectedMinutes"];
+      assert(expectedMinutesValue === undefined || (typeof expectedMinutesValue === "number" && Number.isFinite(expectedMinutesValue)), "Revision candidate expectedMinutes is invalid.");
+      const sourceValue = payload["source"];
+      assert(sourceValue === undefined || typeof sourceValue === "string", "Revision candidate source is invalid.");
+      const firstDueAtValue = payload["firstDueAt"];
+      assert(firstDueAtValue === undefined || typeof firstDueAtValue === "string", "Revision candidate firstDueAt is invalid.");
       const unit = await this.service.createUnit({
         profileId,
-        subject: payload.subject,
-        section: payload.section,
-        topic: payload.topic,
-        title: payload.title,
-        scope: payload.scope,
-        source: payload.source ?? "",
+        subject,
+        section,
+        topic,
+        title,
+        scope,
+        source: sourceValue ?? "",
         importance: 3,
         obligationType,
-        expectedMinutes: payload.expectedMinutes ?? 15,
-        protocol: payload.protocol,
-        successCriteria: payload.successCriteria,
-        firstDueAt: payload.firstDueAt ? new Date(payload.firstDueAt).toISOString() : addDays(new Date(), 1).toISOString(),
+        expectedMinutes: expectedMinutesValue ?? 15,
+        protocol,
+        successCriteria,
+        firstDueAt: firstDueAtValue ? parseDate(firstDueAtValue).toISOString() : addDays(new Date(), 1).toISOString(),
         freshnessDays: 30,
-        workflow: defaultWorkflowSpec(obligationType, payload.protocol, payload.successCriteria),
+        workflow: defaultWorkflowSpec(obligationType, protocol, successCriteria),
       });
       return Object.freeze({ unitId: unit.id });
     }

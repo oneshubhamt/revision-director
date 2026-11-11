@@ -9,6 +9,7 @@ const context={structuredClone,console,Date,Intl,URL,Blob,TextEncoder,TextDecode
 context.window=context;context.self=context;context.globalThis=context;vm.createContext(context);vm.runInContext(vendor,context);vm.runInContext(source,context);
 const T=context.__RD_E1_TEST__;let checks=0;
 function check(v,m){checks++;if(!v)throw new Error(m)}
+async function mustReject(fn,m){checks++;try{await fn()}catch{return}throw new Error(m)}
 const due=[{obligation:{type:'memory-recall',expectedMinutes:12}},{obligation:{type:'memory-recall',expectedMinutes:8}},{obligation:{type:'application-practice',expectedMinutes:20}}];
 const profiles=[{id:'p1',name:'Exam',examDate:'2027-01-01',status:'active'}];
 class FakeService{
@@ -42,8 +43,10 @@ class FakeOwnership{constructor(){this.mutable=true}canMutate(){return this.muta
  check(publicProfiles.length===1&&publicProfiles[0].id==='p1'&&Object.isFrozen(publicProfiles)&&Object.isFrozen(publicProfiles[0]),'Profile summary wrong or mutable');
  const study=await api.intake.importStudyEvent({area:'Geology',task:'Drainage',measure:'1 topic',durationMinutes:30});
  check(study.id==='study-1'&&service.study.length===1&&service.study[0].origin==='study-director','Study intake failed');
+ await mustReject(()=>api.intake.importStudyEvent({area:'A',task:'B',measure:'C',durationMinutes:10,activityMode:'invalid'}),'Invalid public activity mode was accepted');
  const candidate=await api.intake.createRevisionCandidate({subject:'Geology',section:'Geomorphology',topic:'Drainage',title:'Drainage patterns',scope:'Major patterns',protocol:'Recall and draw',successCriteria:'Accurate structure'});
  check(candidate.unitId==='unit-1'&&service.units.length===1,'Candidate intake failed');
+ await mustReject(()=>api.intake.createRevisionCandidate({subject:'S',section:'C',topic:'T',title:'U',scope:'Scope',protocol:'P',successCriteria:'Success',obligationType:'invalid'}),'Invalid public obligation type was accepted');
  ownership.mutable=false;
  let denied='';try{await api.intake.importStudyEvent({area:'A',task:'B',measure:'C',durationMinutes:1})}catch(e){denied=String(e.message||e)}
  check(denied.toLowerCase().includes('read-only'),'Mutation bypassed ownership');
@@ -60,6 +63,7 @@ class FakeOwnership{constructor(){this.mutable=true}canMutate(){return this.muta
  check(!(await api.registerPlugin({name:'Retry Plugin',setup(){return true}})),'Registration attempt cap was bypassed');
  check(!(await api.registerPlugin({name:'Bad',requires:{'bad-key':1},setup(){return true}})),'Invalid capability key accepted');
  check(!(await api.registerPlugin({name:'',setup(){return true}})),'Blank plugin name accepted');
+ check(!(await api.registerPlugin({name:'Wrong Setup',setup:'not-a-function'})),'Non-function plugin setup was accepted');
  const status=api.plugins.status();
  check(Object.isFrozen(status)&&Object.isFrozen(status.registered)&&status.registered.some(x=>x.name==='Good Plugin'&&x.state==='registered'),'Plugin status missing');
  check(status.registered.some(x=>x.name==='Future Plugin'&&x.state==='incompatible'&&x.detail.includes('pluginApi>=2')),'Incompatibility status missing');

@@ -143,6 +143,7 @@ check("FSRS rating semantics", 'if (type === "memory-recall")' in ts and '"Easy"
 check("strict current data only", "event.oldVersion === 0" in ts and "canonical.applicationVersion === APP_VERSION" in ts and "candidate.appVersion === APP_VERSION" in ts)
 check("no timing compatibility synthesis", "fallbackElapsedMs" not in ts and "canonicalTimingEvidenceSummary(value: TimingEvidenceSummary)" in ts and "completeChunk(chunkId: string, timing: TimingEvidenceSummary" in ts)
 check("no current-shape repair coercions", "reliabilityFlags.push" not in contracts_ts and "checked[key] = Boolean(rawValue)" not in contracts_ts and "sourceVisible: Boolean(value.sourceVisible)" not in contracts_ts and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
+check("checked external domain boundaries", "function literalChoice<const Values" in ts and "MessageEvent<unknown>" in ts and "async register(input: unknown)" in ts and "private async importStudyEvent(input: unknown)" in ts and "private async createRevisionCandidate(input: unknown)" in ts and " as InactiveGapClassification" not in ts and " as BackupActiveSessionTreatment" not in ts)
 check("SHA-256-only backup integrity", 'type BackupArchiveHashAlgorithm = "sha256";' in ts and "fnv1a64" not in ts)
 check("policy router", "class SchedulerPolicyRouter" in ts)
 check("immutable Study Event semantics", "interface StudyEvent" in ts and "studyEvents" in ts)

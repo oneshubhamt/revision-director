@@ -149,9 +149,9 @@
     private async handleDelegatedClick(event: MouseEvent): Promise<void> {
       const target = event.target instanceof Element ? event.target.closest<HTMLElement>("button,[data-action],[data-pane],[data-filter],[data-history-tab],[data-close-dialog],[data-gap-action]") : null;
       if (!target || (target instanceof HTMLButtonElement && target.disabled)) return;
-      const pane = target.dataset["pane"];
-      if (pane && ["today", "review", "library", "study", "history", "settings"].includes(pane)) {
-        await this.openPane(pane as PaneId);
+      const pane = literalChoiceOrUndefined(target.dataset["pane"], ["today", "review", "library", "study", "history", "settings"] as const);
+      if (pane) {
+        await this.openPane(pane);
         return;
       }
       if (target.id === "quick-add-unit") {
@@ -244,14 +244,14 @@
           const typeName = form.getAttribute("id") === "unit-form" ? "obligationType" : "type";
           const typeSelect = form.elements.namedItem(typeName) as HTMLSelectElement;
           if (target === typeSelect) {
-            applyDefaultWorkflowToForm(form, typeSelect.value as ObligationType);
+            applyDefaultWorkflowToForm(form, literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type"));
             return;
           }
           if (target === form.elements.namedItem("workflowKind")) {
-            const type = typeSelect.value as ObligationType;
+            const type = literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type");
             const protocol = (form.elements.namedItem("protocol") as HTMLTextAreaElement | null)?.value ?? "";
             const success = (form.elements.namedItem("successCriteria") as HTMLTextAreaElement | null)?.value ?? "";
-            const selected = target.value as RetrievalWorkflow;
+            const selected = literalChoice(target.value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
             const spec = defaultWorkflowSpec(type, protocol, success);
             spec.kind = selected;
             spec.responseMedium = selected === "answer-writing" ? "paper" : "in-app";
@@ -467,8 +467,7 @@
       if (!this.requireMutable("classify an interruption")) return;
       if (!this.phaseTime?.hasPendingGap()) { this.hideGapOverlay(); return; }
       if (action === "split") { this.gapSplit.hidden = false; this.gapFocus.focus("#gap-focus-minutes"); return; }
-      const classification = action === "apply-split" ? "split" : action as InactiveGapClassification;
-      assert(["focus", "break", "split", "ignore"].includes(classification), "Inactive-gap action is invalid.");
+      const classification = action === "apply-split" ? "split" : literalChoice(action, INACTIVE_GAP_CLASSIFICATIONS, "Inactive-gap action");
       const focusMs = classification === "split" ? Math.max(0, Number(this.gapFocusMinutes.value) || 0) * 60_000 : 0;
       const record = this.phaseTime.resolveGap(classification, focusMs);
       this.hideGapOverlay();
@@ -1072,25 +1071,25 @@
       const checkpoints = [...this.reviewContent.querySelectorAll<HTMLInputElement>("[data-checkpoint]")];
       const checkpointTotal = Math.max(1, spec.checkpoints.length);
       const checkpointsMet = checkpoints.filter((input) => input.checked).length;
-      const cueLevel = (this.reviewContent.querySelector<HTMLSelectElement>("#cue-level")?.value ?? "none") as CueLevel;
+      const cueLevel = literalChoice(this.reviewContent.querySelector<HTMLSelectElement>("#cue-level")?.value ?? "none", CUE_LEVELS, "Cue level");
       let result: WorkflowResult;
       if (spec.kind === "recall") {
         result = { kind: "recall", responseMedium: spec.responseMedium, attemptText: text("#attempt-text"), checkpointTotal, checkpointsMet, cueLevel };
       } else if (spec.kind === "reconstruction") {
-        result = { kind: "reconstruction", responseMedium: spec.responseMedium, attemptText: text("#attempt-text"), shape: spec.reconstructionShape ?? "outline", checkpointTotal, checkpointsMet, structuralAccuracy: number("#structural-accuracy", 2) as 0 | 1 | 2 | 3 | 4, relationshipAccuracy: number("#relationship-accuracy", 2) as 0 | 1 | 2 | 3 | 4, cueLevel };
+        result = { kind: "reconstruction", responseMedium: spec.responseMedium, attemptText: text("#attempt-text"), shape: spec.reconstructionShape ?? "outline", checkpointTotal, checkpointsMet, structuralAccuracy: literalChoice(number("#structural-accuracy", 2), RUBRIC_SCORES, "Structural accuracy"), relationshipAccuracy: literalChoice(number("#relationship-accuracy", 2), RUBRIC_SCORES, "Relationship accuracy"), cueLevel };
       } else if (spec.kind === "questions") {
         const attempted = number("#questions-attempted", spec.targetCount ?? 1);
         const correct = number("#questions-correct");
         const partial = number("#questions-partial");
         result = { kind: "questions", targetCount: spec.targetCount ?? 1, attempted, correct, partial, incorrect: attempted - correct - partial, novelCount: number("#questions-novel"), cueLevel, questionSetRef: spec.questionSetRef ?? "External question set", attemptNotes: text("#attempt-text"), errorSummary: text("#questions-error-summary") };
       } else if (spec.kind === "diagram") {
-        result = { kind: "diagram", surface: spec.diagramSurface ?? "canvas", checkpointTotal, checkpointsMet, labelAccuracy: number("#diagram-labels", 2) as 0 | 1 | 2 | 3 | 4, spatialAccuracy: number("#diagram-spatial", 2) as 0 | 1 | 2 | 3 | 4, processAccuracy: number("#diagram-process", 2) as 0 | 1 | 2 | 3 | 4, cueLevel, attemptCompleted: checked("#diagram-attempt-completed"), notes: text("#diagram-notes") };
+        result = { kind: "diagram", surface: spec.diagramSurface ?? "canvas", checkpointTotal, checkpointsMet, labelAccuracy: literalChoice(number("#diagram-labels", 2), RUBRIC_SCORES, "Diagram label accuracy"), spatialAccuracy: literalChoice(number("#diagram-spatial", 2), RUBRIC_SCORES, "Diagram spatial accuracy"), processAccuracy: literalChoice(number("#diagram-process", 2), RUBRIC_SCORES, "Diagram process accuracy"), cueLevel, attemptCompleted: checked("#diagram-attempt-completed"), notes: text("#diagram-notes") };
       } else if (spec.kind === "answer-writing") {
         const timeLimitMinutes = spec.timeLimitMinutes ?? obligation.expectedMinutes;
         const attemptElapsedMs = Math.max(this.attemptElapsedMs, this.closedBookAttemptMs());
-        result = { kind: "answer-writing", mode: spec.answerMode ?? "full-answer", responseMedium: spec.responseMedium, answerText: text("#answer-text"), demandAddressed: number("#answer-demand", 2) as 0 | 1 | 2 | 3 | 4, structure: number("#answer-structure-score", 2) as 0 | 1 | 2 | 3 | 4, contentAccuracy: number("#answer-content", 2) as 0 | 1 | 2 | 3 | 4, examplesEvidence: number("#answer-examples", 2) as 0 | 1 | 2 | 3 | 4, conclusion: number("#answer-conclusion", 2) as 0 | 1 | 2 | 3 | 4, completedWithinTime: attemptElapsedMs <= timeLimitMinutes * 60_000, attemptElapsedMs, timeLimitMinutes, wordCount: number("#answer-word-count"), wordLimit: spec.wordLimit ?? 150, cueLevel };
+        result = { kind: "answer-writing", mode: spec.answerMode ?? "full-answer", responseMedium: spec.responseMedium, answerText: text("#answer-text"), demandAddressed: literalChoice(number("#answer-demand", 2), RUBRIC_SCORES, "Answer demand score"), structure: literalChoice(number("#answer-structure-score", 2), RUBRIC_SCORES, "Answer structure score"), contentAccuracy: literalChoice(number("#answer-content", 2), RUBRIC_SCORES, "Answer content score"), examplesEvidence: literalChoice(number("#answer-examples", 2), RUBRIC_SCORES, "Answer examples score"), conclusion: literalChoice(number("#answer-conclusion", 2), RUBRIC_SCORES, "Answer conclusion score"), completedWithinTime: attemptElapsedMs <= timeLimitMinutes * 60_000, attemptElapsedMs, timeLimitMinutes, wordCount: number("#answer-word-count"), wordLimit: spec.wordLimit ?? 150, cueLevel };
       } else {
-        result = { kind: "relearning", diagnosis: (this.reviewContent.querySelector<HTMLSelectElement>("#relearn-diagnosis")?.value ?? "conceptual-misunderstanding") as ErrorType, repairAction: text("#relearn-repair-action"), verificationText: text("#relearn-verification-text"), checkpointTotal, checkpointsMet, sourceClosedForVerification: checked("#relearn-source-closed") && checked("#relearn-assessment-source-closed"), repairCompleted: checked("#relearn-repair-completed") };
+        result = { kind: "relearning", diagnosis: literalChoice(this.reviewContent.querySelector<HTMLSelectElement>("#relearn-diagnosis")?.value ?? "conceptual-misunderstanding", ERROR_TYPES, "Relearning diagnosis"), repairAction: text("#relearn-repair-action"), verificationText: text("#relearn-verification-text"), checkpointTotal, checkpointsMet, sourceClosedForVerification: checked("#relearn-source-closed") && checked("#relearn-assessment-source-closed"), repairCompleted: checked("#relearn-repair-completed") };
       }
       validateWorkflowResult(result, spec.kind);
       return result;
@@ -1099,7 +1098,7 @@
     private collectEvidence(rating: Rating, obligation: RevisionObligation): EvidenceDraft {
       assert(this.reviewPhase === "compare", "Complete the retrieval and comparison before rating.");
       const workflowResult = this.collectWorkflowResult(obligation);
-      const errors = [...this.reviewContent.querySelectorAll<HTMLInputElement>("[data-error-type]:checked")].map((input) => input.value as ErrorType);
+      const errors = [...this.reviewContent.querySelectorAll<HTMLInputElement>("[data-error-type]:checked")].map((input) => literalChoice(input.value, ERROR_TYPES, "Error type"));
       const correctionNote = this.reviewContent.querySelector<HTMLTextAreaElement>("#correction-note")?.value.trim() ?? "";
       const normalized = workflowEvidence(workflowResult, errors, correctionNote);
       const timing = this.timingSummary();
@@ -1116,7 +1115,7 @@
       if (!target) return;
       try {
         const result = this.collectWorkflowResult(obligation);
-        const errors = [...this.reviewContent.querySelectorAll<HTMLInputElement>("[data-error-type]:checked")].map((input) => input.value as ErrorType);
+        const errors = [...this.reviewContent.querySelectorAll<HTMLInputElement>("[data-error-type]:checked")].map((input) => literalChoice(input.value, ERROR_TYPES, "Error type"));
         const evidence = workflowEvidence(result, errors, this.reviewContent.querySelector<HTMLTextAreaElement>("#correction-note")?.value ?? "");
         const suggested = suggestRating(obligation.type, evidence);
         target.textContent = `${ratingName(suggested)} · score ${roundTo(objectiveScore(obligation.type, evidence), 1)}/4`;
@@ -1248,7 +1247,7 @@
         else if (action === "review-unit") await this.startUnitSession(element.dataset["id"] ?? "");
         else if (action === "add-obligation") await this.openObligationDialog(element.dataset["id"] ?? "");
         else if (action === "toggle-unit") {
-          await this.service.updateUnitStatus(element.dataset["id"] ?? "", element.dataset["status"] as EntityStatus);
+          await this.service.updateUnitStatus(element.dataset["id"] ?? "", literalChoice(element.dataset["status"], ENTITY_STATUSES, "Unit status"));
           await this.renderAll();
           this.toast("Knowledge-unit status updated.");
         } else if (action === "derive-unit") await this.deriveUnitFromStudy(element.dataset["id"] ?? "");
@@ -1503,22 +1502,22 @@
       event.preventDefault();
       try {
         const data = new FormData(this.unitForm);
-        const obligationType = String(data.get("obligationType")) as ObligationType;
+        const obligationType = literalChoice(formText(data, "obligationType"), OBLIGATION_TYPES, "Obligation type");
         const workflow = workflowSpecFromForm(this.unitForm, obligationType);
         await this.service.createUnit({
-          profileId: String(data.get("profileId") ?? ""),
-          subject: String(data.get("subject") ?? ""),
-          section: String(data.get("section") ?? ""),
-          topic: String(data.get("topic") ?? ""),
-          title: String(data.get("title") ?? ""),
-          scope: String(data.get("scope") ?? ""),
-          source: String(data.get("source") ?? ""),
-          importance: Number(data.get("importance")) as 1 | 2 | 3,
+          profileId: formText(data, "profileId"),
+          subject: formText(data, "subject"),
+          section: formText(data, "section"),
+          topic: formText(data, "topic"),
+          title: formText(data, "title"),
+          scope: formText(data, "scope"),
+          source: formText(data, "source"),
+          importance: literalChoice(Number(data.get("importance")), IMPORTANCE_LEVELS, "Importance"),
           obligationType,
           expectedMinutes: Number(data.get("expectedMinutes")),
-          protocol: String(data.get("protocol") ?? ""),
-          successCriteria: String(data.get("successCriteria") ?? ""),
-          firstDueAt: localInputToIso(String(data.get("firstDueAt") ?? "")),
+          protocol: formText(data, "protocol"),
+          successCriteria: formText(data, "successCriteria"),
+          firstDueAt: localInputToIso(formText(data, "firstDueAt")),
           freshnessDays: Number(data.get("freshnessDays")),
           workflow,
         });
@@ -1560,17 +1559,17 @@
         const linked = [...(this.studyForm.elements.namedItem("linkedUnitIds") as HTMLSelectElement).selectedOptions].map((option) => option.value);
         await this.service.logStudyEvent({
           profileId: String(data.get("profileId") ?? ""),
-          occurredAt: localInputToIso(String(data.get("occurredAt") ?? "")),
-          activityMode: String(data.get("activityMode")) as ActivityMode,
-          area: String(data.get("area") ?? ""),
-          task: String(data.get("task") ?? ""),
-          measure: String(data.get("measure") ?? ""),
+          occurredAt: localInputToIso(formText(data, "occurredAt")),
+          activityMode: literalChoice(formText(data, "activityMode"), ACTIVITY_MODES, "Study activity mode"),
+          area: formText(data, "area"),
+          task: formText(data, "task"),
+          measure: formText(data, "measure"),
           source: String(data.get("source") ?? ""),
           durationMinutes: Number(data.get("durationMinutes")),
-          understanding: Number(data.get("understanding")) as 1 | 2 | 3 | 4,
+          understanding: literalChoice(Number(data.get("understanding")), UNDERSTANDING_LEVELS, "Understanding"),
           linkedUnitIds: linked,
-          notes: String(data.get("notes") ?? ""),
-          origin: String(data.get("origin")) as StudyOrigin,
+          notes: formText(data, "notes"),
+          origin: literalChoice(formText(data, "origin"), STUDY_ORIGINS, "Study origin"),
         });
         this.dialogFocus.close(this.studyDialog);
         await this.renderAll();
@@ -1598,15 +1597,15 @@
       event.preventDefault();
       try {
         const data = new FormData(this.obligationForm);
-        const type = String(data.get("type")) as ObligationType;
+        const type = literalChoice(formText(data, "type"), OBLIGATION_TYPES, "Obligation type");
         const workflow = workflowSpecFromForm(this.obligationForm, type);
         await this.service.createObligation({
-          unitId: String(data.get("unitId") ?? ""),
+          unitId: formText(data, "unitId"),
           type,
           expectedMinutes: Number(data.get("expectedMinutes")),
           protocol: String(data.get("protocol") ?? ""),
           successCriteria: String(data.get("successCriteria") ?? ""),
-          dueAt: localInputToIso(String(data.get("dueAt") ?? "")),
+          dueAt: localInputToIso(formText(data, "dueAt")),
           freshnessDays: Number(data.get("freshnessDays")),
           workflow,
         });
@@ -1795,9 +1794,8 @@
       assert(this.restoreCandidateId && this.restoreSafetyProofId, "Complete the safety-copy step before restoring.");
       const candidate = this.backupController.candidate(this.restoreCandidateId);
       const treatment = candidate.payload.activeRetrieval
-        ? (this.restorePreview.querySelector<HTMLInputElement>('input[name="restore-active-treatment"]:checked')?.value as BackupActiveSessionTreatment | undefined)
+        ? literalChoice(this.restorePreview.querySelector<HTMLInputElement>('input[name="restore-active-treatment"]:checked')?.value, BACKUP_ACTIVE_SESSION_TREATMENTS, "Active retrieval restore treatment")
         : "discard";
-      assert(treatment === "restore" || treatment === "discard", "Choose how to treat the unfinished retrieval.");
       const proceed = window.confirm("Final confirmation: replace all current Revision Director records with this verified backup?");
       if (!proceed) return;
       const result = await this.backupController.restore(this.restoreCandidateId, this.restoreSafetyProofId, treatment);

@@ -33,6 +33,55 @@
     if (!condition) throw new Error(message);
   }
 
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  function requireRecord(value: unknown, label: string): Record<string, unknown> {
+    assert(isRecord(value), `${label} must be an object.`);
+    return value;
+  }
+
+  function literalChoice<const Values extends readonly (string | number)[]>(
+    value: unknown,
+    allowed: Values,
+    label: string,
+  ): Values[number] {
+    assert(allowed.some((candidate) => candidate === value), `${label} is invalid.`);
+    return value as Values[number];
+  }
+
+  function literalChoiceOrUndefined<const Values extends readonly (string | number)[]>(
+    value: unknown,
+    allowed: Values,
+  ): Values[number] | undefined {
+    return allowed.some((candidate) => candidate === value) ? value as Values[number] : undefined;
+  }
+
+  function formText(data: FormData, name: string, fallback = ""): string {
+    const value = data.get(name);
+    if (value === null) return fallback;
+    assert(typeof value === "string", `${name} must be text.`);
+    return value;
+  }
+
+  const ENTITY_STATUSES = ["active", "suspended", "archived"] as const satisfies readonly EntityStatus[];
+  const ACTIVITY_MODES = ["learn", "review", "practice", "test"] as const satisfies readonly ActivityMode[];
+  const STUDY_ORIGINS = ["manual", "study-director"] as const satisfies readonly StudyOrigin[];
+  const OBLIGATION_TYPES = ["memory-recall", "concept-reconstruction", "application-practice", "performance-practice", "relearn", "freshness-review"] as const satisfies readonly ObligationType[];
+  const RETRIEVAL_WORKFLOWS = ["recall", "reconstruction", "questions", "diagram", "answer-writing", "relearning"] as const satisfies readonly RetrievalWorkflow[];
+  const RESPONSE_MEDIA = ["in-app", "paper", "oral"] as const satisfies readonly ResponseMedium[];
+  const CUE_LEVELS = ["none", "minor", "major", "source"] as const satisfies readonly CueLevel[];
+  const RECONSTRUCTION_SHAPES = ["outline", "table", "flow", "concept-map", "sequence"] as const satisfies readonly ReconstructionShape[];
+  const ANSWER_MODES = ["outline", "full-answer"] as const satisfies readonly AnswerMode[];
+  const DIAGRAM_SURFACES = ["canvas", "paper"] as const satisfies readonly DiagramSurface[];
+  const ERROR_TYPES = ["factual-omission", "conceptual-misunderstanding", "confusion-interference", "application-failure", "answer-structure", "diagram-reconstruction", "slow-retrieval"] as const satisfies readonly ErrorType[];
+  const INACTIVE_GAP_CLASSIFICATIONS = ["focus", "break", "split", "ignore"] as const satisfies readonly InactiveGapClassification[];
+  const BACKUP_ACTIVE_SESSION_TREATMENTS = ["restore", "discard"] as const satisfies readonly BackupActiveSessionTreatment[];
+  const RUBRIC_SCORES = [0, 1, 2, 3, 4] as const;
+  const IMPORTANCE_LEVELS = [1, 2, 3] as const;
+  const UNDERSTANDING_LEVELS = [1, 2, 3, 4] as const;
+
   function nowIso(): ISODateTime {
     return new Date().toISOString();
   }
@@ -196,8 +245,7 @@
   }
 
   function validateWorkflowSpec(spec: WorkflowSpec, type: ObligationType): void {
-    const kinds = new Set<RetrievalWorkflow>(["recall", "reconstruction", "questions", "diagram", "answer-writing", "relearning"]);
-    assert(kinds.has(spec.kind), "Retrieval workflow is invalid.");
+    assert(RETRIEVAL_WORKFLOWS.includes(spec.kind), "Retrieval workflow is invalid.");
     assert(spec.prompt.trim().length >= 3, "Retrieval workflow prompt is required.");
     assert(Array.isArray(spec.checkpoints) && spec.checkpoints.length >= 1 && spec.checkpoints.length <= 20, "Add between 1 and 20 observable checkpoints.");
     assert(spec.checkpoints.every((item) => typeof item === "string" && item.trim().length >= 2 && item.trim().length <= 300), "Workflow checkpoints are invalid.");
@@ -222,21 +270,21 @@
 
   function workflowSpecFromForm(form: HTMLFormElement, type: ObligationType): WorkflowSpec {
     const data = new FormData(form);
-    const kind = String(data.get("workflowKind") ?? defaultWorkflowForType(type)) as RetrievalWorkflow;
+    const kind = literalChoice(formText(data, "workflowKind", defaultWorkflowForType(type)), RETRIEVAL_WORKFLOWS, "Retrieval workflow");
     const spec: WorkflowSpec = {
       kind,
-      prompt: String(data.get("workflowPrompt") ?? "").trim(),
-      checkpoints: String(data.get("workflowCheckpoints") ?? "").split(/\n/).map((item) => item.trim()).filter(Boolean),
-      responseMedium: String(data.get("responseMedium") ?? "in-app") as ResponseMedium,
+      prompt: formText(data, "workflowPrompt").trim(),
+      checkpoints: formText(data, "workflowCheckpoints").split(/\n/).map((item) => item.trim()).filter(Boolean),
+      responseMedium: literalChoice(formText(data, "responseMedium", "in-app"), RESPONSE_MEDIA, "Response medium"),
     };
     if (kind === "questions") {
       spec.targetCount = Number(data.get("targetCount"));
-      spec.questionSetRef = String(data.get("questionSetRef") ?? "").trim();
+      spec.questionSetRef = formText(data, "questionSetRef").trim();
     }
-    if (kind === "reconstruction") spec.reconstructionShape = String(data.get("reconstructionShape") ?? "outline") as ReconstructionShape;
-    if (kind === "diagram") spec.diagramSurface = String(data.get("diagramSurface") ?? "canvas") as DiagramSurface;
+    if (kind === "reconstruction") spec.reconstructionShape = literalChoice(formText(data, "reconstructionShape", "outline"), RECONSTRUCTION_SHAPES, "Reconstruction shape");
+    if (kind === "diagram") spec.diagramSurface = literalChoice(formText(data, "diagramSurface", "canvas"), DIAGRAM_SURFACES, "Diagram surface");
     if (kind === "answer-writing") {
-      spec.answerMode = String(data.get("answerMode") ?? "full-answer") as AnswerMode;
+      spec.answerMode = literalChoice(formText(data, "answerMode", "full-answer"), ANSWER_MODES, "Answer mode");
       spec.timeLimitMinutes = Number(data.get("timeLimitMinutes"));
       spec.wordLimit = Number(data.get("wordLimit"));
     }
@@ -268,7 +316,7 @@
   }
 
   function updateWorkflowFields(form: HTMLFormElement): void {
-    const kind = (form.elements.namedItem("workflowKind") as HTMLSelectElement).value as RetrievalWorkflow;
+    const kind = literalChoice((form.elements.namedItem("workflowKind") as HTMLSelectElement).value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
     form.querySelectorAll<HTMLElement>("[data-workflow-field]").forEach((field) => {
       field.hidden = field.dataset["workflowField"] !== kind;
     });

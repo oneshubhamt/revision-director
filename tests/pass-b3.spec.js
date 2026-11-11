@@ -120,6 +120,11 @@ const { webcrypto } = require('crypto');
   attacker.postMessage({ type: 'heartbeat', tabId: 'forged-tab', expiresAt: Date.now() + 10_000 });
   await delay(30);
   check(raceC.canMutate(), 'Unverified heartbeat message demoted the canonical owner');
+  attacker.postMessage(null);
+  attacker.postMessage({ type: 'heartbeat', tabId: 42, expiresAt: Date.now() + 10_000 });
+  attacker.postMessage({ type: 'unknown', tabId: 'forged-tab' });
+  await delay(30);
+  check(raceC.canMutate(), 'Malformed ownership message changed canonical ownership');
   attacker.close();
   raceA.dispose(); raceB.dispose(); raceC.dispose();
 

@@ -148,9 +148,10 @@
       const raw = safeLocalStorageGet(REVIEW_OWNER_STORAGE_KEY);
       if (!raw) return undefined;
       try {
-        const value = JSON.parse(raw) as Partial<ReviewOwnershipLease>;
-        if (value.version !== 1 || typeof value.tabId !== "string" || typeof value.claimId !== "string" || !Number.isFinite(value.expiresAt) || typeof value.updatedAt !== "string") return undefined;
-        return { version: 1, tabId: value.tabId, claimId: value.claimId, expiresAt: Number(value.expiresAt), updatedAt: value.updatedAt };
+        const parsed: unknown = JSON.parse(raw);
+        if (!isRecord(parsed)) return undefined;
+        if (parsed["version"] !== 1 || typeof parsed["tabId"] !== "string" || typeof parsed["claimId"] !== "string" || !Number.isFinite(parsed["expiresAt"]) || typeof parsed["updatedAt"] !== "string") return undefined;
+        return { version: 1, tabId: parsed["tabId"], claimId: parsed["claimId"], expiresAt: Number(parsed["expiresAt"]), updatedAt: parsed["updatedAt"] };
       } catch { return undefined; }
     }
 
@@ -241,9 +242,21 @@
       if (!("BroadcastChannel" in window)) return;
       try {
         this.channel = new BroadcastChannel(REVIEW_OWNER_CHANNEL);
-        this.channel.onmessage = (event: MessageEvent<ReviewOwnershipMessage>) => {
-          const message = event.data;
-          if (!message || message.tabId === this.tabId) return;
+        this.channel.onmessage = (event: MessageEvent<unknown>) => {
+          if (!isRecord(event.data)) return;
+          const type = event.data["type"];
+          const tabId = event.data["tabId"];
+          if (!literalChoiceOrUndefined(type, ["heartbeat", "release", "takeover-request", "takeover-ready"] as const) || typeof tabId !== "string" || tabId === this.tabId) return;
+          const requestId = event.data["requestId"];
+          const expiresAt = event.data["expiresAt"];
+          if (requestId !== undefined && typeof requestId !== "string") return;
+          if (expiresAt !== undefined && !Number.isFinite(expiresAt)) return;
+          const message: ReviewOwnershipMessage = {
+            type,
+            tabId,
+            ...(requestId !== undefined ? { requestId } : {}),
+            ...(expiresAt !== undefined ? { expiresAt: Number(expiresAt) } : {}),
+          };
           if (message.type === "takeover-request" && message.requestId) { void this.releaseForTakeover(message.requestId); return; }
           if (message.type === "takeover-ready" && message.requestId && this.takeoverPending?.requestId === message.requestId) { this.takeoverPending.resolve(true); return; }
           if (message.type === "heartbeat" && Number(message.expiresAt) > Date.now()) {
