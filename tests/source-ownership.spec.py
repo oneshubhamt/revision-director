@@ -43,7 +43,11 @@ texts = [path.read_text() for path in paths]
 assembled = "".join(texts)
 
 check("manifest schema", manifest.get("schemaVersion") == 1)
-check("manifest entrypoint", manifest.get("entrypoint") == "generated/revision-director.combined.ts")
+check("manifest runtime assembly", manifest.get("runtime") == {
+    "assembly": "manifest-ordered-emitted-js",
+    "boundary": "build-owned-iife",
+    "output": "../dist/app.js",
+} and "entrypoint" not in manifest)
 check("nineteen ownership parts", len(parts) == 19)
 check("contiguous order", [item.get("order") for item in parts] == list(range(19)))
 check("expected ownership names", [path.name for path in paths] == EXPECTED_NAMES)
@@ -51,8 +55,9 @@ check("all source parts exist", all(path.is_file() for path in paths))
 check("all source parts are under source/app", all(path.parent == SOURCE / "app" for path in paths))
 check("all source parts have layer descriptions", all(isinstance(item.get("layer"), str) and item["layer"].strip() for item in parts))
 check("legacy monolith absent", not (SOURCE / "revision-director.va7.ts").exists())
-check("sealed IIFE opening", assembled.lstrip().startswith('(() => {\n  "use strict";'))
-check("sealed IIFE closure", assembled.rstrip().endswith("void boot();\n})();"))
+check("source owns no IIFE opening", not texts[0].lstrip().startswith("(() => {"))
+check("source owns no IIFE closure", not texts[-1].rstrip().endswith("})();"))
+check("bootstrap remains explicit", texts[-1].rstrip().endswith("void boot();"))
 check("no source modules", all(not re.search(r"^\s*(?:import|export)(?:\s|\{)", text, re.M) for text in texts))
 check("runtime boundary owned", "EXACT ts-fsrs 6.0.0 / FSRS-7 CONTRACT" in texts[0])
 check("presentation engine owned", "interface PresentationManifest" in texts[1] and "function installPresentationKernel" in texts[1])
@@ -76,7 +81,10 @@ subprocess.run([sys.executable, str(ROOT / "build/build.py")], check=True)
 check("compiled runtime present", (ROOT / "dist/app.js").is_file() and (ROOT / "dist/app.js").stat().st_size > 0)
 check("deployable HTML present", (ROOT / "index.html").is_file() and (ROOT / "index.html").stat().st_size > 0)
 check("generated composite removed", not (ROOT / "build/generated/revision-director.combined.ts").exists())
-check("strict compile target retained", '"strict": true' in (SOURCE / "tsconfig.json").read_text())
-check("TypeScript 7 single-entry compile retained", all(token in (SOURCE / "tsconfig.json").read_text() for token in ['"module": "preserve"', '"rootDir": "../build/generated"', '"outDir": "../build/generated-js"', '"../build/generated/revision-director.combined.ts"']))
+check("ephemeral compiler output removed", not (ROOT / "build/generated-js").exists())
+tsconfig = json.loads((SOURCE / "tsconfig.json").read_text())
+compiler = tsconfig.get("compilerOptions", {})
+check("strict compile target retained", compiler.get("strict") is True and compiler.get("noEmitOnError") is True)
+check("TypeScript 7 real-source compile retained", tsconfig.get("include") == ["app/*.ts"] and compiler.get("module") == "preserve" and compiler.get("moduleDetection") == "legacy" and compiler.get("rootDir") == "." and compiler.get("outDir") == "../build/generated-js")
 
 print(f"PASS {len(checks)} source-ownership checks")
