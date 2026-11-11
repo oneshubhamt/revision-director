@@ -332,8 +332,10 @@
     desiredRetention: number,
   ): number | undefined {
     if (obligation.type !== "memory-recall" || !obligation.policyState.fsrsCard) return undefined;
+    const projection = obligation.policyState.fsrsCard;
+    if (projection.reps === 0 || !projection.lastReviewAt) return undefined;
     const reviews = memoryReviewObservationsFor(obligation.id, evidenceEvents);
-    return revisionSchedulerPort(desiredRetention).retrievability(obligation.policyState.fsrsCard, reviews, reference);
+    return revisionSchedulerPort(desiredRetention).retrievability(projection, reviews, reference);
   }
 
   function finalMemoryExamDeadline(item: JoinedObligation): Date | undefined {
