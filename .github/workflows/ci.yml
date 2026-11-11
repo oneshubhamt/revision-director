@@ -202,10 +202,10 @@ jobs:
       - name: Build with pinned TypeScript 7
         run: npm run build
 
-      - name: Install Playwright
+      - name: Install Playwright harness
         run: |
           python3 -m pip install --disable-pip-version-check playwright
-          python3 -m playwright install --with-deps chromium
+          test -x /usr/bin/chromium
 
       - name: Pass B2 durability gate
         run: python3 tests/pass-b2-browser.spec.py
