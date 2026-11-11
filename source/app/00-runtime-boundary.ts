@@ -1,9 +1,8 @@
-(() => {
-  "use strict";
 
   /* Revision Director VA7.1 Pass E1 extension runtime.
-   * One sealed TypeScript monolith with private domain, policy, persistence,
-   * application and UI layers. Only the frozen, capability-versioned RevisionDirector API is public.
+   * Maintained as independently compilable TypeScript source parts sharing one
+   * script namespace. The build seals their emitted JavaScript inside one IIFE.
+   * Only the frozen, capability-versioned RevisionDirector API is public.
    */
 
   /* ==========================================================================

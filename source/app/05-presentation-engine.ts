@@ -57,7 +57,7 @@
     validatePublicTokens(): boolean;
   }
 
-  const EMBEDDED_PRESENTATION_MANIFEST: unknown = /*__RD_PRESENTATION_MANIFEST__*/;
+  const EMBEDDED_PRESENTATION_MANIFEST: unknown = "__RD_PRESENTATION_MANIFEST__";
   const PRESENTATION_KERNEL_SYMBOL = Symbol.for("revisionDirector.presentationKernel.v1");
   const PRESENTATION_ID_PATTERN = /^[a-z][a-z0-9-]{0,40}$/;
   const PRESENTATION_AXES: readonly PresentationAxis[] = Object.freeze([

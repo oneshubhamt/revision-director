@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "entrypoint": "generated/revision-director.combined.ts",
+  "entrypoint": "dist/app.js",
   "parts": [
     {
       "order": 0,
       "path": "app/00-runtime-boundary.ts",
-      "layer": "Strict IIFE boundary, exact ts-fsrs runtime contract and global capture."
+      "layer": "FSRS runtime contract, vendored-global capture and shared script namespace."
     },
     {
       "order": 1,
@@ -95,7 +95,7 @@
     {
       "order": 18,
       "path": "app/60-public-bridge-bootstrap.ts",
-      "layer": "Validated public bridge, boot sequence and IIFE closure."
+      "layer": "Validated public bridge and boot sequence; the build owns the outer sealed IIFE."
     }
   ]
 }
