@@ -79,6 +79,9 @@ check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound')
   };
   check(service.validateBackup(emptyBackup).profiles.length === 0, 'Clean empty production backup was rejected');
   mustFail(() => service.validateBackup({...emptyBackup, format:'revision-director-va7-1'}), 'Non-current backup identity was accepted');
+  mustFail(() => service.validateBackup({...emptyBackup, profiles:[null]}), 'Non-object backup profile was accepted');
+  mustFail(() => service.validateBackup({...emptyBackup, profiles:'not-an-array'}), 'Non-array backup collection was accepted');
   mustFail(() => service.validateBackup({...emptyBackup, settings:{...emptyBackup.settings, schemaVersion:2}}), 'Unsupported settings schema was accepted');
+  mustFail(() => service.validateBackup({...emptyBackup, activeRetrieval:42}), 'Non-object active retrieval payload was accepted');
   console.log(`PASS ${checks} Pass A2 production-contract and storage-facade checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

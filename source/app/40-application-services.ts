@@ -908,15 +908,22 @@
     }
 
     validateBackup(input: unknown): BackupPayload {
-      assert(typeof input === "object" && input !== null, "Backup must be an object.");
-      const candidate = input as Partial<BackupPayload>;
-      assert(candidate.format === BACKUP_FORMAT && candidate.schemaVersion === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
-      assert(candidate.appVersion === APP_VERSION, "This backup was not created by the current Revision Director build.");
-      assert(Array.isArray(candidate.profiles) && Array.isArray(candidate.nodes) && Array.isArray(candidate.units), "Backup collections are missing.");
-      assert(Array.isArray(candidate.studyEvents) && Array.isArray(candidate.obligations) && Array.isArray(candidate.evidenceEvents), "Backup history is missing.");
-      assert(Array.isArray(candidate.chunks) && Array.isArray(candidate.dailyPlans), "Backup planning history is missing.");
-      assert(typeof candidate.settings === "object" && candidate.settings !== null, "Backup settings are missing.");
-      assert(candidate.activeRetrieval === null || typeof candidate.activeRetrieval === "object", "Backup active retrieval is invalid.");
+      const candidate = requireRecord(input, "Backup");
+      assert(candidate["format"] === BACKUP_FORMAT && candidate["schemaVersion"] === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
+      assert(candidate["appVersion"] === APP_VERSION, "This backup was not created by the current Revision Director build.");
+
+      const profiles = canonicalDocumentArray("profile", candidate["profiles"], "Backup profiles");
+      const nodes = canonicalDocumentArray("node", candidate["nodes"], "Backup knowledge nodes");
+      const units = canonicalDocumentArray("unit", candidate["units"], "Backup knowledge units");
+      const studyEvents = canonicalDocumentArray("study-event", candidate["studyEvents"], "Backup study events");
+      const obligations = canonicalDocumentArray("obligation", candidate["obligations"], "Backup obligations");
+      const evidenceEvents = canonicalDocumentArray("evidence-event", candidate["evidenceEvents"], "Backup evidence events");
+      const chunks = canonicalDocumentArray("chunk", candidate["chunks"], "Backup chunks");
+      const dailyPlans = canonicalDocumentArray("daily-plan", candidate["dailyPlans"], "Backup daily plans");
+      const settings = canonicalDocument("settings", candidate["settings"]);
+      const activeInput = candidate["activeRetrieval"];
+      assert(activeInput === null || isRecord(activeInput), "Backup active retrieval is invalid.");
+      const activeRetrieval = activeInput === null ? null : canonicalDocument("active-retrieval", activeInput);
 
       const uniqueMap = <T extends { id: string }>(values: T[], label: string): Map<string, T> => {
         const map = new Map<string, T>();
@@ -933,16 +940,6 @@
       const validRatingValue = (value: unknown, label: string): void => {
         assert(value === 1 || value === 2 || value === 3 || value === 4, `${label} has an invalid rating.`);
       };
-      const profiles = candidate.profiles as ExamProfile[];
-      const nodes = candidate.nodes as KnowledgeNode[];
-      const units = candidate.units as KnowledgeUnit[];
-      const studyEvents = candidate.studyEvents as StudyEvent[];
-      const obligations = candidate.obligations as RevisionObligation[];
-      const evidenceEvents = candidate.evidenceEvents as EvidenceEvent[];
-      const chunks = candidate.chunks as ObligationChunk[];
-      const dailyPlans = candidate.dailyPlans as DailyPlanRecord[];
-      const settings = candidate.settings as AppSettings;
-      const activeRetrieval = candidate.activeRetrieval as ActiveRetrievalSession | null;
       const profileMap = uniqueMap(profiles, "Profiles");
       const nodeMap = uniqueMap(nodes, "Knowledge nodes");
       const unitMap = uniqueMap(units, "Knowledge units");
@@ -1244,17 +1241,17 @@
       return {
         format: BACKUP_FORMAT,
         schemaVersion: BACKUP_SCHEMA_VERSION,
-        exportedAt: canonicalIso(candidate.exportedAt as ISODateTime, "Backup export date"),
-        appVersion: canonicalId(candidate.appVersion as string, "Backup application version"),
-        profiles: profiles.map(canonicalExamProfile),
-        nodes: nodes.map(canonicalKnowledgeNode),
-        units: units.map(canonicalKnowledgeUnit),
-        studyEvents: studyEvents.map(canonicalStudyEvent),
-        obligations: obligations.map(canonicalRevisionObligation),
-        evidenceEvents: evidenceEvents.map(canonicalEvidenceEvent),
-        chunks: chunks.map(canonicalObligationChunk),
-        dailyPlans: dailyPlans.map(canonicalDailyPlanRecord),
-        settings: canonicalAppSettings(settings),
+        exportedAt: canonicalIso(requiredString(candidate["exportedAt"], "Backup export date"), "Backup export date"),
+        appVersion: canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version"),
+        profiles,
+        nodes,
+        units,
+        studyEvents,
+        obligations,
+        evidenceEvents,
+        chunks,
+        dailyPlans,
+        settings,
         activeRetrieval: canonicalActive,
       };
     }

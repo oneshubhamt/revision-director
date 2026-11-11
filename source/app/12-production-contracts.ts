@@ -1,5 +1,18 @@
-  type DurableDocument = ExamProfile | KnowledgeNode | KnowledgeUnit | StudyEvent | RevisionObligation | EvidenceEvent | ObligationChunk | DailyPlanRecord | AppSettings | AppMetadata | ActiveRetrievalSession;
-  type DurableDocumentKind = "profile" | "node" | "unit" | "study-event" | "obligation" | "evidence-event" | "chunk" | "daily-plan" | "settings" | "metadata" | "active-retrieval";
+  interface DurableDocumentKindMap {
+    profile: ExamProfile;
+    node: KnowledgeNode;
+    unit: KnowledgeUnit;
+    "study-event": StudyEvent;
+    obligation: RevisionObligation;
+    "evidence-event": EvidenceEvent;
+    chunk: ObligationChunk;
+    "daily-plan": DailyPlanRecord;
+    settings: AppSettings;
+    metadata: AppMetadata;
+    "active-retrieval": ActiveRetrievalSession;
+  }
+  type DurableDocument = DurableDocumentKindMap[keyof DurableDocumentKindMap];
+  type DurableDocumentKind = keyof DurableDocumentKindMap;
 
   function canonicalId(value: string, label: string): string {
     assert(typeof value === "string", `${label} must be a string.`);
@@ -472,29 +485,50 @@
     };
   }
 
+  function checkedDocumentInput<T extends DurableDocument>(input: unknown, label: string): T {
+    return requireRecord(input, label) as unknown as T;
+  }
+
+  function canonicalDocument(kind: "profile", input: unknown): ExamProfile;
+  function canonicalDocument(kind: "node", input: unknown): KnowledgeNode;
+  function canonicalDocument(kind: "unit", input: unknown): KnowledgeUnit;
+  function canonicalDocument(kind: "study-event", input: unknown): StudyEvent;
+  function canonicalDocument(kind: "obligation", input: unknown): RevisionObligation;
+  function canonicalDocument(kind: "evidence-event", input: unknown): EvidenceEvent;
+  function canonicalDocument(kind: "chunk", input: unknown): ObligationChunk;
+  function canonicalDocument(kind: "daily-plan", input: unknown): DailyPlanRecord;
+  function canonicalDocument(kind: "settings", input: unknown): AppSettings;
+  function canonicalDocument(kind: "metadata", input: unknown): AppMetadata;
+  function canonicalDocument(kind: "active-retrieval", input: unknown): ActiveRetrievalSession;
+  function canonicalDocument(kind: DurableDocumentKind, input: unknown): DurableDocument {
+    if (kind === "profile") return canonicalExamProfile(checkedDocumentInput<ExamProfile>(input, "Exam profile"));
+    if (kind === "node") return canonicalKnowledgeNode(checkedDocumentInput<KnowledgeNode>(input, "Knowledge node"));
+    if (kind === "unit") return canonicalKnowledgeUnit(checkedDocumentInput<KnowledgeUnit>(input, "Knowledge unit"));
+    if (kind === "study-event") return canonicalStudyEvent(checkedDocumentInput<StudyEvent>(input, "Study event"));
+    if (kind === "obligation") return canonicalRevisionObligation(checkedDocumentInput<RevisionObligation>(input, "Revision obligation"));
+    if (kind === "evidence-event") return canonicalEvidenceEvent(checkedDocumentInput<EvidenceEvent>(input, "Evidence event"));
+    if (kind === "chunk") return canonicalObligationChunk(checkedDocumentInput<ObligationChunk>(input, "Obligation chunk"));
+    if (kind === "daily-plan") return canonicalDailyPlanRecord(checkedDocumentInput<DailyPlanRecord>(input, "Daily plan"));
+    if (kind === "settings") return canonicalAppSettings(checkedDocumentInput<AppSettings>(input, "Application settings"));
+    if (kind === "active-retrieval") return canonicalActiveRetrievalSession(checkedDocumentInput<ActiveRetrievalSession>(input, "Active retrieval session"));
+    return canonicalAppMetadata(checkedDocumentInput<AppMetadata>(input, "Application metadata"));
+  }
+
+  function canonicalDocumentArray<K extends DurableDocumentKind>(
+    kind: K,
+    input: unknown,
+    label: string,
+  ): DurableDocumentKindMap[K][] {
+    return requiredArray(input, label).map((value) => canonicalDocument(kind, value) as DurableDocumentKindMap[K]);
+  }
+
   function canonicalActiveRetrievalEnvelope(input: unknown): ActiveRetrievalRecoveryEnvelope {
     const value = requireRecord(input, "Active retrieval recovery envelope");
     assert(value["format"] === ACTIVE_RETRIEVAL_RECOVERY_FORMAT && value["schemaVersion"] === 1, "Active retrieval recovery envelope is invalid.");
-    const session = value["session"];
-    assert(isRecord(session), "Active retrieval recovery session is invalid.");
     return {
       format: ACTIVE_RETRIEVAL_RECOVERY_FORMAT,
       schemaVersion: 1,
       savedAt: canonicalIso(requiredString(value["savedAt"], "Recovery save date"), "Recovery save date"),
-      session: canonicalActiveRetrievalSession(session as unknown as ActiveRetrievalSession),
+      session: canonicalDocument("active-retrieval", value["session"]),
     };
-  }
-
-  function canonicalDocument(kind: DurableDocumentKind, value: DurableDocument): DurableDocument {
-    if (kind === "profile") return canonicalExamProfile(value as ExamProfile);
-    if (kind === "node") return canonicalKnowledgeNode(value as KnowledgeNode);
-    if (kind === "unit") return canonicalKnowledgeUnit(value as KnowledgeUnit);
-    if (kind === "study-event") return canonicalStudyEvent(value as StudyEvent);
-    if (kind === "obligation") return canonicalRevisionObligation(value as RevisionObligation);
-    if (kind === "evidence-event") return canonicalEvidenceEvent(value as EvidenceEvent);
-    if (kind === "chunk") return canonicalObligationChunk(value as ObligationChunk);
-    if (kind === "daily-plan") return canonicalDailyPlanRecord(value as DailyPlanRecord);
-    if (kind === "settings") return canonicalAppSettings(value as AppSettings);
-    if (kind === "active-retrieval") return canonicalActiveRetrievalSession(value as ActiveRetrievalSession);
-    return canonicalAppMetadata(value as AppMetadata);
   }

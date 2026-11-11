@@ -63,6 +63,11 @@
     return value;
   }
 
+  function requiredArray(value: unknown, label: string): unknown[] {
+    assert(Array.isArray(value), `${label} must be an array.`);
+    return value;
+  }
+
   function formText(data: FormData, name: string, fallback = ""): string {
     const value = data.get(name);
     if (value === null) return fallback;
