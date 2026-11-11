@@ -7,7 +7,8 @@
     "node": ">=26.13.0 <27"
   },
   "scripts": {
-    "optimize": "node optimize.mjs"
+    "optimize": "node optimize.mjs",
+    "smoke": "node smoke.mjs"
   },
   "dependencies": {
     "@open-spaced-repetition/binding": "0.6.1"
