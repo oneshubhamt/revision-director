@@ -98,9 +98,7 @@ def active_session(page):
 def restore_fixture_d2(page, frame, fixture) -> None:
     frame.locator("#import-backup").set_input_files([])
     frame.locator("#import-backup").set_input_files(str(fixture))
-    frame.wait_for_timeout(900)
-    if not frame.locator("#restore-dialog").is_visible():
-        raise AssertionError("Restore preview did not open")
+    wait_until(frame, lambda: frame.locator("#restore-dialog").is_visible(), timeout=8000)
     with TemporaryDirectory() as tmpdir:
         with page.expect_download() as info:
             frame.locator('[data-action="create-restore-safety"]').click()
