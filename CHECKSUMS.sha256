@@ -39,7 +39,7 @@ bc35afed0272eab3da0355c34acd356c274e5261a377a0938832fa689040c9db  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 c2702d0b0548911f0b4be5a294ced0151b9295acf849eebec6b555c19de5d07a  ./tests/backup_fixture_codec.py
 be956fda4232345dce155347da82b2f0560e22ffaff0a91b7e3ba1e1127f981f  ./tests/browser-qa.spec.py
-9ea9f7c8964ef6fb31a287b2a7b839970a82b40a0828650c1e6c9b52848a0b51  ./tests/build-integrity.spec.py
+2a6247738f5498ed1cad515f6fe451809751a64a6187aecb6931de9134f0b17d  ./tests/build-integrity.spec.py
 fa4bd4c92b454bdca795924c8f275ab864b0028d9750576f18914a06888f9224  ./tests/fixtures/browser-baseline.json
 8f0b3a476ffb0602cd0b15d9f5925b4794cb82f1f45434387673b472bf6a9ef3  ./tests/fixtures/browser-baseline.rdbackup
 d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-qa-supplement.spec.py
@@ -47,7 +47,7 @@ d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-q
 932041b8f14f702da88362cec73449bd27e4f3509a4d340bf6e4662a10ad8431  ./tests/kernel-policy.spec.js
 e00d63f7185532678f16b1046e117284cdc5d75f39f004f510fa20d3f5d942a0  ./tests/pass-a2.spec.js
 9c9891167e4d197d6193ee6c66e05d6a6272c3627953912feb1d3b5d911e1f2a  ./tests/pass-b1-browser.spec.py
-1c9cd48ff01869981eb8382a070119d413373bcc291cc9a85c02c7327167e40c  ./tests/pass-b1.spec.js
+dd38b5383d968a41af915ac9ae74eff17ab816a8c8f32e73bc2530770bb6aef3  ./tests/pass-b1.spec.js
 7ca06a8f54a49bf9373e17d382c27189eb60c3781d1807cc21301347586ee14c  ./tests/pass-b2-browser.spec.py
 8b148bc0c1dd2d532231985090825f5e7d6142660bfc6a9142f427090074c632  ./tests/pass-b2.spec.js
 8073a927407d8bb8e366ff922dc0a83a52069db492f5d49f41f59261910f1214  ./tests/pass-b3-browser.spec.py
@@ -60,7 +60,7 @@ dc02fca37a1878f665ddf3a74ea25e52888c5a9401264db2c92a86d29ce0f5a9  ./tests/pass-c
 7bf6756c21c4dbc37b1162baaded951dd05d747f3e84e83246d13b3f5b3c0cf6  ./tests/pass-d-qa.spec.js
 7212529e7acd8cdbd10fded6440c672e3baf7c9a717cd7d153634f2cfe8a18a4  ./tests/pass-d.spec.js
 e72a3be99a936adbb9355432d25b6aaf5ce83d05e1c6c594053041ada61901ca  ./tests/pass-d1-browser.spec.py
-497a147bec1c3a531a73e27926d292ff6320db2fe22834dcdd725e18c8803347  ./tests/pass-d1-codec.spec.js
+662dc7fdcfa8a9b4c794e0ec8d11c2a975195e064e69630f0cc256a2812e7a6a  ./tests/pass-d1-codec.spec.js
 cb2771aefa631ee48dbd3e73ed47dfa1837bbdc6b814f6c4798b8c86f28e4f69  ./tests/pass-d2-browser.spec.py
 c31b4b0e3e460b8ef9249d45a461132814ec1036551baa2e2e77341d603e22e2  ./tests/pass-d2-controller.spec.js
 799f8019b23280f3a7e34b782ae85c1a28f1ed9aa048971a61d8c4afa0ecaaa2  ./tests/pass-e1-browser.spec.py
