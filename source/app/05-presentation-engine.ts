@@ -24,7 +24,6 @@
     contractVersion: number;
     namespace: string;
     public: Record<string, readonly string[]>;
-    aliases: Readonly<Record<string, string>>;
   }
 
   interface PresentationManifest {
@@ -126,11 +125,10 @@
     const profilesSource = presentationRecord(source?.profiles);
     const tokensSource = presentationRecord(source?.tokens);
     const publicSource = presentationRecord(tokensSource?.public);
-    const aliasesSource = presentationRecord(tokensSource?.aliases);
     const breakpointsSource = presentationRecord(source?.breakpoints);
     const invariantsSource = presentationRecord(source?.invariants);
     const stateMeanings = presentationRecord(invariantsSource?.semanticStateMeaning);
-    if (source?.format !== "revision-director.presentation-manifest" || source.version !== 1 || !defaults || !profilesSource || !tokensSource || !publicSource || !aliasesSource || !breakpointsSource || !invariantsSource || !stateMeanings) {
+    if (source?.format !== "revision-director.presentation-manifest" || source.version !== 1 || !defaults || !profilesSource || !tokensSource || !publicSource || !breakpointsSource || !invariantsSource || !stateMeanings) {
       throw new Error("Revision Director presentation manifest is incompatible.");
     }
     const contractVersion = Number(tokensSource.contractVersion);
@@ -160,11 +158,6 @@
       }
       publicTokens[group] = Object.freeze(tokens);
     }
-    const aliases: Record<string, string> = {};
-    for (const [semantic, primitive] of Object.entries(aliasesSource)) {
-      if (!tokenSet.has(semantic) || !String(primitive).startsWith("--")) throw new Error(`Presentation alias is invalid: ${semantic}`);
-      aliases[semantic] = String(primitive);
-    }
     const breakpoints: Record<string, number> = {};
     for (const [name, candidate] of Object.entries(breakpointsSource)) {
       const value = Number(candidate);
@@ -187,7 +180,6 @@
         contractVersion,
         namespace,
         public: publicTokens,
-        aliases,
       },
       invariants: {
         defaultProfileImmutable: true,

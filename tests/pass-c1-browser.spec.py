@@ -53,13 +53,13 @@ def verify_kernel(page) -> None:
       const kernel=window[Symbol.for('revisionDirector.presentationKernel.v1')];
       const profile=kernel.manifest.profiles['revision-current'];
       const styles=getComputedStyle(document.documentElement);
-      const aliases=kernel.manifest.tokens.aliases;
-      const aliasParity=Object.entries(aliases).every(([semantic,primitive])=>styles.getPropertyValue(semantic).trim()===styles.getPropertyValue(primitive).trim());
+      const legacyPrimitives=['--bg','--s1','--s2','--s3','--b1','--acc','--acc2','--acc3','--txt','--txt2','--mut','--urg','--warn','--ok','--f-mono','--f-cond','--f-body','--f-display','--line-soft','--line-mid','--line-accent','--surface','--accent-soft','--danger-soft','--cyan-soft','--shadow','--radius','--sidebar'];
+      const legacyPrimitiveLeak=legacyPrimitives.some(token=>styles.getPropertyValue(token).trim());
       const same=kernel.registerPresentation({...profile});
       const replacement=kernel.registerPresentation({...profile,label:'Replacement'});
       return {
         format:kernel.format,version:kernel.version,frozen:Object.isFrozen(kernel)&&Object.isFrozen(kernel.manifest)&&Object.isFrozen(profile),
-        defaultId:kernel.manifest.defaults.presentation,active:kernel.activePresentationId(),tokens:kernel.validatePublicTokens(),aliasParity,same,replacement,
+        defaultId:kernel.manifest.defaults.presentation,active:kernel.activePresentationId(),tokens:kernel.validatePublicTokens(),legacyPrimitiveLeak,same,replacement,
         listed:kernel.listPresentations().map(item=>item.id),storageKey:kernel.manifest.storageKey,
         namedLeak:Object.prototype.hasOwnProperty.call(window,'RevisionDirectorPresentation')
       };
@@ -67,7 +67,7 @@ def verify_kernel(page) -> None:
     check(summary['format']=='revision-director.presentation-kernel' and summary['version']==1, 'Browser kernel identity is wrong')
     check(summary['frozen'], 'Browser kernel or default profile is mutable')
     check(summary['defaultId']=='revision-current' and summary['active']=='revision-current', 'Browser default presentation changed')
-    check(summary['tokens'] and summary['aliasParity'], 'Semantic token contract is incomplete or mismatched')
+    check(summary['tokens'] and not summary['legacyPrimitiveLeak'], 'Semantic token contract is incomplete or legacy primitives remain')
     check(summary['same'] is True and summary['replacement'] is False, 'Immutable default registration contract failed')
     check(summary['listed']==['revision-current'], 'Unexpected presentation profile is bundled')
     check(summary['storageKey']=='revisionDirector.presentation.v1', 'Presentation storage key changed')

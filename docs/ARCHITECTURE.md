@@ -45,7 +45,7 @@ The manifest, rather than this prose, is authoritative for exact filenames and o
 
 `source/presentation/revision-director.presentation.json` is the canonical presentation contract. The build validates it and embeds the same state for pre-paint and runtime use.
 
-The built-in `revision-current` profile owns independent typography, shape, material, depth, density, responsive, motion and chart axes. Semantic `--rd-` tokens expose the stable presentation vocabulary. Invalid stored presentation state falls back to the immutable built-in profile.
+The built-in `revision-current` profile owns independent typography, shape, material, depth, density, responsive, motion and chart axes. The CSS consumes the semantic `--rd-` token vocabulary directly; there is no legacy primitive-token alias layer. Invalid stored presentation state falls back to the immutable built-in profile.
 
 ## Application services and commit integrity
 

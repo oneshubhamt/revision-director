@@ -56,6 +56,8 @@ check("presentation prepaint before CSS", html.index('data-rd-presentation-prepa
 check("presentation kernel source", "revision-director.presentation-kernel" in ts and "installPresentationKernel" in ts and "/*__RD_PRESENTATION_MANIFEST__*/" in ts)
 check("immutable presentation default", '"immutable":true' in html and 'data-presentation="revision-current"' in shell)
 check("semantic presentation token namespace", "--rd-color-canvas" in css and "--rd-font-body" in css and "--rd-layout-sidebar-width" in css)
+presentation_manifest_text = (ROOT / "source/presentation/revision-director.presentation.json").read_text()
+check("direct semantic presentation tokens", '"aliases"' not in presentation_manifest_text and all(token not in css for token in ["var(--bg)", "var(--s1)", "var(--acc)", "var(--txt)", "var(--line-soft)", "var(--sidebar)"]))
 check("delegated UI action runtime", all(token in ts for token in [
     'document.addEventListener("click"', 'document.addEventListener("submit"',
     'document.addEventListener("input"', 'document.addEventListener("change"',
