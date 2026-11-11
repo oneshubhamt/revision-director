@@ -63,6 +63,14 @@ jobs:
           python3 tests/html-sanity.spec.py
           python3 tests/source-ownership.spec.py
 
+      - name: Non-browser JavaScript regressions
+        run: |
+          set -euo pipefail
+          for f in tests/*.spec.js; do
+            echo "==> $f"
+            node "$f"
+          done
+
       - name: Pass B2 durability gate
         run: python3 tests/pass-b2-browser.spec.py
 
@@ -75,14 +83,6 @@ jobs:
             esac
             echo "==> $f"
             python3 "$f"
-          done
-
-      - name: Non-browser JavaScript regressions
-        run: |
-          set -euo pipefail
-          for f in tests/*.spec.js; do
-            echo "==> $f"
-            node "$f"
           done
 
       - name: Commit generated artifacts and checksum refresh
