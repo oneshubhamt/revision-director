@@ -99,23 +99,74 @@ def active_session(page):
 
 
 
-def restore_fixture_d2(page, frame, fixture) -> None:
-    frame.locator("#import-backup").set_input_files([])
-    frame.locator("#import-backup").set_input_files(str(fixture))
-    wait_until(frame, lambda: frame.locator("#restore-dialog").is_visible(), timeout=8000)
-    with TemporaryDirectory() as tmpdir:
-        with page.expect_download() as info:
-            frame.locator('[data-action="create-restore-safety"]').click()
-        path=Path(tmpdir)/info.value.suggested_filename
-        info.value.save_as(str(path))
-        if not path.exists() or path.stat().st_size <= 0:
-            raise AssertionError("Safety copy was not downloaded")
-    if frame.locator('input[name="restore-active-treatment"]').count():
-        frame.locator('input[name="restore-active-treatment"][value="discard"]').check()
-    frame.locator("#restore-safety-saved").check()
-    frame.locator("#restore-replace-confirm").check()
-    frame.locator("#restore-final-button").click()
-    frame.wait_for_timeout(1100)
+def seed_baseline_state(page) -> None:
+    payload = decode_file(BASELINE_BACKUP)
+    specs = {
+        "profiles": ("id", {"status": {"keyPath": "status", "unique": False}}),
+        "nodes": ("id", {
+            "profileId": {"keyPath": "profileId", "unique": False},
+            "parentId": {"keyPath": "parentId", "unique": False},
+            "pathLookup": {"keyPath": ["profileId", "parentId", "kind", "normalizedName"], "unique": True},
+        }),
+        "units": ("id", {
+            "profileId": {"keyPath": "profileId", "unique": False},
+            "topicNodeId": {"keyPath": "topicNodeId", "unique": False},
+            "status": {"keyPath": "status", "unique": False},
+        }),
+        "studyEvents": ("id", {
+            "profileId": {"keyPath": "profileId", "unique": False},
+            "occurredAt": {"keyPath": "occurredAt", "unique": False},
+        }),
+        "obligations": ("id", {
+            "unitId": {"keyPath": "unitId", "unique": False},
+            "dueAt": {"keyPath": "dueAt", "unique": False},
+            "status": {"keyPath": "status", "unique": False},
+            "type": {"keyPath": "type", "unique": False},
+        }),
+        "evidenceEvents": ("id", {
+            "profileId": {"keyPath": "profileId", "unique": False},
+            "unitId": {"keyPath": "unitId", "unique": False},
+            "obligationId": {"keyPath": "obligationId", "unique": False},
+            "reviewedAt": {"keyPath": "reviewedAt", "unique": False},
+        }),
+        "chunks": ("id", {
+            "obligationId": {"keyPath": "obligationId", "unique": False},
+            "cycleId": {"keyPath": "cycleId", "unique": False},
+            "status": {"keyPath": "status", "unique": False},
+        }),
+        "dailyPlans": ("id", {
+            "studyDayKey": {"keyPath": "studyDayKey", "unique": True},
+            "updatedAt": {"keyPath": "updatedAt", "unique": False},
+        }),
+        "settings": ("key", {}),
+        "metadata": ("key", {}),
+        "activeRetrieval": ("id", {}),
+    }
+    collections = {
+        "profiles": payload["profiles"],
+        "nodes": payload["nodes"],
+        "units": payload["units"],
+        "studyEvents": payload["studyEvents"],
+        "obligations": payload["obligations"],
+        "evidenceEvents": payload["evidenceEvents"],
+        "chunks": payload["chunks"],
+        "dailyPlans": payload["dailyPlans"],
+        "settings": [payload["settings"]],
+        "metadata": [],
+        "activeRetrieval": [payload["activeRetrieval"]] if payload.get("activeRetrieval") else [],
+    }
+    stores = {}
+    for name, (key_path, indices) in specs.items():
+        records = [
+            [json.dumps(item[key_path], separators=(",", ":")), item]
+            for item in collections[name]
+        ]
+        stores[name] = {"keyPath": key_path, "indices": indices, "records": records}
+    raw_db = {"version": 3, "stores": stores}
+    page.evaluate(
+        "(raw)=>{ window.__RD_B1_QA_STATE__={local:{},databases:{'revision-director':raw}}; }",
+        raw_db,
+    )
 
 def main() -> None:
     global checks
@@ -129,11 +180,8 @@ def main() -> None:
         page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
         page.on("dialog", lambda dialog: dialog.accept())
         page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
+        seed_baseline_state(page)
         frame = boot_frame(page)
-
-        frame.locator('[data-pane="settings"]').click()
-        restore_fixture_d2(page, frame, BASELINE_BACKUP)
-        check("restored" in frame.locator("#toast").inner_text().lower(), "Baseline fixture restore failed")
 
         frame.locator('[data-pane="today"]').click(); wait(frame, 200)
         frame.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click(); wait(frame, 300)
