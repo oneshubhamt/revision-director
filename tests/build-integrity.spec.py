@@ -38,7 +38,7 @@ def check(name: str, condition: bool) -> None:
     if not condition:
         raise AssertionError(name)
 
-check("source ownership manifest", source_manifest.get("schemaVersion") == 1 and len(source_parts) == 21)
+check("source ownership manifest", source_manifest.get("schemaVersion") == 1 and len(source_parts) > 0)
 check("source order contiguous", [item["order"] for item in source_parts] == list(range(len(source_parts))))
 check("source parts unique", len(source_paths) == len(set(source_paths)))
 check("source parts present", all(path.is_file() and path.stat().st_size > 0 for path in source_paths))

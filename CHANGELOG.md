@@ -38,7 +38,7 @@ This file records durable product/architecture changes. Detailed implementation-
 ## 2026-11-11 — TypeScript 7 source-graph build
 
 - Removed the synthetic concatenated TypeScript compilation unit.
-- Compile all nineteen maintained TypeScript files directly as the real TypeScript project.
+- Compile the manifest-owned maintained TypeScript files directly as the real TypeScript project.
 - Verify the emitted JavaScript file set against the ownership manifest before deterministic assembly.
 - Moved the single strict IIFE boundary into the build so individual source parts are syntactically complete while the deployed runtime remains sealed.
 - Kept manifest-order runtime assembly, offline deployment and the single self-contained `index.html`.

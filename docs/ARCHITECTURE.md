@@ -2,12 +2,12 @@
 
 ## Deployment model
 
-Revision Director builds to one self-contained `index.html`. The maintained source is split by ownership under `source/`; `source/app/source-manifest.json` is the authoritative ordering contract for the twenty-one TypeScript parts.
+Revision Director builds to one self-contained `index.html`. The maintained source is split by ownership under `source/`; `source/app/source-manifest.json` is the authoritative ordering contract for the TypeScript source parts.
 
 The build:
 
 1. validates the source-ownership and presentation contracts;
-2. gives all twenty-one maintained `source/app/*.ts` files directly to the pinned TypeScript 7 compiler as one project;
+2. gives all manifest-owned maintained `source/app/*.ts` files directly to the pinned TypeScript 7 compiler as one project;
 3. verifies that TypeScript emitted exactly the manifest-owned JavaScript files;
 4. assembles those emitted files deterministically in manifest order inside one strict outer IIFE and emits `dist/app.js`;
 5. embeds the runtime, CSS and presentation state into `index.html`;
