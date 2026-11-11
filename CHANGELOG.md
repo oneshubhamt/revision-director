@@ -2,6 +2,15 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-11 — Type-safety boundary hardening
+
+- Narrow external browser, plugin, recovery, backup and restore inputs from `unknown` through checked current-format parsers before entering trusted domain logic.
+- Bind IndexedDB operations to store-specific value types instead of generic untyped store reads.
+- Replace state-bearing non-null assertions with explicit persisted-state and active-review invariants while retaining locally proven algorithmic assertions.
+- Make closed domain routing/label/workflow maps exhaustive with `satisfies`, so new union members fail compilation until every required mapping is updated.
+- Replace named-form-element casts with runtime-checked typed DOM helpers.
+- Retain zero explicit `any`, zero `as any` and zero TypeScript suppression directives in maintained application source.
+
 ## 2026-11-11 — TypeScript 7 measured parallelism
 
 - Benchmarked default and 1/2/4/8 checker configurations on the Ubuntu 24.04 CI runner using TypeScript 7.0.2.
