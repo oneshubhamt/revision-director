@@ -25,11 +25,6 @@ jobs:
       - name: Install locked toolchain
         run: npm ci
 
-      - name: Install browser QA runtime
-        run: |
-          python3 -m pip install playwright
-          python3 -m playwright install --with-deps chromium
-
       - name: Build with TypeScript 7
         run: npm run build
 
@@ -70,6 +65,11 @@ jobs:
             echo "==> $f"
             node "$f"
           done
+
+      - name: Install browser QA runtime
+        run: |
+          python3 -m pip install playwright
+          python3 -m playwright install --with-deps chromium
 
       - name: Pass B2 durability gate
         run: python3 tests/pass-b2-browser.spec.py
