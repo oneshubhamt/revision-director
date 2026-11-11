@@ -6856,6 +6856,11 @@ exports.withFuzzing = withFuzzing;
       end.setDate(end.getDate() + 1);
       return end;
   }
+  function latestPlanVersion(record) {
+      const latest = record.versions.at(-1);
+      assert(latest, "Daily plan has no versions.");
+      return latest;
+  }
   function studyDayKey(now, boundaryHour) {
       const start = studyDayStart(now, boundaryHour);
       const year = start.getFullYear();
@@ -9861,12 +9866,13 @@ exports.withFuzzing = withFuzzing;
                   byObligation.set(obligation.id, chunks);
                   await this.repo.putObligationWithChunks(obligation, created.chunks);
               }
-              if (obligation.chunking?.status === "chunking") {
-                  const pending = chunks.filter((chunk) => chunk.cycleId === obligation.chunking.cycleId && chunk.status === "pending").sort((a, b) => a.ordinal - b.ordinal);
+              const chunking = obligation.chunking;
+              if (chunking?.status === "chunking") {
+                  const pending = chunks.filter((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending").sort((a, b) => a.ordinal - b.ordinal);
                   if (pending[0])
                       nextChunk.set(obligation.id, pending[0]);
-                  else if (obligation.chunking.completedChunks >= obligation.chunking.totalChunks) {
-                      obligation.chunking.status = "synthesis-ready";
+                  else if (chunking.completedChunks >= chunking.totalChunks) {
+                      chunking.status = "synthesis-ready";
                       obligation.updatedAt = nowIso();
                       await this.repo.put(Store.Obligations, obligation);
                   }
@@ -9947,7 +9953,7 @@ exports.withFuzzing = withFuzzing;
           else {
               const version = record.versions.length + 1;
               const next = this.planSnapshot(plan, regenerate ? "manual-regeneration" : "data-change", version);
-              const latest = record.versions.at(-1);
+              const latest = latestPlanVersion(record);
               const signature = (value) => JSON.stringify({
                   capacityMinutes: value.capacityMinutes,
                   items: value.items.map((item) => ({
@@ -9994,7 +10000,7 @@ exports.withFuzzing = withFuzzing;
           };
       }
       appendManualPlanItems(record, items, now) {
-          const latest = record.versions.at(-1);
+          const latest = latestPlanVersion(record);
           const nextItems = latest.items.map((item) => clone(item));
           let changed = false;
           for (const item of items) {
@@ -10005,6 +10011,7 @@ exports.withFuzzing = withFuzzing;
                   continue;
               }
               const existing = nextItems[index];
+              assert(existing, "Existing daily-plan item is missing.");
               if (existing.disposition !== "selected" && existing.disposition !== "required-overrun") {
                   nextItems[index] = clone(item);
                   changed = true;
@@ -10151,7 +10158,8 @@ exports.withFuzzing = withFuzzing;
           assert(obligation.status === "active", "This obligation is not active.");
           const unit = await this.unit(obligation.unitId);
           const priorEvidence = await this.evidenceEvents();
-          const cycleChunks = obligation.chunking?.status === "synthesis-ready" ? (await this.chunksForObligation(obligation.id)).filter((chunk) => chunk.cycleId === obligation.chunking.cycleId && chunk.status === "completed") : [];
+          const chunking = obligation.chunking;
+          const cycleChunks = chunking?.status === "synthesis-ready" ? (await this.chunksForObligation(obligation.id)).filter((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "completed") : [];
           const cycleChunkMs = cycleChunks.reduce((sum, chunk) => sum + (chunk.actualMinutes ?? 0) * 60_000, 0);
           const cycleTimingReliable = cycleChunks.every((chunk) => chunk.timing?.durationReliable !== false);
           const durationObservation = durationObservationFor(obligation, priorEvidence, normalizedDraft.elapsedMs + cycleChunkMs, timing.durationReliable && cycleTimingReliable);
@@ -10616,6 +10624,7 @@ exports.withFuzzing = withFuzzing;
                   event.beforePolicyState.successStreak >= 1;
               assert(Boolean(returned) === shouldReturnMemory, "Returned-memory scheduler transition presence is inconsistent with relearning completion.");
               if (returned) {
+                  assert(returnedTarget?.type === "memory-recall", "Returned-memory transition lacks a valid memory target.");
                   assert(returned.obligationId === returnedTarget.id, "Returned-memory transition targets the wrong obligation.");
                   assert(returned.rating === Rating.Good, "Returned-memory transition must record a Good closed-book repair.");
                   validDate(returned.beforeDueAt, "Returned-memory prior due date");
@@ -10654,23 +10663,24 @@ exports.withFuzzing = withFuzzing;
           }
           for (const obligation of obligations) {
               const related = chunksByObligation.get(obligation.id) ?? [];
-              if (!obligation.chunking) {
+              const chunking = obligation.chunking;
+              if (!chunking) {
                   assert(related.every((chunk) => chunk.status === "archived"), "An obligation without active chunking has unfinished chunk records.");
                   continue;
               }
-              const active = related.filter((chunk) => chunk.cycleId === obligation.chunking.cycleId && chunk.status !== "archived");
-              assert(active.length === obligation.chunking.totalChunks, "Obligation chunk count does not match its active cycle.");
+              const active = related.filter((chunk) => chunk.cycleId === chunking.cycleId && chunk.status !== "archived");
+              assert(active.length === chunking.totalChunks, "Obligation chunk count does not match its active cycle.");
               assert(new Set(active.map((chunk) => chunk.ordinal)).size === active.length, "Obligation chunk ordinals are duplicated.");
-              assert(active.every((chunk) => chunk.total === obligation.chunking.totalChunks), "Chunk total does not match the obligation cycle.");
-              assert(active.every((chunk) => chunk.expectedMinutes <= obligation.chunking.capacityMinutes), "Active chunks exceed the capacity that created their cycle.");
-              assert(active.reduce((sum, chunk) => sum + chunk.expectedMinutes, 0) + obligation.chunking.synthesisMinutes === obligation.chunking.originalMinutes, "Chunk durations do not conserve the parent estimate.");
+              assert(active.every((chunk) => chunk.total === chunking.totalChunks), "Chunk total does not match the obligation cycle.");
+              assert(active.every((chunk) => chunk.expectedMinutes <= chunking.capacityMinutes), "Active chunks exceed the capacity that created their cycle.");
+              assert(active.reduce((sum, chunk) => sum + chunk.expectedMinutes, 0) + chunking.synthesisMinutes === chunking.originalMinutes, "Chunk durations do not conserve the parent estimate.");
               const completed = active.filter((chunk) => chunk.status === "completed").length;
-              assert(completed === obligation.chunking.completedChunks, "Obligation completed-chunk count does not match its records.");
-              if (obligation.chunking.status === "synthesis-ready")
+              assert(completed === chunking.completedChunks, "Obligation completed-chunk count does not match its records.");
+              if (chunking.status === "synthesis-ready")
                   assert(completed === active.length, "Synthesis-ready obligations must have all chunks completed.");
               else
                   assert(active.some((chunk) => chunk.status === "pending"), "An active chunking cycle must retain pending work.");
-              assert(related.filter((chunk) => chunk.cycleId !== obligation.chunking.cycleId).every((chunk) => chunk.status === "archived"), "Prior chunk cycles must be archived.");
+              assert(related.filter((chunk) => chunk.cycleId !== chunking.cycleId).every((chunk) => chunk.status === "archived"), "Prior chunk cycles must be archived.");
           }
           for (const plan of dailyPlans) {
               validateCalendarDate(plan.studyDayKey, "Daily plan study day");
@@ -10733,6 +10743,7 @@ exports.withFuzzing = withFuzzing;
                   if (outcome.status === "completed") {
                       assert(Number.isFinite(outcome.actualMinutes) && (outcome.actualMinutes ?? 0) > 0 && (outcome.actualMinutes ?? 0) <= 10_080 && Boolean(outcome.completedAt), "Completed daily-plan outcomes require a valid duration and completion time.");
                       const item = itemByKey.get(outcome.itemKey);
+                      assert(item, "Completed daily-plan outcome references an unknown item.");
                       if (!item.chunkId) {
                           const event = outcome.evidenceEventId ? evidenceMap.get(outcome.evidenceEventId) : undefined;
                           assert(event?.obligationId === item.obligationId, "Completed parent-plan outcomes require matching retrieval evidence.");
@@ -12262,6 +12273,11 @@ exports.withFuzzing = withFuzzing;
           });
           this.handleOwnershipChanged(this.ownership.snapshot());
       }
+      activeReviewTarget(index = this.activeReviewIndex) {
+          const target = this.activeReviewIds[index];
+          assert(target, "Review target is missing.");
+          return target;
+      }
       registerRenderDomains() {
           this.renderCoordinator.register("today", () => this.renderToday());
           this.renderCoordinator.register("review", () => this.renderReview());
@@ -12964,7 +12980,7 @@ exports.withFuzzing = withFuzzing;
                   return `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.reviewedAt)}</div><div class="row-title">${escapeHtml(unit?.title ?? "Deleted unit")}</div><div class="row-meta"><span class="chip ${obligationChip(event.obligationType)}">${escapeHtml(obligationLabel(event.obligationType))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(event.workflow))}</span><span>${ratingName(event.confirmedRating)}</span><span>Suggested ${ratingName(event.suggestedRating)}</span>${accuracy}<span>${formatDuration(event.elapsedMs)}</span><span>Estimate ${event.durationObservation.estimateBefore}→${event.durationObservation.estimateAfter}m</span><span>${event.durationObservation.accepted ? "duration learned" : `duration ignored: ${escapeHtml(event.durationObservation.reason)}`}</span><span>${escapeHtml(event.policyId)}</span></div><p>Evidence: completeness ${event.evidence.completeness}/4 · independence ${event.evidence.independence}/4 · application ${event.evidence.application}/4. Next: ${formatDateTime(event.afterDueAt)}.</p>${event.evidence.correctionNote ? `<p>Correction: ${escapeHtml(event.evidence.correctionNote)}</p>` : ""}</div></article>`;
               }).join("")}</div>` : this.emptyState("No retrieval evidence", "Complete a review to create evidence."))
               : (study.length ? `<div class="record-list">${study.slice(0, 80).map((event) => `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.occurredAt)}</div><div class="row-title">${escapeHtml(event.area)} · ${escapeHtml(event.task)}</div><div class="row-meta"><span class="chip">${escapeHtml(event.activityMode)}</span><span>${escapeHtml(event.measure)}</span><span>${event.durationMinutes}m</span><span>${escapeHtml(event.origin)}</span></div></div></article>`).join("")}</div>` : this.emptyState("No study history", "Log a Study Event first."));
-          const planHistory = plans.length ? `<section class="section-block"><div class="section-head"><h2>Persisted daily plans</h2><span class="section-note">Original recommendation, regenerations and actual outcomes remain separate.</span></div><div class="record-list">${plans.slice(0, 14).map((plan) => { const latest = plan.versions.at(-1); const completed = plan.outcomes.filter((outcome) => outcome.status === "completed"); const actual = completed.reduce((sum, outcome) => sum + (outcome.actualMinutes ?? 0), 0); const selected = latest.items.filter((item) => item.disposition === "selected" || item.disposition === "required-overrun"); return `<article class="record-row"><div><div class="breadcrumb">Study day ${escapeHtml(plan.studyDayKey)} · plan v${latest.version} · ${escapeHtml(plan.plannerVersion)}</div><div class="row-title">${selected.length} planned · ${completed.length} completed</div><div class="row-meta"><span>${latest.capacityMinutes}m capacity</span><span>${selected.reduce((sum, item) => sum + item.estimatedMinutes, 0)}m estimated</span><span>${roundTo(actual, 1)}m actual</span><span>${plan.versions.length} version${plan.versions.length === 1 ? "" : "s"}</span></div></div></article>`; }).join("")}</div></section>` : "";
+          const planHistory = plans.length ? `<section class="section-block"><div class="section-head"><h2>Persisted daily plans</h2><span class="section-note">Original recommendation, regenerations and actual outcomes remain separate.</span></div><div class="record-list">${plans.slice(0, 14).map((plan) => { const latest = latestPlanVersion(plan); const completed = plan.outcomes.filter((outcome) => outcome.status === "completed"); const actual = completed.reduce((sum, outcome) => sum + (outcome.actualMinutes ?? 0), 0); const selected = latest.items.filter((item) => item.disposition === "selected" || item.disposition === "required-overrun"); return `<article class="record-row"><div><div class="breadcrumb">Study day ${escapeHtml(plan.studyDayKey)} · plan v${latest.version} · ${escapeHtml(plan.plannerVersion)}</div><div class="row-title">${selected.length} planned · ${completed.length} completed</div><div class="row-meta"><span>${latest.capacityMinutes}m capacity</span><span>${selected.reduce((sum, item) => sum + item.estimatedMinutes, 0)}m estimated</span><span>${roundTo(actual, 1)}m actual</span><span>${plan.versions.length} version${plan.versions.length === 1 ? "" : "s"}</span></div></div></article>`; }).join("")}</div></section>` : "";
           this.historyContent.innerHTML = `
           ${this.pageHead("AUDIT TRAIL", "History", "Study records, retrieval evidence and daily-plan history remain separate but linked.")}
           <div class="tab-bar"><button class="tab-btn ${this.historyTab === "evidence" ? "on" : ""}" data-history-tab="evidence">EVIDENCE EVENTS</button><button class="tab-btn ${this.historyTab === "study" ? "on" : ""}" data-history-tab="study">STUDY EVENTS</button></div>
@@ -13046,7 +13062,7 @@ exports.withFuzzing = withFuzzing;
             ${plan.selected.length ? `<div class="queue-list planner-list">${plan.selected.map((item, index) => this.plannerRow(item, index + 1, "selected")).join("")}</div>` : this.emptyState("No active review session", "Start the daily plan from Today or select a unit from the Library.")}`;
               return;
           }
-          const obligationId = this.activeReviewIds[this.activeReviewIndex];
+          const obligationId = this.activeReviewTarget();
           if (obligationId.startsWith("chunk:")) {
               await this.renderChunkReview(obligationId.slice(6));
               return;
@@ -13593,8 +13609,9 @@ exports.withFuzzing = withFuzzing;
       }
       async startObligationSession(obligationId) {
           const obligation = await this.service.obligation(obligationId);
-          if (obligation.chunking?.status === "chunking") {
-              const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === obligation.chunking.cycleId && chunk.status === "pending");
+          const chunking = obligation.chunking;
+          if (chunking?.status === "chunking") {
+              const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending");
               if (pending) {
                   await this.startReviewSession([`chunk:${pending.id}`]);
                   return;
@@ -13612,8 +13629,9 @@ exports.withFuzzing = withFuzzing;
           assert(obligations.length > 0, "This unit has no active revision obligations.");
           const targets = [];
           for (const obligation of obligations) {
-              if (obligation.chunking?.status === "chunking") {
-                  const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === obligation.chunking.cycleId && chunk.status === "pending");
+              const chunking = obligation.chunking;
+              if (chunking?.status === "chunking") {
+                  const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending");
                   if (pending) {
                       targets.push(`chunk:${pending.id}`);
                       continue;
@@ -13629,14 +13647,15 @@ exports.withFuzzing = withFuzzing;
           this.activeReviewIds = ids.filter(Boolean);
           assert(this.activeReviewIds.length > 0, "There is nothing to review.");
           this.activeReviewIndex = 0;
-          this.reviewPhase = await this.initialPhaseForTarget(this.activeReviewIds[0]);
+          const firstTarget = this.activeReviewTarget(0);
+          this.reviewPhase = await this.initialPhaseForTarget(firstTarget);
           this.reviewDrafts.clear();
           this.diagramStrokes = [];
-          this.phaseTime = PhaseTimeRuntime.create(this.reviewPhase, await this.initialSourceVisibleForTarget(this.activeReviewIds[0], this.reviewPhase));
+          this.phaseTime = PhaseTimeRuntime.create(this.reviewPhase, await this.initialSourceVisibleForTarget(firstTarget, this.reviewPhase));
           this.attemptElapsedMs = 0;
           this.activeSessionRevision = 0;
           this.commitInFlight = false;
-          await this.service.markReviewTargetsStarted([this.activeReviewIds[0]]);
+          await this.service.markReviewTargetsStarted([firstTarget]);
           const session = this.buildActiveRetrievalSession();
           if (session)
               await this.activePersistence.flush(session);
@@ -13677,7 +13696,7 @@ exports.withFuzzing = withFuzzing;
                       return;
                   }
                   this.reviewPhase = post.phase;
-                  await this.service.markReviewTargetsStarted([this.activeReviewIds[this.activeReviewIndex]]);
+                  await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
                   await this.renderCoordinator.invalidateAndWait("review", "sidebar", "ownership", "storage");
               }
               catch (error) {
@@ -13746,7 +13765,7 @@ exports.withFuzzing = withFuzzing;
                       return;
                   }
                   this.reviewPhase = post.phase;
-                  await this.service.markReviewTargetsStarted([this.activeReviewIds[this.activeReviewIndex]]);
+                  await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
                   await this.renderCoordinator.invalidateAndWait("review", "sidebar", "ownership", "storage");
               }
               catch (error) {
