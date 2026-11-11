@@ -2,31 +2,17 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
-## 2026-11-11 — FSRS-7 independent verification and cleanup
+## 2026-11-11 — FSRS-7 scheduling architecture and personalization
 
-- Added realistic multi-review integration verification covering replay, retention/profile rebases, personalized-history boundaries, backup/restore, returned-memory transitions, corruption rejection and planner consumption.
-- Collapsed FSRS replay onto the scheduler-forward path; retrievability now consumes the already replay-verified materialized dual-trace state instead of maintaining a second model-forward replay implementation.
-- Reduced the scheduler port surface by making materialization internal and consolidating repeated card-history mapping.
-- Consolidated cross-boundary FSRS tests into a dedicated integration suite while leaving kernel tests focused on scheduler/rating semantics and planning tests focused on planner behavior.
-- Consolidated detailed scheduler/personalization semantics into `SCHEDULING_AND_PLANNING.md`; architecture, storage and QA docs now reference that authority instead of repeating implementation detail.
-
-## 2026-11-11 — FSRS-7 personalization boundary
-
-- Added a current-format FSRS-7 optimizer profile contract with exact 34-weight validation and scheduler/weight provenance.
-- Added chronological optimizer evidence export covering direct memory reviews and returned-memory transitions.
-- Added a pinned external Node optimizer using a final-sixth held-out stock-vs-personalized gate, full-evidence final retraining and upstream time-series evaluation.
-- Made profile import staging-only; activation, deactivation and retention changes explicitly reproject reviewed memory obligations from immutable Evidence Events.
-- Added atomic settings-plus-memory-projection replacement so scheduler identity cannot change independently of current card state.
-- Kept optimizer computation and WASM out of the browser runtime; browser optimization remains a later optional capability.
-
-## 2026-11-11 — FSRS-7 replay-truth scheduler boundary
-
-- Introduced an application-owned revision scheduler port so domain policy no longer operates directly on the TS-FSRS runtime.
-- Made append-only Evidence Events the canonical memory-review history, including returns from corrective relearning.
-- Retained the persisted FSRS card as a fast materialized projection, with replay verification before preview, review and retrievability.
-- Added the TS-FSRS v6 Reschedule contract over the pinned scheduler forward APIs, preserving full-history memory replay without altering historical due dates.
-- Fingerprinted every FSRS configuration snapshot and validated fingerprints on historical evidence and restore.
-- Added startup, backup/restore and regression integrity checks for projection-chain continuity and independently replayed FSRS-7 memory.
+- Made FSRS-7 the sole memory scheduler, using the pinned `ts-fsrs@6.0.0` dual-trace model with fractional elapsed time and one-day learning/relearning policy for long-form revision.
+- Established append-only Evidence Events as canonical memory-review truth; the stored FSRS card is a replay-verified materialized projection rather than an independent history.
+- Isolated vendor scheduling behind an application-owned scheduler port and one scheduler-forward replay path; direct recall and successful corrective-relearning returns share the same chronological history.
+- Preserved exact scheduler provenance with configuration and weight fingerprints, including explicit verification across retention/profile configuration boundaries.
+- Added external FSRS-7 personalization through a strict 34-weight profile contract and chronological evidence export. The pinned native optimizer requires held-out improvement over stock FSRS-7 before final retraining.
+- Kept optimizer computation outside the browser runtime. Profile import is staging-only; activation, return to stock and desired-retention changes are explicit atomic scheduler rebases from immutable history.
+- Made backup/restore preserve and independently verify stock, staged or active personalization state and current materialized projections.
+- Kept FSRS ownership of memory due dates separate from planner urgency, exam horizon, chunking and non-memory policies.
+- Added independent realistic-history verification for replay, rebases, backup/restore, returned-memory transitions, corruption rejection and planner consumption.
 
 ## 2026-11-11 — Type-safety boundary hardening
 
@@ -63,19 +49,6 @@ This file records durable product/architecture changes. Detailed implementation-
 - Made required current active-retrieval and settings fields fail closed instead of defaulting missing values.
 - Standardized backup integrity on SHA-256 only, using Web Crypto when available and the existing pure-JavaScript SHA-256 implementation otherwise.
 - Updated current-format tests and backup fixtures to match the strict contracts.
-
-## 2026-11-11 — Clean-slate FSRS-7 baseline
-
-- Made FSRS-7 the only memory scheduling model.
-- Removed FSRS-6 fallback, history replay, data migration and backward-compatibility logic.
-- Added strict current-format database, metadata and backup identity checks.
-- Adopted FSRS-7 dual-trace memory with fractional elapsed time and one-day learning/relearning middleware for long-form revision.
-- Aligned memory rating suggestions with FSRS recall semantics.
-- Routed failed recall through corrective relearning and returned successful repair to FSRS-7 scheduling.
-- Preserved FSRS ownership of memory due dates across planning and chunk synthesis.
-- Upgraded the development toolchain to Node.js 26.13.0 and TypeScript 7.0.2.
-- Corrected TypeScript 7 ArrayBuffer boundaries for WebCrypto/Blob APIs.
-- Replaced old-format browser fixtures with current clean-slate test data and reran full regression QA.
 
 ## Current architecture
 
