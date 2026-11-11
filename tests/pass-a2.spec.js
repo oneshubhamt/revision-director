@@ -42,6 +42,7 @@ const node = api.canonicalKnowledgeNode({ schemaVersion:1, id:'n', profileId:'p'
 check(node.name === 'Public Administration' && node.normalizedName === 'public administration', 'Node canonical name contract failed');
 const settings = api.canonicalAppSettings({ schemaVersion:1, key:'app', activeProfileId:'  p ', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4 });
 check(settings.activeProfileId === 'p', 'Settings canonicalisation failed');
+mustFail(() => api.canonicalAppSettings({ schemaVersion:1, key:'app', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4 }), 'Missing current settings fields were accepted');
 
 const plan = api.canonicalDailyPlanRecord({ schemaVersion:1, id:' d ', studyDayKey:'2026-07-25', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt, plannerVersion:' pass-d-2 ', versions:[{version:1,generatedAt:rawProfile.createdAt,capacityMinutes:60,reason:'initial',items:[]}], outcomes:[] });
 check(plan.id === 'd' && plan.plannerVersion === 'pass-d-2', 'Daily-plan canonicalisation failed');

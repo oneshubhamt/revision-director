@@ -16,6 +16,7 @@ const api=context.__RD_D_TEST__;
 let checks=0;
 function check(value,message){ checks++; if(!value) throw new Error(message); }
 const now='2026-07-25T06:00:00.000Z';
+const timing=(ms)=>({totalActiveMs:ms,activeByPhase:{attempt:ms,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]});
 const policy=new api.MasteryPolicy();
 const obligation={id:'o',unitId:'u',type:'concept-reconstruction',status:'active',dueAt:now,expectedMinutes:20,baselineMinutes:20,durationSampleCount:0,protocol:'reconstruct',successCriteria:'complete',workflow:{kind:'reconstruction',prompt:'reconstruct',checkpoints:['a'],responseMedium:'in-app',reconstructionShape:'outline'},freshnessDays:30,priority:0,policyState:policy.createInitialState(now),createdAt:now,updatedAt:now};
 const accepted=api.durationObservationFor(obligation,[],30*60000);
@@ -107,7 +108,7 @@ async function serviceChecks(){
   service.obligation=async()=>parent;
   service.markPlanItemCompleted=async()=>{};
   for (let index=0; index<chunks.length; index++) {
-    await service.completeChunk(chunks[index].id,40*60000,`chunk ${index+1}`,new Date(`2026-07-25T${String(8+index).padStart(2,'0')}:00:00Z`));
+    await service.completeChunk(chunks[index].id,timing(40*60000),`chunk ${index+1}`,new Date(`2026-07-25T${String(8+index).padStart(2,'0')}:00:00Z`));
     if (index<chunks.length-1) check(parent.chunking.status==='chunking' && parent.dueAt===now,'Completing an intermediate chunk must not advance the parent schedule');
     check(atomicPlan?.outcomes.some(outcome=>outcome.itemKey===`parent::${chunks[index].id}` && outcome.status==='completed'),'Chunk state and daily-plan outcome must be committed through the same repository operation');
     check(atomicPlan?.versions.some(version=>version.reason==='manual-addition' && version.items.some(item=>item.key===`parent::${chunks[index].id}`)),'Unplanned execution must become a durable manual plan amendment before its outcome is stored');
