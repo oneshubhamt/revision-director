@@ -75,6 +75,38 @@
     return value;
   }
 
+  function formNumber(data: FormData, name: string): number {
+    const value = Number(formText(data, name));
+    assert(Number.isFinite(value), `${name} must be a finite number.`);
+    return value;
+  }
+
+  interface ElementConstructor<T extends Element> {
+    new(): T;
+  }
+
+  function requiredNamedFormControl<T extends Element>(
+    form: HTMLFormElement,
+    name: string,
+    constructor: ElementConstructor<T>,
+  ): T {
+    const control = form.elements.namedItem(name);
+    assert(control instanceof constructor, `Missing or invalid form control: ${name}.`);
+    return control;
+  }
+
+  function formInput(form: HTMLFormElement, name: string): HTMLInputElement {
+    return requiredNamedFormControl(form, name, HTMLInputElement);
+  }
+
+  function formSelect(form: HTMLFormElement, name: string): HTMLSelectElement {
+    return requiredNamedFormControl(form, name, HTMLSelectElement);
+  }
+
+  function formTextarea(form: HTMLFormElement, name: string): HTMLTextAreaElement {
+    return requiredNamedFormControl(form, name, HTMLTextAreaElement);
+  }
+
   const ENTITY_STATUSES = ["active", "suspended", "archived"] as const satisfies readonly EntityStatus[];
   const ACTIVITY_MODES = ["learn", "review", "practice", "test"] as const satisfies readonly ActivityMode[];
   const STUDY_ORIGINS = ["manual", "study-director"] as const satisfies readonly StudyOrigin[];
@@ -339,22 +371,22 @@
       responseMedium: literalChoice(formText(data, "responseMedium", "in-app"), RESPONSE_MEDIA, "Response medium"),
     };
     if (kind === "questions") {
-      spec.targetCount = Number(data.get("targetCount"));
+      spec.targetCount = formNumber(data, "targetCount");
       spec.questionSetRef = formText(data, "questionSetRef").trim();
     }
     if (kind === "reconstruction") spec.reconstructionShape = literalChoice(formText(data, "reconstructionShape", "outline"), RECONSTRUCTION_SHAPES, "Reconstruction shape");
     if (kind === "diagram") spec.diagramSurface = literalChoice(formText(data, "diagramSurface", "canvas"), DIAGRAM_SURFACES, "Diagram surface");
     if (kind === "answer-writing") {
       spec.answerMode = literalChoice(formText(data, "answerMode", "full-answer"), ANSWER_MODES, "Answer mode");
-      spec.timeLimitMinutes = Number(data.get("timeLimitMinutes"));
-      spec.wordLimit = Number(data.get("wordLimit"));
+      spec.timeLimitMinutes = formNumber(data, "timeLimitMinutes");
+      spec.wordLimit = formNumber(data, "wordLimit");
     }
     validateWorkflowSpec(spec, type);
     return spec;
   }
 
   function populateWorkflowOptions(form: HTMLFormElement, type: ObligationType, selected?: RetrievalWorkflow): void {
-    const select = form.elements.namedItem("workflowKind") as HTMLSelectElement;
+    const select = formSelect(form, "workflowKind");
     const allowed = compatibleWorkflows(type);
     select.innerHTML = allowed.map((kind) => `<option value="${kind}">${escapeHtml(workflowLabel(kind))}</option>`).join("");
     select.value = selected && allowed.includes(selected) ? selected : allowed[0]!;
@@ -362,30 +394,30 @@
 
   function populateWorkflowForm(form: HTMLFormElement, spec: WorkflowSpec, type: ObligationType): void {
     populateWorkflowOptions(form, type, spec.kind);
-    (form.elements.namedItem("workflowKind") as HTMLSelectElement).value = spec.kind;
-    (form.elements.namedItem("responseMedium") as HTMLSelectElement).value = spec.responseMedium;
-    (form.elements.namedItem("workflowPrompt") as HTMLTextAreaElement).value = spec.prompt;
-    (form.elements.namedItem("workflowCheckpoints") as HTMLTextAreaElement).value = spec.checkpoints.join("\n");
-    (form.elements.namedItem("targetCount") as HTMLInputElement).value = String(spec.targetCount ?? 10);
-    (form.elements.namedItem("questionSetRef") as HTMLInputElement).value = spec.questionSetRef ?? "External question set";
-    (form.elements.namedItem("reconstructionShape") as HTMLSelectElement).value = spec.reconstructionShape ?? "outline";
-    (form.elements.namedItem("diagramSurface") as HTMLSelectElement).value = spec.diagramSurface ?? "canvas";
-    (form.elements.namedItem("answerMode") as HTMLSelectElement).value = spec.answerMode ?? "full-answer";
-    (form.elements.namedItem("timeLimitMinutes") as HTMLInputElement).value = String(spec.timeLimitMinutes ?? 10);
-    (form.elements.namedItem("wordLimit") as HTMLInputElement).value = String(spec.wordLimit ?? 150);
+    formSelect(form, "workflowKind").value = spec.kind;
+    formSelect(form, "responseMedium").value = spec.responseMedium;
+    formTextarea(form, "workflowPrompt").value = spec.prompt;
+    formTextarea(form, "workflowCheckpoints").value = spec.checkpoints.join("\n");
+    formInput(form, "targetCount").value = String(spec.targetCount ?? 10);
+    formInput(form, "questionSetRef").value = spec.questionSetRef ?? "External question set";
+    formSelect(form, "reconstructionShape").value = spec.reconstructionShape ?? "outline";
+    formSelect(form, "diagramSurface").value = spec.diagramSurface ?? "canvas";
+    formSelect(form, "answerMode").value = spec.answerMode ?? "full-answer";
+    formInput(form, "timeLimitMinutes").value = String(spec.timeLimitMinutes ?? 10);
+    formInput(form, "wordLimit").value = String(spec.wordLimit ?? 150);
     updateWorkflowFields(form);
   }
 
   function updateWorkflowFields(form: HTMLFormElement): void {
-    const kind = literalChoice((form.elements.namedItem("workflowKind") as HTMLSelectElement).value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
+    const kind = literalChoice(formSelect(form, "workflowKind").value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
     form.querySelectorAll<HTMLElement>("[data-workflow-field]").forEach((field) => {
       field.hidden = field.dataset["workflowField"] !== kind;
     });
   }
 
   function applyDefaultWorkflowToForm(form: HTMLFormElement, type: ObligationType): void {
-    const protocol = (form.elements.namedItem("protocol") as HTMLTextAreaElement | null)?.value ?? "";
-    const success = (form.elements.namedItem("successCriteria") as HTMLTextAreaElement | null)?.value ?? "";
+    const protocol = formTextarea(form, "protocol").value;
+    const success = formTextarea(form, "successCriteria").value;
     populateWorkflowForm(form, defaultWorkflowSpec(type, protocol, success), type);
   }
 

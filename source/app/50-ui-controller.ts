@@ -1,6 +1,9 @@
-  function requiredElement<T extends HTMLElement>(selector: string): T {
-    const element = document.querySelector<T>(selector);
-    assert(element, `Missing required element: ${selector}`);
+  function requiredElement<T extends HTMLElement>(
+    selector: string,
+    constructor: ElementConstructor<T>,
+  ): T {
+    const element = document.querySelector(selector);
+    assert(element instanceof constructor, `Missing or invalid required element: ${selector}`);
     return element;
   }
 
@@ -41,32 +44,32 @@
     private restoreCandidateId = "";
     private restoreSafetyProofId = "";
 
-    private readonly todayContent = requiredElement<HTMLDivElement>("#today-content");
-    private readonly reviewContent = requiredElement<HTMLDivElement>("#review-content");
-    private readonly libraryContent = requiredElement<HTMLDivElement>("#library-content");
-    private readonly studyContent = requiredElement<HTMLDivElement>("#study-content");
-    private readonly historyContent = requiredElement<HTMLDivElement>("#history-content");
-    private readonly settingsContent = requiredElement<HTMLDivElement>("#settings-content");
-    private readonly toastElement = requiredElement<HTMLDivElement>("#toast");
-    private readonly gapOverlay = requiredElement<HTMLDivElement>("#gap-overlay");
-    private readonly gapMeta = requiredElement<HTMLDivElement>("#gap-meta");
-    private readonly gapSplit = requiredElement<HTMLDivElement>("#gap-split");
-    private readonly gapFocusMinutes = requiredElement<HTMLInputElement>("#gap-focus-minutes");
-    private readonly unitDialog = requiredElement<HTMLDialogElement>("#unit-dialog");
-    private readonly studyDialog = requiredElement<HTMLDialogElement>("#study-dialog");
-    private readonly obligationDialog = requiredElement<HTMLDialogElement>("#obligation-dialog");
-    private readonly restoreDialog = requiredElement<HTMLDialogElement>("#restore-dialog");
-    private readonly restorePreview = requiredElement<HTMLDivElement>("#restore-preview");
-    private readonly unitForm = requiredElement<HTMLFormElement>("#unit-form");
-    private readonly studyForm = requiredElement<HTMLFormElement>("#study-form");
-    private readonly obligationForm = requiredElement<HTMLFormElement>("#obligation-form");
-    private readonly ownershipBanner = requiredElement<HTMLDivElement>("#ownership-banner");
-    private readonly ownershipTitle = requiredElement<HTMLElement>("#ownership-title");
-    private readonly ownershipMessage = requiredElement<HTMLElement>("#ownership-message");
-    private readonly takeControlButton = requiredElement<HTMLButtonElement>("#take-review-control");
-    private readonly storageCapacityBanner = requiredElement<HTMLDivElement>("#storage-capacity-banner");
-    private readonly appShell = requiredElement<HTMLElement>(".app-shell");
-    private readonly primaryNav = requiredElement<HTMLElement>(".nav");
+    private readonly todayContent = requiredElement("#today-content", HTMLDivElement);
+    private readonly reviewContent = requiredElement("#review-content", HTMLDivElement);
+    private readonly libraryContent = requiredElement("#library-content", HTMLDivElement);
+    private readonly studyContent = requiredElement("#study-content", HTMLDivElement);
+    private readonly historyContent = requiredElement("#history-content", HTMLDivElement);
+    private readonly settingsContent = requiredElement("#settings-content", HTMLDivElement);
+    private readonly toastElement = requiredElement("#toast", HTMLDivElement);
+    private readonly gapOverlay = requiredElement("#gap-overlay", HTMLDivElement);
+    private readonly gapMeta = requiredElement("#gap-meta", HTMLDivElement);
+    private readonly gapSplit = requiredElement("#gap-split", HTMLDivElement);
+    private readonly gapFocusMinutes = requiredElement("#gap-focus-minutes", HTMLInputElement);
+    private readonly unitDialog = requiredElement("#unit-dialog", HTMLDialogElement);
+    private readonly studyDialog = requiredElement("#study-dialog", HTMLDialogElement);
+    private readonly obligationDialog = requiredElement("#obligation-dialog", HTMLDialogElement);
+    private readonly restoreDialog = requiredElement("#restore-dialog", HTMLDialogElement);
+    private readonly restorePreview = requiredElement("#restore-preview", HTMLDivElement);
+    private readonly unitForm = requiredElement("#unit-form", HTMLFormElement);
+    private readonly studyForm = requiredElement("#study-form", HTMLFormElement);
+    private readonly obligationForm = requiredElement("#obligation-form", HTMLFormElement);
+    private readonly ownershipBanner = requiredElement("#ownership-banner", HTMLDivElement);
+    private readonly ownershipTitle = requiredElement("#ownership-title", HTMLElement);
+    private readonly ownershipMessage = requiredElement("#ownership-message", HTMLElement);
+    private readonly takeControlButton = requiredElement("#take-review-control", HTMLButtonElement);
+    private readonly storageCapacityBanner = requiredElement("#storage-capacity-banner", HTMLDivElement);
+    private readonly appShell = requiredElement(".app-shell", HTMLElement);
+    private readonly primaryNav = requiredElement(".nav", HTMLElement);
     private readonly renderCoordinator: RenderCoordinator;
     private readonly tabRegistry: AriaTabRegistry;
     private readonly dialogFocus: NativeDialogFocusManager;
@@ -174,7 +177,7 @@
       }
       const closeId = target.dataset["closeDialog"];
       if (closeId) {
-        this.dialogFocus.close(requiredElement<HTMLDialogElement>(`#${closeId}`));
+        this.dialogFocus.close(requiredElement(`#${closeId}`, HTMLDialogElement));
         return;
       }
       const gapAction = target.dataset["gapAction"];
@@ -248,15 +251,15 @@
         const form = target.closest<HTMLFormElement>("#unit-form,#obligation-form");
         if (form) {
           const typeName = form.getAttribute("id") === "unit-form" ? "obligationType" : "type";
-          const typeSelect = form.elements.namedItem(typeName) as HTMLSelectElement;
+          const typeSelect = formSelect(form, typeName);
           if (target === typeSelect) {
             applyDefaultWorkflowToForm(form, literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type"));
             return;
           }
-          if (target === form.elements.namedItem("workflowKind")) {
+          if (target === formSelect(form, "workflowKind")) {
             const type = literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type");
-            const protocol = (form.elements.namedItem("protocol") as HTMLTextAreaElement | null)?.value ?? "";
-            const success = (form.elements.namedItem("successCriteria") as HTMLTextAreaElement | null)?.value ?? "";
+            const protocol = formTextarea(form, "protocol").value;
+            const success = formTextarea(form, "successCriteria").value;
             const selected = literalChoice(target.value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
             const spec = defaultWorkflowSpec(type, protocol, success);
             spec.kind = selected;
@@ -608,7 +611,7 @@
     }
 
     private startClock(): void {
-      const clock = requiredElement<HTMLDivElement>("#clock");
+      const clock = requiredElement("#clock", HTMLDivElement);
       const update = () => { clock.textContent = new Date().toLocaleTimeString("en-IN", { hour12: false }); };
       update();
       window.setInterval(update, 1000);
@@ -634,9 +637,9 @@
     private async renderSidebar(): Promise<void> {
       const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
       const units = (await this.service.units()).filter((unit) => unit.status === "active");
-      requiredElement<HTMLElement>("#sb-due").textContent = String(plan.selected.length);
-      requiredElement<HTMLElement>("#sb-units").textContent = String(units.length);
-      requiredElement<HTMLElement>("#sb-load").textContent = `${plan.plannedMinutes}m`;
+      requiredElement("#sb-due", HTMLElement).textContent = String(plan.selected.length);
+      requiredElement("#sb-units", HTMLElement).textContent = String(units.length);
+      requiredElement("#sb-load", HTMLElement).textContent = `${plan.plannedMinutes}m`;
     }
 
     private pageHead(eyebrow: string, title: string, description: string, actions = ""): string {
@@ -1484,23 +1487,23 @@
     private async openUnitDialog(prefill?: Partial<UnitDraft>): Promise<void> {
       const profiles = (await this.service.profiles()).filter((profile) => profile.status === "active");
       assert(profiles.length > 0, "Create an active exam profile in Settings before adding a knowledge unit.");
-      const profileSelect = this.unitForm.elements.namedItem("profileId") as HTMLSelectElement;
+      const profileSelect = formSelect(this.unitForm, "profileId");
       profileSelect.innerHTML = profiles.map((profile) => `<option value="${profile.id}">${escapeHtml(profile.name)}</option>`).join("");
       const settings = this.service.getSettings();
       profileSelect.value = prefill?.profileId ?? settings.activeProfileId ?? profiles[0]?.id ?? "";
-      (this.unitForm.elements.namedItem("subject") as HTMLInputElement).value = prefill?.subject ?? "";
-      (this.unitForm.elements.namedItem("section") as HTMLInputElement).value = prefill?.section ?? "";
-      (this.unitForm.elements.namedItem("topic") as HTMLInputElement).value = prefill?.topic ?? "";
-      (this.unitForm.elements.namedItem("title") as HTMLInputElement).value = prefill?.title ?? "";
-      (this.unitForm.elements.namedItem("scope") as HTMLTextAreaElement).value = prefill?.scope ?? "";
-      (this.unitForm.elements.namedItem("source") as HTMLInputElement).value = prefill?.source ?? "";
-      (this.unitForm.elements.namedItem("importance") as HTMLSelectElement).value = String(prefill?.importance ?? 3);
-      (this.unitForm.elements.namedItem("obligationType") as HTMLSelectElement).value = prefill?.obligationType ?? "memory-recall";
-      (this.unitForm.elements.namedItem("expectedMinutes") as HTMLInputElement).value = String(prefill?.expectedMinutes ?? 15);
-      (this.unitForm.elements.namedItem("protocol") as HTMLTextAreaElement).value = prefill?.protocol ?? "";
-      (this.unitForm.elements.namedItem("successCriteria") as HTMLTextAreaElement).value = prefill?.successCriteria ?? "";
-      (this.unitForm.elements.namedItem("firstDueAt") as HTMLInputElement).value = toLocalInput(prefill?.firstDueAt ?? addDays(new Date(), 1).toISOString());
-      (this.unitForm.elements.namedItem("freshnessDays") as HTMLInputElement).value = String(prefill?.freshnessDays ?? 30);
+      formInput(this.unitForm, "subject").value = prefill?.subject ?? "";
+      formInput(this.unitForm, "section").value = prefill?.section ?? "";
+      formInput(this.unitForm, "topic").value = prefill?.topic ?? "";
+      formInput(this.unitForm, "title").value = prefill?.title ?? "";
+      formTextarea(this.unitForm, "scope").value = prefill?.scope ?? "";
+      formInput(this.unitForm, "source").value = prefill?.source ?? "";
+      formSelect(this.unitForm, "importance").value = String(prefill?.importance ?? 3);
+      formSelect(this.unitForm, "obligationType").value = prefill?.obligationType ?? "memory-recall";
+      formInput(this.unitForm, "expectedMinutes").value = String(prefill?.expectedMinutes ?? 15);
+      formTextarea(this.unitForm, "protocol").value = prefill?.protocol ?? "";
+      formTextarea(this.unitForm, "successCriteria").value = prefill?.successCriteria ?? "";
+      formInput(this.unitForm, "firstDueAt").value = toLocalInput(prefill?.firstDueAt ?? addDays(new Date(), 1).toISOString());
+      formInput(this.unitForm, "freshnessDays").value = String(prefill?.freshnessDays ?? 30);
       const unitType = prefill?.obligationType ?? "memory-recall";
       populateWorkflowForm(this.unitForm, prefill?.workflow ?? defaultWorkflowSpec(unitType, prefill?.protocol ?? "", prefill?.successCriteria ?? ""), unitType);
       this.dialogFocus.open(this.unitDialog, '[name="profileId"]');
@@ -1521,13 +1524,13 @@
           title: formText(data, "title"),
           scope: formText(data, "scope"),
           source: formText(data, "source"),
-          importance: literalChoice(Number(data.get("importance")), IMPORTANCE_LEVELS, "Importance"),
+          importance: literalChoice(formNumber(data, "importance"), IMPORTANCE_LEVELS, "Importance"),
           obligationType,
-          expectedMinutes: Number(data.get("expectedMinutes")),
+          expectedMinutes: formNumber(data, "expectedMinutes"),
           protocol: formText(data, "protocol"),
           successCriteria: formText(data, "successCriteria"),
           firstDueAt: localInputToIso(formText(data, "firstDueAt")),
-          freshnessDays: Number(data.get("freshnessDays")),
+          freshnessDays: formNumber(data, "freshnessDays"),
           workflow,
         });
         this.dialogFocus.close(this.unitDialog);
@@ -1542,20 +1545,20 @@
       const profiles = (await this.service.profiles()).filter((profile) => profile.status === "active");
       assert(profiles.length > 0, "Create an active exam profile in Settings before logging study.");
       const units = (await this.service.units()).filter((unit) => unit.status === "active");
-      const profileSelect = this.studyForm.elements.namedItem("profileId") as HTMLSelectElement;
+      const profileSelect = formSelect(this.studyForm, "profileId");
       profileSelect.innerHTML = profiles.map((profile) => `<option value="${profile.id}">${escapeHtml(profile.name)}</option>`).join("");
       profileSelect.value = prefill?.profileId ?? this.service.getSettings().activeProfileId ?? profiles[0]?.id ?? "";
-      (this.studyForm.elements.namedItem("occurredAt") as HTMLInputElement).value = toLocalInput(prefill?.occurredAt ?? nowIso());
-      (this.studyForm.elements.namedItem("activityMode") as HTMLSelectElement).value = prefill?.activityMode ?? "learn";
-      (this.studyForm.elements.namedItem("area") as HTMLInputElement).value = prefill?.area ?? "";
-      (this.studyForm.elements.namedItem("task") as HTMLInputElement).value = prefill?.task ?? "";
-      (this.studyForm.elements.namedItem("measure") as HTMLInputElement).value = prefill?.measure ?? "";
-      (this.studyForm.elements.namedItem("source") as HTMLInputElement).value = prefill?.source ?? "";
-      (this.studyForm.elements.namedItem("durationMinutes") as HTMLInputElement).value = String(prefill?.durationMinutes ?? 45);
-      (this.studyForm.elements.namedItem("understanding") as HTMLSelectElement).value = String(prefill?.understanding ?? 3);
-      (this.studyForm.elements.namedItem("origin") as HTMLSelectElement).value = prefill?.origin ?? "manual";
-      (this.studyForm.elements.namedItem("notes") as HTMLTextAreaElement).value = prefill?.notes ?? "";
-      const linked = this.studyForm.elements.namedItem("linkedUnitIds") as HTMLSelectElement;
+      formInput(this.studyForm, "occurredAt").value = toLocalInput(prefill?.occurredAt ?? nowIso());
+      formSelect(this.studyForm, "activityMode").value = prefill?.activityMode ?? "learn";
+      formInput(this.studyForm, "area").value = prefill?.area ?? "";
+      formInput(this.studyForm, "task").value = prefill?.task ?? "";
+      formInput(this.studyForm, "measure").value = prefill?.measure ?? "";
+      formInput(this.studyForm, "source").value = prefill?.source ?? "";
+      formInput(this.studyForm, "durationMinutes").value = String(prefill?.durationMinutes ?? 45);
+      formSelect(this.studyForm, "understanding").value = String(prefill?.understanding ?? 3);
+      formSelect(this.studyForm, "origin").value = prefill?.origin ?? "manual";
+      formTextarea(this.studyForm, "notes").value = prefill?.notes ?? "";
+      const linked = formSelect(this.studyForm, "linkedUnitIds");
       linked.innerHTML = units.map((unit) => `<option value="${unit.id}" ${prefill?.linkedUnitIds?.includes(unit.id) ? "selected" : ""}>${escapeHtml(unit.title)}</option>`).join("");
       this.dialogFocus.open(this.studyDialog, '[name="profileId"]');
     }
@@ -1565,17 +1568,17 @@
       event.preventDefault();
       try {
         const data = new FormData(this.studyForm);
-        const linked = [...(this.studyForm.elements.namedItem("linkedUnitIds") as HTMLSelectElement).selectedOptions].map((option) => option.value);
+        const linked = [...(formSelect(this.studyForm, "linkedUnitIds")).selectedOptions].map((option) => option.value);
         await this.service.logStudyEvent({
-          profileId: String(data.get("profileId") ?? ""),
+          profileId: formText(data, "profileId"),
           occurredAt: localInputToIso(formText(data, "occurredAt")),
           activityMode: literalChoice(formText(data, "activityMode"), ACTIVITY_MODES, "Study activity mode"),
           area: formText(data, "area"),
           task: formText(data, "task"),
           measure: formText(data, "measure"),
-          source: String(data.get("source") ?? ""),
-          durationMinutes: Number(data.get("durationMinutes")),
-          understanding: literalChoice(Number(data.get("understanding")), UNDERSTANDING_LEVELS, "Understanding"),
+          source: formText(data, "source"),
+          durationMinutes: formNumber(data, "durationMinutes"),
+          understanding: literalChoice(formNumber(data, "understanding"), UNDERSTANDING_LEVELS, "Understanding"),
           linkedUnitIds: linked,
           notes: formText(data, "notes"),
           origin: literalChoice(formText(data, "origin"), STUDY_ORIGINS, "Study origin"),
@@ -1590,13 +1593,13 @@
 
     private async openObligationDialog(unitId: string): Promise<void> {
       const unit = await this.service.unit(unitId);
-      (this.obligationForm.elements.namedItem("unitId") as HTMLInputElement).value = unit.id;
-      (this.obligationForm.elements.namedItem("type") as HTMLSelectElement).value = "application-practice";
-      (this.obligationForm.elements.namedItem("expectedMinutes") as HTMLInputElement).value = "20";
-      (this.obligationForm.elements.namedItem("protocol") as HTMLTextAreaElement).value = "";
-      (this.obligationForm.elements.namedItem("successCriteria") as HTMLTextAreaElement).value = "";
-      (this.obligationForm.elements.namedItem("dueAt") as HTMLInputElement).value = toLocalInput(addDays(new Date(), 1).toISOString());
-      (this.obligationForm.elements.namedItem("freshnessDays") as HTMLInputElement).value = "30";
+      formInput(this.obligationForm, "unitId").value = unit.id;
+      formSelect(this.obligationForm, "type").value = "application-practice";
+      formInput(this.obligationForm, "expectedMinutes").value = "20";
+      formTextarea(this.obligationForm, "protocol").value = "";
+      formTextarea(this.obligationForm, "successCriteria").value = "";
+      formInput(this.obligationForm, "dueAt").value = toLocalInput(addDays(new Date(), 1).toISOString());
+      formInput(this.obligationForm, "freshnessDays").value = "30";
       populateWorkflowForm(this.obligationForm, defaultWorkflowSpec("application-practice", "", ""), "application-practice");
       this.dialogFocus.open(this.obligationDialog, '[name="type"]');
     }
@@ -1611,11 +1614,11 @@
         await this.service.createObligation({
           unitId: formText(data, "unitId"),
           type,
-          expectedMinutes: Number(data.get("expectedMinutes")),
-          protocol: String(data.get("protocol") ?? ""),
-          successCriteria: String(data.get("successCriteria") ?? ""),
+          expectedMinutes: formNumber(data, "expectedMinutes"),
+          protocol: formText(data, "protocol"),
+          successCriteria: formText(data, "successCriteria"),
           dueAt: localInputToIso(formText(data, "dueAt")),
-          freshnessDays: Number(data.get("freshnessDays")),
+          freshnessDays: formNumber(data, "freshnessDays"),
           workflow,
         });
         this.dialogFocus.close(this.obligationDialog);
@@ -1662,10 +1665,10 @@
         await this.service.saveSettings({
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
           key: "app",
-          activeProfileId: String(data.get("activeProfileId") ?? ""),
-          desiredRetention: Number(data.get("desiredRetention")),
-          dailyCapacityMinutes: Number(data.get("dailyCapacityMinutes")),
-          studyDayBoundaryHour: Number(data.get("studyDayBoundaryHour")),
+          activeProfileId: formText(data, "activeProfileId"),
+          desiredRetention: formNumber(data, "desiredRetention"),
+          dailyCapacityMinutes: formNumber(data, "dailyCapacityMinutes"),
+          studyDayBoundaryHour: formNumber(data, "studyDayBoundaryHour"),
         });
         await this.renderAll();
         this.toast("Settings saved.");
@@ -1738,7 +1741,9 @@
 
     private async importBackup(event: Event): Promise<void> {
       if (!this.requireMutable("restore a backup")) return;
-      const input = event.target as HTMLInputElement;
+      const target = event.target;
+      assert(target instanceof HTMLInputElement, "Backup file input is unavailable.");
+      const input = target;
       const file = input.files?.[0];
       if (!file) return;
       try {
@@ -1829,7 +1834,7 @@
       if (!this.ownership.canMutate()) return;
       if (this.currentPane !== "review" || this.activeReviewIds.length === 0) return;
       if (this.activeReviewIds[this.activeReviewIndex]?.startsWith("chunk:")) return;
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof HTMLElement ? event.target : null;
       if (target?.matches("input,textarea,select")) return;
       if (this.reviewPhase === "attempt" && (event.key === " " || event.key === "Enter")) {
         const reveal = this.reviewContent.querySelector<HTMLButtonElement>('[data-action="reveal"]');

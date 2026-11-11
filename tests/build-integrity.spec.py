@@ -156,6 +156,8 @@ check("closed domain maps are exhaustive", all(token in ts for token in [
     "satisfies Record<Rating, number>",
     "satisfies Record<keyof PlanningFactors, number>",
 ]) and "const engineFor: Record<ObligationType" not in ts and "compatibleWorkflows(type)[0]!" not in ts)
+check("DOM and FormData boundaries are runtime typed", "function requiredNamedFormControl" in ts and "function formNumber" in ts and "function requiredElement<T extends HTMLElement>" in ts and "instanceof constructor" in ts and "elements.namedItem(\"workflowKind\") as HTMLSelectElement" not in ts and "requiredElement<HTML" not in ts and "event.target as HTMLInputElement" not in ts and "event.target as HTMLElement" not in ts)
+
 check("SHA-256-only backup integrity", 'type BackupArchiveHashAlgorithm = "sha256";' in ts and "fnv1a64" not in ts)
 check("policy router", "class SchedulerPolicyRouter" in ts)
 check("immutable Study Event semantics", "interface StudyEvent" in ts and "studyEvents" in ts)
