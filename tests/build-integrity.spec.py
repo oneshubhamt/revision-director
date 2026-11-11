@@ -123,6 +123,7 @@ check("Again routes to corrective relearning", 'if (rating === Rating.Again) com
 check("FSRS rating semantics", 'if (type === "memory-recall")' in ts and '"Easy" remains a user judgement' in ts and "partial or cued recall" in ts)
 check("strict current data only", "event.oldVersion === 0" in ts and "canonical.applicationVersion === APP_VERSION" in ts and "candidate.appVersion === APP_VERSION" in ts)
 check("no timing compatibility synthesis", "fallbackElapsedMs" not in ts and "canonicalTimingEvidenceSummary(value: TimingEvidenceSummary)" in ts and "completeChunk(chunkId: string, timing: TimingEvidenceSummary" in ts)
+check("no current-shape repair coercions", "reliabilityFlags.push" not in ts and "checked[key] = Boolean(rawValue)" not in ts and "sourceVisible: Boolean(value.sourceVisible)" not in ts and "Active retrieval elapsed time does not match phase timing." in ts)
 check("SHA-256-only backup integrity", 'type BackupArchiveHashAlgorithm = "sha256";' in ts and "fnv1a64" not in ts)
 check("policy router", "class SchedulerPolicyRouter" in ts)
 check("immutable Study Event semantics", "interface StudyEvent" in ts and "studyEvents" in ts)

@@ -87,12 +87,17 @@ check(canonicalPending.state === 'gap-pending' && canonicalPending.pendingGap.ga
 mustFail(() => api.canonicalPhaseTimeRuntimeSnapshot({...canonicalPending,state:'running'}), 'Inconsistent pending-gap state was accepted');
 mustFail(() => api.canonicalPhaseTimeRuntimeSnapshot({...canonicalPending,activeByPhase:{...canonicalPending.activeByPhase,attempt:-1}}), 'Negative phase time was accepted');
 
-const activeSession = api.canonicalActiveRetrievalSession({
+mustFail(() => api.canonicalActiveRetrievalSession({
   schemaVersion:1,id:'current',revision:1,status:'active',queueTargetIds:['o1'],activeIndex:0,activeTargetId:'o1',phase:'attempt',
   draft:{phase:'attempt',values:{},checked:{},diagramStrokes:[],attemptElapsedMs:0},timeRuntime:pendingRuntime.snapshot(),elapsedMs:999999,
   startedAt:new Date(t0).toISOString(),updatedAt:new Date(t0+130000).toISOString(),
+}), 'Mismatched active-session elapsed time was accepted');
+const activeSession = api.canonicalActiveRetrievalSession({
+  schemaVersion:1,id:'current',revision:1,status:'active',queueTargetIds:['o1'],activeIndex:0,activeTargetId:'o1',phase:'attempt',
+  draft:{phase:'attempt',values:{},checked:{},diagramStrokes:[],attemptElapsedMs:0},timeRuntime:pendingRuntime.snapshot(),elapsedMs:0,
+  startedAt:new Date(t0).toISOString(),updatedAt:new Date(t0+130000).toISOString(),
 });
-check(activeSession.elapsedMs === 0 && activeSession.timeRuntime.pendingGap, 'Active-session elapsed time did not derive from verified active phases');
+check(activeSession.elapsedMs === 0 && activeSession.timeRuntime.pendingGap, 'Current active-session timing was not preserved');
 
 const obligation = { id:'o1', unitId:'u1', workflow:{kind:'recall'}, expectedMinutes:10 };
 const unreliableObservation = api.durationObservationFor(obligation, [], 10*60_000, false);
@@ -105,7 +110,16 @@ mustFail(() => api.canonicalPhaseTimeRuntimeSnapshot({...api.phaseTimeSnapshot('
 const badPause = api.phaseTimeSnapshot('attempt',false,t0);
 badPause.pauseHistory=[{id:'pause_bad',reason:'manual',phase:'attempt',startedAt:new Date(t0+1000).toISOString(),endedAt:new Date(t0).toISOString(),durationMs:1000}];
 mustFail(() => api.canonicalPhaseTimeRuntimeSnapshot(badPause), 'Backward pause chronology was accepted');
-const canonicalBackwardSummary = api.canonicalTimingEvidenceSummary({...runtime.summary(t0+70000),reliabilityFlags:[]});
-check(canonicalBackwardSummary.reliabilityFlags.includes('backward-clock'), 'Canonical timing summary did not restore the backward-clock flag');
+mustFail(() => api.canonicalTimingEvidenceSummary({...runtime.summary(t0+70000),reliabilityFlags:[]}), 'Missing backward-clock reliability flag was repaired instead of rejected');
+mustFail(() => api.canonicalTimingEvidenceSummary({...ignoreRuntime.summary(t0+182000),durationReliable:true}), 'Inconsistent timing reliability was repaired instead of rejected');
+const badTransition = api.phaseTimeSnapshot('attempt',false,t0);
+badTransition.phaseHistory=[{from:'attempt',to:'compare',at:new Date(t0+1000).toISOString(),reason:'source-reveal'}];
+mustFail(() => api.canonicalPhaseTimeRuntimeSnapshot(badTransition), 'Missing transition visibility was coerced instead of rejected');
+const badDraftSession = {
+  schemaVersion:1,id:'current',revision:1,status:'active',queueTargetIds:['o1'],activeIndex:0,activeTargetId:'o1',phase:'attempt',
+  draft:{phase:'attempt',values:{},checked:{x:'false'},diagramStrokes:[],attemptElapsedMs:0},timeRuntime:api.phaseTimeSnapshot('attempt',false,t0),elapsedMs:0,
+  startedAt:new Date(t0).toISOString(),updatedAt:new Date(t0).toISOString(),
+};
+mustFail(() => api.canonicalActiveRetrievalSession(badDraftSession), 'Non-boolean review check state was coerced instead of rejected');
 
 console.log(`PASS ${checks} Pass B2 phase-time runtime checks`);

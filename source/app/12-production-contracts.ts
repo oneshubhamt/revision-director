@@ -296,11 +296,12 @@
     assert(Array.isArray(value.reliabilityFlags), "Timing reliability flags are required.");
     const reliabilityFlags = [...new Set(value.reliabilityFlags)];
     for (const flag of reliabilityFlags) assert(flag === "ignored-gap" || flag === "backward-clock", "Timing reliability flag is invalid.");
-    if (ignoredGapMs > 0 && !reliabilityFlags.includes("ignored-gap")) reliabilityFlags.push("ignored-gap");
+    assert((ignoredGapMs > 0) === reliabilityFlags.includes("ignored-gap"), "Ignored-gap reliability flag is inconsistent.");
     const backwardClockCount = count(Number(value.backwardClockCount), "Backward-clock count");
-    if (backwardClockCount > 0 && !reliabilityFlags.includes("backward-clock")) reliabilityFlags.push("backward-clock");
+    assert((backwardClockCount > 0) === reliabilityFlags.includes("backward-clock"), "Backward-clock reliability flag is inconsistent.");
     assert(typeof value.durationReliable === "boolean", "Timing reliability state is required.");
-    const durationReliable = value.durationReliable && ignoredGapMs === 0;
+    assert(value.durationReliable === (ignoredGapMs === 0), "Timing reliability state is inconsistent.");
+    const durationReliable = value.durationReliable;
     return {
       totalActiveMs,
       activeByPhase,
@@ -312,7 +313,7 @@
       ignoredGapMs,
       promptExcludedMs: bounded(Number(value.promptExcludedMs), "Gap prompt time"),
       backwardClockCount,
-      ...(value.sourceRevealAt ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
+      ...(value.sourceRevealAt !== undefined ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
       durationReliable,
       reliabilityFlags,
     };
@@ -349,7 +350,8 @@
     assert(Array.isArray(value.phaseHistory), "Phase history is required.");
     const phaseHistory = value.phaseHistory.slice(-TIME_HISTORY_LIMIT).map((transition) => {
       assert(["source-reveal", "begin-verification", "verification-reveal", "queue-advance"].includes(transition.reason), "Phase transition reason is invalid.");
-      return { from: canonicalReviewPhase(transition.from), to: canonicalReviewPhase(transition.to), at: canonicalIso(transition.at, "Phase transition date"), sourceVisible: Boolean(transition.sourceVisible), reason: transition.reason };
+      assert(typeof transition.sourceVisible === "boolean", "Phase-transition source visibility is invalid.");
+      return { from: canonicalReviewPhase(transition.from), to: canonicalReviewPhase(transition.to), at: canonicalIso(transition.at, "Phase transition date"), sourceVisible: transition.sourceVisible, reason: transition.reason };
     });
     assert(Array.isArray(value.gapHistory), "Inactive-gap history is required.");
     const gapHistory = value.gapHistory.slice(-TIME_HISTORY_LIMIT).map((gap) => {
@@ -376,7 +378,7 @@
       pendingGap = { id: canonicalId(value.pendingGap.id, "Pending-gap ID"), phase: canonicalReviewPhase(value.pendingGap.phase), source: value.pendingGap.source, lastReliableAt, detectedAt, gapMs };
     }
     assert((value.state === "gap-pending") === Boolean(pendingGap), "Pending-gap state is inconsistent.");
-    const pauseStartedAt = value.pauseStartedAt ? canonicalIso(value.pauseStartedAt, "Manual pause start date") : undefined;
+    const pauseStartedAt = value.pauseStartedAt !== undefined ? canonicalIso(value.pauseStartedAt, "Manual pause start date") : undefined;
     assert((value.state === "paused") === Boolean(pauseStartedAt), "Manual pause state is inconsistent.");
     assert(typeof value.sourceVisible === "boolean", "Source visibility state is required.");
     return {
@@ -390,8 +392,8 @@
       phaseHistory,
       gapHistory,
       ...(pendingGap ? { pendingGap } : {}),
-      sourceVisible: Boolean(value.sourceVisible),
-      ...(value.sourceRevealAt ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
+      sourceVisible: value.sourceVisible,
+      ...(value.sourceRevealAt !== undefined ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
       backwardClockCount: (() => {
         const count = Number(value.backwardClockCount);
         assert(Number.isSafeInteger(count) && count >= 0 && count <= 100_000, "Backward-clock count is invalid.");
@@ -415,7 +417,8 @@
     const checked: Record<string, boolean> = {};
     for (const [rawKey, rawValue] of Object.entries(value.checked).slice(0, 128)) {
       const key = canonicalId(rawKey, "Review check ID");
-      checked[key] = Boolean(rawValue);
+      assert(typeof rawValue === "boolean", "Review check value is invalid.");
+      checked[key] = rawValue;
     }
     const diagramStrokes = value.diagramStrokes.slice(0, 256).map((stroke) => {
       assert(Array.isArray(stroke), "Diagram stroke is invalid.");
@@ -449,6 +452,8 @@
     const phase = canonicalReviewPhase(value.phase);
     const timeRuntime = canonicalPhaseTimeRuntimeSnapshot(value.timeRuntime);
     assert(timeRuntime.currentPhase === phase, "Active retrieval phase and timer phase differ.");
+    const elapsedMs = Object.values(timeRuntime.activeByPhase).reduce((sum, amount) => sum + amount, 0);
+    assert(Number.isFinite(value.elapsedMs) && Math.round(value.elapsedMs) === elapsedMs, "Active retrieval elapsed time does not match phase timing.");
     return {
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
       id: ACTIVE_RETRIEVAL_ID,
@@ -460,7 +465,7 @@
       phase,
       draft: canonicalReviewDraftSnapshot(value.draft),
       timeRuntime,
-      elapsedMs: Object.values(timeRuntime.activeByPhase).reduce((sum, amount) => sum + amount, 0),
+      elapsedMs,
       startedAt: canonicalIso(value.startedAt, "Active retrieval start date"),
       updatedAt: canonicalIso(value.updatedAt, "Active retrieval update date"),
       ...(commitToken ? { commitToken } : {}),
