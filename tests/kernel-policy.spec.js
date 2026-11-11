@@ -280,7 +280,7 @@ async function testRelearningLifecycle() {
   lifecycle.evidenceEvents = async () => [];
   lifecycle.chunksForObligation = async () => [];
   lifecycle.markPlanItemCompleted = async () => {};
-  await lifecycle.recordEvidence('original', { ...evidence(0,0,0), workflowResult:{...recallResult,checkpointTotal:4,checkpointsMet:0}, elapsedMs:1000, confirmedRating:1 }, new Date(due));
+  await lifecycle.recordEvidence('original', { ...evidence(0,0,0), workflowResult:{...recallResult,checkpointTotal:4,checkpointsMet:0}, elapsedMs:1000, timing:{totalActiveMs:1000,activeByPhase:{attempt:1000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}, confirmedRating:1 }, new Date(due));
   check(calls.length === 1, 'Failed review must commit once');
   check(calls[0][1].status === 'suspended' && calls[0][1].suspensionReason === 'relearning', 'Failed original must be paused for relearning');
   check(calls[0][3]?.type === 'relearn' && calls[0][3]?.workflow.kind === 'relearning', 'Failed review must create a proper relearning workflow');
@@ -297,7 +297,7 @@ async function testRelearningLifecycle() {
   calls.length = 0;
   lifecycle.obligation = async () => relearn;
   lifecycle.obligationsForUnit = async () => [relearn];
-  await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, confirmedRating:3 }, nextDay);
+  await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, timing:{totalActiveMs:1000,activeByPhase:{attempt:1000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}, confirmedRating:3 }, nextDay);
   check(calls[0][1].status === 'completed', 'Relearning must complete after two successful cycles');
   const returnedTransition = calls[0][2].returnedMemoryTransition;
   check(returnedTransition?.obligationId === 'original' && returnedTransition?.rating === api.Rating.Good, 'Successful relearning must record the returned-memory FSRS transition');
