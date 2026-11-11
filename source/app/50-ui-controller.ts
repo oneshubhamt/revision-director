@@ -1373,7 +1373,6 @@
         const chunkId = target.slice(6);
         assert(this.phaseTime && this.phaseTime.status() === "running", "Resume and classify interruptions before completing this chunk.");
         const timing = this.timingSummary();
-        const elapsedMs = Math.max(60_000, timing.totalActiveMs);
         const note = this.reviewContent.querySelector<HTMLTextAreaElement>("#chunk-note")?.value ?? "";
         const commitToken = uid("commit");
         const committing = this.buildActiveRetrievalSession("committing", commitToken);
