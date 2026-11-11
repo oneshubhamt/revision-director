@@ -34,7 +34,7 @@ def check(name: str, condition: bool) -> None:
     if not condition:
         raise AssertionError(name)
 
-check("source ownership manifest", source_manifest.get("schemaVersion") == 1 and len(source_parts) == 19)
+check("source ownership manifest", source_manifest.get("schemaVersion") == 1 and len(source_parts) == 20)
 check("source order contiguous", [item["order"] for item in source_parts] == list(range(len(source_parts))))
 check("source parts unique", len(source_paths) == len(set(source_paths)))
 check("source parts present", all(path.is_file() and path.stat().st_size > 0 for path in source_paths))
@@ -57,7 +57,7 @@ check("measured TypeScript checker parallelism", 'TYPESCRIPT_CHECKERS = 2' in bu
 check("source parts own no runtime wrapper", not first_source.lstrip().startswith("(() => {") and not last_source.rstrip().endswith("})();"))
 check("manifest owns expected layers", all(token in {path.name for path in source_paths} for token in [
     "00-runtime-boundary.ts", "05-presentation-engine.ts", "10-domain-model.ts", "11-domain-kernel.ts",
-    "12-production-contracts.ts", "20-policy-planning-kernel.ts", "21-policy-implementations.ts",
+    "12-production-contracts.ts", "19-revision-scheduler-port.ts", "20-policy-planning-kernel.ts", "21-policy-implementations.ts",
     "30-indexeddb-repository.ts", "31-storage-facade.ts", "32-active-retrieval-persistence.ts", "33-phase-time-runtime.ts", "34-cross-tab-ownership.ts", "40-application-services.ts",
     "41-backup-codec.ts", "45-ui-runtime.ts", "50-ui-controller.ts", "60-public-bridge-bootstrap.ts"
 ]))
