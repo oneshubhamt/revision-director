@@ -64,6 +64,12 @@ For a material change:
 
 Generated output must be rebuilt from source before release/merge.
 
+## TypeScript 7 checker parallelism
+
+A temporary benchmark on the Ubuntu 24.04 GitHub runner compared the TypeScript 7.0.2 project checker with default parallelism and explicit `--checkers 1`, `2`, `4` and `8`. Each configuration received one warm-up and seven measured runs.
+
+The two-checker configuration was selected because it matched the fastest median (0.25 s), had the best measured p95 among the tied-fast configurations (0.27 s), and used less memory than the default (about 95 MiB versus about 100 MiB median maximum RSS). The authoritative build therefore invokes TypeScript with `--checkers 2`. This is a measured small-project choice, not a general claim that two workers is universally optimal.
+
 ## Continuous integration
 
 The permanent GitHub Actions workflow uses an explicit Ubuntu 24.04 runner, the pinned project Node/npm/TypeScript toolchain, Python 3.13 and full-sha-pinned official GitHub actions.

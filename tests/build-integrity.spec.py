@@ -53,6 +53,7 @@ check("TypeScript correctness flags", all(tsconfig.get("compilerOptions", {}).ge
     "forceConsistentCasingInFileNames": True,
 }.items()))
 check("build assembles emitted files", "expected_outputs" in build_script and "manifest-ordered-emitted-js" in build_script and "textwrap.indent(body, \"  \")" in build_script)
+check("measured TypeScript checker parallelism", 'TYPESCRIPT_CHECKERS = 2' in build_script and '"--checkers", str(TYPESCRIPT_CHECKERS)' in build_script)
 check("source parts own no runtime wrapper", not first_source.lstrip().startswith("(() => {") and not last_source.rstrip().endswith("})();"))
 check("manifest owns expected layers", all(token in {path.name for path in source_paths} for token in [
     "00-runtime-boundary.ts", "05-presentation-engine.ts", "10-domain-model.ts", "11-domain-kernel.ts",

@@ -2,6 +2,12 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-11 — TypeScript 7 measured parallelism
+
+- Benchmarked default and 1/2/4/8 checker configurations on the Ubuntu 24.04 CI runner using TypeScript 7.0.2.
+- Selected `--checkers 2`: 0.25 s median, 0.27 s p95 and about 95 MiB median maximum RSS across seven measured runs after warm-up.
+- Removed the temporary benchmark workflow after recording the result; the permanent build now carries the measured checker count.
+
 ## 2026-11-11 — TypeScript 7 compiler and CI hardening
 
 - Enabled return, fallthrough, index-signature, unreachable-code, unused-label, unused-symbol and filename-casing compiler checks on top of the strict TypeScript baseline.

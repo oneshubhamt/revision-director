@@ -15,6 +15,7 @@ GENERATED_JS_DIR = ROOT / "build/generated-js"
 TSCONFIG = SOURCE_DIR / "tsconfig.json"
 TSC = ROOT / "node_modules/.bin" / ("tsc.cmd" if os.name == "nt" else "tsc")
 EXPECTED_TYPESCRIPT_VERSION = "7.0.2"
+TYPESCRIPT_CHECKERS = 2
 PRESENTATION_SENTINEL = "__RD_PRESENTATION_MANIFEST__"
 SHELL = SOURCE_DIR / "revision-director.shell.html"
 CSS = SOURCE_DIR / "revision-director.va7.css"
@@ -96,7 +97,7 @@ def compile_typescript(parts: list[Path]) -> None:
                 f"Expected TypeScript {EXPECTED_TYPESCRIPT_VERSION}, got {version or 'unknown'}."
             )
 
-        subprocess.run([str(TSC), "-p", str(TSCONFIG)], cwd=ROOT, check=True)
+        subprocess.run([str(TSC), "-p", str(TSCONFIG), "--checkers", str(TYPESCRIPT_CHECKERS)], cwd=ROOT, check=True)
 
         expected_outputs = [
             GENERATED_JS_DIR / path.relative_to(SOURCE_DIR).with_suffix(".js")
@@ -172,7 +173,7 @@ def build_html() -> None:
     )
     html = html.replace("<!-- INLINE_JS -->", f"<script>\n{js}\n</script>")
     (ROOT / "index.html").write_text(html)
-    print(f"Compiled {len(parts)} maintained TypeScript files with TypeScript {EXPECTED_TYPESCRIPT_VERSION}")
+    print(f"Compiled {len(parts)} maintained TypeScript files with TypeScript {EXPECTED_TYPESCRIPT_VERSION} using {TYPESCRIPT_CHECKERS} checker workers")
     print(f"Built {ROOT / 'index.html'} ({len(html):,} bytes)")
 
 
