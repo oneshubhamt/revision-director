@@ -233,21 +233,21 @@
       const expectedCompletion = await this.hashJson({ manifest, ...completionBody }, manifest.hashAlgorithm);
       assert(completion.checksum === expectedCompletion, "Backup final checksum failed verification.");
       assert(collections.settings.length === 1, "Backup must contain exactly one settings document.");
-      const candidate: BackupPayload = {
+      const candidate = {
         format: manifest.payloadFormat,
         schemaVersion: manifest.payloadSchemaVersion,
         exportedAt: manifest.exportedAt,
         appVersion: manifest.appVersion,
-        profiles: collections.profiles as ExamProfile[],
-        nodes: collections.nodes as KnowledgeNode[],
-        units: collections.units as KnowledgeUnit[],
-        studyEvents: collections.studyEvents as StudyEvent[],
-        obligations: collections.obligations as RevisionObligation[],
-        evidenceEvents: collections.evidenceEvents as EvidenceEvent[],
-        chunks: collections.chunks as ObligationChunk[],
-        dailyPlans: collections.dailyPlans as DailyPlanRecord[],
-        settings: collections.settings[0] as AppSettings,
-        activeRetrieval: (collections.activeRetrieval[0] as ActiveRetrievalSession | undefined) ?? null,
+        profiles: collections.profiles,
+        nodes: collections.nodes,
+        units: collections.units,
+        studyEvents: collections.studyEvents,
+        obligations: collections.obligations,
+        evidenceEvents: collections.evidenceEvents,
+        chunks: collections.chunks,
+        dailyPlans: collections.dailyPlans,
+        settings: collections.settings[0],
+        activeRetrieval: collections.activeRetrieval[0] ?? null,
       };
       const payload = validate(candidate);
       const warnings: string[] = [];
@@ -298,57 +298,68 @@
     }
 
     private static parseManifest(input: unknown): BackupArchiveManifest {
-      assert(typeof input === "object" && input !== null, "Backup manifest is missing.");
-      const value = input as Partial<BackupArchiveManifest>;
-      assert(value.kind === "manifest" && value.format === BACKUP_ARCHIVE_FORMAT && value.version === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
-      assert(value.appVersion === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
-      assert(value.payloadFormat === BACKUP_FORMAT && value.payloadSchemaVersion === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
-      assert(value.compression === "none" || value.compression === "gzip", "Backup compression metadata is invalid.");
-      assert(value.hashAlgorithm === "sha256", "Backup hash algorithm is unsupported.");
-      assert(value.chunkTargetBytes === BACKUP_ARCHIVE_CHUNK_TARGET_BYTES && value.chunkMaxItems === BACKUP_ARCHIVE_CHUNK_MAX_ITEMS, "Backup chunk contract is unsupported.");
-      assert(Number.isInteger(value.chunkCount) && (value.chunkCount ?? -1) >= 0, "Backup manifest chunk count is invalid.");
-      assert(typeof value.counts === "object" && value.counts !== null, "Backup manifest counts are missing.");
-      assert(typeof value.stateChecksum === "string" && /^[0-9a-f]{16,64}$/.test(value.stateChecksum), "Backup state checksum is invalid.");
+      const value = requireRecord(input, "Backup manifest");
+      assert(value["kind"] === "manifest" && value["format"] === BACKUP_ARCHIVE_FORMAT && value["version"] === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
+      assert(value["appVersion"] === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
+      assert(value["payloadFormat"] === BACKUP_FORMAT && value["payloadSchemaVersion"] === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
+      const compression = literalChoice(value["compression"], ["none", "gzip"] as const, "Backup compression metadata");
+      const hashAlgorithm = literalChoice(value["hashAlgorithm"], ["sha256"] as const, "Backup hash algorithm");
+      assert(value["chunkTargetBytes"] === BACKUP_ARCHIVE_CHUNK_TARGET_BYTES && value["chunkMaxItems"] === BACKUP_ARCHIVE_CHUNK_MAX_ITEMS, "Backup chunk contract is unsupported.");
+      const chunkCount = value["chunkCount"];
+      assert(typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup manifest chunk count is invalid.");
+      const stateChecksum = value["stateChecksum"];
+      assert(typeof stateChecksum === "string" && /^[0-9a-f]{16,64}$/.test(stateChecksum), "Backup state checksum is invalid.");
       return {
-        kind: "manifest", format: BACKUP_ARCHIVE_FORMAT, version: BACKUP_ARCHIVE_VERSION,
-        exportedAt: canonicalIso(value.exportedAt as ISODateTime, "Backup export date"),
-        appVersion: canonicalId(value.appVersion as string, "Backup application version"),
-        payloadFormat: BACKUP_FORMAT, payloadSchemaVersion: BACKUP_SCHEMA_VERSION,
-        compression: value.compression, hashAlgorithm: value.hashAlgorithm,
-        chunkTargetBytes: BACKUP_ARCHIVE_CHUNK_TARGET_BYTES, chunkMaxItems: BACKUP_ARCHIVE_CHUNK_MAX_ITEMS,
-        chunkCount: value.chunkCount!, counts: this.parseCounts(value.counts), stateChecksum: value.stateChecksum,
+        kind: "manifest",
+        format: BACKUP_ARCHIVE_FORMAT,
+        version: BACKUP_ARCHIVE_VERSION,
+        exportedAt: canonicalIso(requiredString(value["exportedAt"], "Backup export date"), "Backup export date"),
+        appVersion: canonicalId(requiredString(value["appVersion"], "Backup application version"), "Backup application version"),
+        payloadFormat: BACKUP_FORMAT,
+        payloadSchemaVersion: BACKUP_SCHEMA_VERSION,
+        compression,
+        hashAlgorithm,
+        chunkTargetBytes: BACKUP_ARCHIVE_CHUNK_TARGET_BYTES,
+        chunkMaxItems: BACKUP_ARCHIVE_CHUNK_MAX_ITEMS,
+        chunkCount,
+        counts: this.parseCounts(value["counts"]),
+        stateChecksum,
       };
     }
 
     private static parseCounts(input: unknown): BackupArchiveCounts {
-      assert(typeof input === "object" && input !== null, "Backup counts are invalid.");
-      const value = input as Partial<BackupArchiveCounts>;
+      const value = requireRecord(input, "Backup counts");
       const counts = this.zeroCounts();
       for (const key of BACKUP_ENTITY_ORDER) {
         const count = value[key];
-        assert(Number.isInteger(count) && (count ?? -1) >= 0, `Backup ${key} count is invalid.`);
-        counts[key] = count!;
+        assert(typeof count === "number" && Number.isInteger(count) && count >= 0, `Backup ${key} count is invalid.`);
+        counts[key] = count;
       }
       return counts;
     }
 
     private static parseChunk(input: unknown): BackupArchiveChunk {
-      assert(typeof input === "object" && input !== null, "Backup chunk is invalid.");
-      const value = input as Partial<BackupArchiveChunk>;
-      assert(value.kind === "chunk" && Number.isInteger(value.sequence) && (value.sequence ?? -1) >= 0, "Backup chunk sequence is invalid.");
-      assert(typeof value.entityType === "string" && BACKUP_ENTITY_ORDER.includes(value.entityType as BackupArchiveEntityType), "Backup chunk entity type is invalid.");
-      assert(Number.isInteger(value.count) && Array.isArray(value.items), "Backup chunk contents are invalid.");
-      assert(typeof value.checksum === "string" && /^[0-9a-f]{16,64}$/.test(value.checksum), "Backup chunk checksum is invalid.");
-      return { kind: "chunk", sequence: value.sequence!, entityType: value.entityType as BackupArchiveEntityType, count: value.count!, items: value.items, checksum: value.checksum };
+      const value = requireRecord(input, "Backup chunk");
+      const sequence = value["sequence"];
+      assert(value["kind"] === "chunk" && typeof sequence === "number" && Number.isInteger(sequence) && sequence >= 0, "Backup chunk sequence is invalid.");
+      const entityType = literalChoice(value["entityType"], BACKUP_ENTITY_ORDER, "Backup chunk entity type");
+      const count = value["count"];
+      const items = value["items"];
+      assert(typeof count === "number" && Number.isInteger(count) && Array.isArray(items), "Backup chunk contents are invalid.");
+      const checksum = value["checksum"];
+      assert(typeof checksum === "string" && /^[0-9a-f]{16,64}$/.test(checksum), "Backup chunk checksum is invalid.");
+      return { kind: "chunk", sequence, entityType, count, items, checksum };
     }
 
     private static parseCompletion(input: unknown): BackupArchiveCompletion {
-      assert(typeof input === "object" && input !== null, "Backup completion proof is missing.");
-      const value = input as Partial<BackupArchiveCompletion>;
-      assert(value.kind === "complete" && Number.isInteger(value.chunkCount) && (value.chunkCount ?? -1) >= 0, "Backup completion proof is invalid.");
-      assert(Array.isArray(value.chunkHashes) && value.chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{16,64}$/.test(hash)), "Backup completion hashes are invalid.");
-      assert(typeof value.checksum === "string" && /^[0-9a-f]{16,64}$/.test(value.checksum), "Backup final checksum is invalid.");
-      return { kind: "complete", chunkCount: value.chunkCount!, counts: this.parseCounts(value.counts), chunkHashes: value.chunkHashes, checksum: value.checksum };
+      const value = requireRecord(input, "Backup completion proof");
+      const chunkCount = value["chunkCount"];
+      assert(value["kind"] === "complete" && typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup completion proof is invalid.");
+      const chunkHashes = value["chunkHashes"];
+      assert(Array.isArray(chunkHashes) && chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{16,64}$/.test(hash)), "Backup completion hashes are invalid.");
+      const checksum = value["checksum"];
+      assert(typeof checksum === "string" && /^[0-9a-f]{16,64}$/.test(checksum), "Backup final checksum is invalid.");
+      return { kind: "complete", chunkCount, counts: this.parseCounts(value["counts"]), chunkHashes, checksum };
     }
 
     private static inspection(manifest: BackupArchiveManifest, archiveChecksum: string, activeRetrievalStatus: ActiveRetrievalStatus | "none", compressedBytes: number, expandedBytes: number, warnings: string[]): BackupInspectionMetadata {

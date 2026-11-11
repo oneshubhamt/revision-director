@@ -472,9 +472,17 @@
     };
   }
 
-  function canonicalActiveRetrievalEnvelope(value: ActiveRetrievalRecoveryEnvelope): ActiveRetrievalRecoveryEnvelope {
-    assert(value && typeof value === "object" && value.format === ACTIVE_RETRIEVAL_RECOVERY_FORMAT && value.schemaVersion === 1, "Active retrieval recovery envelope is invalid.");
-    return { format: ACTIVE_RETRIEVAL_RECOVERY_FORMAT, schemaVersion: 1, savedAt: canonicalIso(value.savedAt, "Recovery save date"), session: canonicalActiveRetrievalSession(value.session) };
+  function canonicalActiveRetrievalEnvelope(input: unknown): ActiveRetrievalRecoveryEnvelope {
+    const value = requireRecord(input, "Active retrieval recovery envelope");
+    assert(value["format"] === ACTIVE_RETRIEVAL_RECOVERY_FORMAT && value["schemaVersion"] === 1, "Active retrieval recovery envelope is invalid.");
+    const session = value["session"];
+    assert(isRecord(session), "Active retrieval recovery session is invalid.");
+    return {
+      format: ACTIVE_RETRIEVAL_RECOVERY_FORMAT,
+      schemaVersion: 1,
+      savedAt: canonicalIso(requiredString(value["savedAt"], "Recovery save date"), "Recovery save date"),
+      session: canonicalActiveRetrievalSession(session as unknown as ActiveRetrievalSession),
+    };
   }
 
   function canonicalDocument(kind: DurableDocumentKind, value: DurableDocument): DurableDocument {

@@ -44,9 +44,17 @@
         const parsed: unknown = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
         return parsed.filter((entry): entry is DiagnosticRecord => {
-          if (typeof entry !== "object" || entry === null) return false;
-          const value = entry as Partial<DiagnosticRecord>;
-          return typeof value.id === "string" && typeof value.code === "string" && typeof value.message === "string" && typeof value.operation === "string" && typeof value.firstAt === "string" && typeof value.lastAt === "string" && Number.isInteger(value.count) && (value.count ?? 0) >= 1;
+          if (!isRecord(entry)) return false;
+          const count = entry["count"];
+          return typeof entry["id"] === "string"
+            && typeof entry["code"] === "string"
+            && typeof entry["message"] === "string"
+            && typeof entry["operation"] === "string"
+            && typeof entry["firstAt"] === "string"
+            && typeof entry["lastAt"] === "string"
+            && typeof count === "number"
+            && Number.isInteger(count)
+            && count >= 1;
         }).slice(-50);
       } catch {
         return [];

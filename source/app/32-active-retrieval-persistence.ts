@@ -61,7 +61,7 @@
       const raw = safeLocalStorageGet(ACTIVE_RETRIEVAL_RECOVERY_KEY);
       if (!raw) return undefined;
       try {
-        const parsed = JSON.parse(raw) as ActiveRetrievalRecoveryEnvelope;
+        const parsed: unknown = JSON.parse(raw);
         return canonicalActiveRetrievalEnvelope(parsed).session;
       } catch (error) {
         this.data.recordDiagnostic("active-retrieval.local.invalid", "read emergency recovery", error);

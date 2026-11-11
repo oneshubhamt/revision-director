@@ -58,6 +58,11 @@
     return allowed.some((candidate) => candidate === value) ? value as Values[number] : undefined;
   }
 
+  function requiredString(value: unknown, label: string): string {
+    assert(typeof value === "string", `${label} must be a string.`);
+    return value;
+  }
+
   function formText(data: FormData, name: string, fallback = ""): string {
     const value = data.get(name);
     if (value === null) return fallback;
