@@ -244,9 +244,9 @@
         this.channel = new BroadcastChannel(REVIEW_OWNER_CHANNEL);
         this.channel.onmessage = (event: MessageEvent<unknown>) => {
           if (!isRecord(event.data)) return;
-          const type = event.data["type"];
+          const type = literalChoiceOrUndefined(event.data["type"], ["heartbeat", "release", "takeover-request", "takeover-ready"] as const);
           const tabId = event.data["tabId"];
-          if (!literalChoiceOrUndefined(type, ["heartbeat", "release", "takeover-request", "takeover-ready"] as const) || typeof tabId !== "string" || tabId === this.tabId) return;
+          if (!type || typeof tabId !== "string" || tabId === this.tabId) return;
           const requestId = event.data["requestId"];
           const expiresAt = event.data["expiresAt"];
           if (requestId !== undefined && typeof requestId !== "string") return;

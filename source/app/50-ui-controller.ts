@@ -1089,7 +1089,7 @@
         const attemptElapsedMs = Math.max(this.attemptElapsedMs, this.closedBookAttemptMs());
         result = { kind: "answer-writing", mode: spec.answerMode ?? "full-answer", responseMedium: spec.responseMedium, answerText: text("#answer-text"), demandAddressed: literalChoice(number("#answer-demand", 2), RUBRIC_SCORES, "Answer demand score"), structure: literalChoice(number("#answer-structure-score", 2), RUBRIC_SCORES, "Answer structure score"), contentAccuracy: literalChoice(number("#answer-content", 2), RUBRIC_SCORES, "Answer content score"), examplesEvidence: literalChoice(number("#answer-examples", 2), RUBRIC_SCORES, "Answer examples score"), conclusion: literalChoice(number("#answer-conclusion", 2), RUBRIC_SCORES, "Answer conclusion score"), completedWithinTime: attemptElapsedMs <= timeLimitMinutes * 60_000, attemptElapsedMs, timeLimitMinutes, wordCount: number("#answer-word-count"), wordLimit: spec.wordLimit ?? 150, cueLevel };
       } else {
-        result = { kind: "relearning", diagnosis: literalChoice(this.reviewContent.querySelector<HTMLSelectElement>("#relearn-diagnosis")?.value ?? "conceptual-misunderstanding", ERROR_TYPES, "Relearning diagnosis"), repairAction: text("#relearn-repair-action"), verificationText: text("#relearn-verification-text"), checkpointTotal, checkpointsMet, sourceClosedForVerification: checked("#relearn-source-closed") && checked("#relearn-assessment-source-closed"), repairCompleted: checked("#relearn-repair-completed") };
+        result = { kind: "relearning", diagnosis: literalChoice(this.reviewContent.querySelector<HTMLSelectElement>("#relearn-diagnosis")?.value ?? "conceptual-misunderstanding", ERROR_TYPE_VALUES, "Relearning diagnosis"), repairAction: text("#relearn-repair-action"), verificationText: text("#relearn-verification-text"), checkpointTotal, checkpointsMet, sourceClosedForVerification: checked("#relearn-source-closed") && checked("#relearn-assessment-source-closed"), repairCompleted: checked("#relearn-repair-completed") };
       }
       validateWorkflowResult(result, spec.kind);
       return result;
@@ -1098,7 +1098,7 @@
     private collectEvidence(rating: Rating, obligation: RevisionObligation): EvidenceDraft {
       assert(this.reviewPhase === "compare", "Complete the retrieval and comparison before rating.");
       const workflowResult = this.collectWorkflowResult(obligation);
-      const errors = [...this.reviewContent.querySelectorAll<HTMLInputElement>("[data-error-type]:checked")].map((input) => literalChoice(input.value, ERROR_TYPES, "Error type"));
+      const errors = [...this.reviewContent.querySelectorAll<HTMLInputElement>("[data-error-type]:checked")].map((input) => literalChoice(input.value, ERROR_TYPE_VALUES, "Error type"));
       const correctionNote = this.reviewContent.querySelector<HTMLTextAreaElement>("#correction-note")?.value.trim() ?? "";
       const normalized = workflowEvidence(workflowResult, errors, correctionNote);
       const timing = this.timingSummary();
@@ -1115,7 +1115,7 @@
       if (!target) return;
       try {
         const result = this.collectWorkflowResult(obligation);
-        const errors = [...this.reviewContent.querySelectorAll<HTMLInputElement>("[data-error-type]:checked")].map((input) => literalChoice(input.value, ERROR_TYPES, "Error type"));
+        const errors = [...this.reviewContent.querySelectorAll<HTMLInputElement>("[data-error-type]:checked")].map((input) => literalChoice(input.value, ERROR_TYPE_VALUES, "Error type"));
         const evidence = workflowEvidence(result, errors, this.reviewContent.querySelector<HTMLTextAreaElement>("#correction-note")?.value ?? "");
         const suggested = suggestRating(obligation.type, evidence);
         target.textContent = `${ratingName(suggested)} · score ${roundTo(objectiveScore(obligation.type, evidence), 1)}/4`;

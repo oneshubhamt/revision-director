@@ -75,7 +75,7 @@
   const RECONSTRUCTION_SHAPES = ["outline", "table", "flow", "concept-map", "sequence"] as const satisfies readonly ReconstructionShape[];
   const ANSWER_MODES = ["outline", "full-answer"] as const satisfies readonly AnswerMode[];
   const DIAGRAM_SURFACES = ["canvas", "paper"] as const satisfies readonly DiagramSurface[];
-  const ERROR_TYPES = ["factual-omission", "conceptual-misunderstanding", "confusion-interference", "application-failure", "answer-structure", "diagram-reconstruction", "slow-retrieval"] as const satisfies readonly ErrorType[];
+  const ERROR_TYPE_VALUES = ["factual-omission", "conceptual-misunderstanding", "confusion-interference", "application-failure", "answer-structure", "diagram-reconstruction", "slow-retrieval"] as const satisfies readonly ErrorType[];
   const INACTIVE_GAP_CLASSIFICATIONS = ["focus", "break", "split", "ignore"] as const satisfies readonly InactiveGapClassification[];
   const BACKUP_ACTIVE_SESSION_TREATMENTS = ["restore", "discard"] as const satisfies readonly BackupActiveSessionTreatment[];
   const RUBRIC_SCORES = [0, 1, 2, 3, 4] as const;
