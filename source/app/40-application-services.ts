@@ -734,6 +734,7 @@
               assert(resumed.schedulerConfig && resumed.reviewLog, "Returned memory review lacks FSRS-7 provenance.");
               original.dueAt = resumed.dueAt;
               original.policyState = resumed.policyState;
+              original.lastCompletedAt = reviewedAt.toISOString();
               returnedMemoryTransition = {
                 obligationId: original.id,
                 rating: Rating.Good,
@@ -1037,6 +1038,7 @@
           assert(fsrsCard.scheduleStatus === "new" || fsrsCard.scheduleStatus === "learning" || fsrsCard.scheduleStatus === "review" || fsrsCard.scheduleStatus === "suspended", "FSRS card schedule status is invalid.");
           requiredFsrs7StabilityFast(fsrsCard.stabilityFast);
           validDate(fsrsCard.dueAt, "FSRS card");
+          assert(fsrsCard.dueAt === obligation.dueAt, "Memory obligation due date is not synchronized with its FSRS-7 card.");
           if (fsrsCard.lastReviewAt) validDate(fsrsCard.lastReviewAt, "FSRS last review");
         }
         if (obligation.parentObligationId) assert(obligationMap.has(obligation.parentObligationId), "Obligation references a missing parent.");

@@ -132,6 +132,7 @@ check("automatic relearn follow-up", 'completion.followUpType = "relearn"' in ts
 check("relearn pauses exact original", 'item.returnObligationId === obligation.id' in ts and 'obligation.status = "suspended"' in ts)
 check("atomic original reactivation", "relatedObligation?: RevisionObligation" in ts and "if (relatedObligation) obligationStore.put(relatedObligation)" in ts)
 check("FSRS relearning resumption", 'const resumed = this.router.get("memory-recall").complete(original, Rating.Good, normalizedDraft, reviewedAt)' in ts and "original.dueAt = resumed.dueAt" in ts and "original.policyState = resumed.policyState" in ts)
+check("FSRS due ownership invariant", 'assert(fsrsCard.dueAt === obligation.dueAt' in ts and "original.lastCompletedAt = reviewedAt.toISOString()" in ts)
 check("FSRS relearning transition audit", "returnedMemoryTransition" in ts and "ReturnedMemoryTransition" in ts and "Returned-memory scheduler transition presence is inconsistent" in ts)
 check("priority-aware queue", "b.obligation.priority - a.obligation.priority" in ts and "b.unit.importance - a.unit.importance" in ts)
 check("relational backup validation", "Section must belong to a subject in the same profile" in ts and "Evidence event relationships are inconsistent" in ts)
