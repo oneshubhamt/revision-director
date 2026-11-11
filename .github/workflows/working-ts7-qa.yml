@@ -1,0 +1,43 @@
+name: Temporary working TypeScript 7 QA
+
+on:
+  push:
+    branches: [working]
+    paths-ignore:
+      - dist/app.js
+      - index.html
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: working
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build integrity
+        run: npm run test:build
+      - name: Node regression suites
+        run: |
+          set -euo pipefail
+          for file in tests/*.spec.js; do
+            echo "== $file =="
+            node "$file"
+          done
+      - name: Commit generated runtime if changed
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- dist/app.js index.html; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add dist/app.js index.html
+            git commit -m "build: regenerate runtime with TypeScript 7 source graph"
+            git push origin HEAD:working
+          fi
