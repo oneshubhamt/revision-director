@@ -120,6 +120,8 @@ check("FSRS-7 long-form interval policy", "fractionalDays: true" in ts and "enab
 check("Again routes to corrective relearning", 'if (rating === Rating.Again) completion.followUpType = "relearn"' in ts)
 check("FSRS rating semantics", 'if (type === "memory-recall")' in ts and '"Easy" remains a user judgement' in ts and "partial or cued recall" in ts)
 check("strict current data only", "event.oldVersion === 0" in ts and "canonical.applicationVersion === APP_VERSION" in ts and "candidate.appVersion === APP_VERSION" in ts)
+check("no timing compatibility synthesis", "fallbackElapsedMs" not in ts and "canonicalTimingEvidenceSummary(value: TimingEvidenceSummary)" in ts and "completeChunk(chunkId: string, timing: TimingEvidenceSummary" in ts)
+check("SHA-256-only backup integrity", 'type BackupArchiveHashAlgorithm = "sha256";' in ts and "fnv1a64" not in ts)
 check("policy router", "class SchedulerPolicyRouter" in ts)
 check("immutable Study Event semantics", "interface StudyEvent" in ts and "studyEvents" in ts)
 check("atomic unit and first obligation", "createUnitWithObligation" in ts and "this.db.transaction([Store.Units, Store.Obligations]" in ts)

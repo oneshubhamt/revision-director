@@ -1382,7 +1382,7 @@
         try {
           await this.activePersistence.flush(committing);
           const guard: ActiveCommitGuard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: target, commitToken };
-          await this.service.completeChunk(chunkId, elapsedMs, note, new Date(), guard, post, timing);
+          await this.service.completeChunk(chunkId, timing, note, new Date(), guard, post);
           await this.activePersistence.acceptCommittedTransition(post);
           this.activeSessionRevision = post.revision;
           this.toast("Chunk completed. Parent scheduling remains unchanged until final synthesis.");

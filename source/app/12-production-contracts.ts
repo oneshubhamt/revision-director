@@ -163,7 +163,7 @@
     event.beforePolicyState = canonicalPolicyState(event.beforePolicyState);
     event.afterPolicyState = canonicalPolicyState(event.afterPolicyState);
     event.policyId = canonicalId(event.policyId, "Evidence-event policy ID");
-    event.timing = canonicalTimingEvidenceSummary(event.timing, event.elapsedMs);
+    event.timing = canonicalTimingEvidenceSummary(event.timing);
     event.elapsedMs = event.timing.totalActiveMs;
     event.evidence.errorTypes = [...new Set(event.evidence.errorTypes)];
     event.evidence.correctionNote = canonicalText(event.evidence.correctionNote, "Evidence correction note");
@@ -198,7 +198,8 @@
     if (chunk.note !== undefined) chunk.note = canonicalText(chunk.note, "Obligation-chunk note");
     else delete chunk.note;
     if (chunk.actualMinutes === undefined) delete chunk.actualMinutes;
-    if (chunk.timing !== undefined) chunk.timing = canonicalTimingEvidenceSummary(chunk.timing, (chunk.actualMinutes ?? 0) * 60_000);
+    if (chunk.status === "completed") assert(chunk.timing !== undefined, "Completed chunk timing is required.");
+    if (chunk.timing !== undefined) chunk.timing = canonicalTimingEvidenceSummary(chunk.timing);
     else delete chunk.timing;
     return chunk;
   }
@@ -240,6 +241,11 @@
 
   function canonicalAppSettings(value: AppSettings): AppSettings {
     assertDocumentSchema(value, "Application settings");
+    assert(value.key === "app", "Application settings key is invalid.");
+    assert(typeof value.activeProfileId === "string", "Active profile ID must be a string.");
+    assert(Number.isFinite(value.desiredRetention) && value.desiredRetention >= 0.75 && value.desiredRetention <= 0.97, "Desired retention is invalid.");
+    assert(Number.isInteger(value.dailyCapacityMinutes) && value.dailyCapacityMinutes >= 5 && value.dailyCapacityMinutes <= 600, "Daily capacity is invalid.");
+    assert(Number.isInteger(value.studyDayBoundaryHour) && value.studyDayBoundaryHour >= 0 && value.studyDayBoundaryHour <= 12, "Study-day boundary hour is invalid.");
     return {
       ...clone(value),
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -267,24 +273,17 @@
     return value;
   }
 
-  function canonicalTimingEvidenceSummary(value: TimingEvidenceSummary | undefined, fallbackElapsedMs = 0): TimingEvidenceSummary {
-    if (!value) {
-      const elapsed = Math.round(clamp(Number(fallbackElapsedMs), 0, 7 * DAY_MS));
-      return {
-        totalActiveMs: elapsed,
-        activeByPhase: { attempt: elapsed, compare: 0, "relearn-repair": 0, "relearn-verify": 0 },
-        pauseMs: 0, pauseCount: 0, inactiveGapCount: 0,
-        classifiedFocusMs: 0, classifiedBreakMs: 0, ignoredGapMs: 0, promptExcludedMs: 0,
-        backwardClockCount: 0, durationReliable: true, reliabilityFlags: [],
-      };
-    }
+  function canonicalTimingEvidenceSummary(value: TimingEvidenceSummary): TimingEvidenceSummary {
+    assert(value && typeof value === "object", "Timing evidence is required.");
+    assert(value.activeByPhase && typeof value.activeByPhase === "object", "Phase timing breakdown is required.");
     const phases: ReviewPhase[] = ["attempt", "compare", "relearn-repair", "relearn-verify"];
     const activeByPhase = Object.fromEntries(phases.map((phase) => {
-      const raw = Number(value.activeByPhase?.[phase] ?? 0);
+      const raw = Number(value.activeByPhase[phase]);
       assert(Number.isFinite(raw) && raw >= 0 && raw <= 7 * DAY_MS, "Phase active time is invalid.");
       return [phase, Math.round(raw)];
     })) as Record<ReviewPhase, number>;
     const totalActiveMs = Object.values(activeByPhase).reduce((sum, amount) => sum + amount, 0);
+    assert(Number.isFinite(value.totalActiveMs) && Math.round(value.totalActiveMs) === totalActiveMs, "Total active time does not match phase timing.");
     const bounded = (raw: number, label: string) => {
       assert(Number.isFinite(raw) && raw >= 0 && raw <= 30 * DAY_MS, `${label} is invalid.`);
       return Math.round(raw);
@@ -294,12 +293,14 @@
       return raw;
     };
     const ignoredGapMs = bounded(Number(value.ignoredGapMs), "Ignored gap time");
-    const reliabilityFlags = [...new Set(Array.isArray(value.reliabilityFlags) ? value.reliabilityFlags : [])];
+    assert(Array.isArray(value.reliabilityFlags), "Timing reliability flags are required.");
+    const reliabilityFlags = [...new Set(value.reliabilityFlags)];
     for (const flag of reliabilityFlags) assert(flag === "ignored-gap" || flag === "backward-clock", "Timing reliability flag is invalid.");
     if (ignoredGapMs > 0 && !reliabilityFlags.includes("ignored-gap")) reliabilityFlags.push("ignored-gap");
     const backwardClockCount = count(Number(value.backwardClockCount), "Backward-clock count");
     if (backwardClockCount > 0 && !reliabilityFlags.includes("backward-clock")) reliabilityFlags.push("backward-clock");
-    const durationReliable = Boolean(value.durationReliable) && ignoredGapMs === 0;
+    assert(typeof value.durationReliable === "boolean", "Timing reliability state is required.");
+    const durationReliable = value.durationReliable && ignoredGapMs === 0;
     return {
       totalActiveMs,
       activeByPhase,
@@ -333,7 +334,8 @@
       assert(Number.isFinite(value) && value >= 0 && value <= maximum, `${label} is invalid.`);
       return Math.round(value);
     };
-    const pauseHistory = (Array.isArray(value.pauseHistory) ? value.pauseHistory : []).slice(-TIME_HISTORY_LIMIT).map((pause) => {
+    assert(Array.isArray(value.pauseHistory), "Pause history is required.");
+    const pauseHistory = value.pauseHistory.slice(-TIME_HISTORY_LIMIT).map((pause) => {
       assert(["manual", "inactive-gap-break", "classification-prompt"].includes(pause.reason), "Pause reason is invalid.");
       const startedAt = canonicalIso(pause.startedAt, "Pause start date");
       const endedAt = canonicalIso(pause.endedAt, "Pause end date");
@@ -341,11 +343,13 @@
       assert(Date.parse(endedAt) >= Date.parse(startedAt), "Pause end precedes its start.");
       return { id: canonicalId(pause.id, "Pause ID"), reason: pause.reason, phase: canonicalReviewPhase(pause.phase), startedAt, endedAt, durationMs };
     });
-    const phaseHistory = (Array.isArray(value.phaseHistory) ? value.phaseHistory : []).slice(-TIME_HISTORY_LIMIT).map((transition) => {
+    assert(Array.isArray(value.phaseHistory), "Phase history is required.");
+    const phaseHistory = value.phaseHistory.slice(-TIME_HISTORY_LIMIT).map((transition) => {
       assert(["source-reveal", "begin-verification", "verification-reveal", "queue-advance"].includes(transition.reason), "Phase transition reason is invalid.");
       return { from: canonicalReviewPhase(transition.from), to: canonicalReviewPhase(transition.to), at: canonicalIso(transition.at, "Phase transition date"), sourceVisible: Boolean(transition.sourceVisible), reason: transition.reason };
     });
-    const gapHistory = (Array.isArray(value.gapHistory) ? value.gapHistory : []).slice(-TIME_HISTORY_LIMIT).map((gap) => {
+    assert(Array.isArray(value.gapHistory), "Inactive-gap history is required.");
+    const gapHistory = value.gapHistory.slice(-TIME_HISTORY_LIMIT).map((gap) => {
       assert(["focus", "break", "split", "ignore"].includes(gap.classification), "Inactive-gap classification is invalid.");
       assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(gap.source), "Inactive-gap source is invalid.");
       const gapMs = boundedRuntimeMs(gap.gapMs, "Inactive-gap duration");
@@ -371,6 +375,7 @@
     assert((value.state === "gap-pending") === Boolean(pendingGap), "Pending-gap state is inconsistent.");
     const pauseStartedAt = value.pauseStartedAt ? canonicalIso(value.pauseStartedAt, "Manual pause start date") : undefined;
     assert((value.state === "paused") === Boolean(pauseStartedAt), "Manual pause state is inconsistent.");
+    assert(typeof value.sourceVisible === "boolean", "Source visibility state is required.");
     return {
       currentPhase,
       state: value.state,
@@ -395,18 +400,21 @@
   function canonicalReviewDraftSnapshot(value: ReviewDraftSnapshot): ReviewDraftSnapshot {
     assert(value && typeof value === "object", "Review draft is invalid.");
     canonicalReviewPhase(value.phase);
+    assert(value.values && typeof value.values === "object" && !Array.isArray(value.values), "Review field values are required.");
+    assert(value.checked && typeof value.checked === "object" && !Array.isArray(value.checked), "Review check state is required.");
+    assert(Array.isArray(value.diagramStrokes), "Review diagram strokes are required.");
     const values: Record<string, string> = {};
-    for (const [rawKey, rawValue] of Object.entries(value.values ?? {}).slice(0, 96)) {
+    for (const [rawKey, rawValue] of Object.entries(value.values).slice(0, 96)) {
       const key = canonicalId(rawKey, "Review field ID");
       assert(typeof rawValue === "string", "Review field value is invalid.");
       values[key] = rawValue.slice(0, 20_000);
     }
     const checked: Record<string, boolean> = {};
-    for (const [rawKey, rawValue] of Object.entries(value.checked ?? {}).slice(0, 128)) {
+    for (const [rawKey, rawValue] of Object.entries(value.checked).slice(0, 128)) {
       const key = canonicalId(rawKey, "Review check ID");
       checked[key] = Boolean(rawValue);
     }
-    const diagramStrokes = (Array.isArray(value.diagramStrokes) ? value.diagramStrokes : []).slice(0, 256).map((stroke) => {
+    const diagramStrokes = value.diagramStrokes.slice(0, 256).map((stroke) => {
       assert(Array.isArray(stroke), "Diagram stroke is invalid.");
       return stroke.slice(0, 2_000).map((point) => {
         assert(point && typeof point === "object" && Number.isFinite(point.x) && Number.isFinite(point.y), "Diagram point is invalid.");
@@ -422,10 +430,14 @@
     assert(value.id === ACTIVE_RETRIEVAL_ID, "Active retrieval session ID is invalid.");
     assert(["active", "committing", "completed"].includes(value.status), "Active retrieval status is invalid.");
     assert(Number.isSafeInteger(value.revision) && value.revision >= 1, "Active retrieval revision is invalid.");
-    const queueTargetIds = [...new Set((Array.isArray(value.queueTargetIds) ? value.queueTargetIds : []).slice(0, 500).map((id) => canonicalId(id, "Review target ID")))];
+    assert(Array.isArray(value.queueTargetIds), "Active retrieval queue is required.");
+    const queueTargetIds = [...new Set(value.queueTargetIds.slice(0, 500).map((id) => canonicalId(id, "Review target ID")))];
     assert(Number.isInteger(value.activeIndex) && value.activeIndex >= 0 && value.activeIndex <= queueTargetIds.length, "Active retrieval index is invalid.");
-    const activeTargetId = value.status === "completed" ? String(value.activeTargetId ?? "").trim().slice(0, 240) : canonicalId(value.activeTargetId, "Active review target ID");
-    if (value.status !== "completed") {
+    assert(typeof value.activeTargetId === "string", "Active retrieval target ID must be a string.");
+    const activeTargetId = value.status === "completed" ? value.activeTargetId : canonicalId(value.activeTargetId, "Active review target ID");
+    if (value.status === "completed") {
+      assert(value.activeIndex === queueTargetIds.length && activeTargetId === "", "Completed retrieval state is inconsistent.");
+    } else {
       assert(queueTargetIds.length > 0 && value.activeIndex < queueTargetIds.length, "Active retrieval queue is invalid.");
       assert(queueTargetIds[value.activeIndex] === activeTargetId, "Active retrieval target does not match its queue.");
     }

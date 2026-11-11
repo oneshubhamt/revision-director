@@ -1,5 +1,5 @@
   type BackupArchiveCompression = "none" | "gzip";
-  type BackupArchiveHashAlgorithm = "sha256" | "fnv1a64";
+  type BackupArchiveHashAlgorithm = "sha256";
   type BackupArchiveEntityType = "profiles" | "nodes" | "units" | "studyEvents" | "obligations" | "evidenceEvents" | "chunks" | "dailyPlans" | "settings" | "activeRetrieval";
 
   interface BackupArchiveCounts {
@@ -124,7 +124,7 @@
       const collections = this.payloadCollections(payload);
       const counts = this.countCollections(collections);
       this.assertCountsWithinLimits(counts);
-      const hashAlgorithm = this.bestHashAlgorithm();
+      const hashAlgorithm: BackupArchiveHashAlgorithm = "sha256";
       const compression: BackupArchiveCompression = preferCompression && typeof CompressionStream !== "undefined" ? "gzip" : "none";
       const chunkBodies: Omit<BackupArchiveChunk, "checksum">[] = [];
       for (const entityType of BACKUP_ENTITY_ORDER) {
@@ -251,7 +251,6 @@
       };
       const payload = validate(candidate);
       const warnings: string[] = [];
-      if (manifest.hashAlgorithm === "fnv1a64") warnings.push("Integrity uses the local-runtime fallback hash because Web Crypto was unavailable when the backup was created.");
       const stateChecksum = await this.stateFingerprint(payload, manifest.hashAlgorithm);
       assert(stateChecksum === manifest.stateChecksum, "Backup state checksum failed verification.");
       return { payload, inspection: this.inspection(manifest, completion.checksum, payload.activeRetrieval?.status ?? "none", bytes.byteLength, expanded.byteLength, warnings) };
@@ -305,7 +304,7 @@
       assert(value.appVersion === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
       assert(value.payloadFormat === BACKUP_FORMAT && value.payloadSchemaVersion === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
       assert(value.compression === "none" || value.compression === "gzip", "Backup compression metadata is invalid.");
-      assert(value.hashAlgorithm === "sha256" || value.hashAlgorithm === "fnv1a64", "Backup hash algorithm is unsupported.");
+      assert(value.hashAlgorithm === "sha256", "Backup hash algorithm is unsupported.");
       assert(value.chunkTargetBytes === BACKUP_ARCHIVE_CHUNK_TARGET_BYTES && value.chunkMaxItems === BACKUP_ARCHIVE_CHUNK_MAX_ITEMS, "Backup chunk contract is unsupported.");
       assert(Number.isInteger(value.chunkCount) && (value.chunkCount ?? -1) >= 0, "Backup manifest chunk count is invalid.");
       assert(typeof value.counts === "object" && value.counts !== null, "Backup manifest counts are missing.");
@@ -385,25 +384,16 @@
       return this.hashJson(value, "sha256");
     }
 
-    private static bestHashAlgorithm(): BackupArchiveHashAlgorithm {
-      return globalThis.crypto?.subtle ? "sha256" : "fnv1a64";
-    }
-
     private static async hashJson(value: unknown, algorithm: BackupArchiveHashAlgorithm): Promise<string> {
       return this.hashBytes(this.encode(JSON.stringify(value)), algorithm);
     }
 
-    private static async hashBytes(bytes: Uint8Array, algorithm: BackupArchiveHashAlgorithm): Promise<string> {
-      if (algorithm === "sha256") {
-        if (globalThis.crypto?.subtle) {
-          const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
-          return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
-        }
-        return this.sha256Fallback(bytes);
+    private static async hashBytes(bytes: Uint8Array, _algorithm: BackupArchiveHashAlgorithm): Promise<string> {
+      if (globalThis.crypto?.subtle) {
+        const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
+        return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
       }
-      let hash = 0xcbf29ce484222325n;
-      for (const value of bytes) { hash ^= BigInt(value); hash = BigInt.asUintN(64, hash * 0x100000001b3n); }
-      return hash.toString(16).padStart(16, "0");
+      return this.sha256Fallback(bytes);
     }
 
 

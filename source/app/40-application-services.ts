@@ -569,14 +569,15 @@
       return record;
     }
 
-    async completeChunk(chunkId: string, elapsedMs: number, note = "", completedAt = new Date(), commitGuard?: ActiveCommitGuard, postCommitSession?: ActiveRetrievalSession, timing?: TimingEvidenceSummary): Promise<ObligationChunk> {
+    async completeChunk(chunkId: string, timing: TimingEvidenceSummary, note = "", completedAt = new Date(), commitGuard?: ActiveCommitGuard, postCommitSession?: ActiveRetrievalSession): Promise<ObligationChunk> {
       const chunk = await this.repo.get<ObligationChunk>(Store.Chunks, chunkId);
       assert(chunk && chunk.status === "pending", "This split session is no longer pending.");
       const obligation = await this.obligation(chunk.obligationId);
       assert(obligation.chunking?.cycleId === chunk.cycleId && obligation.chunking.status === "chunking", "Split-session state is inconsistent.");
-      const actualMinutes = roundTo(Math.max(1, elapsedMs / 60_000), 1);
+      const canonicalTiming = canonicalTimingEvidenceSummary(timing);
+      const actualMinutes = roundTo(Math.max(1, canonicalTiming.totalActiveMs / 60_000), 1);
       assert(actualMinutes <= 240, "Split-session duration is invalid.");
-      chunk.status = "completed"; chunk.completedAt = completedAt.toISOString(); chunk.actualMinutes = actualMinutes; chunk.note = note.trim(); chunk.timing = canonicalTimingEvidenceSummary(timing, elapsedMs); chunk.updatedAt = completedAt.toISOString();
+      chunk.status = "completed"; chunk.completedAt = completedAt.toISOString(); chunk.actualMinutes = actualMinutes; chunk.note = note.trim(); chunk.timing = canonicalTiming; chunk.updatedAt = completedAt.toISOString();
       obligation.chunking.completedChunks += 1;
       if (obligation.chunking.completedChunks >= obligation.chunking.totalChunks) {
         obligation.chunking.status = "synthesis-ready";
@@ -630,7 +631,7 @@
     }
 
     async recordEvidence(obligationId: string, draft: EvidenceDraft, reviewedAt = new Date(), commitGuard?: ActiveCommitGuard, postCommitSession?: ActiveRetrievalSession): Promise<EvidenceEvent> {
-      const timing = canonicalTimingEvidenceSummary(draft.timing, draft.elapsedMs);
+      const timing = canonicalTimingEvidenceSummary(draft.timing);
       const normalizedDraft: EvidenceDraft = { ...draft, elapsedMs: timing.totalActiveMs, timing };
       validateEvidence(normalizedDraft);
       const confirmed = validateRating(normalizedDraft.confirmedRating);
@@ -1120,7 +1121,11 @@
         assert(Number.isFinite(chunk.expectedMinutes) && chunk.expectedMinutes >= 1 && chunk.expectedMinutes <= 240, "Chunk duration is invalid.");
         validDate(chunk.createdAt, "Chunk"); validDate(chunk.updatedAt, "Chunk");
         if (chunk.completedAt) validDate(chunk.completedAt, "Chunk completion");
-        if (chunk.status === "completed") assert(Number.isFinite(chunk.actualMinutes) && (chunk.actualMinutes ?? 0) > 0, "Completed chunk lacks actual duration.");
+        if (chunk.status === "completed") {
+          assert(Number.isFinite(chunk.actualMinutes) && (chunk.actualMinutes ?? 0) > 0, "Completed chunk lacks actual duration.");
+          assert(chunk.timing !== undefined, "Completed chunk lacks timing evidence.");
+          canonicalTimingEvidenceSummary(chunk.timing);
+        }
         const list = chunksByObligation.get(chunk.obligationId) ?? [];
         list.push(chunk); chunksByObligation.set(chunk.obligationId, list);
       }
