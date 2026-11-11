@@ -176,7 +176,7 @@ check("relational backup validation", "Section must belong to a subject in the s
 check("six retrieval workflows", all(value in ts for value in ['"recall"', '"reconstruction"', '"questions"', '"diagram"', '"answer-writing"', '"relearning"']))
 check("workflow separated from policy", "interface WorkflowSpec" in ts and "workflow: WorkflowSpec" in ts and "defaultWorkflowForType" in ts)
 check("workflow-specific evidence", "type WorkflowResult" in ts and "workflowEvidence" in ts and "validateWorkflowResult" in ts)
-check("workflow-policy routing", "function compatibleWorkflows" in ts and 'if (type === "memory-recall") return ["recall"]' in ts and 'if (type === "performance-practice") return ["answer-writing", "diagram", "questions"]' in ts)
+check("workflow-policy routing", "function compatibleWorkflows" in ts and '"memory-recall": ["recall"]' in ts and '"performance-practice": ["answer-writing", "diagram", "questions"]' in ts and "WORKFLOWS_BY_OBLIGATION[type]" in ts)
 check("closed-book relearning verification", "Complete relearning verification with the source closed" in ts)
 check("diagram canvas", 'id="diagram-canvas"' in ts and "initializeDiagramCanvas" in ts)
 check("answer-writing constraints", "completedWithinTime" in ts and "wordLimit" in ts and "timeLimitMinutes" in ts)
