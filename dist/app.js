@@ -9,7 +9,7 @@
         delete window.FSRS;
     }
     catch { /* non-fatal */ }
-    const EMBEDDED_PRESENTATION_MANIFEST = { "format": "revision-director.presentation-manifest", "version": 1, "storageKey": "revisionDirector.presentation.v1", "defaults": { "presentation": "revision-current" }, "profiles": { "revision-current": { "id": "revision-current", "label": "Revision Director", "contractVersion": 1, "typography": "revision", "shape": "tactical", "material": "solid", "depth": "layered", "density": "standard", "responsive": "adaptive", "motion": "precise", "charts": "analytical", "immutable": true } }, "breakpoints": { "wide": 1100, "reviewCompact": 1000, "analyticsCompact": 960, "navigationCompact": 820, "timerStack": 720, "phone": 620, "narrow": 560, "smallPhone": 460 }, "tokens": { "contractVersion": 1, "namespace": "--rd-", "public": { "foundation": ["--rd-color-canvas", "--rd-color-surface-1", "--rd-color-surface-2", "--rd-color-surface-3", "--rd-color-border-soft", "--rd-color-border-mid", "--rd-color-border-accent", "--rd-color-accent-primary", "--rd-color-accent-secondary", "--rd-color-information", "--rd-color-text-primary", "--rd-color-text-secondary", "--rd-color-text-muted", "--rd-color-danger", "--rd-color-warning", "--rd-color-success"], "typography": ["--rd-font-mono", "--rd-font-condensed", "--rd-font-body", "--rd-font-display"], "surfaces": ["--rd-surface-neutral", "--rd-surface-accent-soft", "--rd-surface-danger-soft", "--rd-surface-information-soft", "--rd-shadow-floating"], "geometry": ["--rd-radius-default", "--rd-layout-sidebar-width", "--rd-touch-target-minimum", "--rd-safe-area-top", "--rd-safe-area-right", "--rd-safe-area-bottom", "--rd-safe-area-left"], "motion": ["--rd-motion-fast", "--rd-motion-standard"], "charts": ["--rd-chart-primary", "--rd-chart-secondary", "--rd-chart-information", "--rd-chart-danger", "--rd-chart-warning", "--rd-chart-success"] }, "aliases": { "--rd-color-canvas": "--bg", "--rd-color-surface-1": "--s1", "--rd-color-surface-2": "--s2", "--rd-color-surface-3": "--s3", "--rd-color-border-soft": "--line-soft", "--rd-color-border-mid": "--line-mid", "--rd-color-border-accent": "--line-accent", "--rd-color-accent-primary": "--acc", "--rd-color-accent-secondary": "--acc2", "--rd-color-information": "--acc3", "--rd-color-text-primary": "--txt", "--rd-color-text-secondary": "--txt2", "--rd-color-text-muted": "--mut", "--rd-color-danger": "--urg", "--rd-color-warning": "--warn", "--rd-color-success": "--ok", "--rd-font-mono": "--f-mono", "--rd-font-condensed": "--f-cond", "--rd-font-body": "--f-body", "--rd-font-display": "--f-display", "--rd-surface-neutral": "--surface", "--rd-surface-accent-soft": "--accent-soft", "--rd-surface-danger-soft": "--danger-soft", "--rd-surface-information-soft": "--cyan-soft", "--rd-shadow-floating": "--shadow", "--rd-radius-default": "--radius", "--rd-layout-sidebar-width": "--sidebar", "--rd-chart-primary": "--acc", "--rd-chart-secondary": "--acc2", "--rd-chart-information": "--acc3", "--rd-chart-danger": "--urg", "--rd-chart-warning": "--warn", "--rd-chart-success": "--ok" } }, "invariants": { "defaultProfileImmutable": true, "exactPixelReference": "revision-current", "domOrder": "application-owned", "focusOrder": "application-owned", "semanticStateMeaning": { "primary": "accent", "information": "information", "success": "success", "warning": "warning", "danger": "danger" } } };
+    const EMBEDDED_PRESENTATION_MANIFEST = {"format":"revision-director.presentation-manifest","version":1,"storageKey":"revisionDirector.presentation.v1","defaults":{"presentation":"revision-current"},"profiles":{"revision-current":{"id":"revision-current","label":"Revision Director","contractVersion":1,"typography":"revision","shape":"tactical","material":"solid","depth":"layered","density":"standard","responsive":"adaptive","motion":"precise","charts":"analytical","immutable":true}},"breakpoints":{"wide":1100,"reviewCompact":1000,"analyticsCompact":960,"navigationCompact":820,"timerStack":720,"phone":620,"narrow":560,"smallPhone":460},"tokens":{"contractVersion":1,"namespace":"--rd-","public":{"foundation":["--rd-color-canvas","--rd-color-surface-1","--rd-color-surface-2","--rd-color-surface-3","--rd-color-border-soft","--rd-color-border-mid","--rd-color-border-accent","--rd-color-progress-track","--rd-color-accent-primary","--rd-color-accent-secondary","--rd-color-information","--rd-color-text-primary","--rd-color-text-secondary","--rd-color-text-muted","--rd-color-danger","--rd-color-warning","--rd-color-success"],"typography":["--rd-font-mono","--rd-font-condensed","--rd-font-body","--rd-font-display"],"surfaces":["--rd-surface-neutral","--rd-surface-accent-soft","--rd-surface-danger-soft","--rd-surface-information-soft","--rd-shadow-floating"],"geometry":["--rd-radius-default","--rd-layout-sidebar-width","--rd-touch-target-minimum","--rd-safe-area-top","--rd-safe-area-right","--rd-safe-area-bottom","--rd-safe-area-left"],"motion":["--rd-motion-fast","--rd-motion-standard"],"charts":["--rd-chart-primary","--rd-chart-secondary","--rd-chart-information","--rd-chart-danger","--rd-chart-warning","--rd-chart-success"]}},"invariants":{"defaultProfileImmutable":true,"exactPixelReference":"revision-current","domOrder":"application-owned","focusOrder":"application-owned","semanticStateMeaning":{"primary":"accent","information":"information","success":"success","warning":"warning","danger":"danger"}}};
     const PRESENTATION_KERNEL_SYMBOL = Symbol.for("revisionDirector.presentationKernel.v1");
     const PRESENTATION_ID_PATTERN = /^[a-z][a-z0-9-]{0,40}$/;
     const PRESENTATION_AXES = Object.freeze([
@@ -80,11 +80,10 @@
         const profilesSource = presentationRecord(source?.profiles);
         const tokensSource = presentationRecord(source?.tokens);
         const publicSource = presentationRecord(tokensSource?.public);
-        const aliasesSource = presentationRecord(tokensSource?.aliases);
         const breakpointsSource = presentationRecord(source?.breakpoints);
         const invariantsSource = presentationRecord(source?.invariants);
         const stateMeanings = presentationRecord(invariantsSource?.semanticStateMeaning);
-        if (source?.format !== "revision-director.presentation-manifest" || source.version !== 1 || !defaults || !profilesSource || !tokensSource || !publicSource || !aliasesSource || !breakpointsSource || !invariantsSource || !stateMeanings) {
+        if (source?.format !== "revision-director.presentation-manifest" || source.version !== 1 || !defaults || !profilesSource || !tokensSource || !publicSource || !breakpointsSource || !invariantsSource || !stateMeanings) {
             throw new Error("Revision Director presentation manifest is incompatible.");
         }
         const contractVersion = Number(tokensSource.contractVersion);
@@ -117,12 +116,6 @@
             }
             publicTokens[group] = Object.freeze(tokens);
         }
-        const aliases = {};
-        for (const [semantic, primitive] of Object.entries(aliasesSource)) {
-            if (!tokenSet.has(semantic) || !String(primitive).startsWith("--"))
-                throw new Error(`Presentation alias is invalid: ${semantic}`);
-            aliases[semantic] = String(primitive);
-        }
         const breakpoints = {};
         for (const [name, candidate] of Object.entries(breakpointsSource)) {
             const value = Number(candidate);
@@ -147,7 +140,6 @@
                 contractVersion,
                 namespace,
                 public: publicTokens,
-                aliases,
             },
             invariants: {
                 defaultProfileImmutable: true,
@@ -955,7 +947,7 @@
         event.beforePolicyState = canonicalPolicyState(event.beforePolicyState);
         event.afterPolicyState = canonicalPolicyState(event.afterPolicyState);
         event.policyId = canonicalId(event.policyId, "Evidence-event policy ID");
-        event.timing = canonicalTimingEvidenceSummary(event.timing, event.elapsedMs);
+        event.timing = canonicalTimingEvidenceSummary(event.timing);
         event.elapsedMs = event.timing.totalActiveMs;
         event.evidence.errorTypes = [...new Set(event.evidence.errorTypes)];
         event.evidence.correctionNote = canonicalText(event.evidence.correctionNote, "Evidence correction note");
@@ -998,8 +990,10 @@
             delete chunk.note;
         if (chunk.actualMinutes === undefined)
             delete chunk.actualMinutes;
+        if (chunk.status === "completed")
+            assert(chunk.timing !== undefined, "Completed chunk timing is required.");
         if (chunk.timing !== undefined)
-            chunk.timing = canonicalTimingEvidenceSummary(chunk.timing, (chunk.actualMinutes ?? 0) * 60_000);
+            chunk.timing = canonicalTimingEvidenceSummary(chunk.timing);
         else
             delete chunk.timing;
         return chunk;
@@ -1040,6 +1034,11 @@
     }
     function canonicalAppSettings(value) {
         assertDocumentSchema(value, "Application settings");
+        assert(value.key === "app", "Application settings key is invalid.");
+        assert(typeof value.activeProfileId === "string", "Active profile ID must be a string.");
+        assert(Number.isFinite(value.desiredRetention) && value.desiredRetention >= 0.75 && value.desiredRetention <= 0.97, "Desired retention is invalid.");
+        assert(Number.isInteger(value.dailyCapacityMinutes) && value.dailyCapacityMinutes >= 5 && value.dailyCapacityMinutes <= 600, "Daily capacity is invalid.");
+        assert(Number.isInteger(value.studyDayBoundaryHour) && value.studyDayBoundaryHour >= 0 && value.studyDayBoundaryHour <= 12, "Study-day boundary hour is invalid.");
         return {
             ...clone(value),
             schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -1063,24 +1062,17 @@
         assert(["attempt", "compare", "relearn-repair", "relearn-verify"].includes(value), `${label} is invalid.`);
         return value;
     }
-    function canonicalTimingEvidenceSummary(value, fallbackElapsedMs = 0) {
-        if (!value) {
-            const elapsed = Math.round(clamp(Number(fallbackElapsedMs), 0, 7 * DAY_MS));
-            return {
-                totalActiveMs: elapsed,
-                activeByPhase: { attempt: elapsed, compare: 0, "relearn-repair": 0, "relearn-verify": 0 },
-                pauseMs: 0, pauseCount: 0, inactiveGapCount: 0,
-                classifiedFocusMs: 0, classifiedBreakMs: 0, ignoredGapMs: 0, promptExcludedMs: 0,
-                backwardClockCount: 0, durationReliable: true, reliabilityFlags: [],
-            };
-        }
+    function canonicalTimingEvidenceSummary(value) {
+        assert(value && typeof value === "object", "Timing evidence is required.");
+        assert(value.activeByPhase && typeof value.activeByPhase === "object", "Phase timing breakdown is required.");
         const phases = ["attempt", "compare", "relearn-repair", "relearn-verify"];
         const activeByPhase = Object.fromEntries(phases.map((phase) => {
-            const raw = Number(value.activeByPhase?.[phase] ?? 0);
+            const raw = Number(value.activeByPhase[phase]);
             assert(Number.isFinite(raw) && raw >= 0 && raw <= 7 * DAY_MS, "Phase active time is invalid.");
             return [phase, Math.round(raw)];
         }));
         const totalActiveMs = Object.values(activeByPhase).reduce((sum, amount) => sum + amount, 0);
+        assert(Number.isFinite(value.totalActiveMs) && Math.round(value.totalActiveMs) === totalActiveMs, "Total active time does not match phase timing.");
         const bounded = (raw, label) => {
             assert(Number.isFinite(raw) && raw >= 0 && raw <= 30 * DAY_MS, `${label} is invalid.`);
             return Math.round(raw);
@@ -1090,7 +1082,8 @@
             return raw;
         };
         const ignoredGapMs = bounded(Number(value.ignoredGapMs), "Ignored gap time");
-        const reliabilityFlags = [...new Set(Array.isArray(value.reliabilityFlags) ? value.reliabilityFlags : [])];
+        assert(Array.isArray(value.reliabilityFlags), "Timing reliability flags are required.");
+        const reliabilityFlags = [...new Set(value.reliabilityFlags)];
         for (const flag of reliabilityFlags)
             assert(flag === "ignored-gap" || flag === "backward-clock", "Timing reliability flag is invalid.");
         if (ignoredGapMs > 0 && !reliabilityFlags.includes("ignored-gap"))
@@ -1098,7 +1091,8 @@
         const backwardClockCount = count(Number(value.backwardClockCount), "Backward-clock count");
         if (backwardClockCount > 0 && !reliabilityFlags.includes("backward-clock"))
             reliabilityFlags.push("backward-clock");
-        const durationReliable = Boolean(value.durationReliable) && ignoredGapMs === 0;
+        assert(typeof value.durationReliable === "boolean", "Timing reliability state is required.");
+        const durationReliable = value.durationReliable && ignoredGapMs === 0;
         return {
             totalActiveMs,
             activeByPhase,
@@ -1119,8 +1113,11 @@
         assert(value && typeof value === "object", "Phase-time runtime is invalid.");
         const currentPhase = canonicalReviewPhase(value.currentPhase);
         assert(["running", "paused", "gap-pending"].includes(value.state), "Phase-time state is invalid.");
+        assert(value.activeByPhase && typeof value.activeByPhase === "object", "Phase-time breakdown is required.");
+        const phaseTotal = ["attempt", "compare", "relearn-repair", "relearn-verify"]
+            .reduce((sum, phase) => sum + Number(value.activeByPhase[phase]), 0);
         const activeByPhase = canonicalTimingEvidenceSummary({
-            totalActiveMs: 0,
+            totalActiveMs: phaseTotal,
             activeByPhase: value.activeByPhase,
             pauseMs: 0, pauseCount: 0, inactiveGapCount: 0,
             classifiedFocusMs: 0, classifiedBreakMs: 0, ignoredGapMs: 0, promptExcludedMs: 0,
@@ -1131,7 +1128,8 @@
             assert(Number.isFinite(value) && value >= 0 && value <= maximum, `${label} is invalid.`);
             return Math.round(value);
         };
-        const pauseHistory = (Array.isArray(value.pauseHistory) ? value.pauseHistory : []).slice(-TIME_HISTORY_LIMIT).map((pause) => {
+        assert(Array.isArray(value.pauseHistory), "Pause history is required.");
+        const pauseHistory = value.pauseHistory.slice(-TIME_HISTORY_LIMIT).map((pause) => {
             assert(["manual", "inactive-gap-break", "classification-prompt"].includes(pause.reason), "Pause reason is invalid.");
             const startedAt = canonicalIso(pause.startedAt, "Pause start date");
             const endedAt = canonicalIso(pause.endedAt, "Pause end date");
@@ -1139,11 +1137,13 @@
             assert(Date.parse(endedAt) >= Date.parse(startedAt), "Pause end precedes its start.");
             return { id: canonicalId(pause.id, "Pause ID"), reason: pause.reason, phase: canonicalReviewPhase(pause.phase), startedAt, endedAt, durationMs };
         });
-        const phaseHistory = (Array.isArray(value.phaseHistory) ? value.phaseHistory : []).slice(-TIME_HISTORY_LIMIT).map((transition) => {
+        assert(Array.isArray(value.phaseHistory), "Phase history is required.");
+        const phaseHistory = value.phaseHistory.slice(-TIME_HISTORY_LIMIT).map((transition) => {
             assert(["source-reveal", "begin-verification", "verification-reveal", "queue-advance"].includes(transition.reason), "Phase transition reason is invalid.");
             return { from: canonicalReviewPhase(transition.from), to: canonicalReviewPhase(transition.to), at: canonicalIso(transition.at, "Phase transition date"), sourceVisible: Boolean(transition.sourceVisible), reason: transition.reason };
         });
-        const gapHistory = (Array.isArray(value.gapHistory) ? value.gapHistory : []).slice(-TIME_HISTORY_LIMIT).map((gap) => {
+        assert(Array.isArray(value.gapHistory), "Inactive-gap history is required.");
+        const gapHistory = value.gapHistory.slice(-TIME_HISTORY_LIMIT).map((gap) => {
             assert(["focus", "break", "split", "ignore"].includes(gap.classification), "Inactive-gap classification is invalid.");
             assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(gap.source), "Inactive-gap source is invalid.");
             const gapMs = boundedRuntimeMs(gap.gapMs, "Inactive-gap duration");
@@ -1169,6 +1169,7 @@
         assert((value.state === "gap-pending") === Boolean(pendingGap), "Pending-gap state is inconsistent.");
         const pauseStartedAt = value.pauseStartedAt ? canonicalIso(value.pauseStartedAt, "Manual pause start date") : undefined;
         assert((value.state === "paused") === Boolean(pauseStartedAt), "Manual pause state is inconsistent.");
+        assert(typeof value.sourceVisible === "boolean", "Source visibility state is required.");
         return {
             currentPhase,
             state: value.state,
@@ -1192,18 +1193,21 @@
     function canonicalReviewDraftSnapshot(value) {
         assert(value && typeof value === "object", "Review draft is invalid.");
         canonicalReviewPhase(value.phase);
+        assert(value.values && typeof value.values === "object" && !Array.isArray(value.values), "Review field values are required.");
+        assert(value.checked && typeof value.checked === "object" && !Array.isArray(value.checked), "Review check state is required.");
+        assert(Array.isArray(value.diagramStrokes), "Review diagram strokes are required.");
         const values = {};
-        for (const [rawKey, rawValue] of Object.entries(value.values ?? {}).slice(0, 96)) {
+        for (const [rawKey, rawValue] of Object.entries(value.values).slice(0, 96)) {
             const key = canonicalId(rawKey, "Review field ID");
             assert(typeof rawValue === "string", "Review field value is invalid.");
             values[key] = rawValue.slice(0, 20_000);
         }
         const checked = {};
-        for (const [rawKey, rawValue] of Object.entries(value.checked ?? {}).slice(0, 128)) {
+        for (const [rawKey, rawValue] of Object.entries(value.checked).slice(0, 128)) {
             const key = canonicalId(rawKey, "Review check ID");
             checked[key] = Boolean(rawValue);
         }
-        const diagramStrokes = (Array.isArray(value.diagramStrokes) ? value.diagramStrokes : []).slice(0, 256).map((stroke) => {
+        const diagramStrokes = value.diagramStrokes.slice(0, 256).map((stroke) => {
             assert(Array.isArray(stroke), "Diagram stroke is invalid.");
             return stroke.slice(0, 2_000).map((point) => {
                 assert(point && typeof point === "object" && Number.isFinite(point.x) && Number.isFinite(point.y), "Diagram point is invalid.");
@@ -1218,10 +1222,15 @@
         assert(value.id === ACTIVE_RETRIEVAL_ID, "Active retrieval session ID is invalid.");
         assert(["active", "committing", "completed"].includes(value.status), "Active retrieval status is invalid.");
         assert(Number.isSafeInteger(value.revision) && value.revision >= 1, "Active retrieval revision is invalid.");
-        const queueTargetIds = [...new Set((Array.isArray(value.queueTargetIds) ? value.queueTargetIds : []).slice(0, 500).map((id) => canonicalId(id, "Review target ID")))];
+        assert(Array.isArray(value.queueTargetIds), "Active retrieval queue is required.");
+        const queueTargetIds = [...new Set(value.queueTargetIds.slice(0, 500).map((id) => canonicalId(id, "Review target ID")))];
         assert(Number.isInteger(value.activeIndex) && value.activeIndex >= 0 && value.activeIndex <= queueTargetIds.length, "Active retrieval index is invalid.");
-        const activeTargetId = value.status === "completed" ? String(value.activeTargetId ?? "").trim().slice(0, 240) : canonicalId(value.activeTargetId, "Active review target ID");
-        if (value.status !== "completed") {
+        assert(typeof value.activeTargetId === "string", "Active retrieval target ID must be a string.");
+        const activeTargetId = value.status === "completed" ? value.activeTargetId : canonicalId(value.activeTargetId, "Active review target ID");
+        if (value.status === "completed") {
+            assert(value.activeIndex === queueTargetIds.length && activeTargetId === "", "Completed retrieval state is inconsistent.");
+        }
+        else {
             assert(queueTargetIds.length > 0 && value.activeIndex < queueTargetIds.length, "Active retrieval queue is invalid.");
             assert(queueTargetIds[value.activeIndex] === activeTargetId, "Active retrieval target does not match its queue.");
         }
@@ -3858,18 +3867,19 @@
             record.updatedAt = completedAt.toISOString();
             return record;
         }
-        async completeChunk(chunkId, elapsedMs, note = "", completedAt = new Date(), commitGuard, postCommitSession, timing) {
+        async completeChunk(chunkId, timing, note = "", completedAt = new Date(), commitGuard, postCommitSession) {
             const chunk = await this.repo.get(Store.Chunks, chunkId);
             assert(chunk && chunk.status === "pending", "This split session is no longer pending.");
             const obligation = await this.obligation(chunk.obligationId);
             assert(obligation.chunking?.cycleId === chunk.cycleId && obligation.chunking.status === "chunking", "Split-session state is inconsistent.");
-            const actualMinutes = roundTo(Math.max(1, elapsedMs / 60_000), 1);
+            const canonicalTiming = canonicalTimingEvidenceSummary(timing);
+            const actualMinutes = roundTo(Math.max(1, canonicalTiming.totalActiveMs / 60_000), 1);
             assert(actualMinutes <= 240, "Split-session duration is invalid.");
             chunk.status = "completed";
             chunk.completedAt = completedAt.toISOString();
             chunk.actualMinutes = actualMinutes;
             chunk.note = note.trim();
-            chunk.timing = canonicalTimingEvidenceSummary(timing, elapsedMs);
+            chunk.timing = canonicalTiming;
             chunk.updatedAt = completedAt.toISOString();
             obligation.chunking.completedChunks += 1;
             if (obligation.chunking.completedChunks >= obligation.chunking.totalChunks) {
@@ -3921,7 +3931,7 @@
             return this.router.get(obligation.type).preview(obligation, now);
         }
         async recordEvidence(obligationId, draft, reviewedAt = new Date(), commitGuard, postCommitSession) {
-            const timing = canonicalTimingEvidenceSummary(draft.timing, draft.elapsedMs);
+            const timing = canonicalTimingEvidenceSummary(draft.timing);
             const normalizedDraft = { ...draft, elapsedMs: timing.totalActiveMs, timing };
             validateEvidence(normalizedDraft);
             const confirmed = validateRating(normalizedDraft.confirmedRating);
@@ -4427,8 +4437,11 @@
                 validDate(chunk.updatedAt, "Chunk");
                 if (chunk.completedAt)
                     validDate(chunk.completedAt, "Chunk completion");
-                if (chunk.status === "completed")
+                if (chunk.status === "completed") {
                     assert(Number.isFinite(chunk.actualMinutes) && (chunk.actualMinutes ?? 0) > 0, "Completed chunk lacks actual duration.");
+                    assert(chunk.timing !== undefined, "Completed chunk lacks timing evidence.");
+                    canonicalTimingEvidenceSummary(chunk.timing);
+                }
                 const list = chunksByObligation.get(chunk.obligationId) ?? [];
                 list.push(chunk);
                 chunksByObligation.set(chunk.obligationId, list);
@@ -4625,7 +4638,7 @@
             const collections = this.payloadCollections(payload);
             const counts = this.countCollections(collections);
             this.assertCountsWithinLimits(counts);
-            const hashAlgorithm = this.bestHashAlgorithm();
+            const hashAlgorithm = "sha256";
             const compression = preferCompression && typeof CompressionStream !== "undefined" ? "gzip" : "none";
             const chunkBodies = [];
             for (const entityType of BACKUP_ENTITY_ORDER) {
@@ -4763,8 +4776,6 @@
             };
             const payload = validate(candidate);
             const warnings = [];
-            if (manifest.hashAlgorithm === "fnv1a64")
-                warnings.push("Integrity uses the local-runtime fallback hash because Web Crypto was unavailable when the backup was created.");
             const stateChecksum = await this.stateFingerprint(payload, manifest.hashAlgorithm);
             assert(stateChecksum === manifest.stateChecksum, "Backup state checksum failed verification.");
             return { payload, inspection: this.inspection(manifest, completion.checksum, payload.activeRetrieval?.status ?? "none", bytes.byteLength, expanded.byteLength, warnings) };
@@ -4812,7 +4823,7 @@
             assert(value.appVersion === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
             assert(value.payloadFormat === BACKUP_FORMAT && value.payloadSchemaVersion === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
             assert(value.compression === "none" || value.compression === "gzip", "Backup compression metadata is invalid.");
-            assert(value.hashAlgorithm === "sha256" || value.hashAlgorithm === "fnv1a64", "Backup hash algorithm is unsupported.");
+            assert(value.hashAlgorithm === "sha256", "Backup hash algorithm is unsupported.");
             assert(value.chunkTargetBytes === BACKUP_ARCHIVE_CHUNK_TARGET_BYTES && value.chunkMaxItems === BACKUP_ARCHIVE_CHUNK_MAX_ITEMS, "Backup chunk contract is unsupported.");
             assert(Number.isInteger(value.chunkCount) && (value.chunkCount ?? -1) >= 0, "Backup manifest chunk count is invalid.");
             assert(typeof value.counts === "object" && value.counts !== null, "Backup manifest counts are missing.");
@@ -4885,26 +4896,15 @@
         static async opaqueFingerprint(value) {
             return this.hashJson(value, "sha256");
         }
-        static bestHashAlgorithm() {
-            return globalThis.crypto?.subtle ? "sha256" : "fnv1a64";
-        }
         static async hashJson(value, algorithm) {
             return this.hashBytes(this.encode(JSON.stringify(value)), algorithm);
         }
-        static async hashBytes(bytes, algorithm) {
-            if (algorithm === "sha256") {
-                if (globalThis.crypto?.subtle) {
-                    const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
-                    return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
-                }
-                return this.sha256Fallback(bytes);
+        static async hashBytes(bytes, _algorithm) {
+            if (globalThis.crypto?.subtle) {
+                const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
+                return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
             }
-            let hash = 0xcbf29ce484222325n;
-            for (const value of bytes) {
-                hash ^= BigInt(value);
-                hash = BigInt.asUintN(64, hash * 0x100000001b3n);
-            }
-            return hash.toString(16).padStart(16, "0");
+            return this.sha256Fallback(bytes);
         }
         static sha256Fallback(input) {
             const constants = new Uint32Array([
@@ -7390,7 +7390,6 @@
                 const chunkId = target.slice(6);
                 assert(this.phaseTime && this.phaseTime.status() === "running", "Resume and classify interruptions before completing this chunk.");
                 const timing = this.timingSummary();
-                const elapsedMs = Math.max(60_000, timing.totalActiveMs);
                 const note = this.reviewContent.querySelector("#chunk-note")?.value ?? "";
                 const commitToken = uid("commit");
                 const committing = this.buildActiveRetrievalSession("committing", commitToken);
@@ -7399,7 +7398,7 @@
                 try {
                     await this.activePersistence.flush(committing);
                     const guard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: target, commitToken };
-                    await this.service.completeChunk(chunkId, elapsedMs, note, new Date(), guard, post, timing);
+                    await this.service.completeChunk(chunkId, timing, note, new Date(), guard, post);
                     await this.activePersistence.acceptCommittedTransition(post);
                     this.activeSessionRevision = post.revision;
                     this.toast("Chunk completed. Parent scheduling remains unchanged until final synthesis.");
