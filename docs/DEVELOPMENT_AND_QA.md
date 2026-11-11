@@ -64,18 +64,19 @@ For a material change:
 
 Generated output must be rebuilt from source before release/merge.
 
-## Current automated baseline
+## Continuous integration
 
-On 11 November 2026 the clean-slate FSRS-7 branch passed the complete temporary CI gate using the exact pinned Node/npm/TypeScript toolchain. The gate included:
+The permanent GitHub Actions workflow uses an explicit Ubuntu 24.04 runner, the pinned project Node/npm/TypeScript toolchain, Python 3.13 and full-sha-pinned official GitHub actions.
+
+The core job is read-only and covers:
 
 - strict TypeScript 7 build;
 - JavaScript parse validation;
 - build integrity, HTML sanity and source-ownership checks;
 - all non-browser JavaScript regressions;
-- the Pass B2 durability gate;
-- the complete Python/Chromium regression matrix.
+- tracked-checksum verification.
 
-The temporary branch-only workflow used to establish this baseline is not part of the product architecture and should be removed after the final tree is certified.
+The browser job is also read-only and covers the Pass B2 durability gate plus the complete Python/Chromium regression matrix. A separate working-branch-only job has the sole write permission needed to regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. Main-branch and pull-request runs fail if generated artifacts are stale.
 
 ## Browser/device boundary
 

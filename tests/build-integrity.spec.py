@@ -48,6 +48,9 @@ check("TypeScript correctness flags", all(tsconfig.get("compilerOptions", {}).ge
     "noPropertyAccessFromIndexSignature": True,
     "allowUnreachableCode": False,
     "allowUnusedLabels": False,
+    "noUnusedLocals": True,
+    "noUnusedParameters": True,
+    "forceConsistentCasingInFileNames": True,
 }.items()))
 check("build assembles emitted files", "expected_outputs" in build_script and "manifest-ordered-emitted-js" in build_script and "textwrap.indent(body, \"  \")" in build_script)
 check("source parts own no runtime wrapper", not first_source.lstrip().startswith("(() => {") and not last_source.rstrip().endswith("})();"))

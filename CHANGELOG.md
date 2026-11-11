@@ -2,6 +2,12 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-11 — TypeScript 7 compiler and CI hardening
+
+- Enabled return, fallthrough, index-signature, unreachable-code, unused-label, unused-symbol and filename-casing compiler checks on top of the strict TypeScript baseline.
+- Added permanent GitHub Actions CI with SHA-pinned current official checkout/setup actions, explicit Ubuntu/Python runtimes and the exact project Node/npm/TypeScript toolchain.
+- Isolated repository write permission to the working-branch generated-artifact sync job; core and browser QA remain read-only.
+
 ## 2026-11-11 — TypeScript 7 source-graph build
 
 - Removed the synthetic concatenated TypeScript compilation unit.

@@ -27,13 +27,13 @@ env:
 jobs:
   core:
     name: Core / TypeScript 7
-    permissions:
-      contents: write
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -109,8 +109,61 @@ jobs:
                   raise SystemExit(f"Checksum mismatch: {relative}")
           PY
 
-      - name: Sync generated artifacts on working
-        if: github.event_name == 'push' && github.ref == 'refs/heads/working'
+      - name: Require committed generated artifacts elsewhere
+        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/working') }}
+        run: git diff --exit-code -- dist/app.js index.html CHECKSUMS.sha256
+
+  sync-generated:
+    name: Sync generated artifacts
+    needs: core
+    if: github.event_name == 'push' && github.ref == 'refs/heads/working'
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install locked Node toolchain
+        run: npm ci
+
+      - name: Build with pinned TypeScript 7
+        run: npm run build
+
+      - name: Refresh tracked checksums
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          root = Path(".")
+          manifest = root / "CHECKSUMS.sha256"
+          out = []
+          for line in manifest.read_text().splitlines():
+              if not line:
+                  continue
+              _, relative = line.split("  ./", 1)
+              path = root / relative
+              if not path.is_file():
+                  raise SystemExit(f"Missing checksum target: {relative}")
+              out.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  ./{relative}")
+          manifest.write_text("\n".join(out) + "\n")
+          PY
+
+      - name: Commit generated artifacts
         run: |
           if ! git diff --quiet -- dist/app.js index.html CHECKSUMS.sha256; then
             git config user.name "revision-director-ci"
@@ -120,10 +173,6 @@ jobs:
             git push origin HEAD:working
           fi
 
-      - name: Require committed generated artifacts elsewhere
-        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/working') }}
-        run: git diff --exit-code -- dist/app.js index.html CHECKSUMS.sha256
-
   browser:
     name: Browser / durability
     needs: core
@@ -132,6 +181,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
