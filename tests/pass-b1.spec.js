@@ -61,6 +61,7 @@ function session(revision, overrides = {}) {
   mustFail(() => api.canonicalActiveRetrievalSession(session(1, { activeTargetId: 'wrong' })), 'Queue/target mismatch was accepted');
   mustFail(() => api.canonicalActiveRetrievalSession(session(1, { status: 'committing' })), 'Committing state without token was accepted');
   mustFail(() => api.canonicalReviewDraftSnapshot({phase:'attempt',values:{},checked:{},diagramStrokes:[[{x:2,y:0}]],attemptElapsedMs:-1}), 'Invalid draft duration was accepted');
+  mustFail(() => api.canonicalActiveRetrievalEnvelope({format:api.ACTIVE_RETRIEVAL_RECOVERY_FORMAT,schemaVersion:1,savedAt:'2026-07-27T05:00:00.000Z',session:null}), 'Malformed recovery envelope session was accepted');
 
   const db = new Map();
   const writes = [];
