@@ -341,6 +341,72 @@
   const RUBRIC_SCORES = [0, 1, 2, 3, 4];
   const IMPORTANCE_LEVELS = [1, 2, 3];
   const UNDERSTANDING_LEVELS = [1, 2, 3, 4];
+  const RATING_LABELS = {
+      [Rating.Again]: "Again",
+      [Rating.Hard]: "Hard",
+      [Rating.Good]: "Good",
+      [Rating.Easy]: "Easy",
+  };
+  const OBLIGATION_LABELS = {
+      "memory-recall": "Memory recall",
+      "concept-reconstruction": "Concept reconstruction",
+      "application-practice": "Application practice",
+      "performance-practice": "Performance practice",
+      relearn: "Relearn",
+      "freshness-review": "Freshness review",
+  };
+  const OBLIGATION_CHIPS = {
+      "memory-recall": "memory",
+      "concept-reconstruction": "concept",
+      "application-practice": "application",
+      "performance-practice": "performance",
+      relearn: "relearn",
+      "freshness-review": "freshness",
+  };
+  const WORKFLOW_LABELS = {
+      recall: "Recall",
+      reconstruction: "Reconstruction",
+      questions: "Questions / application",
+      diagram: "Diagram practice",
+      "answer-writing": "Answer writing",
+      relearning: "Relearning",
+  };
+  const RESPONSE_MEDIUM_LABELS = {
+      "in-app": "In-app workspace",
+      paper: "Paper / external workspace",
+      oral: "Oral recall",
+  };
+  const CUE_LEVEL_SCORES = {
+      none: 4,
+      minor: 3,
+      major: 1,
+      source: 0,
+  };
+  const WORKFLOWS_BY_OBLIGATION = {
+      "memory-recall": ["recall"],
+      "concept-reconstruction": ["reconstruction", "diagram"],
+      "application-practice": ["questions"],
+      "performance-practice": ["answer-writing", "diagram", "questions"],
+      relearn: ["relearning"],
+      "freshness-review": ["recall", "reconstruction"],
+  };
+  const ERROR_LABELS = {
+      "factual-omission": "Factual omission",
+      "conceptual-misunderstanding": "Conceptual misunderstanding",
+      "confusion-interference": "Confusion / interference",
+      "application-failure": "Application failure",
+      "answer-structure": "Answer structure",
+      "diagram-reconstruction": "Diagram reconstruction",
+      "slow-retrieval": "Slow retrieval",
+  };
+  const POLICY_ENGINE_BY_OBLIGATION = {
+      "memory-recall": "ts-fsrs",
+      "concept-reconstruction": "mastery",
+      "application-practice": "application",
+      "performance-practice": "performance",
+      relearn: "relearn",
+      "freshness-review": "freshness",
+  };
   function nowIso() {
       return new Date().toISOString();
   }
@@ -410,64 +476,28 @@
       return `${minutes}:${String(seconds).padStart(2, "0")}`;
   }
   function ratingName(rating) {
-      return rating === Rating.Again ? "Again" : rating === Rating.Hard ? "Hard" : rating === Rating.Good ? "Good" : "Easy";
+      return RATING_LABELS[rating];
   }
   function obligationLabel(type) {
-      const labels = {
-          "memory-recall": "Memory recall",
-          "concept-reconstruction": "Concept reconstruction",
-          "application-practice": "Application practice",
-          "performance-practice": "Performance practice",
-          relearn: "Relearn",
-          "freshness-review": "Freshness review",
-      };
-      return labels[type];
+      return OBLIGATION_LABELS[type];
   }
   function obligationChip(type) {
-      if (type === "memory-recall")
-          return "memory";
-      if (type === "concept-reconstruction")
-          return "concept";
-      if (type === "application-practice")
-          return "application";
-      if (type === "performance-practice")
-          return "performance";
-      if (type === "relearn")
-          return "relearn";
-      return "freshness";
+      return OBLIGATION_CHIPS[type];
   }
   function workflowLabel(kind) {
-      const labels = {
-          recall: "Recall",
-          reconstruction: "Reconstruction",
-          questions: "Questions / application",
-          diagram: "Diagram practice",
-          "answer-writing": "Answer writing",
-          relearning: "Relearning",
-      };
-      return labels[kind];
+      return WORKFLOW_LABELS[kind];
   }
   function responseMediumLabel(value) {
-      return value === "in-app" ? "In-app workspace" : value === "paper" ? "Paper / external workspace" : "Oral recall";
+      return RESPONSE_MEDIUM_LABELS[value];
   }
   function cueLevelScore(value) {
-      return value === "none" ? 4 : value === "minor" ? 3 : value === "major" ? 1 : 0;
+      return CUE_LEVEL_SCORES[value];
   }
   function compatibleWorkflows(type) {
-      if (type === "memory-recall")
-          return ["recall"];
-      if (type === "concept-reconstruction")
-          return ["reconstruction", "diagram"];
-      if (type === "application-practice")
-          return ["questions"];
-      if (type === "performance-practice")
-          return ["answer-writing", "diagram", "questions"];
-      if (type === "freshness-review")
-          return ["recall", "reconstruction"];
-      return ["relearning"];
+      return WORKFLOWS_BY_OBLIGATION[type];
   }
   function defaultWorkflowForType(type) {
-      return compatibleWorkflows(type)[0];
+      return WORKFLOWS_BY_OBLIGATION[type][0];
   }
   function defaultWorkflowSpec(type, protocol, successCriteria) {
       const kind = defaultWorkflowForType(type);
@@ -659,12 +689,10 @@
       assert(result.kind === expected, "Workflow result does not match the obligation workflow.");
       const integer = (value, min, max, label) => assert(Number.isInteger(value) && value >= min && value <= max, `${label} is invalid.`);
       const rubric = (value, label) => integer(value, 0, 4, label);
-      const media = new Set(["in-app", "paper", "oral"]);
-      const cues = new Set(["none", "minor", "major", "source"]);
       if ("cueLevel" in result)
-          assert(cues.has(result.cueLevel), "Cue level is invalid.");
+          assert(CUE_LEVELS.includes(result.cueLevel), "Cue level is invalid.");
       if ("responseMedium" in result)
-          assert(media.has(result.responseMedium), "Response medium is invalid.");
+          assert(RESPONSE_MEDIA.includes(result.responseMedium), "Response medium is invalid.");
       if (result.kind === "recall") {
           integer(result.checkpointTotal, 1, 20, "Recall checkpoint total");
           integer(result.checkpointsMet, 0, result.checkpointTotal, "Recall checkpoints met");
@@ -713,16 +741,7 @@
       }
   }
   function errorLabel(type) {
-      const labels = {
-          "factual-omission": "Factual omission",
-          "conceptual-misunderstanding": "Conceptual misunderstanding",
-          "confusion-interference": "Confusion / interference",
-          "application-failure": "Application failure",
-          "answer-structure": "Answer structure",
-          "diagram-reconstruction": "Diagram reconstruction",
-          "slow-retrieval": "Slow retrieval",
-      };
-      return labels[type];
+      return ERROR_LABELS[type];
   }
   function addDays(from, days) {
       return new Date(from.getTime() + days * DAY_MS);
@@ -781,10 +800,7 @@
       assert(value === 1 || value === 2 || value === 3 || value === 4, "Invalid rating.");
       return value;
   }
-  const ERROR_TYPES = new Set([
-      "factual-omission", "conceptual-misunderstanding", "confusion-interference",
-      "application-failure", "answer-structure", "diagram-reconstruction", "slow-retrieval",
-  ]);
+  const ERROR_TYPES = new Set(ERROR_TYPE_VALUES);
   function objectiveScore(type, evidence) {
       const accuracyScore = evidence.accuracyPercent === undefined ? null : clamp(evidence.accuracyPercent / 25, 0, 4);
       let score;
@@ -4417,14 +4433,10 @@
                   assert(unit?.profileId === event.profileId, "Study event links a missing or cross-profile knowledge unit.");
               }
           }
-          const engineFor = {
-              "memory-recall": "ts-fsrs", "concept-reconstruction": "mastery", "application-practice": "application",
-              "performance-practice": "performance", relearn: "relearn", "freshness-review": "freshness",
-          };
           for (const obligation of obligations) {
               const unit = unitMap.get(obligation.unitId);
               assert(unit, "Obligation references a missing unit.");
-              assert(Object.hasOwn(engineFor, obligation.type), "Obligation type is invalid.");
+              assert(Object.hasOwn(POLICY_ENGINE_BY_OBLIGATION, obligation.type), "Obligation type is invalid.");
               assert(["active", "completed", "suspended", "archived"].includes(obligation.status), "Obligation status is invalid.");
               if (obligation.status === "suspended")
                   assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning", "Suspended obligation lacks a valid reason.");
@@ -4449,7 +4461,7 @@
               }
               assert(obligation.protocol.trim().length > 0 && obligation.successCriteria.trim().length > 0, "Obligation protocol is incomplete.");
               validateWorkflowSpec(obligation.workflow, obligation.type);
-              assert(obligation.policyState.engine === engineFor[obligation.type], "Obligation policy does not match its type.");
+              assert(obligation.policyState.engine === POLICY_ENGINE_BY_OBLIGATION[obligation.type], "Obligation policy does not match its type.");
               if (obligation.type === "memory-recall") {
                   assert(obligation.policyState.version === FSRS_PACKAGE_VERSION && obligation.policyState.fsrsCard, "Memory obligation has invalid FSRS-7 state.");
                   const fsrsCard = obligation.policyState.fsrsCard;
@@ -4497,7 +4509,7 @@
               validateWorkflowResult(event.workflowResult, event.workflow);
               validRatingValue(event.suggestedRating, "Evidence event");
               validRatingValue(event.confirmedRating, "Evidence event");
-              assert(event.beforePolicyState.engine === engineFor[event.obligationType] && event.afterPolicyState.engine === engineFor[event.obligationType], "Evidence policy states do not match the obligation type.");
+              assert(event.beforePolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType] && event.afterPolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType], "Evidence policy states do not match the obligation type.");
               if (event.followUpObligationId)
                   assert(obligationMap.has(event.followUpObligationId), "Evidence event references a missing follow-up obligation.");
               if (event.obligationType === "memory-recall") {
