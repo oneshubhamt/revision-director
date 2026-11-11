@@ -314,6 +314,10 @@
       assert(typeof value === "string", `${label} must be a string.`);
       return value;
   }
+  function requiredArray(value, label) {
+      assert(Array.isArray(value), `${label} must be an array.`);
+      return value;
+  }
   function formText(data, name, fallback = "") {
       const value = data.get(name);
       if (value === null)
@@ -1317,40 +1321,44 @@
           ...(commitToken ? { commitToken } : {}),
       };
   }
+  function checkedDocumentInput(input, label) {
+      return requireRecord(input, label);
+  }
+  function canonicalDocument(kind, input) {
+      if (kind === "profile")
+          return canonicalExamProfile(checkedDocumentInput(input, "Exam profile"));
+      if (kind === "node")
+          return canonicalKnowledgeNode(checkedDocumentInput(input, "Knowledge node"));
+      if (kind === "unit")
+          return canonicalKnowledgeUnit(checkedDocumentInput(input, "Knowledge unit"));
+      if (kind === "study-event")
+          return canonicalStudyEvent(checkedDocumentInput(input, "Study event"));
+      if (kind === "obligation")
+          return canonicalRevisionObligation(checkedDocumentInput(input, "Revision obligation"));
+      if (kind === "evidence-event")
+          return canonicalEvidenceEvent(checkedDocumentInput(input, "Evidence event"));
+      if (kind === "chunk")
+          return canonicalObligationChunk(checkedDocumentInput(input, "Obligation chunk"));
+      if (kind === "daily-plan")
+          return canonicalDailyPlanRecord(checkedDocumentInput(input, "Daily plan"));
+      if (kind === "settings")
+          return canonicalAppSettings(checkedDocumentInput(input, "Application settings"));
+      if (kind === "active-retrieval")
+          return canonicalActiveRetrievalSession(checkedDocumentInput(input, "Active retrieval session"));
+      return canonicalAppMetadata(checkedDocumentInput(input, "Application metadata"));
+  }
+  function canonicalDocumentArray(kind, input, label) {
+      return requiredArray(input, label).map((value) => canonicalDocument(kind, value));
+  }
   function canonicalActiveRetrievalEnvelope(input) {
       const value = requireRecord(input, "Active retrieval recovery envelope");
       assert(value["format"] === ACTIVE_RETRIEVAL_RECOVERY_FORMAT && value["schemaVersion"] === 1, "Active retrieval recovery envelope is invalid.");
-      const session = value["session"];
-      assert(isRecord(session), "Active retrieval recovery session is invalid.");
       return {
           format: ACTIVE_RETRIEVAL_RECOVERY_FORMAT,
           schemaVersion: 1,
           savedAt: canonicalIso(requiredString(value["savedAt"], "Recovery save date"), "Recovery save date"),
-          session: canonicalActiveRetrievalSession(session),
+          session: canonicalDocument("active-retrieval", value["session"]),
       };
-  }
-  function canonicalDocument(kind, value) {
-      if (kind === "profile")
-          return canonicalExamProfile(value);
-      if (kind === "node")
-          return canonicalKnowledgeNode(value);
-      if (kind === "unit")
-          return canonicalKnowledgeUnit(value);
-      if (kind === "study-event")
-          return canonicalStudyEvent(value);
-      if (kind === "obligation")
-          return canonicalRevisionObligation(value);
-      if (kind === "evidence-event")
-          return canonicalEvidenceEvent(value);
-      if (kind === "chunk")
-          return canonicalObligationChunk(value);
-      if (kind === "daily-plan")
-          return canonicalDailyPlanRecord(value);
-      if (kind === "settings")
-          return canonicalAppSettings(value);
-      if (kind === "active-retrieval")
-          return canonicalActiveRetrievalSession(value);
-      return canonicalAppMetadata(value);
   }
 
   function requiredFsrs7StabilityFast(value) {
@@ -4297,15 +4305,21 @@
           return this.repo.rawDump();
       }
       validateBackup(input) {
-          assert(typeof input === "object" && input !== null, "Backup must be an object.");
-          const candidate = input;
-          assert(candidate.format === BACKUP_FORMAT && candidate.schemaVersion === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
-          assert(candidate.appVersion === APP_VERSION, "This backup was not created by the current Revision Director build.");
-          assert(Array.isArray(candidate.profiles) && Array.isArray(candidate.nodes) && Array.isArray(candidate.units), "Backup collections are missing.");
-          assert(Array.isArray(candidate.studyEvents) && Array.isArray(candidate.obligations) && Array.isArray(candidate.evidenceEvents), "Backup history is missing.");
-          assert(Array.isArray(candidate.chunks) && Array.isArray(candidate.dailyPlans), "Backup planning history is missing.");
-          assert(typeof candidate.settings === "object" && candidate.settings !== null, "Backup settings are missing.");
-          assert(candidate.activeRetrieval === null || typeof candidate.activeRetrieval === "object", "Backup active retrieval is invalid.");
+          const candidate = requireRecord(input, "Backup");
+          assert(candidate["format"] === BACKUP_FORMAT && candidate["schemaVersion"] === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
+          assert(candidate["appVersion"] === APP_VERSION, "This backup was not created by the current Revision Director build.");
+          const profiles = canonicalDocumentArray("profile", candidate["profiles"], "Backup profiles");
+          const nodes = canonicalDocumentArray("node", candidate["nodes"], "Backup knowledge nodes");
+          const units = canonicalDocumentArray("unit", candidate["units"], "Backup knowledge units");
+          const studyEvents = canonicalDocumentArray("study-event", candidate["studyEvents"], "Backup study events");
+          const obligations = canonicalDocumentArray("obligation", candidate["obligations"], "Backup obligations");
+          const evidenceEvents = canonicalDocumentArray("evidence-event", candidate["evidenceEvents"], "Backup evidence events");
+          const chunks = canonicalDocumentArray("chunk", candidate["chunks"], "Backup chunks");
+          const dailyPlans = canonicalDocumentArray("daily-plan", candidate["dailyPlans"], "Backup daily plans");
+          const settings = canonicalDocument("settings", candidate["settings"]);
+          const activeInput = candidate["activeRetrieval"];
+          assert(activeInput === null || isRecord(activeInput), "Backup active retrieval is invalid.");
+          const activeRetrieval = activeInput === null ? null : canonicalDocument("active-retrieval", activeInput);
           const uniqueMap = (values, label) => {
               const map = new Map();
               for (const value of values) {
@@ -4321,16 +4335,6 @@
           const validRatingValue = (value, label) => {
               assert(value === 1 || value === 2 || value === 3 || value === 4, `${label} has an invalid rating.`);
           };
-          const profiles = candidate.profiles;
-          const nodes = candidate.nodes;
-          const units = candidate.units;
-          const studyEvents = candidate.studyEvents;
-          const obligations = candidate.obligations;
-          const evidenceEvents = candidate.evidenceEvents;
-          const chunks = candidate.chunks;
-          const dailyPlans = candidate.dailyPlans;
-          const settings = candidate.settings;
-          const activeRetrieval = candidate.activeRetrieval;
           const profileMap = uniqueMap(profiles, "Profiles");
           const nodeMap = uniqueMap(nodes, "Knowledge nodes");
           const unitMap = uniqueMap(units, "Knowledge units");
@@ -4672,17 +4676,17 @@
           return {
               format: BACKUP_FORMAT,
               schemaVersion: BACKUP_SCHEMA_VERSION,
-              exportedAt: canonicalIso(candidate.exportedAt, "Backup export date"),
-              appVersion: canonicalId(candidate.appVersion, "Backup application version"),
-              profiles: profiles.map(canonicalExamProfile),
-              nodes: nodes.map(canonicalKnowledgeNode),
-              units: units.map(canonicalKnowledgeUnit),
-              studyEvents: studyEvents.map(canonicalStudyEvent),
-              obligations: obligations.map(canonicalRevisionObligation),
-              evidenceEvents: evidenceEvents.map(canonicalEvidenceEvent),
-              chunks: chunks.map(canonicalObligationChunk),
-              dailyPlans: dailyPlans.map(canonicalDailyPlanRecord),
-              settings: canonicalAppSettings(settings),
+              exportedAt: canonicalIso(requiredString(candidate["exportedAt"], "Backup export date"), "Backup export date"),
+              appVersion: canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version"),
+              profiles,
+              nodes,
+              units,
+              studyEvents,
+              obligations,
+              evidenceEvents,
+              chunks,
+              dailyPlans,
+              settings,
               activeRetrieval: canonicalActive,
           };
       }
