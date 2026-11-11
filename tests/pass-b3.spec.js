@@ -41,7 +41,7 @@ const { webcrypto } = require('crypto');
   const check = (value, message) => { checks += 1; if (!value) throw new Error(message); };
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  check(api.APP_VERSION === 'va7.1-pass-e1', 'Pass B3 identity is wrong');
+  check(api.APP_VERSION === 'va7.1-pass-f1', 'Pass B3 identity is wrong');
   check(api.REVIEW_OWNER_STORAGE_KEY === 'revision-director:review-owner:v1', 'Ownership key changed');
   check(api.REVIEW_OWNER_CHANNEL === 'revision-director-review-owner', 'Ownership channel changed');
   check(api.REVIEW_OWNER_HEARTBEAT_MS === 4000, 'Heartbeat interval changed');

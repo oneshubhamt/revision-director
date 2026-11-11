@@ -50,7 +50,7 @@ function session(revision, overrides = {}) {
 }
 
 (async () => {
-  check(api.APP_VERSION === 'va7.1-pass-e1' && api.DB_VERSION === 2, 'Pass B1 identity is wrong');
+  check(api.APP_VERSION === 'va7.1-pass-f1' && api.DB_VERSION === 3, 'Pass B1 identity is wrong');
   check(api.Store.ActiveRetrieval === 'activeRetrieval', 'Active retrieval store is missing');
   check(api.ACTIVE_RETRIEVAL_DEBOUNCE_MS === 350, 'Debounce contract changed');
   check(api.ACTIVE_RETRIEVAL_RECOVERY_MAX_CHARS === 900000 && api.ACTIVE_RETRIEVAL_RECOVERY_TEXT_CHARS === 160000 && api.ACTIVE_RETRIEVAL_RECOVERY_POINTS === 12000, 'Emergency snapshot limits changed');
