@@ -1003,14 +1003,10 @@
           assert(unit?.profileId === event.profileId, "Study event links a missing or cross-profile knowledge unit.");
         }
       }
-      const engineFor: Record<ObligationType, PolicyState["engine"]> = {
-        "memory-recall": "ts-fsrs", "concept-reconstruction": "mastery", "application-practice": "application",
-        "performance-practice": "performance", relearn: "relearn", "freshness-review": "freshness",
-      };
       for (const obligation of obligations) {
         const unit = unitMap.get(obligation.unitId);
         assert(unit, "Obligation references a missing unit.");
-        assert(Object.hasOwn(engineFor, obligation.type), "Obligation type is invalid.");
+        assert(Object.hasOwn(POLICY_ENGINE_BY_OBLIGATION, obligation.type), "Obligation type is invalid.");
         assert(["active", "completed", "suspended", "archived"].includes(obligation.status), "Obligation status is invalid.");
         if (obligation.status === "suspended") assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning", "Suspended obligation lacks a valid reason.");
         else assert(obligation.suspensionReason === undefined, "Only suspended obligations may retain a suspension reason.");
@@ -1030,7 +1026,7 @@
         }
         assert(obligation.protocol.trim().length > 0 && obligation.successCriteria.trim().length > 0, "Obligation protocol is incomplete.");
         validateWorkflowSpec(obligation.workflow, obligation.type);
-        assert(obligation.policyState.engine === engineFor[obligation.type], "Obligation policy does not match its type.");
+        assert(obligation.policyState.engine === POLICY_ENGINE_BY_OBLIGATION[obligation.type], "Obligation policy does not match its type.");
         if (obligation.type === "memory-recall") {
           assert(obligation.policyState.version === FSRS_PACKAGE_VERSION && obligation.policyState.fsrsCard, "Memory obligation has invalid FSRS-7 state.");
           const fsrsCard = obligation.policyState.fsrsCard;
@@ -1071,7 +1067,7 @@
         assert(event.workflow === obligation.workflow.kind, "Evidence workflow does not match the obligation.");
         validateWorkflowResult(event.workflowResult, event.workflow);
         validRatingValue(event.suggestedRating, "Evidence event"); validRatingValue(event.confirmedRating, "Evidence event");
-        assert(event.beforePolicyState.engine === engineFor[event.obligationType] && event.afterPolicyState.engine === engineFor[event.obligationType], "Evidence policy states do not match the obligation type.");
+        assert(event.beforePolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType] && event.afterPolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType], "Evidence policy states do not match the obligation type.");
         if (event.followUpObligationId) assert(obligationMap.has(event.followUpObligationId), "Evidence event references a missing follow-up obligation.");
         if (event.obligationType === "memory-recall") {
           assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION && event.schedulerModel === FSRS_MODEL, "Memory evidence lacks exact FSRS-7 provenance.");

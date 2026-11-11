@@ -106,7 +106,7 @@
     reviewDuration: 0.07,
     examinationProximity: 0.15,
     weeklyBalance: 0.10,
-  });
+  } satisfies Record<keyof PlanningFactors, number>);
 
   function examDateTime(profile: ExamProfile): Date | undefined {
     if (!profile.examDate) return undefined;
@@ -154,12 +154,12 @@
       .sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt))
       .slice(0, 5);
     if (recent.length === 0) return neutral;
-    const ratingWeakness: Record<Rating, number> = {
+    const ratingWeakness = {
       [Rating.Again]: 1,
       [Rating.Hard]: 0.68,
       [Rating.Good]: 0.26,
       [Rating.Easy]: 0,
-    };
+    } satisfies Record<Rating, number>;
     let weightedRating = 0;
     let weightedEvidence = 0;
     let weightedErrors = 0;

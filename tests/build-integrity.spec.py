@@ -148,6 +148,14 @@ check("checked external domain boundaries", "function literalChoice<const Values
 check("archive parsers narrow unknown records", "as Partial<BackupArchive" not in ts and "const candidate: BackupPayload" not in ts and "const parsed = JSON.parse(raw) as ActiveRetrievalRecoveryEnvelope" not in ts and "as Partial<DiagnosticRecord>" not in ts)
 check("store-keyed persistence typing", "interface StoreValueMap" in ts and "type StoreValue<S extends StoreName>" in ts and "async get<S extends StoreName>(store: S" in ts and "async getAll<S extends StoreName>(store: S" in ts and "async get<T>(store: StoreName" not in ts and "async getAll<T>(store: StoreName" not in ts)
 check("stateful non-null assertions are guarded", all(token not in ts for token in ["obligation.chunking!", "versions.at(-1)!", "returnedTarget!.", "itemByKey.get(outcome.itemKey)!", "activeReviewIds[this.activeReviewIndex]!", "activeReviewIds[0]!"]) and "function latestPlanVersion" in ts and "private activeReviewTarget" in ts)
+check("closed domain maps are exhaustive", all(token in ts for token in [
+    "as const satisfies Record<ObligationType, string>",
+    "as const satisfies Record<RetrievalWorkflow, string>",
+    "satisfies Record<ObligationType, NonEmptyReadonlyArray<RetrievalWorkflow>>",
+    'satisfies Record<ObligationType, PolicyState["engine"]>',
+    "satisfies Record<Rating, number>",
+    "satisfies Record<keyof PlanningFactors, number>",
+]) and "const engineFor: Record<ObligationType" not in ts and "compatibleWorkflows(type)[0]!" not in ts)
 check("SHA-256-only backup integrity", 'type BackupArchiveHashAlgorithm = "sha256";' in ts and "fnv1a64" not in ts)
 check("policy router", "class SchedulerPolicyRouter" in ts)
 check("immutable Study Event semantics", "interface StudyEvent" in ts and "studyEvents" in ts)

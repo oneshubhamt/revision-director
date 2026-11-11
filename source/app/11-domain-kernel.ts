@@ -92,6 +92,83 @@
   const IMPORTANCE_LEVELS = [1, 2, 3] as const;
   const UNDERSTANDING_LEVELS = [1, 2, 3, 4] as const;
 
+  type NonEmptyReadonlyArray<T> = readonly [T, ...T[]];
+
+  const RATING_LABELS = {
+    [Rating.Again]: "Again",
+    [Rating.Hard]: "Hard",
+    [Rating.Good]: "Good",
+    [Rating.Easy]: "Easy",
+  } as const satisfies Record<Rating, string>;
+
+  const OBLIGATION_LABELS = {
+    "memory-recall": "Memory recall",
+    "concept-reconstruction": "Concept reconstruction",
+    "application-practice": "Application practice",
+    "performance-practice": "Performance practice",
+    relearn: "Relearn",
+    "freshness-review": "Freshness review",
+  } as const satisfies Record<ObligationType, string>;
+
+  const OBLIGATION_CHIPS = {
+    "memory-recall": "memory",
+    "concept-reconstruction": "concept",
+    "application-practice": "application",
+    "performance-practice": "performance",
+    relearn: "relearn",
+    "freshness-review": "freshness",
+  } as const satisfies Record<ObligationType, string>;
+
+  const WORKFLOW_LABELS = {
+    recall: "Recall",
+    reconstruction: "Reconstruction",
+    questions: "Questions / application",
+    diagram: "Diagram practice",
+    "answer-writing": "Answer writing",
+    relearning: "Relearning",
+  } as const satisfies Record<RetrievalWorkflow, string>;
+
+  const RESPONSE_MEDIUM_LABELS = {
+    "in-app": "In-app workspace",
+    paper: "Paper / external workspace",
+    oral: "Oral recall",
+  } as const satisfies Record<ResponseMedium, string>;
+
+  const CUE_LEVEL_SCORES = {
+    none: 4,
+    minor: 3,
+    major: 1,
+    source: 0,
+  } as const satisfies Record<CueLevel, 0 | 1 | 3 | 4>;
+
+  const WORKFLOWS_BY_OBLIGATION = {
+    "memory-recall": ["recall"],
+    "concept-reconstruction": ["reconstruction", "diagram"],
+    "application-practice": ["questions"],
+    "performance-practice": ["answer-writing", "diagram", "questions"],
+    relearn: ["relearning"],
+    "freshness-review": ["recall", "reconstruction"],
+  } as const satisfies Record<ObligationType, NonEmptyReadonlyArray<RetrievalWorkflow>>;
+
+  const ERROR_LABELS = {
+    "factual-omission": "Factual omission",
+    "conceptual-misunderstanding": "Conceptual misunderstanding",
+    "confusion-interference": "Confusion / interference",
+    "application-failure": "Application failure",
+    "answer-structure": "Answer structure",
+    "diagram-reconstruction": "Diagram reconstruction",
+    "slow-retrieval": "Slow retrieval",
+  } as const satisfies Record<ErrorType, string>;
+
+  const POLICY_ENGINE_BY_OBLIGATION = {
+    "memory-recall": "ts-fsrs",
+    "concept-reconstruction": "mastery",
+    "application-practice": "application",
+    "performance-practice": "performance",
+    relearn: "relearn",
+    "freshness-review": "freshness",
+  } as const satisfies Record<ObligationType, PolicyState["engine"]>;
+
   function nowIso(): ISODateTime {
     return new Date().toISOString();
   }
@@ -177,61 +254,35 @@
   }
 
   function ratingName(rating: Rating): string {
-    return rating === Rating.Again ? "Again" : rating === Rating.Hard ? "Hard" : rating === Rating.Good ? "Good" : "Easy";
+    return RATING_LABELS[rating];
   }
 
   function obligationLabel(type: ObligationType): string {
-    const labels: Record<ObligationType, string> = {
-      "memory-recall": "Memory recall",
-      "concept-reconstruction": "Concept reconstruction",
-      "application-practice": "Application practice",
-      "performance-practice": "Performance practice",
-      relearn: "Relearn",
-      "freshness-review": "Freshness review",
-    };
-    return labels[type];
+    return OBLIGATION_LABELS[type];
   }
 
   function obligationChip(type: ObligationType): string {
-    if (type === "memory-recall") return "memory";
-    if (type === "concept-reconstruction") return "concept";
-    if (type === "application-practice") return "application";
-    if (type === "performance-practice") return "performance";
-    if (type === "relearn") return "relearn";
-    return "freshness";
+    return OBLIGATION_CHIPS[type];
   }
 
   function workflowLabel(kind: RetrievalWorkflow): string {
-    const labels: Record<RetrievalWorkflow, string> = {
-      recall: "Recall",
-      reconstruction: "Reconstruction",
-      questions: "Questions / application",
-      diagram: "Diagram practice",
-      "answer-writing": "Answer writing",
-      relearning: "Relearning",
-    };
-    return labels[kind];
+    return WORKFLOW_LABELS[kind];
   }
 
   function responseMediumLabel(value: ResponseMedium): string {
-    return value === "in-app" ? "In-app workspace" : value === "paper" ? "Paper / external workspace" : "Oral recall";
+    return RESPONSE_MEDIUM_LABELS[value];
   }
 
   function cueLevelScore(value: CueLevel): 0 | 1 | 3 | 4 {
-    return value === "none" ? 4 : value === "minor" ? 3 : value === "major" ? 1 : 0;
+    return CUE_LEVEL_SCORES[value];
   }
 
-  function compatibleWorkflows(type: ObligationType): readonly RetrievalWorkflow[] {
-    if (type === "memory-recall") return ["recall"];
-    if (type === "concept-reconstruction") return ["reconstruction", "diagram"];
-    if (type === "application-practice") return ["questions"];
-    if (type === "performance-practice") return ["answer-writing", "diagram", "questions"];
-    if (type === "freshness-review") return ["recall", "reconstruction"];
-    return ["relearning"];
+  function compatibleWorkflows(type: ObligationType): NonEmptyReadonlyArray<RetrievalWorkflow> {
+    return WORKFLOWS_BY_OBLIGATION[type];
   }
 
   function defaultWorkflowForType(type: ObligationType): RetrievalWorkflow {
-    return compatibleWorkflows(type)[0]!;
+    return WORKFLOWS_BY_OBLIGATION[type][0];
   }
 
   function defaultWorkflowSpec(type: ObligationType, protocol: string, successCriteria: string): WorkflowSpec {
@@ -412,10 +463,8 @@
     assert(result.kind === expected, "Workflow result does not match the obligation workflow.");
     const integer = (value: number, min: number, max: number, label: string) => assert(Number.isInteger(value) && value >= min && value <= max, `${label} is invalid.`);
     const rubric = (value: number, label: string) => integer(value, 0, 4, label);
-    const media = new Set<ResponseMedium>(["in-app", "paper", "oral"]);
-    const cues = new Set<CueLevel>(["none", "minor", "major", "source"]);
-    if ("cueLevel" in result) assert(cues.has(result.cueLevel), "Cue level is invalid.");
-    if ("responseMedium" in result) assert(media.has(result.responseMedium), "Response medium is invalid.");
+    if ("cueLevel" in result) assert(CUE_LEVELS.includes(result.cueLevel), "Cue level is invalid.");
+    if ("responseMedium" in result) assert(RESPONSE_MEDIA.includes(result.responseMedium), "Response medium is invalid.");
     if (result.kind === "recall") {
       integer(result.checkpointTotal, 1, 20, "Recall checkpoint total");
       integer(result.checkpointsMet, 0, result.checkpointTotal, "Recall checkpoints met");
@@ -456,16 +505,7 @@
   }
 
   function errorLabel(type: ErrorType): string {
-    const labels: Record<ErrorType, string> = {
-      "factual-omission": "Factual omission",
-      "conceptual-misunderstanding": "Conceptual misunderstanding",
-      "confusion-interference": "Confusion / interference",
-      "application-failure": "Application failure",
-      "answer-structure": "Answer structure",
-      "diagram-reconstruction": "Diagram reconstruction",
-      "slow-retrieval": "Slow retrieval",
-    };
-    return labels[type];
+    return ERROR_LABELS[type];
   }
 
   function addDays(from: Date, days: number): Date {
@@ -531,10 +571,7 @@
     return value;
   }
 
-  const ERROR_TYPES = new Set<ErrorType>([
-    "factual-omission", "conceptual-misunderstanding", "confusion-interference",
-    "application-failure", "answer-structure", "diagram-reconstruction", "slow-retrieval",
-  ]);
+  const ERROR_TYPES = new Set<ErrorType>(ERROR_TYPE_VALUES);
 
   function objectiveScore(type: ObligationType, evidence: ObjectiveEvidence): number {
     const accuracyScore = evidence.accuracyPercent === undefined ? null : clamp(evidence.accuracyPercent / 25, 0, 4);
