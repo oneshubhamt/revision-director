@@ -2,6 +2,14 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-11 — FSRS-7 independent verification and cleanup
+
+- Added realistic multi-review integration verification covering replay, retention/profile rebases, personalized-history boundaries, backup/restore, returned-memory transitions, corruption rejection and planner consumption.
+- Collapsed FSRS replay onto the scheduler-forward path; retrievability now consumes the already replay-verified materialized dual-trace state instead of maintaining a second model-forward replay implementation.
+- Reduced the scheduler port surface by making materialization internal and consolidating repeated card-history mapping.
+- Consolidated cross-boundary FSRS tests into a dedicated integration suite while leaving kernel tests focused on scheduler/rating semantics and planning tests focused on planner behavior.
+- Consolidated detailed scheduler/personalization semantics into `SCHEDULING_AND_PLANNING.md`; architecture, storage and QA docs now reference that authority instead of repeating implementation detail.
+
 ## 2026-11-11 — FSRS-7 personalization boundary
 
 - Added a current-format FSRS-7 optimizer profile contract with exact 34-weight validation and scheduler/weight provenance.

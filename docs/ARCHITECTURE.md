@@ -54,11 +54,9 @@ The built-in `revision-current` profile owns independent typography, shape, mate
 
 `RevisionService` owns domain use cases. Durable review completion is transaction-bound: evidence, scheduler state, obligation state, plan outcomes and active-session transitions are committed together.
 
-Evidence Events are append-only audit records and the canonical review history for memory obligations. The persisted FSRS card is a materialized projection for fast planning; the application-owned scheduler port normalizes review observations and verifies that projection against FSRS-7 replay before memory scheduling or retrievability is used.
+Evidence Events are append-only audit records and the canonical review history for memory obligations. The stored FSRS card is a verified materialized projection, while the scheduler port owns replay, scheduler identity and explicit reprojection across retention/profile changes.
 
-Every memory transition retains before/after projection state plus a deterministic scheduler-configuration fingerprint, so historical scheduling provenance and current replay integrity are independently inspectable.
-
-FSRS personalization is an application-owned boundary, not an optimizer runtime. Revision Director exports chronological optimizer evidence and validates a finished FSRS-7 profile, but training remains in the separate pinned Node tool under `tools/fsrs-optimizer/`. Import only stages a profile. Activation/deactivation is explicit, blocked during an active retrieval, and atomically reprojects every reviewed memory obligation from immutable Evidence Events under the target scheduler parameters. Historical Evidence Events are never rewritten when weights or desired retention change.
+Personalization remains behind an application-owned profile/evidence boundary; optimizer computation is external to the browser runtime. Detailed scheduler, replay, optimizer-gate and rebase semantics live in `SCHEDULING_AND_PLANNING.md`.
 
 ## Active retrieval and timing
 

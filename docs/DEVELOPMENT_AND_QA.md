@@ -66,9 +66,7 @@ Generated output must be rebuilt from source before release/merge.
 
 ## External FSRS optimizer
 
-Personalized FSRS-7 training is intentionally outside the application runtime. The native tool lives under `tools/fsrs-optimizer/` and pins `@open-spaced-repetition/binding@0.6.1`.
-
-Use the app to export chronological optimizer evidence, then:
+Personalized training remains isolated under `tools/fsrs-optimizer/` and pins `@open-spaced-repetition/binding@0.6.1`.
 
 ```sh
 cd tools/fsrs-optimizer
@@ -76,7 +74,7 @@ npm ci
 npm run optimize -- path/to/revision-director-fsrs-evidence.csv profile.json
 ```
 
-The tool trains a validation candidate on the historical first five-sixths, compares stock and personalized FSRS-7 on the final sixth, requires better held-out log loss without RMSE-bins regression, retrains the final 34 weights on all evidence, and records upstream time-series evaluation. Browser/WASM optimization is deliberately not part of this runtime; a later implementation must remain behind the same profile contract.
+The browser runtime never imports the optimizer binding. CI has a separate native-optimizer job that exercises training, conversion, evaluation and fail-closed CLI output. The permanent app-side integration suite independently verifies realistic replay histories, scheduler rebases, backup/restore, returned-memory transitions, corruption rejection and planner behavior. Exact optimizer eligibility and rebase semantics are documented once in `SCHEDULING_AND_PLANNING.md`.
 
 ## TypeScript 7 checker parallelism
 
@@ -96,7 +94,7 @@ The core job is read-only and covers:
 - all non-browser JavaScript regressions;
 - tracked-checksum verification.
 
-The browser job is also read-only and covers the Pass B2 durability gate plus the complete Python/Chromium regression matrix. A separate working-branch-only job has the sole write permission needed to regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. Main-branch and pull-request runs fail if generated artifacts are stale.
+The external-optimizer job installs only the isolated native optimizer lockfile and exercises its pinned FSRS-7 boundary. The browser job is read-only and covers the durability gate plus the complete Python/Chromium regression matrix. A separate working-branch-only job has the sole write permission needed to regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. Main-branch and pull-request runs fail if generated artifacts are stale.
 
 ## Browser/device boundary
 

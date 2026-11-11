@@ -55,18 +55,9 @@
     reviewTime: Date;
   }
 
-  interface FsrsModelReviewRuntime {
-    rating: number;
-    deltaT: number;
-  }
-
   interface FsrsSchedulerRuntime {
     readonly model: {
       forgettingCurve(state: FsrsMemoryStateRuntime, elapsedDays: number): number;
-      forward(input: {
-        history: readonly FsrsModelReviewRuntime[];
-        initialState?: FsrsMemoryStateRuntime;
-      }): FsrsMemoryStateRuntime[];
     };
     readonly chrono: {
       difference(from: Date, to: Date): number;

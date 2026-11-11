@@ -13,9 +13,8 @@ FSRS owns memory decay and memory intervals. Revision Director owns exam urgency
 
 Memory recall uses the vendored `ts-fsrs@6.0.0` runtime with **FSRS-7 only**.
 
-Current scheduler policy:
+Current runtime policy:
 
-- model: FSRS-7;
 - desired retention: user setting, default `0.90`;
 - dual-trace state: `stability`, `stabilityFast`, `difficulty`;
 - fractional elapsed days;
@@ -26,9 +25,42 @@ Current scheduler policy:
 - `allowModelOverride: true`;
 - fuzz disabled;
 - maximum interval: 36,500 days;
-- package-default FSRS-7 weights.
+- stock FSRS-7 weights by default, with an explicitly activated validated optimizer profile as the only alternative.
 
 The one-day step is a product adaptation for long-form revision sessions: it prevents seconds/minutes-scale flashcard behaviour while still allowing the FSRS model to choose longer intervals when appropriate.
+
+## Replay truth and materialized state
+
+Append-only Evidence Events are the canonical review history. Direct memory reviews and successful returns from corrective relearning normalize into one chronological stream.
+
+The stored FSRS card is a materialized projection for fast planning, not an independent source of truth. Revision Director uses one scheduler-forward replay path to rebuild and verify reviewed cards. Before preview, review or retrievability, the active projection is checked against canonical history.
+
+When scheduler identity changes, historical Evidence Events retain the configuration that actually produced each transition. At a configuration boundary the replay verifier checks both the reprojected before-state and the resulting after-state for reviews produced under the active configuration. Immutable counters and last-review chronology must survive the boundary.
+
+Retrievability is calculated from the replay-verified current dual-trace state and scheduler chronology. There is no separate model-forward replay implementation.
+
+## Personalization and scheduler rebases
+
+Optimization remains outside the browser runtime. Revision Director exports chronological review evidence; the pinned native tool in `tools/fsrs-optimizer/` produces a versioned FSRS-7 profile.
+
+A profile is eligible only when it contains exactly 34 valid FSRS-7 weights and records the required evaluation provenance. The external tool:
+
+1. trains a candidate on the historical first five-sixths;
+2. evaluates stock FSRS-7 and the candidate on the chronological final sixth;
+3. requires at least 64 training items, 64 holdout items and 16 holdout cards;
+4. requires strictly lower held-out log loss and no RMSE-bins regression;
+5. retrains final weights on all eligible evidence after the gate passes;
+6. records upstream time-series evaluation separately.
+
+Importing a profile only stages it. Activation, deactivation and desired-retention changes are explicit scheduler rebases. A rebase:
+
+- is rejected while an active retrieval exists;
+- first verifies the current dataset against the current scheduler;
+- replays every reviewed memory obligation under the target scheduler;
+- atomically stores the target settings identity and rebuilt memory projections;
+- never rewrites historical Evidence Events.
+
+Backup/restore preserves staged or active personalization state. Restore prepares the referenced scheduler configuration and independently verifies every materialized memory projection before replacing current data.
 
 ## Rating semantics
 

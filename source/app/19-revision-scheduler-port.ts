@@ -10,10 +10,6 @@
   interface RevisionSchedulerPort {
     readonly configuration: FsrsConfigSnapshot;
     newCard(firstDueAt: ISODateTime, cardId: string): MemoryMaterializedProjection;
-    materialize(
-      currentProjection: MemoryMaterializedProjection,
-      reviews: readonly MemoryReviewObservation[],
-    ): MemoryMaterializedProjection;
     verifyProjection(
       currentProjection: MemoryMaterializedProjection,
       reviews: readonly MemoryReviewObservation[],
@@ -40,11 +36,6 @@
     ): MemoryMaterializedProjection;
   }
 
-  interface FsrsReplayResultRuntime {
-    memoryState: FsrsMemoryStateRuntime;
-    memoryStates: FsrsMemoryStateRuntime[];
-  }
-
   interface FsrsRescheduleResultRuntime {
     results: FsrsRecordRuntime[];
     card: FsrsCardRuntime;
@@ -53,8 +44,7 @@
   /*
    * Application-local mirror of the public ts-fsrs@6.0.0
    * `ts-fsrs/reschedule` contract. It is intentionally implemented only in
-   * terms of the vendored scheduler's public model.forward/scheduler.forward
-   * surfaces, keeping the upstream UMD bytes checksum-identical and avoiding a
+   * terms of the vendored scheduler's public scheduler.forward surface, keeping the upstream UMD bytes checksum-identical and avoiding a
    * second copy of the FSRS runtime.
    *
    * Upstream source basis:
@@ -87,28 +77,6 @@
         assert(Number.isFinite(deltaT) && deltaT >= 0, "FSRS review history must be chronological.");
       }
       return reviews;
-    }
-
-    replay(
-      input: {
-        history: readonly FsrsHistoryReviewRuntime[];
-        initialState?: FsrsMemoryStateRuntime;
-      },
-      options: { sortHistory?: boolean } = {},
-    ): FsrsReplayResultRuntime {
-      const reviews = this.prepareReviews(input.history, options.sortHistory ?? true);
-      const modelHistory: FsrsModelReviewRuntime[] = reviews.map((review, index) => ({
-        rating: review.rating,
-        deltaT: index === 0
-          ? 0
-          : this.scheduler.chrono.difference(reviews[index - 1]!.reviewTime, review.reviewTime),
-      }));
-      const memoryStates = input.initialState
-        ? this.scheduler.model.forward({ history: modelHistory, initialState: input.initialState })
-        : this.scheduler.model.forward({ history: modelHistory });
-      const memoryState = memoryStates.at(-1);
-      assert(memoryState, "FSRS replay did not produce a memory state.");
-      return { memoryState, memoryStates };
     }
 
     reschedule(
@@ -419,16 +387,18 @@
       this.history = new Reschedule(scheduler);
     }
 
-    private replayMemoryStates(reviews: readonly MemoryReviewObservation[]): FsrsMemoryStateRuntime[] {
-      if (reviews.length === 0) return [];
-      const result = this.history.replay({
+    private replayCards(
+      initialCard: MemoryMaterializedProjection,
+      reviews: readonly MemoryReviewObservation[],
+    ): FsrsRescheduleResultRuntime {
+      assert(reviews.length > 0, "FSRS replay requires review history.");
+      return this.history.reschedule({
+        initialCard: hydrateFsrsCard(initialCard),
         history: reviews.map((review) => ({
           rating: review.rating,
           reviewTime: new Date(review.reviewedAt),
         })),
       }, { sortHistory: false });
-      assert(result.memoryStates.length === reviews.length, "FSRS replay produced an incomplete memory-state sequence.");
-      return result.memoryStates;
     }
 
     private grade(rating: Rating): number {
@@ -445,7 +415,7 @@
       return serializeFsrsCard(this.scheduler.newCard({ now, cardId }));
     }
 
-    materialize(
+    private materialize(
       currentProjection: MemoryMaterializedProjection,
       reviews: readonly MemoryReviewObservation[],
     ): MemoryMaterializedProjection {
@@ -454,10 +424,7 @@
         validateMemoryObservationChain(currentProjection.cardId, reviews, currentProjection);
         return clone(currentProjection);
       }
-      const result = this.history.reschedule({
-        initialCard: hydrateFsrsCard(reviews[0]!.beforeCard),
-        history: reviews.map((review) => ({ rating: review.rating, reviewTime: new Date(review.reviewedAt) })),
-      }, { sortHistory: false });
+      const result = this.replayCards(reviews[0]!.beforeCard, reviews);
       assert(result.results.length === reviews.length, "FSRS reschedule produced an incomplete projection sequence.");
       for (let index = 0; index < reviews.length; index += 1) {
         const review = reviews[index]!;
@@ -542,11 +509,13 @@
     ): number | undefined {
       this.verifyProjection(currentProjection, reviews);
       if (reviews.length === 0 || currentProjection.reps === 0) return undefined;
-      const memoryState = this.replayMemoryStates(reviews).at(-1);
-      assert(memoryState, "FSRS retrievability requires replayed memory.");
       const lastReview = new Date(reviews.at(-1)!.reviewedAt);
       const elapsedDays = Math.max(0, this.scheduler.chrono.difference(lastReview, at));
-      const retrievability = this.scheduler.model.forgettingCurve(memoryState, elapsedDays);
+      const retrievability = this.scheduler.model.forgettingCurve({
+        stability: currentProjection.stability,
+        stabilityFast: requiredFsrs7StabilityFast(currentProjection.stabilityFast),
+        difficulty: currentProjection.difficulty,
+      }, elapsedDays);
       return clamp(Number(retrievability), 0, 1);
     }
 
@@ -557,13 +526,7 @@
       assert(reviews.length > 0, "FSRS reschedule requires review history.");
       validateStoredFsrsCard(initialCard, initialCard.cardId);
       assert(storedFsrsCardsEqual(initialCard, reviews[0]!.beforeCard), "FSRS reschedule initial card does not match canonical history.");
-      const result = this.history.reschedule({
-        initialCard: hydrateFsrsCard(initialCard),
-        history: reviews.map((review) => ({
-          rating: review.rating,
-          reviewTime: new Date(review.reviewedAt),
-        })),
-      }, { sortHistory: false });
+      const result = this.replayCards(initialCard, reviews);
       return serializeFsrsCard(result.card);
     }
   }

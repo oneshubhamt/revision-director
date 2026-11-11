@@ -5,7 +5,7 @@ const path = require('path');
 const { webcrypto } = require('crypto');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsScheduler, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -67,29 +67,14 @@ const synthesisCandidate = api.buildPlanningCandidate(synthesisReady,[],settings
 check(synthesisCandidate && synthesisCandidate.executionMinutes === 5, 'Synthesis-ready work must be immediately plannable without rewriting the policy due date');
 check(synthesisReady.obligation.dueAt === new Date(ref.getTime()+3*86400000).toISOString(), 'Planning synthesis readiness must not mutate the policy due date');
 
-async function testFsrsPlanning() {
+async function testMemoryExamHorizon() {
   await api.prepareFsrsScheduler(.9);
   const memoryPolicy = new api.FsrsMemoryPolicy(() => .9);
   const memoryState = memoryPolicy.createInitialState(ref.toISOString(), 'memory');
   const memoryObligation = { ...obligation('memory',0,12,'memory-recall'), type:'memory-recall', workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'}, policyState:memoryState };
-  check(api.fsrsRetrievability(memoryObligation, [], ref, .9) === undefined, 'New FSRS obligations must not claim measured retrievability');
-  const memoryEvidence = {completeness:4,independence:4,application:3,errorTypes:[],correctionNote:''};
-  const completion = memoryPolicy.complete(memoryObligation, api.Rating.Good, memoryEvidence, ref);
-  const memoryEvent = {
-    id:'memory-good',unitId:'memory',obligationId:'memory',obligationType:'memory-recall',
-    reviewedAt:ref.toISOString(),confirmedRating:api.Rating.Good,evidence:memoryEvidence,
-    beforePolicyState:structuredClone(memoryState),afterPolicyState:structuredClone(completion.policyState),
-    schedulerConfig:structuredClone(completion.schedulerConfig)
-  };
-  memoryObligation.policyState = completion.policyState;
-  memoryObligation.dueAt = completion.dueAt;
-  const later = new Date(ref.getTime()+3*86400000);
-  const r = api.fsrsRetrievability(memoryObligation, [memoryEvent], later, .9);
-  check(typeof r === 'number' && r > 0 && r < 1, 'Reviewed memory obligations must use FSRS-7 retrievability');
-  check(memoryObligation.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'Planning must consume persisted FSRS-7 dual-trace state');
 
   const easyEvidence = {completeness:4,independence:4,application:4,errorTypes:[],correctionNote:''};
-  const easy = memoryPolicy.complete({...memoryObligation, dueAt:memoryState.fsrsCard.dueAt, policyState:memoryState}, api.Rating.Easy, easyEvidence, ref);
+  const easy = memoryPolicy.complete(memoryObligation, api.Rating.Easy, easyEvidence, ref);
   const unreviewedExamState = memoryPolicy.createInitialState(easy.dueAt, 'memory-exam');
   const examBoundObligation = {
     ...obligation('memory-exam',0,12,'memory-recall'),
@@ -134,7 +119,7 @@ packed = api.choosePlanItems([item('critical-fit-top',99,30,'relearn','overdue')
 check(packed.selected.some(i=>i.joined.obligation.id==='critical-fit-top') && packed.mustSplit.some(i=>i.joined.obligation.id==='oversized-lower'), 'A lower-ranked oversized critical item must be separated as must-split, not ordinary deferral');
 
 (async () => {
-  await testFsrsPlanning();
+  await testMemoryExamHorizon();
   const service = new api.RevisionService({});
   service.settings = settings;
   service.joinedObligations = async () => [joined('a',-1,40,3,20),joined('b',0,20,2,100),joined('c',0,30,1,200)];

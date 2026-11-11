@@ -5,7 +5,7 @@ const { webcrypto } = require('crypto');
 const path = require('path');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, fsrsConfigurationFingerprint, validateFsrsConfigSnapshot, validateFsrs7Weights, validateFsrsOptimizerProfile, fsrsOptimizerCsv, fsrsOptimizerEvidenceSummary, activeFsrsOptimizerProfile, FSRS7_DEFAULT_WEIGHTS, fsrsWeightsFingerprint, Reschedule, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, fsrsConfigurationFingerprint, validateFsrsConfigSnapshot, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 
@@ -116,14 +116,6 @@ for (const Policy of [api.MasteryPolicy, api.ApplicationPolicy, api.PerformanceP
   const completed = policy.complete(o, 3, evidence(3,3,3,80), new Date(due));
   check(new Date(completed.dueAt) > new Date(due), `${policy.id} must schedule forward`);
 }
-function optimizerProfile(overrides={}) {
-  const weights=[...api.FSRS7_DEFAULT_WEIGHTS]; weights[2]=4.2;
-  const base={schema:"revision-director-fsrs-profile/v1",model:"FSRS-7",bindingVersion:"0.6.1",trainedAt:"2026-11-11T00:00:00.000Z",sourceSha256:"a".repeat(64),evidenceItems:384,weights,
-    evaluation:{crossValidation:{logLoss:.39,rmseBins:.07},holdout:{strategy:"final-sixth",trainItems:320,holdoutItems:64,holdoutCards:16,minimumTrainItems:64,minimumHoldoutItems:64,minimumHoldoutCards:16,stock:{logLoss:.42,rmseBins:.08},personalized:{logLoss:.40,rmseBins:.08},gate:"passed"}},
-    training:{enableShortTerm:true,enableSchedPenalties:true,numRelearningSteps:1,chronology:"elapsed-24h",converterFixedUtcOffsetMinutes:0,converterRolloverHour:0,runtimeLearningSteps:["1d"],runtimeRelearningSteps:["1d"],validationCandidateTrainedItems:320,finalRetrainedOnAllEvidence:true}};
-  return {...base,...overrides};
-}
-
 async function testFsrs7Integration() {  await api.prepareFsrsScheduler(.9);
   const memory = new api.FsrsMemoryPolicy(() => .9);
   const memoryObligation = obligation('memory-recall', memory, 'recall');
@@ -170,8 +162,6 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(.9);
   };
   const port = api.revisionSchedulerPort(.9);
   port.verifyProjection(good.policyState.fsrsCard, [goodObservation]); checks++;
-  const materialized = port.materialize(good.policyState.fsrsCard, [goodObservation]);
-  check(materialized.stability === good.policyState.fsrsCard.stability && materialized.stabilityFast === good.policyState.fsrsCard.stabilityFast, 'Materialized projection must be reproduced from canonical replay truth');
   const rescheduled = port.reschedule(memoryObligation.policyState.fsrsCard, [goodObservation]);
   check(rescheduled.dueAt === good.policyState.fsrsCard.dueAt && rescheduled.stabilityFast === good.policyState.fsrsCard.stabilityFast, 'Reschedule must reproduce a same-policy review transition');
 
@@ -308,73 +298,6 @@ async function testTriggerEvidenceLookup() {
   check((await lookup.triggeringEvidence('relearn')) === trigger, 'Relearning must retrieve the exact triggering evidence event');
 }
 
-async function testFsrsPersonalization() {
-  const validWeights=api.validateFsrs7Weights([...api.FSRS7_DEFAULT_WEIGHTS]);
-  check(validWeights.length===34, "FSRS-7 personalization must require exactly 34 weights");
-  mustFail(()=>api.validateFsrs7Weights(validWeights.slice(0,33)), "FSRS-7 personalization must reject non-34 weight vectors");
-  const nonMonotonic=[...validWeights]; nonMonotonic[2]=1;
-  mustFail(()=>api.validateFsrs7Weights(nonMonotonic), "FSRS-7 personalization must enforce upstream monotonic parameter bounds");
-  const outOfBounds=[...validWeights]; outOfBounds[23]=.9;
-  mustFail(()=>api.validateFsrs7Weights(outOfBounds), "FSRS-7 personalization must enforce upstream FSRS-7 bounds");
-  const profile=api.validateFsrsOptimizerProfile(optimizerProfile());
-  check(profile.weights.length===34 && profile.evaluation.holdout.gate==="passed", "Validated optimizer profiles must preserve the held-out gate");
-  const worseLoss=optimizerProfile(); worseLoss.evaluation.holdout.personalized={logLoss:.43,rmseBins:.07};
-  mustFail(()=>api.validateFsrsOptimizerProfile(worseLoss), "Profiles that do not beat stock held-out log loss must not activate");
-  const worseRmse=optimizerProfile(); worseRmse.evaluation.holdout.personalized={logLoss:.40,rmseBins:.081};
-  mustFail(()=>api.validateFsrsOptimizerProfile(worseRmse), "Profiles with held-out RMSE regression must not activate");
-
-  await api.prepareFsrsScheduler(.9);
-  const stockPolicy=new api.FsrsMemoryPolicy(()=>.9);
-  const initial=obligation("memory-recall",stockPolicy,"recall");
-  const stockReview=stockPolicy.complete(initial,api.Rating.Good,evidence(4,4,3),new Date(due));
-  const stockEvent={id:"stock-review",obligationId:"o",obligationType:"memory-recall",reviewedAt:due,elapsedMs:1200,confirmedRating:api.Rating.Good,beforePolicyState:structuredClone(initial.policyState),afterPolicyState:structuredClone(stockReview.policyState),schedulerConfig:structuredClone(stockReview.schedulerConfig)};
-  const returnedAt=new Date(new Date(due).getTime()+86400000).toISOString();
-  const csv=api.fsrsOptimizerCsv([stockEvent,{id:"return",obligationId:"relearn",obligationType:"relearn",reviewedAt:returnedAt,elapsedMs:900,confirmedRating:3,beforePolicyState:{},afterPolicyState:{},returnedMemoryTransition:{obligationId:"o",rating:3,beforePolicyState:structuredClone(stockReview.policyState),afterPolicyState:structuredClone(stockReview.policyState),schedulerConfig:structuredClone(stockReview.schedulerConfig)}}]);
-  check(csv.startsWith("review_time,card_id,review_rating,review_duration,review_state\n"), "Optimizer evidence export must use the binding CSV contract");
-  check(csv.split("\n").filter(Boolean).length===3, "Optimizer evidence export must include direct and returned-memory observations");
-  check(api.fsrsOptimizerEvidenceSummary([stockEvent]).reviews===1, "Optimizer evidence summary must count canonical memory reviews");
-
-  await api.prepareFsrsScheduler(.9,profile);
-  const personalizedPort=api.revisionSchedulerPort(.9,profile);
-  const history=api.memoryReviewObservationsFor("o",[stockEvent]);
-  const rebased=personalizedPort.reschedule(initial.policyState.fsrsCard,history);
-  personalizedPort.verifyProjection(rebased,history); checks++;
-  check(personalizedPort.configuration.weightsSource==="optimizer-profile", "Personalized scheduler must expose explicit weight provenance");
-  check(personalizedPort.configuration.weightsFingerprint!==api.revisionSchedulerPort(.9).configuration.weightsFingerprint, "Personalized and stock scheduler identities must differ");
-  const personalizedPolicy=new api.FsrsMemoryPolicy(()=>.9,()=>profile);
-  const rebasedObligation={...initial,dueAt:rebased.dueAt,policyState:{...stockReview.policyState,stage:rebased.state,lastIntervalDays:rebased.scheduledDays,fsrsCard:rebased}};
-  const nextAt=new Date(new Date(due).getTime()+86400000);
-  const personalizedReview=personalizedPolicy.complete(rebasedObligation,api.Rating.Good,evidence(4,4,3),nextAt,{memoryReviews:history});
-  const personalizedEvent={id:"personal-review",obligationId:"o",obligationType:"memory-recall",reviewedAt:nextAt.toISOString(),elapsedMs:1100,confirmedRating:api.Rating.Good,beforePolicyState:structuredClone(rebasedObligation.policyState),afterPolicyState:structuredClone(personalizedReview.policyState),schedulerConfig:structuredClone(personalizedReview.schedulerConfig)};
-  const mixedHistory=api.memoryReviewObservationsFor("o",[stockEvent,personalizedEvent]);
-  check(mixedHistory.length===2 && mixedHistory[0].configFingerprint!==mixedHistory[1].configFingerprint, "Canonical history must preserve scheduler-configuration boundaries");
-  personalizedPort.verifyProjection(personalizedReview.policyState.fsrsCard,mixedHistory); checks++;
-  const restocked=api.revisionSchedulerPort(.9).reschedule(initial.policyState.fsrsCard,mixedHistory);
-  api.revisionSchedulerPort(.9).verifyProjection(restocked,mixedHistory); checks++;
-  check(restocked.reps===2 && restocked.lastReviewAt===nextAt.toISOString(), "Returning to stock must replay immutable review history rather than reset it");
-}
-
-async function testFsrsPersonalizationActivation() {
-  await api.prepareFsrsScheduler(.9);
-  const profile=api.validateFsrsOptimizerProfile(optimizerProfile());
-  const stockPolicy=new api.FsrsMemoryPolicy(()=>.9);
-  const initial=obligation("memory-recall",stockPolicy,"recall");
-  const completion=stockPolicy.complete(initial,api.Rating.Good,evidence(4,4,3),new Date(due));
-  let obligations=[{...initial,dueAt:completion.dueAt,policyState:completion.policyState}];
-  const events=[{id:"service-review",obligationId:"o",obligationType:"memory-recall",reviewedAt:due,elapsedMs:1000,confirmedRating:api.Rating.Good,beforePolicyState:structuredClone(initial.policyState),afterPolicyState:structuredClone(completion.policyState),schedulerConfig:structuredClone(completion.schedulerConfig)}];
-  let persistedSettings=null,replaceCalls=0;
-  const repo={get:async()=>undefined,getAll:async(store)=>store==="obligations"?structuredClone(obligations):store==="evidenceEvents"?structuredClone(events):[],put:async(store,value)=>{if(store==="settings")persistedSettings=structuredClone(value);},replaceMemoryScheduling:async(settings,next)=>{replaceCalls++;persistedSettings=structuredClone(settings);obligations=structuredClone(next);}};
-  const service=new api.RevisionService(repo);
-  await service.stageFsrsOptimizerProfile(profile);
-  check(service.getSettings().fsrsPersonalization.active===false && replaceCalls===0, "Importing a profile must stage it without rescheduling");
-  await service.activateFsrsOptimizerProfile();
-  check(replaceCalls===1 && service.getSettings().fsrsPersonalization.active===true, "Activation must atomically persist settings with reprojected obligations");
-  check(service.getSettings().fsrsPersonalization.lastRebase.rescheduledObligations===1, "Activation must record explicit rebase scope");
-  await service.deactivateFsrsOptimizerProfile();
-  check(replaceCalls===2 && service.getSettings().fsrsPersonalization.active===false, "Deactivation must explicitly return to stock through another atomic rebase");
-  check(obligations[0].policyState.fsrsCard.reps===1 && obligations[0].policyState.fsrsCard.lastReviewAt===due, "Activation/deactivation must preserve immutable review chronology");
-  check(persistedSettings.fsrsPersonalization.lastRebase.target==="stock", "Deactivation must record stock as the scheduler target");
-}
 async function testRelearningLifecycle() {
   await api.prepareFsrsScheduler(.9);
   const memory = new api.FsrsMemoryPolicy(() => .9);
@@ -470,4 +393,4 @@ async function testSettingsBoundary() {
   }
 }
 
-Promise.all([testFsrs7Integration(), testFsrsPersonalization(), testFsrsPersonalizationActivation(), testTriggerEvidenceLookup(), testRelearningLifecycle(), testStudyEventRuntimeBoundary(), testDueSummaryScope(), testSettingsBoundary()]).then(() => console.log(`PASS ${checks} kernel, workflow, policy and backup checks`)).catch((error) => { console.error(error); process.exitCode = 1; });
+Promise.all([testFsrs7Integration(), testTriggerEvidenceLookup(), testRelearningLifecycle(), testStudyEventRuntimeBoundary(), testDueSummaryScope(), testSettingsBoundary()]).then(() => console.log(`PASS ${checks} kernel, workflow, policy and backup checks`)).catch((error) => { console.error(error); process.exitCode = 1; });
