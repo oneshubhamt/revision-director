@@ -47,7 +47,7 @@ Durable data follows:
 capture → sanitise → validate → canonicalise → transact → derive → render
 ```
 
-Canonicalizers reject non-finite values, invalid ranges, impossible relations, malformed timing state, invalid workflow combinations and inconsistent scheduler provenance. They do not repair older schemas.
+Canonicalizers reject non-finite values, invalid ranges, impossible relations, malformed timing state, invalid workflow combinations and inconsistent scheduler provenance. Required current-schema fields must be present; canonicalization may normalize valid values, but it does not synthesize missing fields or repair older shapes.
 
 ## Active retrieval recovery
 
@@ -73,8 +73,8 @@ The backup codec owns external representation and verification, not domain valid
 ```text
 canonical payload
 → bounded entity chunks
-→ per-chunk hashes
-→ manifest + completion proof
+→ per-chunk SHA-256 hashes
+→ manifest + SHA-256 completion proof
 → optional gzip
 ```
 

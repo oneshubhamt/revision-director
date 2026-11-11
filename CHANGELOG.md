@@ -2,6 +2,13 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-11 — Clean-slate contract hardening
+
+- Removed residual field-level compatibility synthesis from timing evidence and split-session completion.
+- Made required current active-retrieval and settings fields fail closed instead of defaulting missing values.
+- Standardized backup integrity on SHA-256 only, using Web Crypto when available and the existing pure-JavaScript SHA-256 implementation otherwise.
+- Updated current-format tests and backup fixtures to match the strict contracts.
+
 ## 2026-11-11 — Clean-slate FSRS-7 baseline
 
 - Made FSRS-7 the only memory scheduling model.
