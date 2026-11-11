@@ -1,9 +1,9 @@
-b98f5dc1088a91df05627f5cf03adcdd7d3402c1858ddc207c95ab06a41fcab9  ./build/build.py
-375b9643de6942c8766a857b373c050b5d2a71b5a02c42ea6a0922389e4ef02d  ./CHANGELOG.md
+70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
+7866cb5702623a1b6cfcc863b8cbfd2f8a899669503fb7f4f2f9102e025d1549  ./CHANGELOG.md
 fdffc3451522bc1ceaeda0f5fe8ee91046ca7b8be4329f1b8ab696bff94bcf69  ./dist/app.js
 8e48244a349f5aff4ddff09e51ef18b72e1b229f3e1e8fa3242287ba4de1fd65  ./docs/ARCHITECTURE.md
 0bd37b96cd8ebdab06f3124f204671ddf8f02f200bb1477dd7dde9156bb9683b  ./docs/DATA_AND_STORAGE.md
-1952855e4dd606717ddcda701baee0eaf9b5964c25664b173668f7f13af6ee7a  ./docs/DEVELOPMENT_AND_QA.md
+e9479b17a729e021ded28fc0259a3627480777bd4b9e7c0b30c22b4f64fbea07  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ac0aa701620bb5736b7e061ff938ccc12bab2031e9ca781fe23143998bc028c7  ./docs/SCHEDULING_AND_PLANNING.md
 87c7dd89b64bbc16db6d6e074698dc3525a2fd15bc39c417909347d8c3ebf815  ./index.html
@@ -39,7 +39,7 @@ bc35afed0272eab3da0355c34acd356c274e5261a377a0938832fa689040c9db  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 c2702d0b0548911f0b4be5a294ced0151b9295acf849eebec6b555c19de5d07a  ./tests/backup_fixture_codec.py
 be956fda4232345dce155347da82b2f0560e22ffaff0a91b7e3ba1e1127f981f  ./tests/browser-qa.spec.py
-ef632fa1eb640a15dd512bc08a5a3b9d289414d8f769288b9fc659b5a43214af  ./tests/build-integrity.spec.py
+151a499f279f6dfec22fcce83652c57bb9ee6640415c73e9d32a34c491c6b414  ./tests/build-integrity.spec.py
 fa4bd4c92b454bdca795924c8f275ab864b0028d9750576f18914a06888f9224  ./tests/fixtures/browser-baseline.json
 8f0b3a476ffb0602cd0b15d9f5925b4794cb82f1f45434387673b472bf6a9ef3  ./tests/fixtures/browser-baseline.rdbackup
 d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-qa-supplement.spec.py
