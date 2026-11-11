@@ -796,8 +796,7 @@
       const settings = this.service.getSettings();
       const profiles = await this.service.profiles();
       const planningReference = studyDayStart(new Date(), settings.studyDayBoundaryHour);
-      let fsrsOk = false;
-      try { runtimeFsrs(); fsrsOk = true; } catch { fsrsOk = false; }
+      const fsrsOk = fsrsRuntimeAvailable();
       const storage = this.service.storageHealth();
       const storageUsage = storage.usageRatio === undefined ? "Usage estimate unavailable" : `${roundTo(storage.usageRatio * 100, 1)}% of browser quota used`;
       const persistenceLabel = storage.persistence === "granted" ? "Persistent storage granted" : storage.persistence === "available" ? "Persistent storage not guaranteed" : storage.persistence === "denied" ? "Persistent storage denied" : "Persistence API unavailable";

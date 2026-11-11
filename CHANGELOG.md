@@ -8,7 +8,7 @@ This file records durable product/architecture changes. Detailed implementation-
 - Made append-only Evidence Events the canonical memory-review history, including returns from corrective relearning.
 - Retained the persisted FSRS card as a fast materialized projection, with replay verification before preview, review and retrievability.
 - Added the TS-FSRS v6 Reschedule contract over the pinned scheduler forward APIs, preserving full-history memory replay without altering historical due dates.
-- Fingerprinted every FSRS configuration snapshot and validate fingerprints on historical evidence and restore.
+- Fingerprinted every FSRS configuration snapshot and validated fingerprints on historical evidence and restore.
 - Added startup, backup/restore and regression integrity checks for projection-chain continuity and independently replayed FSRS-7 memory.
 
 ## 2026-11-11 — Type-safety boundary hardening

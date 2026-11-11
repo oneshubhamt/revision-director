@@ -604,13 +604,22 @@
       const planningReference = studyDayStart(now, this.settings.studyDayBoundaryHour);
       const joined = await this.joinedObligations("active");
       const evidence = await this.evidenceEvents();
+      const memoryReviews = memoryReviewObservationIndex(evidence);
       const planHistory = await this.dailyPlanHistory();
       const balance = weeklySubjectBalanceScores(joined, planHistory, planningReference, this.settings.studyDayBoundaryHour);
       const pendingChunks = persist
         ? await this.ensureAutomaticChunking(joined, this.settings.dailyCapacityMinutes, planningReference)
         : await this.existingPendingChunks(joined);
       const candidates = joined
-        .map((item) => buildPlanningCandidate(item, evidence, this.settings, planningReference, balance.get(subjectBalanceKey(item.profile.id, item.subject)) ?? 0.5, pendingChunks.get(item.obligation.id)))
+        .map((item) => buildPlanningCandidate(
+          item,
+          evidence,
+          this.settings,
+          planningReference,
+          balance.get(subjectBalanceKey(item.profile.id, item.subject)) ?? 0.5,
+          pendingChunks.get(item.obligation.id),
+          memoryReviews,
+        ))
         .filter((item): item is PlannedQueueItem => Boolean(item));
       const packed = choosePlanItems(candidates, this.settings.dailyCapacityMinutes);
       const plannedMinutes = packed.selected.reduce((sum, item) => sum + item.executionMinutes, 0);

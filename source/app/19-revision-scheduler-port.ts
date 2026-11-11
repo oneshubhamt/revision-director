@@ -251,6 +251,10 @@
     return FSRS;
   }
 
+  function fsrsRuntimeAvailable(): boolean {
+    try { runtimeFsrs(); return true; } catch { return false; }
+  }
+
   function storedFsrsCardsEqual(left: StoredFsrsCard, right: StoredFsrsCard): boolean {
     return left.model === right.model
       && left.cardId === right.cardId
@@ -307,6 +311,57 @@
     assert(previous && storedFsrsCardsEqual(previous, currentProjection), "Stored FSRS projection diverges from the latest canonical review transition.");
   }
 
+  type MemoryReviewObservationIndex = ReadonlyMap<string, readonly MemoryReviewObservation[]>;
+
+  function directMemoryReviewObservation(event: EvidenceEvent): MemoryReviewObservation {
+    const beforeCard = event.beforePolicyState.fsrsCard;
+    const afterCard = event.afterPolicyState.fsrsCard;
+    const config = event.schedulerConfig;
+    assert(beforeCard && afterCard && config, "Memory evidence is missing FSRS replay provenance.");
+    return {
+      evidenceEventId: event.id,
+      reviewedAt: event.reviewedAt,
+      rating: validateRating(event.confirmedRating),
+      source: "direct-memory",
+      beforeCard: clone(beforeCard),
+      afterCard: clone(afterCard),
+      configFingerprint: validateFsrsConfigSnapshot(config).fingerprint,
+    };
+  }
+
+  function returnedMemoryReviewObservation(
+    event: EvidenceEvent,
+    returned: ReturnedMemoryTransition,
+  ): MemoryReviewObservation {
+    const beforeCard = returned.beforePolicyState.fsrsCard;
+    const afterCard = returned.afterPolicyState.fsrsCard;
+    assert(beforeCard && afterCard, "Returned-memory evidence is missing FSRS replay state.");
+    return {
+      evidenceEventId: event.id,
+      reviewedAt: event.reviewedAt,
+      rating: validateRating(returned.rating),
+      source: "relearning-return",
+      beforeCard: clone(beforeCard),
+      afterCard: clone(afterCard),
+      configFingerprint: validateFsrsConfigSnapshot(returned.schedulerConfig).fingerprint,
+    };
+  }
+
+  function finalizeMemoryReviewObservations(
+    obligationId: string,
+    reviews: MemoryReviewObservation[],
+  ): MemoryReviewObservation[] {
+    reviews.sort((left, right) => {
+      const time = left.reviewedAt.localeCompare(right.reviewedAt);
+      if (time !== 0) return time;
+      if (storedFsrsCardsEqual(left.afterCard, right.beforeCard)) return -1;
+      if (storedFsrsCardsEqual(right.afterCard, left.beforeCard)) return 1;
+      return left.evidenceEventId.localeCompare(right.evidenceEventId);
+    });
+    validateMemoryObservationChain(obligationId, reviews);
+    return reviews;
+  }
+
   function memoryReviewObservationsFor(
     obligationId: string,
     evidenceEvents: readonly EvidenceEvent[],
@@ -314,41 +369,37 @@
     const reviews: MemoryReviewObservation[] = [];
     for (const event of evidenceEvents) {
       if (event.obligationId === obligationId && event.obligationType === "memory-recall") {
-        const beforeCard = event.beforePolicyState.fsrsCard;
-        const afterCard = event.afterPolicyState.fsrsCard;
-        const config = event.schedulerConfig;
-        assert(beforeCard && afterCard && config, "Memory evidence is missing FSRS replay provenance.");
-        reviews.push({
-          evidenceEventId: event.id,
-          reviewedAt: event.reviewedAt,
-          rating: validateRating(event.confirmedRating),
-          source: "direct-memory",
-          beforeCard: clone(beforeCard),
-          afterCard: clone(afterCard),
-          configFingerprint: validateFsrsConfigSnapshot(config).fingerprint,
-        });
+        reviews.push(directMemoryReviewObservation(event));
       }
       const returned = event.returnedMemoryTransition;
       if (returned?.obligationId === obligationId) {
-        const beforeCard = returned.beforePolicyState.fsrsCard;
-        const afterCard = returned.afterPolicyState.fsrsCard;
-        assert(beforeCard && afterCard, "Returned-memory evidence is missing FSRS replay state.");
-        reviews.push({
-          evidenceEventId: event.id,
-          reviewedAt: event.reviewedAt,
-          rating: validateRating(returned.rating),
-          source: "relearning-return",
-          beforeCard: clone(beforeCard),
-          afterCard: clone(afterCard),
-          configFingerprint: validateFsrsConfigSnapshot(returned.schedulerConfig).fingerprint,
-        });
+        reviews.push(returnedMemoryReviewObservation(event, returned));
       }
     }
-    reviews.sort((left, right) =>
-      left.reviewedAt.localeCompare(right.reviewedAt)
-      || left.evidenceEventId.localeCompare(right.evidenceEventId));
-    validateMemoryObservationChain(obligationId, reviews);
-    return reviews;
+    return finalizeMemoryReviewObservations(obligationId, reviews);
+  }
+
+  function memoryReviewObservationIndex(
+    evidenceEvents: readonly EvidenceEvent[],
+  ): MemoryReviewObservationIndex {
+    const mutable = new Map<string, MemoryReviewObservation[]>();
+    const append = (obligationId: string, review: MemoryReviewObservation): void => {
+      const reviews = mutable.get(obligationId);
+      if (reviews) reviews.push(review);
+      else mutable.set(obligationId, [review]);
+    };
+    for (const event of evidenceEvents) {
+      if (event.obligationType === "memory-recall") {
+        append(event.obligationId, directMemoryReviewObservation(event));
+      }
+      const returned = event.returnedMemoryTransition;
+      if (returned) append(returned.obligationId, returnedMemoryReviewObservation(event, returned));
+    }
+    const index = new Map<string, readonly MemoryReviewObservation[]>();
+    for (const [obligationId, reviews] of mutable) {
+      index.set(obligationId, finalizeMemoryReviewObservations(obligationId, reviews));
+    }
+    return index;
   }
 
   class TsFsrsSchedulerPort implements RevisionSchedulerPort {
@@ -538,12 +589,13 @@
   function validateMemoryDatasetProjectionChain(
     obligations: readonly RevisionObligation[],
     evidenceEvents: readonly EvidenceEvent[],
+    reviewIndex: MemoryReviewObservationIndex = memoryReviewObservationIndex(evidenceEvents),
   ): void {
     for (const obligation of obligations) {
       if (obligation.type !== "memory-recall") continue;
       const projection = obligation.policyState.fsrsCard;
       assert(projection, "Memory obligation has no FSRS materialized projection.");
-      validateMemoryObservationChain(obligation.id, memoryReviewObservationsFor(obligation.id, evidenceEvents), projection);
+      validateMemoryObservationChain(obligation.id, reviewIndex.get(obligation.id) ?? [], projection);
     }
   }
 
@@ -553,12 +605,13 @@
     desiredRetention: number,
   ): void {
     const scheduler = revisionSchedulerPort(desiredRetention);
-    validateMemoryDatasetProjectionChain(obligations, evidenceEvents);
+    const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
+    validateMemoryDatasetProjectionChain(obligations, evidenceEvents, reviewIndex);
     for (const obligation of obligations) {
       if (obligation.type !== "memory-recall") continue;
       const projection = obligation.policyState.fsrsCard;
       assert(projection, "Memory obligation has no FSRS materialized projection.");
-      scheduler.verifyProjection(projection, memoryReviewObservationsFor(obligation.id, evidenceEvents));
+      scheduler.verifyProjection(projection, reviewIndex.get(obligation.id) ?? []);
     }
   }
 

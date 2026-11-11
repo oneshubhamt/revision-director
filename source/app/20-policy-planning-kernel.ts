@@ -330,11 +330,12 @@
     evidenceEvents: EvidenceEvent[],
     reference: Date,
     desiredRetention: number,
+    reviewIndex?: MemoryReviewObservationIndex,
   ): number | undefined {
     if (obligation.type !== "memory-recall" || !obligation.policyState.fsrsCard) return undefined;
     const projection = obligation.policyState.fsrsCard;
     if (projection.reps === 0 || !projection.lastReviewAt) return undefined;
-    const reviews = memoryReviewObservationsFor(obligation.id, evidenceEvents);
+    const reviews = reviewIndex?.get(obligation.id) ?? memoryReviewObservationsFor(obligation.id, evidenceEvents);
     return revisionSchedulerPort(desiredRetention).retrievability(projection, reviews, reference);
   }
 
@@ -388,7 +389,15 @@
     return reasons.slice(0, 5);
   }
 
-  function buildPlanningCandidate(item: JoinedObligation, evidenceEvents: EvidenceEvent[], settings: AppSettings, reference: Date, weeklyBalance = 0.5, chunk?: ObligationChunk): PlannedQueueItem | undefined {
+  function buildPlanningCandidate(
+    item: JoinedObligation,
+    evidenceEvents: EvidenceEvent[],
+    settings: AppSettings,
+    reference: Date,
+    weeklyBalance = 0.5,
+    chunk?: ObligationChunk,
+    memoryReviews?: MemoryReviewObservationIndex,
+  ): PlannedQueueItem | undefined {
     if (item.profile.status !== "active") return undefined;
     const dayStart = studyDayStart(reference, settings.studyDayBoundaryHour);
     const dayEnd = studyDayEnd(reference, settings.studyDayBoundaryHour);
@@ -402,7 +411,7 @@
     const synthesisReady = item.obligation.chunking?.status === "synthesis-ready";
     if (!synthesisReady && planningDueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
     const temporalRisk = temporalDueRisk(planningDueAt, dayStart, dayEnd, lookaheadDays);
-    const retrievability = fsrsRetrievability(item.obligation, evidenceEvents, reference, settings.desiredRetention);
+    const retrievability = fsrsRetrievability(item.obligation, evidenceEvents, reference, settings.desiredRetention, memoryReviews);
     const memoryRisk = retrievability === undefined ? 0 : clamp((settings.desiredRetention - retrievability) / Math.max(settings.desiredRetention - 0.5, 0.1), 0, 1);
     const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
     const factors: PlanningFactors = {

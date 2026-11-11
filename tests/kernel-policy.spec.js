@@ -347,6 +347,9 @@ async function testRelearningLifecycle() {
   check(resumed?.policyState.fsrsCard.model === 'FSRS-7', 'Reactivated memory must remain FSRS-7');
   const resumedDays = (new Date(resumed.dueAt) - nextDay) / 86400000;
   check(resumedDays >= 2.9 && resumedDays <= 3.1, 'Successful relearning must advance the original through FSRS-7 rather than a fixed app interval');
+  const canonicalHistory = api.memoryReviewObservationsFor('original', [failedMemoryEvent, calls[0][2]]);
+  check(canonicalHistory.length === 2 && canonicalHistory[0].source === 'direct-memory' && canonicalHistory[1].source === 'relearning-return', 'Canonical memory history must include the corrective return transition');
+  api.revisionSchedulerPort(.9).verifyProjection(resumed.policyState.fsrsCard, canonicalHistory); checks++;
 }
 
 

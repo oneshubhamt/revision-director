@@ -238,7 +238,7 @@ def boot_frame(page):
     if frame is None:
         raise AssertionError("QA app frame was not created")
     frame.set_content(HTML, wait_until="load")
-    frame.wait_for_timeout(1000)
+    wait_until(frame, lambda: frame.locator("html").get_attribute("data-review-ownership") == "primary")
     check(not frame.locator("#fatal-error").is_visible(), "Fatal startup error")
     return frame
 
