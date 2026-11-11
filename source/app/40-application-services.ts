@@ -369,11 +369,12 @@
           byObligation.set(obligation.id, chunks);
           await this.repo.putObligationWithChunks(obligation, created.chunks);
         }
-        if (obligation.chunking?.status === "chunking") {
-          const pending = chunks.filter((chunk) => chunk.cycleId === obligation.chunking!.cycleId && chunk.status === "pending").sort((a, b) => a.ordinal - b.ordinal);
+        const chunking = obligation.chunking;
+        if (chunking?.status === "chunking") {
+          const pending = chunks.filter((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending").sort((a, b) => a.ordinal - b.ordinal);
           if (pending[0]) nextChunk.set(obligation.id, pending[0]);
-          else if (obligation.chunking.completedChunks >= obligation.chunking.totalChunks) {
-            obligation.chunking.status = "synthesis-ready";
+          else if (chunking.completedChunks >= chunking.totalChunks) {
+            chunking.status = "synthesis-ready";
             obligation.updatedAt = nowIso();
             await this.repo.put(Store.Obligations, obligation);
           }
@@ -453,7 +454,7 @@
       } else {
         const version = record.versions.length + 1;
         const next = this.planSnapshot(plan, regenerate ? "manual-regeneration" : "data-change", version);
-        const latest = record.versions.at(-1)!;
+        const latest = latestPlanVersion(record);
         const signature = (value: DailyPlanVersion) => JSON.stringify({
           capacityMinutes: value.capacityMinutes,
           items: value.items.map((item) => ({
@@ -499,7 +500,7 @@
     }
 
     private appendManualPlanItems(record: DailyPlanRecord, items: DailyPlanItemSnapshot[], now: Date): void {
-      const latest = record.versions.at(-1)!;
+      const latest = latestPlanVersion(record);
       const nextItems = latest.items.map((item) => clone(item));
       let changed = false;
       for (const item of items) {
@@ -509,7 +510,8 @@
           changed = true;
           continue;
         }
-        const existing = nextItems[index]!;
+        const existing = nextItems[index];
+        assert(existing, "Existing daily-plan item is missing.");
         if (existing.disposition !== "selected" && existing.disposition !== "required-overrun") {
           nextItems[index] = clone(item);
           changed = true;
@@ -641,7 +643,8 @@
       assert(obligation.status === "active", "This obligation is not active.");
       const unit = await this.unit(obligation.unitId);
       const priorEvidence = await this.evidenceEvents();
-      const cycleChunks = obligation.chunking?.status === "synthesis-ready" ? (await this.chunksForObligation(obligation.id)).filter((chunk) => chunk.cycleId === obligation.chunking!.cycleId && chunk.status === "completed") : [];
+      const chunking = obligation.chunking;
+      const cycleChunks = chunking?.status === "synthesis-ready" ? (await this.chunksForObligation(obligation.id)).filter((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "completed") : [];
       const cycleChunkMs = cycleChunks.reduce((sum, chunk) => sum + (chunk.actualMinutes ?? 0) * 60_000, 0);
       const cycleTimingReliable = cycleChunks.every((chunk) => chunk.timing?.durationReliable !== false);
       const durationObservation = durationObservationFor(obligation, priorEvidence, normalizedDraft.elapsedMs + cycleChunkMs, timing.durationReliable && cycleTimingReliable);
@@ -1093,7 +1096,8 @@
           event.beforePolicyState.successStreak >= 1;
         assert(Boolean(returned) === shouldReturnMemory, "Returned-memory scheduler transition presence is inconsistent with relearning completion.");
         if (returned) {
-          assert(returned.obligationId === returnedTarget!.id, "Returned-memory transition targets the wrong obligation.");
+          assert(returnedTarget?.type === "memory-recall", "Returned-memory transition lacks a valid memory target.");
+          assert(returned.obligationId === returnedTarget.id, "Returned-memory transition targets the wrong obligation.");
           assert(returned.rating === Rating.Good, "Returned-memory transition must record a Good closed-book repair.");
           validDate(returned.beforeDueAt, "Returned-memory prior due date");
           validDate(returned.afterDueAt, "Returned-memory next due date");
@@ -1128,21 +1132,22 @@
       }
       for (const obligation of obligations) {
         const related = chunksByObligation.get(obligation.id) ?? [];
-        if (!obligation.chunking) {
+        const chunking = obligation.chunking;
+        if (!chunking) {
           assert(related.every((chunk) => chunk.status === "archived"), "An obligation without active chunking has unfinished chunk records.");
           continue;
         }
-        const active = related.filter((chunk) => chunk.cycleId === obligation.chunking!.cycleId && chunk.status !== "archived");
-        assert(active.length === obligation.chunking.totalChunks, "Obligation chunk count does not match its active cycle.");
+        const active = related.filter((chunk) => chunk.cycleId === chunking.cycleId && chunk.status !== "archived");
+        assert(active.length === chunking.totalChunks, "Obligation chunk count does not match its active cycle.");
         assert(new Set(active.map((chunk) => chunk.ordinal)).size === active.length, "Obligation chunk ordinals are duplicated.");
-        assert(active.every((chunk) => chunk.total === obligation.chunking!.totalChunks), "Chunk total does not match the obligation cycle.");
-        assert(active.every((chunk) => chunk.expectedMinutes <= obligation.chunking!.capacityMinutes), "Active chunks exceed the capacity that created their cycle.");
-        assert(active.reduce((sum, chunk) => sum + chunk.expectedMinutes, 0) + obligation.chunking.synthesisMinutes === obligation.chunking.originalMinutes, "Chunk durations do not conserve the parent estimate.");
+        assert(active.every((chunk) => chunk.total === chunking.totalChunks), "Chunk total does not match the obligation cycle.");
+        assert(active.every((chunk) => chunk.expectedMinutes <= chunking.capacityMinutes), "Active chunks exceed the capacity that created their cycle.");
+        assert(active.reduce((sum, chunk) => sum + chunk.expectedMinutes, 0) + chunking.synthesisMinutes === chunking.originalMinutes, "Chunk durations do not conserve the parent estimate.");
         const completed = active.filter((chunk) => chunk.status === "completed").length;
-        assert(completed === obligation.chunking.completedChunks, "Obligation completed-chunk count does not match its records.");
-        if (obligation.chunking.status === "synthesis-ready") assert(completed === active.length, "Synthesis-ready obligations must have all chunks completed.");
+        assert(completed === chunking.completedChunks, "Obligation completed-chunk count does not match its records.");
+        if (chunking.status === "synthesis-ready") assert(completed === active.length, "Synthesis-ready obligations must have all chunks completed.");
         else assert(active.some((chunk) => chunk.status === "pending"), "An active chunking cycle must retain pending work.");
-        assert(related.filter((chunk) => chunk.cycleId !== obligation.chunking!.cycleId).every((chunk) => chunk.status === "archived"), "Prior chunk cycles must be archived.");
+        assert(related.filter((chunk) => chunk.cycleId !== chunking.cycleId).every((chunk) => chunk.status === "archived"), "Prior chunk cycles must be archived.");
       }
       for (const plan of dailyPlans) {
         validateCalendarDate(plan.studyDayKey, "Daily plan study day");
@@ -1199,7 +1204,8 @@
           if (outcome.startedAt && outcome.completedAt) assert(new Date(outcome.completedAt).getTime() >= new Date(outcome.startedAt).getTime(), "Daily-plan outcome timestamps are inconsistent.");
           if (outcome.status === "completed") {
             assert(Number.isFinite(outcome.actualMinutes) && (outcome.actualMinutes ?? 0) > 0 && (outcome.actualMinutes ?? 0) <= 10_080 && Boolean(outcome.completedAt), "Completed daily-plan outcomes require a valid duration and completion time.");
-            const item = itemByKey.get(outcome.itemKey)!;
+            const item = itemByKey.get(outcome.itemKey);
+            assert(item, "Completed daily-plan outcome references an unknown item.");
             if (!item.chunkId) {
               const event = outcome.evidenceEventId ? evidenceMap.get(outcome.evidenceEventId) : undefined;
               assert(event?.obligationId === item.obligationId, "Completed parent-plan outcomes require matching retrieval evidence.");

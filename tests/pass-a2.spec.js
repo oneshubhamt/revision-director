@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_A2_TEST__ = { APP_VERSION, DB_NAME, DB_VERSION, DOCUMENT_SCHEMA_VERSION, BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, Store, defaultSettings, canonicalExamProfile, canonicalKnowledgeNode, canonicalAppSettings, canonicalDailyPlanRecord, AppDiagnostics, RevisionData, RevisionService };';
+const hook = 'window.__RD_A2_TEST__ = { APP_VERSION, DB_NAME, DB_VERSION, DOCUMENT_SCHEMA_VERSION, BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, Store, defaultSettings, canonicalExamProfile, canonicalKnowledgeNode, canonicalAppSettings, canonicalDailyPlanRecord, latestPlanVersion, AppDiagnostics, RevisionData, RevisionService };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -46,6 +46,8 @@ mustFail(() => api.canonicalAppSettings({ schemaVersion:1, key:'app', desiredRet
 
 const plan = api.canonicalDailyPlanRecord({ schemaVersion:1, id:' d ', studyDayKey:'2026-07-25', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt, plannerVersion:' pass-d-2 ', versions:[{version:1,generatedAt:rawProfile.createdAt,capacityMinutes:60,reason:'initial',items:[]}], outcomes:[] });
 check(plan.id === 'd' && plan.plannerVersion === 'pass-d-2', 'Daily-plan canonicalisation failed');
+check(api.latestPlanVersion(plan).version === 1, 'Latest daily-plan version guard returned the wrong version');
+mustFail(() => api.latestPlanVersion({...plan, versions:[]}), 'Empty daily-plan version history did not fail closed');
 
 const diagnostics = new api.AppDiagnostics();
 diagnostics.record('test.same', 'test operation', new Error('same error'));

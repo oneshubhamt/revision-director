@@ -111,6 +111,12 @@
       this.handleOwnershipChanged(this.ownership.snapshot());
     }
 
+    private activeReviewTarget(index = this.activeReviewIndex): string {
+      const target = this.activeReviewIds[index];
+      assert(target, "Review target is missing.");
+      return target;
+    }
+
     private registerRenderDomains(): void {
       this.renderCoordinator.register("today", () => this.renderToday());
       this.renderCoordinator.register("review", () => this.renderReview());
@@ -765,7 +771,7 @@
           return `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.reviewedAt)}</div><div class="row-title">${escapeHtml(unit?.title ?? "Deleted unit")}</div><div class="row-meta"><span class="chip ${obligationChip(event.obligationType)}">${escapeHtml(obligationLabel(event.obligationType))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(event.workflow))}</span><span>${ratingName(event.confirmedRating)}</span><span>Suggested ${ratingName(event.suggestedRating)}</span>${accuracy}<span>${formatDuration(event.elapsedMs)}</span><span>Estimate ${event.durationObservation.estimateBefore}→${event.durationObservation.estimateAfter}m</span><span>${event.durationObservation.accepted ? "duration learned" : `duration ignored: ${escapeHtml(event.durationObservation.reason)}`}</span><span>${escapeHtml(event.policyId)}</span></div><p>Evidence: completeness ${event.evidence.completeness}/4 · independence ${event.evidence.independence}/4 · application ${event.evidence.application}/4. Next: ${formatDateTime(event.afterDueAt)}.</p>${event.evidence.correctionNote ? `<p>Correction: ${escapeHtml(event.evidence.correctionNote)}</p>` : ""}</div></article>`;
         }).join("")}</div>` : this.emptyState("No retrieval evidence", "Complete a review to create evidence."))
         : (study.length ? `<div class="record-list">${study.slice(0, 80).map((event) => `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.occurredAt)}</div><div class="row-title">${escapeHtml(event.area)} · ${escapeHtml(event.task)}</div><div class="row-meta"><span class="chip">${escapeHtml(event.activityMode)}</span><span>${escapeHtml(event.measure)}</span><span>${event.durationMinutes}m</span><span>${escapeHtml(event.origin)}</span></div></div></article>`).join("")}</div>` : this.emptyState("No study history", "Log a Study Event first."));
-      const planHistory = plans.length ? `<section class="section-block"><div class="section-head"><h2>Persisted daily plans</h2><span class="section-note">Original recommendation, regenerations and actual outcomes remain separate.</span></div><div class="record-list">${plans.slice(0, 14).map((plan) => { const latest = plan.versions.at(-1)!; const completed = plan.outcomes.filter((outcome) => outcome.status === "completed"); const actual = completed.reduce((sum, outcome) => sum + (outcome.actualMinutes ?? 0), 0); const selected = latest.items.filter((item) => item.disposition === "selected" || item.disposition === "required-overrun"); return `<article class="record-row"><div><div class="breadcrumb">Study day ${escapeHtml(plan.studyDayKey)} · plan v${latest.version} · ${escapeHtml(plan.plannerVersion)}</div><div class="row-title">${selected.length} planned · ${completed.length} completed</div><div class="row-meta"><span>${latest.capacityMinutes}m capacity</span><span>${selected.reduce((sum, item) => sum + item.estimatedMinutes, 0)}m estimated</span><span>${roundTo(actual, 1)}m actual</span><span>${plan.versions.length} version${plan.versions.length === 1 ? "" : "s"}</span></div></div></article>`; }).join("")}</div></section>` : "";
+      const planHistory = plans.length ? `<section class="section-block"><div class="section-head"><h2>Persisted daily plans</h2><span class="section-note">Original recommendation, regenerations and actual outcomes remain separate.</span></div><div class="record-list">${plans.slice(0, 14).map((plan) => { const latest = latestPlanVersion(plan); const completed = plan.outcomes.filter((outcome) => outcome.status === "completed"); const actual = completed.reduce((sum, outcome) => sum + (outcome.actualMinutes ?? 0), 0); const selected = latest.items.filter((item) => item.disposition === "selected" || item.disposition === "required-overrun"); return `<article class="record-row"><div><div class="breadcrumb">Study day ${escapeHtml(plan.studyDayKey)} · plan v${latest.version} · ${escapeHtml(plan.plannerVersion)}</div><div class="row-title">${selected.length} planned · ${completed.length} completed</div><div class="row-meta"><span>${latest.capacityMinutes}m capacity</span><span>${selected.reduce((sum, item) => sum + item.estimatedMinutes, 0)}m estimated</span><span>${roundTo(actual, 1)}m actual</span><span>${plan.versions.length} version${plan.versions.length === 1 ? "" : "s"}</span></div></div></article>`; }).join("")}</div></section>` : "";
       this.historyContent.innerHTML = `
         ${this.pageHead("AUDIT TRAIL", "History", "Study records, retrieval evidence and daily-plan history remain separate but linked.")}
         <div class="tab-bar"><button class="tab-btn ${this.historyTab === "evidence" ? "on" : ""}" data-history-tab="evidence">EVIDENCE EVENTS</button><button class="tab-btn ${this.historyTab === "study" ? "on" : ""}" data-history-tab="study">STUDY EVENTS</button></div>
@@ -846,7 +852,7 @@
         return;
       }
 
-      const obligationId = this.activeReviewIds[this.activeReviewIndex]!;
+      const obligationId = this.activeReviewTarget();
       if (obligationId.startsWith("chunk:")) {
         await this.renderChunkReview(obligationId.slice(6));
         return;
@@ -1317,8 +1323,9 @@
 
     private async startObligationSession(obligationId: string): Promise<void> {
       const obligation = await this.service.obligation(obligationId);
-      if (obligation.chunking?.status === "chunking") {
-        const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === obligation.chunking!.cycleId && chunk.status === "pending");
+      const chunking = obligation.chunking;
+      if (chunking?.status === "chunking") {
+        const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending");
         if (pending) { await this.startReviewSession([`chunk:${pending.id}`]); return; }
       }
       await this.startReviewSession([obligation.id]);
@@ -1335,8 +1342,9 @@
       assert(obligations.length > 0, "This unit has no active revision obligations.");
       const targets: string[] = [];
       for (const obligation of obligations) {
-        if (obligation.chunking?.status === "chunking") {
-          const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === obligation.chunking!.cycleId && chunk.status === "pending");
+        const chunking = obligation.chunking;
+        if (chunking?.status === "chunking") {
+          const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending");
           if (pending) { targets.push(`chunk:${pending.id}`); continue; }
         }
         targets.push(obligation.id);
@@ -1349,14 +1357,15 @@
       this.activeReviewIds = ids.filter(Boolean);
       assert(this.activeReviewIds.length > 0, "There is nothing to review.");
       this.activeReviewIndex = 0;
-      this.reviewPhase = await this.initialPhaseForTarget(this.activeReviewIds[0]!);
+      const firstTarget = this.activeReviewTarget(0);
+      this.reviewPhase = await this.initialPhaseForTarget(firstTarget);
       this.reviewDrafts.clear();
       this.diagramStrokes = [];
-      this.phaseTime = PhaseTimeRuntime.create(this.reviewPhase, await this.initialSourceVisibleForTarget(this.activeReviewIds[0]!, this.reviewPhase));
+      this.phaseTime = PhaseTimeRuntime.create(this.reviewPhase, await this.initialSourceVisibleForTarget(firstTarget, this.reviewPhase));
       this.attemptElapsedMs = 0;
       this.activeSessionRevision = 0;
       this.commitInFlight = false;
-      await this.service.markReviewTargetsStarted([this.activeReviewIds[0]!]);
+      await this.service.markReviewTargetsStarted([firstTarget]);
       const session = this.buildActiveRetrievalSession();
       if (session) await this.activePersistence.flush(session);
       await this.openPane("review");
@@ -1395,7 +1404,7 @@
             return;
           }
           this.reviewPhase = post.phase;
-          await this.service.markReviewTargetsStarted([this.activeReviewIds[this.activeReviewIndex]!]);
+          await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
           await this.renderCoordinator.invalidateAndWait("review", "sidebar", "ownership", "storage");
         } catch (error) {
           const resumed = this.buildActiveRetrievalSession("active");
@@ -1459,7 +1468,7 @@
             return;
           }
           this.reviewPhase = post.phase;
-          await this.service.markReviewTargetsStarted([this.activeReviewIds[this.activeReviewIndex]!]);
+          await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
           await this.renderCoordinator.invalidateAndWait("review", "sidebar", "ownership", "storage");
         } catch (error) {
           const resumed = this.buildActiveRetrievalSession("active");

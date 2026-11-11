@@ -499,6 +499,12 @@
     return end;
   }
 
+  function latestPlanVersion(record: DailyPlanRecord): DailyPlanVersion {
+    const latest = record.versions.at(-1);
+    assert(latest, "Daily plan has no versions.");
+    return latest;
+  }
+
   function studyDayKey(now: Date, boundaryHour: number): string {
     const start = studyDayStart(now, boundaryHour);
     const year = start.getFullYear();
