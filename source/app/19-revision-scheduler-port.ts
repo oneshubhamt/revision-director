@@ -566,8 +566,7 @@
 
   function validateMemoryDatasetProjectionChain(
     obligations: readonly RevisionObligation[],
-    evidenceEvents: readonly EvidenceEvent[],
-    reviewIndex: MemoryReviewObservationIndex = memoryReviewObservationIndex(evidenceEvents),
+    reviewIndex: MemoryReviewObservationIndex,
   ): void {
     for (const obligation of obligations) {
       if (obligation.type !== "memory-recall") continue;
@@ -585,7 +584,7 @@
   ): void {
     const scheduler = revisionSchedulerPort(desiredRetention, profile);
     const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
-    validateMemoryDatasetProjectionChain(obligations, evidenceEvents, reviewIndex);
+    validateMemoryDatasetProjectionChain(obligations, reviewIndex);
     for (const obligation of obligations) {
       if (obligation.type !== "memory-recall") continue;
       const projection = obligation.policyState.fsrsCard;

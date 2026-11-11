@@ -1277,7 +1277,7 @@
           }
         }
       }
-      validateMemoryDatasetProjectionChain(obligations, evidenceEvents);
+      validateMemoryDatasetProjectionChain(obligations, memoryReviewObservationIndex(evidenceEvents));
 
       const chunksByObligation = new Map<string, ObligationChunk[]>();
       for (const chunk of chunks) {
