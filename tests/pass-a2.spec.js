@@ -40,9 +40,9 @@ mustFail(() => api.canonicalExamProfile({...rawProfile, schemaVersion:2}), 'Unsu
 
 const node = api.canonicalKnowledgeNode({ schemaVersion:1, id:'n', profileId:'p', parentId:null, kind:'subject', name:'  Public   Administration ', normalizedName:'wrong', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt });
 check(node.name === 'Public Administration' && node.normalizedName === 'public administration', 'Node canonical name contract failed');
-const settings = api.canonicalAppSettings({ schemaVersion:1, key:'app', activeProfileId:'  p ', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4 });
+const settings = api.canonicalAppSettings({ schemaVersion:1, key:'app', activeProfileId:'  p ', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} });
 check(settings.activeProfileId === 'p', 'Settings canonicalisation failed');
-mustFail(() => api.canonicalAppSettings({ schemaVersion:1, key:'app', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4 }), 'Missing current settings fields were accepted');
+mustFail(() => api.canonicalAppSettings({ schemaVersion:1, key:'app', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} }), 'Missing current settings fields were accepted');
 
 const plan = api.canonicalDailyPlanRecord({ schemaVersion:1, id:' d ', studyDayKey:'2026-07-25', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt, plannerVersion:' pass-d-2 ', versions:[{version:1,generatedAt:rawProfile.createdAt,capacityMinutes:60,reason:'initial',items:[]}], outcomes:[] });
 check(plan.id === 'd' && plan.plannerVersion === 'pass-d-2', 'Daily-plan canonicalisation failed');
@@ -76,7 +76,7 @@ check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound')
   const emptyBackup = {
     format:'revision-director-backup', schemaVersion:2, exportedAt:'2026-07-25T06:00:00.000Z', appVersion:'va7.1-pass-f1',
     profiles:[], nodes:[], units:[], studyEvents:[], obligations:[], evidenceEvents:[], chunks:[], dailyPlans:[],
-    settings:{schemaVersion:1,key:'app',activeProfileId:'',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4},
+    settings:{schemaVersion:1,key:'app',activeProfileId:'',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}},
     activeRetrieval:null,
   };
   check(service.validateBackup(emptyBackup).profiles.length === 0, 'Clean empty production backup was rejected');

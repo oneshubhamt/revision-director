@@ -16,7 +16,7 @@ const api=context.__RD_D1_TEST__;
 let checks=0;
 function check(v,m){checks++; if(!v) throw new Error(m)}
 async function mustFail(fn,m){checks++; try{await fn()}catch{return} throw new Error(m)}
-const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-07-28T00:00:00.000Z',appVersion:'va7.1-pass-f1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4},activeRetrieval:null};
+const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-07-28T00:00:00.000Z',appVersion:'va7.1-pass-f1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}},activeRetrieval:null};
 const service=new api.RevisionService({});
 (async()=>{
  check(api.APP_VERSION==='va7.1-pass-f1','D1 version wrong');

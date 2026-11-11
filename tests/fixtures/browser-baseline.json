@@ -490,7 +490,11 @@
     "desiredRetention": 0.9,
     "dailyCapacityMinutes": 60,
     "studyDayBoundaryHour": 4,
-    "schemaVersion": 1
+    "schemaVersion": 1,
+    "fsrsPersonalization": {
+      "profile": null,
+      "active": false
+    }
   },
   "activeRetrieval": null
 }
