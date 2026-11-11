@@ -42,6 +42,13 @@ check("obsolete monolith absent", not (ROOT / "source/revision-director.va7.ts")
 check("synthetic TypeScript composite absent", not (ROOT / "build/generated/revision-director.combined.ts").exists() and "revision-director.combined.ts" not in build_script and "GENERATED_TS" not in build_script)
 check("manifest runtime assembly", source_manifest.get("runtime") == {"assembly":"manifest-ordered-emitted-js","boundary":"build-owned-iife","output":"../dist/app.js"} and "entrypoint" not in source_manifest)
 check("TypeScript compiles real source graph", tsconfig.get("include") == ["app/*.ts"] and tsconfig.get("compilerOptions", {}).get("rootDir") == "." and tsconfig.get("compilerOptions", {}).get("outDir") == "../build/generated-js" and tsconfig.get("compilerOptions", {}).get("noEmitOnError") is True and tsconfig.get("compilerOptions", {}).get("moduleDetection") == "legacy")
+check("TypeScript correctness flags", all(tsconfig.get("compilerOptions", {}).get(name) is expected for name, expected in {
+    "noImplicitReturns": True,
+    "noFallthroughCasesInSwitch": True,
+    "noPropertyAccessFromIndexSignature": True,
+    "allowUnreachableCode": False,
+    "allowUnusedLabels": False,
+}.items()))
 check("build assembles emitted files", "expected_outputs" in build_script and "manifest-ordered-emitted-js" in build_script and "textwrap.indent(body, \"  \")" in build_script)
 check("source parts own no runtime wrapper", not first_source.lstrip().startswith("(() => {") and not last_source.rstrip().endswith("})();"))
 check("manifest owns expected layers", all(token in {path.name for path in source_paths} for token in [

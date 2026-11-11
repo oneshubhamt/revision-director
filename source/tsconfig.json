@@ -18,7 +18,12 @@
     "noEmitOnError": true,
     "rootDir": ".",
     "outDir": "../build/generated-js",
-    "types": []
+    "types": [],
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false
   },
   "include": [
     "app/*.ts"
