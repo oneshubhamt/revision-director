@@ -39,7 +39,7 @@ The permanent suite covers:
 
 - source/build ownership and generated-artifact integrity;
 - domain and hostile validation;
-- FSRS-7 scheduling and rating semantics;
+- FSRS-7 scheduling, replay, personalization profile and rating semantics;
 - planning, duration learning, splitting and plan history;
 - active-session persistence and duplicate-commit protection;
 - phase timing and interruption classification;
@@ -63,6 +63,20 @@ For a material change:
 7. run the full suite after substantial cumulative changes.
 
 Generated output must be rebuilt from source before release/merge.
+
+## External FSRS optimizer
+
+Personalized FSRS-7 training is intentionally outside the application runtime. The native tool lives under `tools/fsrs-optimizer/` and pins `@open-spaced-repetition/binding@0.6.1`.
+
+Use the app to export chronological optimizer evidence, then:
+
+```sh
+cd tools/fsrs-optimizer
+npm ci
+npm run optimize -- path/to/revision-director-fsrs-evidence.csv profile.json
+```
+
+The tool trains a validation candidate on the historical first five-sixths, compares stock and personalized FSRS-7 on the final sixth, requires better held-out log loss without RMSE-bins regression, retrains the final 34 weights on all evidence, and records upstream time-series evaluation. Browser/WASM optimization is deliberately not part of this runtime; a later implementation must remain behind the same profile contract.
 
 ## TypeScript 7 checker parallelism
 

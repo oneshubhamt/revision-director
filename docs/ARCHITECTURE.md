@@ -2,12 +2,12 @@
 
 ## Deployment model
 
-Revision Director builds to one self-contained `index.html`. The maintained source is split by ownership under `source/`; `source/app/source-manifest.json` is the authoritative ordering contract for the nineteen TypeScript parts.
+Revision Director builds to one self-contained `index.html`. The maintained source is split by ownership under `source/`; `source/app/source-manifest.json` is the authoritative ordering contract for the twenty-one TypeScript parts.
 
 The build:
 
 1. validates the source-ownership and presentation contracts;
-2. gives all nineteen maintained `source/app/*.ts` files directly to the pinned TypeScript 7 compiler as one project;
+2. gives all twenty-one maintained `source/app/*.ts` files directly to the pinned TypeScript 7 compiler as one project;
 3. verifies that TypeScript emitted exactly the manifest-owned JavaScript files;
 4. assembles those emitted files deterministically in manifest order inside one strict outer IIFE and emits `dist/app.js`;
 5. embeds the runtime, CSS and presentation state into `index.html`;
@@ -30,6 +30,7 @@ The manifest separates the application into these logical layers:
 - runtime boundary and FSRS contract;
 - presentation kernel;
 - domain model and canonical contracts;
+- FSRS personalization contracts and optimizer evidence boundary;
 - scheduling and planning;
 - IndexedDB and storage facade;
 - active-retrieval persistence;
@@ -56,6 +57,8 @@ The built-in `revision-current` profile owns independent typography, shape, mate
 Evidence Events are append-only audit records and the canonical review history for memory obligations. The persisted FSRS card is a materialized projection for fast planning; the application-owned scheduler port normalizes review observations and verifies that projection against FSRS-7 replay before memory scheduling or retrievability is used.
 
 Every memory transition retains before/after projection state plus a deterministic scheduler-configuration fingerprint, so historical scheduling provenance and current replay integrity are independently inspectable.
+
+FSRS personalization is an application-owned boundary, not an optimizer runtime. Revision Director exports chronological optimizer evidence and validates a finished FSRS-7 profile, but training remains in the separate pinned Node tool under `tools/fsrs-optimizer/`. Import only stages a profile. Activation/deactivation is explicit, blocked during an active retrieval, and atomically reprojects every reviewed memory obligation from immutable Evidence Events under the target scheduler parameters. Historical Evidence Events are never rewritten when weights or desired retention change.
 
 ## Active retrieval and timing
 

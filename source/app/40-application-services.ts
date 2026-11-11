@@ -3,13 +3,16 @@
     private readonly router: SchedulerPolicyRouter;
 
     constructor(private readonly repo: RevisionData) {
-      this.router = new SchedulerPolicyRouter(() => this.settings.desiredRetention);
+      this.router = new SchedulerPolicyRouter(
+        () => this.settings.desiredRetention,
+        () => activeFsrsOptimizerProfile(this.settings),
+      );
     }
 
     async initialize(): Promise<void> {
       const stored = await this.repo.get(Store.Settings, "app");
-      this.settings = stored ?? defaultSettings();
-      await prepareFsrsScheduler(this.settings.desiredRetention);
+      this.settings = stored ? canonicalAppSettings(stored) : defaultSettings();
+      await prepareFsrsScheduler(this.settings.desiredRetention, activeFsrsOptimizerProfile(this.settings));
       if (!stored) await this.repo.put(Store.Settings, this.settings);
       const profiles = await this.profiles();
       const active = profiles.filter((profile) => profile.status === "active");
@@ -25,7 +28,12 @@
         this.repo.getAll(Store.Obligations),
         this.repo.getAll(Store.EvidenceEvents),
       ]);
-      verifyMemoryDatasetIntegrity(obligations, evidenceEvents, this.settings.desiredRetention);
+      verifyMemoryDatasetIntegrity(
+        obligations,
+        evidenceEvents,
+        this.settings.desiredRetention,
+        activeFsrsOptimizerProfile(this.settings),
+      );
     }
 
     storageHealth(): StorageHealthSnapshot {
@@ -53,9 +61,124 @@
         const profile = await this.repo.get(Store.Profiles, next.activeProfileId);
         assert(profile?.status === "active", "Default exam profile is invalid.");
       } else assert(next.activeProfileId === "", "Create an active exam profile before selecting a default profile.");
-      await prepareFsrsScheduler(next.desiredRetention);
-      this.settings = canonicalAppSettings(next);
+      const canonical = canonicalAppSettings(next);
+      assert(
+        JSON.stringify(effectiveFsrsPersonalization(canonical)) === JSON.stringify(effectiveFsrsPersonalization(this.settings)),
+        "Use the explicit FSRS personalization controls to stage, activate, deactivate or remove an optimizer profile.",
+      );
+      if (canonical.desiredRetention !== this.settings.desiredRetention) {
+        await this.rebaseMemoryScheduler(canonical, activeFsrsOptimizerProfile(canonical), "retention-change");
+        return;
+      }
+      await prepareFsrsScheduler(canonical.desiredRetention, activeFsrsOptimizerProfile(canonical));
+      this.settings = canonical;
       await this.repo.put(Store.Settings, this.settings);
+    }
+
+    async optimizerEvidenceSummary(): Promise<{ cards: number; reviews: number }> {
+      return fsrsOptimizerEvidenceSummary(await this.evidenceEvents());
+    }
+
+    async optimizerEvidenceCsv(): Promise<string> {
+      return fsrsOptimizerCsv(await this.evidenceEvents());
+    }
+
+    async stageFsrsOptimizerProfile(input: unknown): Promise<FsrsOptimizerProfile> {
+      const personalization = effectiveFsrsPersonalization(this.settings);
+      assert(!personalization.active, "Return to stock FSRS-7 before staging a different optimizer profile.");
+      const profile = validateFsrsOptimizerProfile(input);
+      await prepareFsrsScheduler(this.settings.desiredRetention, profile);
+      const next = canonicalAppSettings({
+        ...this.settings,
+        fsrsPersonalization: { ...personalization, profile, active: false },
+      });
+      this.settings = next;
+      await this.repo.put(Store.Settings, next);
+      return clone(profile);
+    }
+
+    async clearFsrsOptimizerProfile(): Promise<void> {
+      const personalization = effectiveFsrsPersonalization(this.settings);
+      assert(!personalization.active, "Return to stock FSRS-7 before removing the optimizer profile.");
+      const next = canonicalAppSettings({
+        ...this.settings,
+        fsrsPersonalization: { profile: null, active: false, ...(personalization.lastRebase ? { lastRebase: personalization.lastRebase } : {}) },
+      });
+      this.settings = next;
+      await this.repo.put(Store.Settings, next);
+    }
+
+    async activateFsrsOptimizerProfile(): Promise<void> {
+      const personalization = effectiveFsrsPersonalization(this.settings);
+      assert(!personalization.active && personalization.profile, "No staged FSRS optimizer profile is available for activation.");
+      const next = canonicalAppSettings({
+        ...this.settings,
+        fsrsPersonalization: { ...personalization, active: true },
+      });
+      await this.rebaseMemoryScheduler(next, personalization.profile, "activate-profile");
+    }
+
+    async deactivateFsrsOptimizerProfile(): Promise<void> {
+      const personalization = effectiveFsrsPersonalization(this.settings);
+      assert(personalization.active && personalization.profile, "Personalized FSRS-7 is not active.");
+      const next = canonicalAppSettings({
+        ...this.settings,
+        fsrsPersonalization: { ...personalization, active: false },
+      });
+      await this.rebaseMemoryScheduler(next, null, "deactivate-profile");
+    }
+
+    private async rebaseMemoryScheduler(
+      requestedSettings: AppSettings,
+      profile: FsrsOptimizerProfile | null,
+      reason: FsrsPersonalizationRebase["reason"],
+    ): Promise<void> {
+      assert(!(await this.currentActiveRetrieval()), "Finish or end the active retrieval session before changing FSRS scheduler parameters.");
+      const settings = canonicalAppSettings(requestedSettings);
+      await prepareFsrsScheduler(settings.desiredRetention, profile);
+      const [obligations, evidenceEvents] = await Promise.all([this.obligations(), this.evidenceEvents()]);
+      const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
+      const scheduler = revisionSchedulerPort(settings.desiredRetention, profile);
+      const at = nowIso();
+      let rescheduledObligations = 0;
+      const updatedMemory = obligations.filter((obligation) => obligation.type === "memory-recall").map((obligation) => {
+        const projection = obligation.policyState.fsrsCard;
+        assert(projection, "Memory obligation has no FSRS materialized projection.");
+        const reviews = reviewIndex.get(obligation.id) ?? [];
+        if (reviews.length === 0) return clone(obligation);
+        const card = scheduler.reschedule(reviews[0]!.beforeCard, reviews);
+        rescheduledObligations += 1;
+        return {
+          ...clone(obligation),
+          dueAt: card.dueAt,
+          updatedAt: at,
+          policyState: {
+            ...clone(obligation.policyState),
+            stage: card.state,
+            lastIntervalDays: card.scheduledDays,
+            fsrsCard: card,
+          },
+        };
+      });
+      const personalization = effectiveFsrsPersonalization(settings);
+      const target = profile ? "personalized" as const : "stock" as const;
+      const finalized = canonicalAppSettings({
+        ...settings,
+        fsrsPersonalization: {
+          ...personalization,
+          active: Boolean(profile),
+          lastRebase: {
+            at,
+            reason,
+            target,
+            rescheduledObligations,
+            ...(profile ? { profileSourceSha256: profile.sourceSha256 } : {}),
+          },
+        },
+      });
+      await this.repo.replaceMemoryScheduling(finalized, updatedMemory);
+      this.settings = finalized;
+      verifyMemoryDatasetIntegrity(updatedMemory, evidenceEvents, finalized.desiredRetention, profile);
     }
 
     async profiles(): Promise<ExamProfile[]> {
@@ -920,7 +1043,12 @@
 
     async createBackupArchive(preferCompression = true): Promise<BackupArchiveArtifact> {
       const payload = this.validateBackup(await this.exportBackup());
-      verifyMemoryDatasetIntegrity(payload.obligations, payload.evidenceEvents, payload.settings.desiredRetention);
+      verifyMemoryDatasetIntegrity(
+        payload.obligations,
+        payload.evidenceEvents,
+        payload.settings.desiredRetention,
+        activeFsrsOptimizerProfile(payload.settings),
+      );
       return BackupCodec.create(payload, preferCompression);
     }
 
@@ -934,8 +1062,13 @@
 
     async restoreBackupPayload(payload: BackupPayload, activeTreatment: BackupActiveSessionTreatment): Promise<void> {
       const validated = this.validateBackup(payload);
-      await prepareFsrsScheduler(validated.settings.desiredRetention);
-      verifyMemoryDatasetIntegrity(validated.obligations, validated.evidenceEvents, validated.settings.desiredRetention);
+      await prepareFsrsScheduler(validated.settings.desiredRetention, activeFsrsOptimizerProfile(validated.settings));
+      verifyMemoryDatasetIntegrity(
+        validated.obligations,
+        validated.evidenceEvents,
+        validated.settings.desiredRetention,
+        activeFsrsOptimizerProfile(validated.settings),
+      );
       await this.repo.replaceFromBackup(validated, activeTreatment);
       this.settings = clone(validated.settings);
     }

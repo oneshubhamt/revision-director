@@ -264,6 +264,7 @@
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
       key: "app",
       activeProfileId: value.activeProfileId ? canonicalId(value.activeProfileId, "Active profile ID") : "",
+      fsrsPersonalization: canonicalFsrsPersonalizationSettings(value.fsrsPersonalization),
     };
   }
 

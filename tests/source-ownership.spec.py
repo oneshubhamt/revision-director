@@ -14,6 +14,7 @@ EXPECTED_NAMES = [
     "10-domain-model.ts",
     "11-domain-kernel.ts",
     "12-production-contracts.ts",
+    "18-fsrs-personalization.ts",
     "19-revision-scheduler-port.ts",
     "20-policy-planning-kernel.ts",
     "21-policy-implementations.ts",
@@ -60,24 +61,26 @@ check("source owns no IIFE opening", not texts[0].lstrip().startswith("(() => {"
 check("source owns no IIFE closure", not texts[-1].rstrip().endswith("})();"))
 check("bootstrap remains explicit", texts[-1].rstrip().endswith("void boot();"))
 check("no source modules", all(not re.search(r"^\s*(?:import|export)(?:\s|\{)", text, re.M) for text in texts))
-check("runtime boundary owned", "EXACT ts-fsrs 6.0.0 / FSRS-7 CONTRACT" in texts[0])
-check("presentation engine owned", "interface PresentationManifest" in texts[1] and "function installPresentationKernel" in texts[1])
-check("domain model owned", "interface ExamProfile" in texts[2] and "interface BackupPayload" in texts[2])
-check("production contracts owned", "function canonicalDocument" in texts[4] and "function canonicalAppMetadata" in texts[4])
-check("scheduler port owned", "interface RevisionSchedulerPort" in texts[5] and "class TsFsrsSchedulerPort" in texts[5] and "class Reschedule" in texts[5])
-check("policy planning owned", "interface SchedulerPolicy" in texts[6] and "function choosePlanItems" in texts[6])
-check("repository owned", "const Store = Object.freeze" in texts[8] and "class IndexedDbRepository" in texts[8])
-check("storage facade owned", "class AppDiagnostics" in texts[9] and "class RevisionData" in texts[9])
-check("active retrieval persistence owned", "class ActiveRetrievalPersistence" in texts[10])
-check("phase-time runtime owned", "class PhaseTimeRuntime" in texts[11] and "function timingEvidenceSummary" in texts[11])
-check("cross-tab ownership owned", "class ReviewOwnershipCoordinator" in texts[12] and "takeControl" in texts[12])
-check("application service owned", "class RevisionService" in texts[13])
-check("backup codec owned", "class BackupCodec" in texts[14] and "BACKUP_ARCHIVE_FORMAT" in texts[14])
-check("backup controller owned", "class BackupController" in texts[15] and "BackupSafetyProofRecord" in texts[15])
-check("extension runtime owned", "class ExtensionRuntime" in texts[16] and "REVISION_DIRECTOR_CAPABILITIES" in texts[16] and "loadLocalFiles" in texts[16])
-check("UI runtime owned", "class RenderCoordinator" in texts[17] and "class AriaTabRegistry" in texts[17] and "class OverlayFocusManager" in texts[17])
-check("UI owned", "class UIController" in texts[18])
-check("public bootstrap owned", "async function boot" in texts[19] and "installPublicApi" in texts[19] and "announceReady" in texts[19])
+text_by_name = {path.name: text for path, text in zip(paths, texts)}
+check("runtime boundary owned", "EXACT ts-fsrs 6.0.0 / FSRS-7 CONTRACT" in text_by_name["00-runtime-boundary.ts"])
+check("presentation engine owned", "interface PresentationManifest" in text_by_name["05-presentation-engine.ts"] and "function installPresentationKernel" in text_by_name["05-presentation-engine.ts"])
+check("domain model owned", "interface ExamProfile" in text_by_name["10-domain-model.ts"] and "interface BackupPayload" in text_by_name["10-domain-model.ts"])
+check("production contracts owned", "function canonicalDocument" in text_by_name["12-production-contracts.ts"] and "function canonicalAppMetadata" in text_by_name["12-production-contracts.ts"])
+check("personalization boundary owned", "function validateFsrsOptimizerProfile" in text_by_name["18-fsrs-personalization.ts"] and "function fsrsOptimizerCsv" in text_by_name["18-fsrs-personalization.ts"])
+check("scheduler port owned", "interface RevisionSchedulerPort" in text_by_name["19-revision-scheduler-port.ts"] and "class TsFsrsSchedulerPort" in text_by_name["19-revision-scheduler-port.ts"] and "class Reschedule" in text_by_name["19-revision-scheduler-port.ts"])
+check("policy planning owned", "interface SchedulerPolicy" in text_by_name["20-policy-planning-kernel.ts"] and "function choosePlanItems" in text_by_name["20-policy-planning-kernel.ts"])
+check("repository owned", "const Store = Object.freeze" in text_by_name["30-indexeddb-repository.ts"] and "class IndexedDbRepository" in text_by_name["30-indexeddb-repository.ts"])
+check("storage facade owned", "class AppDiagnostics" in text_by_name["31-storage-facade.ts"] and "class RevisionData" in text_by_name["31-storage-facade.ts"])
+check("active retrieval persistence owned", "class ActiveRetrievalPersistence" in text_by_name["32-active-retrieval-persistence.ts"])
+check("phase-time runtime owned", "class PhaseTimeRuntime" in text_by_name["33-phase-time-runtime.ts"] and "function timingEvidenceSummary" in text_by_name["33-phase-time-runtime.ts"])
+check("cross-tab ownership owned", "class ReviewOwnershipCoordinator" in text_by_name["34-cross-tab-ownership.ts"] and "takeControl" in text_by_name["34-cross-tab-ownership.ts"])
+check("application service owned", "class RevisionService" in text_by_name["40-application-services.ts"])
+check("backup codec owned", "class BackupCodec" in text_by_name["41-backup-codec.ts"] and "BACKUP_ARCHIVE_FORMAT" in text_by_name["41-backup-codec.ts"])
+check("backup controller owned", "class BackupController" in text_by_name["42-backup-controller.ts"] and "BackupSafetyProofRecord" in text_by_name["42-backup-controller.ts"])
+check("extension runtime owned", "class ExtensionRuntime" in text_by_name["55-extension-runtime.ts"] and "REVISION_DIRECTOR_CAPABILITIES" in text_by_name["55-extension-runtime.ts"] and "loadLocalFiles" in text_by_name["55-extension-runtime.ts"])
+check("UI runtime owned", "class RenderCoordinator" in text_by_name["45-ui-runtime.ts"] and "class AriaTabRegistry" in text_by_name["45-ui-runtime.ts"] and "class OverlayFocusManager" in text_by_name["45-ui-runtime.ts"])
+check("UI owned", "class UIController" in text_by_name["50-ui-controller.ts"])
+check("public bootstrap owned", "async function boot" in text_by_name["60-public-bridge-bootstrap.ts"] and "installPublicApi" in text_by_name["60-public-bridge-bootstrap.ts"] and "announceReady" in text_by_name["60-public-bridge-bootstrap.ts"])
 
 subprocess.run([sys.executable, str(ROOT / "build/build.py")], check=True)
 check("compiled runtime present", (ROOT / "dist/app.js").is_file() and (ROOT / "dist/app.js").stat().st_size > 0)

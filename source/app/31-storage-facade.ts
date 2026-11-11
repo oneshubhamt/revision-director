@@ -292,6 +292,13 @@
       ));
     }
 
+    async replaceMemoryScheduling(settings: AppSettings, obligations: RevisionObligation[]): Promise<void> {
+      await this.operation("replaceMemoryScheduling", () => this.repository.replaceMemoryScheduling(
+        canonicalAppSettings(settings),
+        obligations.map(canonicalRevisionObligation),
+      ));
+    }
+
     async rawDump(): Promise<Record<string, unknown[]>> {
       return this.operation("rawDump", () => this.repository.rawDump());
     }

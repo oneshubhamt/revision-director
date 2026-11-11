@@ -10,6 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 subprocess.run([sys.executable, str(ROOT / "build/build.py")], check=True)
 source_manifest_path = ROOT / "source/app/source-manifest.json"
 source_manifest = json.loads(source_manifest_path.read_text())
+optimizer_package = json.loads((ROOT / "tools/fsrs-optimizer/package.json").read_text())
+optimizer_lock = json.loads((ROOT / "tools/fsrs-optimizer/package-lock.json").read_text())
+optimizer_policy = (ROOT / "tools/fsrs-optimizer/optimizer-policy.mjs").read_text()
+optimizer_cli = (ROOT / "tools/fsrs-optimizer/optimize.mjs").read_text()
 source_parts = sorted(source_manifest["parts"], key=lambda item: item["order"])
 source_paths = [ROOT / "source" / item["path"] for item in source_parts]
 ts = "".join(path.read_text() for path in source_paths)
@@ -34,7 +38,7 @@ def check(name: str, condition: bool) -> None:
     if not condition:
         raise AssertionError(name)
 
-check("source ownership manifest", source_manifest.get("schemaVersion") == 1 and len(source_parts) == 20)
+check("source ownership manifest", source_manifest.get("schemaVersion") == 1 and len(source_parts) == 21)
 check("source order contiguous", [item["order"] for item in source_parts] == list(range(len(source_parts))))
 check("source parts unique", len(source_paths) == len(set(source_paths)))
 check("source parts present", all(path.is_file() and path.stat().st_size > 0 for path in source_paths))
@@ -57,7 +61,7 @@ check("measured TypeScript checker parallelism", 'TYPESCRIPT_CHECKERS = 2' in bu
 check("source parts own no runtime wrapper", not first_source.lstrip().startswith("(() => {") and not last_source.rstrip().endswith("})();"))
 check("manifest owns expected layers", all(token in {path.name for path in source_paths} for token in [
     "00-runtime-boundary.ts", "05-presentation-engine.ts", "10-domain-model.ts", "11-domain-kernel.ts",
-    "12-production-contracts.ts", "19-revision-scheduler-port.ts", "20-policy-planning-kernel.ts", "21-policy-implementations.ts",
+    "12-production-contracts.ts", "18-fsrs-personalization.ts", "19-revision-scheduler-port.ts", "20-policy-planning-kernel.ts", "21-policy-implementations.ts",
     "30-indexeddb-repository.ts", "31-storage-facade.ts", "32-active-retrieval-persistence.ts", "33-phase-time-runtime.ts", "34-cross-tab-ownership.ts", "40-application-services.ts",
     "41-backup-codec.ts", "45-ui-runtime.ts", "50-ui-controller.ts", "60-public-bridge-bootstrap.ts"
 ]))
@@ -134,7 +138,7 @@ check("eleven durable stores", all(value in ts for value in [
 check("exact FSRS-7 adapter", 'readonly id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`' in ts)
 check("FSRS limited to memory", 'readonly type: ObligationType = "memory-recall"' in ts)
 check("modern FSRS scheduler API", "DefaultScheduler(options: FsrsDefaultSchedulerOptions)" in ts and "interface RevisionSchedulerPort" in ts and "class TsFsrsSchedulerPort" in ts and "prepareFsrsScheduler" in ts and "this.scheduler.review({" in ts and "this.scheduler.preview({" in ts and "this.scheduler.model.forward({" in ts)
-check("FSRS scheduler warmup lifecycle", "await prepareFsrsScheduler(this.settings.desiredRetention)" in ts and "await prepareFsrsScheduler(next.desiredRetention)" in ts and "await prepareFsrsScheduler(validated.settings.desiredRetention)" in ts)
+check("FSRS scheduler warmup lifecycle", "prepareFsrsScheduler(this.settings.desiredRetention, activeFsrsOptimizerProfile(this.settings))" in ts and "prepareFsrsScheduler(canonical.desiredRetention, activeFsrsOptimizerProfile(canonical))" in ts and "prepareFsrsScheduler(validated.settings.desiredRetention, activeFsrsOptimizerProfile(validated.settings))" in ts)
 check("no deprecated FSRS scheduler API", all(token not in ts for token in ["api.fsrs(", ".createEmptyCard(", "generatorParameters("]))
 check("FSRS-7 only", 'type FsrsModelVersion = "FSRS-7"' in ts and 'const FSRS_MODEL: FsrsModelVersion = "FSRS-7"' in ts)
 check("FSRS-7 dual trace", "stabilityFast: number" in ts and "requiredFsrs7StabilityFast" in ts)
@@ -167,6 +171,15 @@ check("atomic unit status propagation", "updateUnitWithObligations" in ts)
 check("cross-profile Study Event guard", "Study Event cannot link a knowledge unit from another exam profile" in ts)
 check("strong evidence rubric", all(term in ts for term in ["completeness", "independence", "application", "accuracyPercent", "errorTypes", "ERROR_TYPES"]))
 check("scheduler configuration provenance", "interface FsrsConfigSnapshot" in ts and "schedulerConfig?: FsrsConfigSnapshot" in ts and "fingerprint: string" in ts and "validateFsrsConfigSnapshot" in ts)
+check("FSRS personalization profile contract", 'schema: "revision-director-fsrs-profile/v1"' in ts and "function validateFsrsOptimizerProfile" in ts and "bindingVersion" in ts)
+check("FSRS-7 exact 34-weight validation", "FSRS7_PARAMETER_BOUNDS" in ts and "value.length === 34" in ts and "FSRS7_DEFAULT_WEIGHTS" in ts)
+check("FSRS optimizer evidence export", 'review_time,card_id,review_rating,review_duration,review_state' in ts and "fsrsOptimizerCsv" in ts and "relearning-return" in ts)
+check("chronological held-out activation gate", 'strategy: "final-sixth"' in ts and "minimumTrainItems: 64" in ts and "minimumHoldoutItems: 64" in ts and "minimumHoldoutCards: 16" in ts and "personalized.logLoss < stock.logLoss" in ts and "personalized.rmseBins <= stock.rmseBins" in ts)
+check("explicit personalization rebase semantics", "activateFsrsOptimizerProfile" in ts and "deactivateFsrsOptimizerProfile" in ts and "replaceMemoryScheduling" in ts and "rescheduledObligations" in ts and "Finish or end the active retrieval session before changing FSRS scheduler parameters." in ts)
+check("optimizer remains outside browser runtime", "@open-spaced-repetition/binding" not in ts and "@open-spaced-repetition/binding" not in js and "@open-spaced-repetition/binding" in optimizer_cli)
+check("optimizer dependency pinned", optimizer_package.get("dependencies") == {"@open-spaced-repetition/binding": "0.6.1"} and optimizer_lock.get("packages", {}).get("", {}).get("dependencies") == {"@open-spaced-repetition/binding": "0.6.1"})
+check("optimizer training policy", all(token in optimizer_cli for token in ["computeParameters", "evaluateWithTimeSeriesSplits", "splitChronologicalHoldout", "evaluateHoldoutGate", "finalRetrainedOnAllEvidence"]) and all(token in optimizer_policy for token in ["MIN_TRAIN_ITEMS=64", "MIN_HOLDOUT_ITEMS=64", "MIN_HOLDOUT_CARDS=16", 'HOLDOUT_STRATEGY="final-sixth"']))
+check("optimizer tooling syntax", subprocess.run(["node", "--check", str(ROOT / "tools/fsrs-optimizer/optimizer-policy.mjs")], capture_output=True).returncode == 0 and subprocess.run(["node", "--check", str(ROOT / "tools/fsrs-optimizer/optimize.mjs")], capture_output=True).returncode == 0)
 check("safe suspension provenance", "type SuspensionReason" in ts and 'suspensionReason = "relearning"' in ts and 'suspensionReason === "unit"' in ts)
 check("automatic relearn follow-up", 'completion.followUpType = "relearn"' in ts)
 check("relearn pauses exact original", 'item.returnObligationId === obligation.id' in ts and 'obligation.status = "suspended"' in ts)

@@ -2,6 +2,15 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-11 — FSRS-7 personalization boundary
+
+- Added a current-format FSRS-7 optimizer profile contract with exact 34-weight validation and scheduler/weight provenance.
+- Added chronological optimizer evidence export covering direct memory reviews and returned-memory transitions.
+- Added a pinned external Node optimizer using a final-sixth held-out stock-vs-personalized gate, full-evidence final retraining and upstream time-series evaluation.
+- Made profile import staging-only; activation, deactivation and retention changes explicitly reproject reviewed memory obligations from immutable Evidence Events.
+- Added atomic settings-plus-memory-projection replacement so scheduler identity cannot change independently of current card state.
+- Kept optimizer computation and WASM out of the browser runtime; browser optimization remains a later optional capability.
+
 ## 2026-11-11 — FSRS-7 replay-truth scheduler boundary
 
 - Introduced an application-owned revision scheduler port so domain policy no longer operates directly on the TS-FSRS runtime.

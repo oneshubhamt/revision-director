@@ -92,6 +92,7 @@
     enableFuzz: false;
     maximumInterval: number;
     clearStatsOnForget: false;
+    weights?: readonly number[];
   }
 
   interface FsrsUmdRuntime {

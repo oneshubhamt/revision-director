@@ -276,6 +276,62 @@
     correctionNote: string;
   }
 
+  interface FsrsEvaluationMetrics {
+    logLoss: number;
+    rmseBins: number;
+  }
+
+  interface FsrsOptimizerProfile {
+    schema: "revision-director-fsrs-profile/v1";
+    model: "FSRS-7";
+    bindingVersion: "0.6.1";
+    trainedAt: ISODateTime;
+    sourceSha256: string;
+    evidenceItems: number;
+    weights: number[];
+    evaluation: {
+      crossValidation: FsrsEvaluationMetrics;
+      holdout: {
+        strategy: "final-sixth";
+        trainItems: number;
+        holdoutItems: number;
+        holdoutCards: number;
+        minimumTrainItems: 64;
+        minimumHoldoutItems: 64;
+        minimumHoldoutCards: 16;
+        stock: FsrsEvaluationMetrics;
+        personalized: FsrsEvaluationMetrics;
+        gate: "passed";
+      };
+    };
+    training: {
+      enableShortTerm: true;
+      enableSchedPenalties: true;
+      numRelearningSteps: 1;
+      chronology: "elapsed-24h";
+      converterFixedUtcOffsetMinutes: 0;
+      converterRolloverHour: 0;
+      runtimeLearningSteps: ["1d"];
+      runtimeRelearningSteps: ["1d"];
+      validationCandidateTrainedItems: number;
+      finalRetrainedOnAllEvidence: true;
+    };
+  }
+
+  interface FsrsPersonalizationRebase {
+    at: ISODateTime;
+    reason: "activate-profile" | "deactivate-profile" | "retention-change";
+    target: "stock" | "personalized";
+    rescheduledObligations: number;
+    profileSourceSha256?: string;
+  }
+
+  interface FsrsPersonalizationSettings {
+    profile: FsrsOptimizerProfile | null;
+    active: boolean;
+    lastRebase?: FsrsPersonalizationRebase;
+  }
+
   interface FsrsConfigSnapshot {
     model: FsrsModelVersion;
     desiredRetention: number;
@@ -288,7 +344,9 @@
     allowModelOverride: true;
     maximumInterval: number;
     clearStatsOnForget: false;
-    weightsSource: "ts-fsrs-package-default";
+    weightsSource: "ts-fsrs-package-default" | "optimizer-profile";
+    weightsFingerprint: string;
+    optimizerProfileSourceSha256?: string;
     fingerprint: string;
   }
 
@@ -357,6 +415,7 @@
     desiredRetention: number;
     dailyCapacityMinutes: number;
     studyDayBoundaryHour: number;
+    fsrsPersonalization: FsrsPersonalizationSettings;
   }
 
   interface AppMetadata {

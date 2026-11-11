@@ -238,6 +238,10 @@
         await this.importBackup(event);
         return;
       }
+      if (target instanceof HTMLInputElement && target.id === "import-fsrs-profile") {
+        await this.importFsrsOptimizerProfile(target);
+        return;
+      }
       if (target instanceof HTMLInputElement && target.id === "load-plugin-files") {
         await this.loadPluginFiles(target);
         return;
@@ -792,9 +796,39 @@
       return `<section class="panel settings-card"><h3>Optional plugins</h3><label class="btn file-btn">LOAD LOCAL PLUGIN<input id="load-plugin-files" type="file" accept=".js,text/javascript,application/javascript" multiple></label><p class="helper">Trusted JavaScript only. A local plugin runs with this page’s privileges, is not stored by Revision Director, and is removed by reloading the page.</p>${pluginRows}${fileRows}</section>`;
     }
 
+    private fsrsPersonalizationCard(
+      settings: AppSettings,
+      summary: { cards: number; reviews: number },
+    ): string {
+      const personalization = effectiveFsrsPersonalization(settings);
+      const profile = personalization.profile;
+      const status = personalization.active ? "ACTIVE" : profile ? "STAGED" : "STOCK";
+      const statusClass = personalization.active ? "ok" : "";
+      const profileDetail = profile
+        ? `<div class="dependency-status"><span>Profile</span><strong>${escapeHtml(profile.sourceSha256.slice(0, 12))}…</strong></div>
+           <div class="dependency-status"><span>Held-out log loss</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)}</strong></div>
+           <div class="dependency-status"><span>Held-out RMSE bins</span><strong>${roundTo(profile.evaluation.holdout.stock.rmseBins, 4)} → ${roundTo(profile.evaluation.holdout.personalized.rmseBins, 4)}</strong></div>
+           <div class="dependency-status"><span>Time-series CV</span><strong>LL ${roundTo(profile.evaluation.crossValidation.logLoss, 4)} · RMSE ${roundTo(profile.evaluation.crossValidation.rmseBins, 4)}</strong></div>`
+        : `<p class="helper">No validated personalized profile is staged. Stock FSRS-7 remains authoritative.</p>`;
+      const profileActions = personalization.active
+        ? `<button class="mini-btn" type="button" data-action="deactivate-fsrs-profile">RETURN TO STOCK + REPROJECT</button>`
+        : profile
+          ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
+          : "";
+      return `<section class="panel settings-card wide"><h3>FSRS-7 personalization</h3>
+        <div class="dependency-status"><span>Scheduling mode</span><strong class="${statusClass}">${status}</strong></div>
+        <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards</strong></div>
+        ${profileDetail}
+        <div class="settings-actions"><button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json"></label>${profileActions}</div>
+        <p class="helper">Training is deliberately outside Revision Director. Import only a profile produced by the pinned optimizer tool. Import stages it; activation is separate and atomically rebuilds reviewed memory schedules from immutable Evidence Events. Historical scheduler provenance is never rewritten.</p>
+      </section>`;
+    }
     private async renderSettings(): Promise<void> {
       const settings = this.service.getSettings();
-      const profiles = await this.service.profiles();
+      const [profiles, optimizerEvidence] = await Promise.all([
+        this.service.profiles(),
+        this.service.optimizerEvidenceSummary(),
+      ]);
       const planningReference = studyDayStart(new Date(), settings.studyDayBoundaryHour);
       const fsrsOk = fsrsRuntimeAvailable();
       const storage = this.service.storageHealth();
@@ -805,6 +839,7 @@
         <form id="settings-form" class="settings-grid">
           <section class="panel settings-card"><h3>Planning</h3><label>Default exam profile for new records<select name="activeProfileId" ${profiles.length ? "" : "disabled"}>${profiles.length ? profiles.map((profile) => `<option value="${profile.id}" ${profile.id === settings.activeProfileId ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("") : '<option value="">Create an exam profile first</option>'}</select></label><label>Daily revision capacity<input name="dailyCapacityMinutes" type="number" min="5" max="600" value="${settings.dailyCapacityMinutes}"></label><label>Study-day boundary hour<input name="studyDayBoundaryHour" type="number" min="0" max="12" value="${settings.studyDayBoundaryHour}"></label></section>
           <section class="panel settings-card"><h3>Memory scheduling</h3><label>Desired retention<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${settings.desiredRetention}"></label><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">FSRS is routed only to memory-recall obligations. It does not schedule answer writing, conceptual mastery or freshness work.</p></section>
+          ${this.fsrsPersonalizationCard(settings, optimizerEvidence)}
           <section class="panel settings-card"><h3>Add exam profile</h3><label>Name<input id="new-profile-name" placeholder="IFoS 2027, USMLE Step 1..."></label><label>Exam date<input id="new-profile-date" type="date"></label><button class="btn" type="button" data-action="add-profile">ADD PROFILE</button></section>
           <section class="panel settings-card"><h3>Backup and recovery</h3><button class="btn" type="button" data-action="export-backup">EXPORT BACKUP</button><label class="btn file-btn">IMPORT BACKUP<input id="import-backup" type="file" accept=".rdbackup,application/x-revision-director-backup,application/gzip,application/octet-stream"></label><p class="helper">Export remains one click. Import verifies and previews the file first, then requires a current-state safety copy and explicit restore confirmation.</p></section>
           ${this.pluginSettingsCard()}
@@ -1245,7 +1280,8 @@
     private async handleAction(element: HTMLElement): Promise<void> {
       const action = element.dataset["action"];
       try {
-        if (action !== "export-backup" && !this.requireMutable("change Revision Director data")) return;
+        const nonMutating = action === "export-backup" || action === "export-fsrs-evidence";
+        if (!nonMutating && !this.requireMutable("change Revision Director data")) return;
         if (action === "add-unit") await this.openUnitDialog();
         else if (action === "log-study") await this.openStudyDialog();
         else if (action === "start-due") await this.startDueSession();
@@ -1314,6 +1350,10 @@
         else if (action === "save-profile") await this.saveProfileFromSettings(element.dataset["id"] ?? "");
         else if (action === "toggle-pause") this.togglePause();
         else if (action === "refresh-storage") { await this.service.refreshStorageHealth(true); await this.renderCoordinator.invalidateAndWait("settings", "storage", "ownership"); this.toast("Storage capability refreshed."); }
+        else if (action === "export-fsrs-evidence") await this.exportFsrsOptimizerEvidence();
+        else if (action === "activate-fsrs-profile") { await this.service.activateFsrsOptimizerProfile(); await this.renderAll(); this.toast("Personalized FSRS-7 activated and memory schedules reprojected."); }
+        else if (action === "deactivate-fsrs-profile") { await this.service.deactivateFsrsOptimizerProfile(); await this.renderAll(); this.toast("Returned to stock FSRS-7 and memory schedules reprojected."); }
+        else if (action === "clear-fsrs-profile") { await this.service.clearFsrsOptimizerProfile(); await this.renderAll(); this.toast("Staged FSRS optimizer profile removed."); }
         else if (action === "export-backup") await this.exportBackup();
         else if (action === "create-restore-safety") await this.createRestoreSafetyCopy();
         else if (action === "perform-restore") await this.performRestore();
@@ -1661,7 +1701,9 @@
         const form = event.target;
         assert(form instanceof HTMLFormElement && form.getAttribute("id") === "settings-form", "Settings form is unavailable.");
         const data = new FormData(form);
+        const current = this.service.getSettings();
         await this.service.saveSettings({
+          ...current,
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
           key: "app",
           activeProfileId: formText(data, "activeProfileId"),
@@ -1730,6 +1772,33 @@
       }
     }
 
+    private async exportFsrsOptimizerEvidence(): Promise<void> {
+      const [csv, summary] = await Promise.all([
+        this.service.optimizerEvidenceCsv(),
+        this.service.optimizerEvidenceSummary(),
+      ]);
+      assert(summary.reviews > 0, "No memory-review evidence is available for optimizer export.");
+      const date = new Date().toISOString().slice(0, 10);
+      downloadBlob(`revision-director-fsrs-evidence-${date}.csv`, csv, "text/csv;charset=utf-8");
+      this.toast(`FSRS optimizer evidence exported · ${summary.reviews} reviews across ${summary.cards} cards.`);
+    }
+
+    private async importFsrsOptimizerProfile(input: HTMLInputElement): Promise<void> {
+      if (!this.requireMutable("stage an FSRS optimizer profile")) { input.value = ""; return; }
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        assert(file.size <= 64 * 1024, "FSRS optimizer profile exceeds the 64 KiB limit.");
+        const parsed: unknown = JSON.parse(await file.text());
+        const profile = await this.service.stageFsrsOptimizerProfile(parsed);
+        await this.renderAll();
+        this.toast(`Validated FSRS-7 profile staged · ${profile.evidenceItems} optimizer items. Activation remains explicit.`);
+      } catch (error) {
+        this.toast(error instanceof Error ? error.message : "FSRS optimizer profile import failed.", true);
+      } finally {
+        input.value = "";
+      }
+    }
     private async exportBackup(): Promise<void> {
       await this.flushCurrentRetrievalForBackup();
       const archive = await this.backupController.createVerified(true);

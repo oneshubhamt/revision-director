@@ -595,6 +595,7 @@
       desiredRetention: 0.9,
       dailyCapacityMinutes: 60,
       studyDayBoundaryHour: 4,
+      fsrsPersonalization: defaultFsrsPersonalizationSettings(),
     };
   }
 

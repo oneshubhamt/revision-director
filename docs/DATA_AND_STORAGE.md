@@ -66,7 +66,15 @@ Only active operational state is duplicated locally. Historical evidence, schedu
 
 Memory review truth is append-only Evidence Events, including successful returns from corrective relearning. These events normalize to chronological rating/review-time observations for FSRS-7 replay.
 
-The current FSRS card stored on each memory obligation is a materialized projection, not an independent source of truth. Before memory preview, review or retrievability, the scheduler port verifies the projection chain and replays FSRS-7 memory from the canonical observations. Configuration snapshots carry a deterministic fingerprint so a transition cannot silently claim different scheduler settings.
+The current FSRS card stored on each memory obligation is a materialized projection, not an independent source of truth. Before memory preview, review or retrievability, the scheduler port verifies the projection chain and replays FSRS-7 memory from the canonical observations. Configuration snapshots carry deterministic scheduler and weight fingerprints so a transition cannot silently claim different scheduler settings.
+
+## FSRS personalization
+
+Application settings contain an explicit personalization state: no profile/stock, staged profile, or active profile. A profile is current-format durable data and must pass the exact FSRS-7 34-weight bounds plus the optimizer provenance/evaluation contract.
+
+Optimizer evidence is derived from immutable memory Evidence Events as globally chronological CSV. It includes direct memory reviews and successful returns from corrective relearning. Training itself is deliberately external to the browser runtime.
+
+Importing a validated profile does not change due dates. Activation and return-to-stock are separate operations. Each such switch, and any desired-retention change, replays canonical history under the target scheduler and transactionally replaces current memory projections together with the settings identity. Scheduler changes are rejected while a retrieval session is active. Historical Evidence Events keep the configuration fingerprint that actually produced their transition.
 
 ## Storage health
 

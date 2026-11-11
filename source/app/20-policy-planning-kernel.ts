@@ -331,12 +331,13 @@
     reference: Date,
     desiredRetention: number,
     reviewIndex?: MemoryReviewObservationIndex,
+    profile: FsrsOptimizerProfile | null = null,
   ): number | undefined {
     if (obligation.type !== "memory-recall" || !obligation.policyState.fsrsCard) return undefined;
     const projection = obligation.policyState.fsrsCard;
     if (projection.reps === 0 || !projection.lastReviewAt) return undefined;
     const reviews = reviewIndex?.get(obligation.id) ?? memoryReviewObservationsFor(obligation.id, evidenceEvents);
-    return revisionSchedulerPort(desiredRetention).retrievability(projection, reviews, reference);
+    return revisionSchedulerPort(desiredRetention, profile).retrievability(projection, reviews, reference);
   }
 
   function finalMemoryExamDeadline(item: JoinedObligation): Date | undefined {
@@ -411,7 +412,14 @@
     const synthesisReady = item.obligation.chunking?.status === "synthesis-ready";
     if (!synthesisReady && planningDueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
     const temporalRisk = temporalDueRisk(planningDueAt, dayStart, dayEnd, lookaheadDays);
-    const retrievability = fsrsRetrievability(item.obligation, evidenceEvents, reference, settings.desiredRetention, memoryReviews);
+    const retrievability = fsrsRetrievability(
+      item.obligation,
+      evidenceEvents,
+      reference,
+      settings.desiredRetention,
+      memoryReviews,
+      activeFsrsOptimizerProfile(settings),
+    );
     const memoryRisk = retrievability === undefined ? 0 : clamp((settings.desiredRetention - retrievability) / Math.max(settings.desiredRetention - 0.5, 0.1), 0, 1);
     const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
     const factors: PlanningFactors = {

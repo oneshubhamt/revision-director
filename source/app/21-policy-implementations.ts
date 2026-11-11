@@ -2,10 +2,13 @@
     readonly id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`;
     readonly type: ObligationType = "memory-recall";
 
-    constructor(private readonly desiredRetention: () => number) {}
+    constructor(
+      private readonly desiredRetention: () => number,
+      private readonly optimizerProfile: () => FsrsOptimizerProfile | null = () => null,
+    ) {}
 
     private scheduler(): RevisionSchedulerPort {
-      return revisionSchedulerPort(this.desiredRetention());
+      return revisionSchedulerPort(this.desiredRetention(), this.optimizerProfile());
     }
 
     private reviews(context?: SchedulerPolicyContext): readonly MemoryReviewObservation[] {
@@ -177,9 +180,12 @@
   class SchedulerPolicyRouter {
     private readonly policies = new Map<ObligationType, SchedulerPolicy>();
 
-    constructor(desiredRetention: () => number) {
+    constructor(
+      desiredRetention: () => number,
+      optimizerProfile: () => FsrsOptimizerProfile | null = () => null,
+    ) {
       const all: SchedulerPolicy[] = [
-        new FsrsMemoryPolicy(desiredRetention),
+        new FsrsMemoryPolicy(desiredRetention, optimizerProfile),
         new MasteryPolicy(),
         new ApplicationPolicy(),
         new PerformancePolicy(),
