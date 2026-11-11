@@ -489,17 +489,7 @@
     return requireRecord(input, label) as unknown as T;
   }
 
-  function canonicalDocument(kind: "profile", input: unknown): ExamProfile;
-  function canonicalDocument(kind: "node", input: unknown): KnowledgeNode;
-  function canonicalDocument(kind: "unit", input: unknown): KnowledgeUnit;
-  function canonicalDocument(kind: "study-event", input: unknown): StudyEvent;
-  function canonicalDocument(kind: "obligation", input: unknown): RevisionObligation;
-  function canonicalDocument(kind: "evidence-event", input: unknown): EvidenceEvent;
-  function canonicalDocument(kind: "chunk", input: unknown): ObligationChunk;
-  function canonicalDocument(kind: "daily-plan", input: unknown): DailyPlanRecord;
-  function canonicalDocument(kind: "settings", input: unknown): AppSettings;
-  function canonicalDocument(kind: "metadata", input: unknown): AppMetadata;
-  function canonicalDocument(kind: "active-retrieval", input: unknown): ActiveRetrievalSession;
+  function canonicalDocument<K extends DurableDocumentKind>(kind: K, input: unknown): DurableDocumentKindMap[K];
   function canonicalDocument(kind: DurableDocumentKind, input: unknown): DurableDocument {
     if (kind === "profile") return canonicalExamProfile(checkedDocumentInput<ExamProfile>(input, "Exam profile"));
     if (kind === "node") return canonicalKnowledgeNode(checkedDocumentInput<KnowledgeNode>(input, "Knowledge node"));
@@ -519,7 +509,7 @@
     input: unknown,
     label: string,
   ): DurableDocumentKindMap[K][] {
-    return requiredArray(input, label).map((value) => canonicalDocument(kind, value) as DurableDocumentKindMap[K]);
+    return requiredArray(input, label).map((value) => canonicalDocument(kind, value));
   }
 
   function canonicalActiveRetrievalEnvelope(input: unknown): ActiveRetrievalRecoveryEnvelope {
