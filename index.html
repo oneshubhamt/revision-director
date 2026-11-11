@@ -6397,6 +6397,43 @@ exports.withFuzzing = withFuzzing;
       if (!condition)
           throw new Error(message);
   }
+  function isRecord(value) {
+      return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+  function requireRecord(value, label) {
+      assert(isRecord(value), `${label} must be an object.`);
+      return value;
+  }
+  function literalChoice(value, allowed, label) {
+      assert(allowed.some((candidate) => candidate === value), `${label} is invalid.`);
+      return value;
+  }
+  function literalChoiceOrUndefined(value, allowed) {
+      return allowed.some((candidate) => candidate === value) ? value : undefined;
+  }
+  function formText(data, name, fallback = "") {
+      const value = data.get(name);
+      if (value === null)
+          return fallback;
+      assert(typeof value === "string", `${name} must be text.`);
+      return value;
+  }
+  const ENTITY_STATUSES = ["active", "suspended", "archived"];
+  const ACTIVITY_MODES = ["learn", "review", "practice", "test"];
+  const STUDY_ORIGINS = ["manual", "study-director"];
+  const OBLIGATION_TYPES = ["memory-recall", "concept-reconstruction", "application-practice", "performance-practice", "relearn", "freshness-review"];
+  const RETRIEVAL_WORKFLOWS = ["recall", "reconstruction", "questions", "diagram", "answer-writing", "relearning"];
+  const RESPONSE_MEDIA = ["in-app", "paper", "oral"];
+  const CUE_LEVELS = ["none", "minor", "major", "source"];
+  const RECONSTRUCTION_SHAPES = ["outline", "table", "flow", "concept-map", "sequence"];
+  const ANSWER_MODES = ["outline", "full-answer"];
+  const DIAGRAM_SURFACES = ["canvas", "paper"];
+  const ERROR_TYPE_VALUES = ["factual-omission", "conceptual-misunderstanding", "confusion-interference", "application-failure", "answer-structure", "diagram-reconstruction", "slow-retrieval"];
+  const INACTIVE_GAP_CLASSIFICATIONS = ["focus", "break", "split", "ignore"];
+  const BACKUP_ACTIVE_SESSION_TREATMENTS = ["restore", "discard"];
+  const RUBRIC_SCORES = [0, 1, 2, 3, 4];
+  const IMPORTANCE_LEVELS = [1, 2, 3];
+  const UNDERSTANDING_LEVELS = [1, 2, 3, 4];
   function nowIso() {
       return new Date().toISOString();
   }
@@ -6551,8 +6588,7 @@ exports.withFuzzing = withFuzzing;
       return common;
   }
   function validateWorkflowSpec(spec, type) {
-      const kinds = new Set(["recall", "reconstruction", "questions", "diagram", "answer-writing", "relearning"]);
-      assert(kinds.has(spec.kind), "Retrieval workflow is invalid.");
+      assert(RETRIEVAL_WORKFLOWS.includes(spec.kind), "Retrieval workflow is invalid.");
       assert(spec.prompt.trim().length >= 3, "Retrieval workflow prompt is required.");
       assert(Array.isArray(spec.checkpoints) && spec.checkpoints.length >= 1 && spec.checkpoints.length <= 20, "Add between 1 and 20 observable checkpoints.");
       assert(spec.checkpoints.every((item) => typeof item === "string" && item.trim().length >= 2 && item.trim().length <= 300), "Workflow checkpoints are invalid.");
@@ -6582,23 +6618,23 @@ exports.withFuzzing = withFuzzing;
   }
   function workflowSpecFromForm(form, type) {
       const data = new FormData(form);
-      const kind = String(data.get("workflowKind") ?? defaultWorkflowForType(type));
+      const kind = literalChoice(formText(data, "workflowKind", defaultWorkflowForType(type)), RETRIEVAL_WORKFLOWS, "Retrieval workflow");
       const spec = {
           kind,
-          prompt: String(data.get("workflowPrompt") ?? "").trim(),
-          checkpoints: String(data.get("workflowCheckpoints") ?? "").split(/\n/).map((item) => item.trim()).filter(Boolean),
-          responseMedium: String(data.get("responseMedium") ?? "in-app"),
+          prompt: formText(data, "workflowPrompt").trim(),
+          checkpoints: formText(data, "workflowCheckpoints").split(/\n/).map((item) => item.trim()).filter(Boolean),
+          responseMedium: literalChoice(formText(data, "responseMedium", "in-app"), RESPONSE_MEDIA, "Response medium"),
       };
       if (kind === "questions") {
           spec.targetCount = Number(data.get("targetCount"));
-          spec.questionSetRef = String(data.get("questionSetRef") ?? "").trim();
+          spec.questionSetRef = formText(data, "questionSetRef").trim();
       }
       if (kind === "reconstruction")
-          spec.reconstructionShape = String(data.get("reconstructionShape") ?? "outline");
+          spec.reconstructionShape = literalChoice(formText(data, "reconstructionShape", "outline"), RECONSTRUCTION_SHAPES, "Reconstruction shape");
       if (kind === "diagram")
-          spec.diagramSurface = String(data.get("diagramSurface") ?? "canvas");
+          spec.diagramSurface = literalChoice(formText(data, "diagramSurface", "canvas"), DIAGRAM_SURFACES, "Diagram surface");
       if (kind === "answer-writing") {
-          spec.answerMode = String(data.get("answerMode") ?? "full-answer");
+          spec.answerMode = literalChoice(formText(data, "answerMode", "full-answer"), ANSWER_MODES, "Answer mode");
           spec.timeLimitMinutes = Number(data.get("timeLimitMinutes"));
           spec.wordLimit = Number(data.get("wordLimit"));
       }
@@ -6627,7 +6663,7 @@ exports.withFuzzing = withFuzzing;
       updateWorkflowFields(form);
   }
   function updateWorkflowFields(form) {
-      const kind = form.elements.namedItem("workflowKind").value;
+      const kind = literalChoice(form.elements.namedItem("workflowKind").value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
       form.querySelectorAll("[data-workflow-field]").forEach((field) => {
           field.hidden = field.dataset["workflowField"] !== kind;
       });
@@ -9282,10 +9318,12 @@ exports.withFuzzing = withFuzzing;
           if (!raw)
               return undefined;
           try {
-              const value = JSON.parse(raw);
-              if (value.version !== 1 || typeof value.tabId !== "string" || typeof value.claimId !== "string" || !Number.isFinite(value.expiresAt) || typeof value.updatedAt !== "string")
+              const parsed = JSON.parse(raw);
+              if (!isRecord(parsed))
                   return undefined;
-              return { version: 1, tabId: value.tabId, claimId: value.claimId, expiresAt: Number(value.expiresAt), updatedAt: value.updatedAt };
+              if (parsed["version"] !== 1 || typeof parsed["tabId"] !== "string" || typeof parsed["claimId"] !== "string" || !Number.isFinite(parsed["expiresAt"]) || typeof parsed["updatedAt"] !== "string")
+                  return undefined;
+              return { version: 1, tabId: parsed["tabId"], claimId: parsed["claimId"], expiresAt: Number(parsed["expiresAt"]), updatedAt: parsed["updatedAt"] };
           }
           catch {
               return undefined;
@@ -9388,9 +9426,24 @@ exports.withFuzzing = withFuzzing;
           try {
               this.channel = new BroadcastChannel(REVIEW_OWNER_CHANNEL);
               this.channel.onmessage = (event) => {
-                  const message = event.data;
-                  if (!message || message.tabId === this.tabId)
+                  if (!isRecord(event.data))
                       return;
+                  const type = literalChoiceOrUndefined(event.data["type"], ["heartbeat", "release", "takeover-request", "takeover-ready"]);
+                  const tabId = event.data["tabId"];
+                  if (!type || typeof tabId !== "string" || tabId === this.tabId)
+                      return;
+                  const requestId = event.data["requestId"];
+                  const expiresAt = event.data["expiresAt"];
+                  if (requestId !== undefined && typeof requestId !== "string")
+                      return;
+                  if (expiresAt !== undefined && !Number.isFinite(expiresAt))
+                      return;
+                  const message = {
+                      type,
+                      tabId,
+                      ...(requestId !== undefined ? { requestId } : {}),
+                      ...(expiresAt !== undefined ? { expiresAt: Number(expiresAt) } : {}),
+                  };
                   if (message.type === "takeover-request" && message.requestId) {
                       void this.releaseForTakeover(message.requestId);
                       return;
@@ -11397,7 +11450,7 @@ exports.withFuzzing = withFuzzing;
           return Object.freeze({});
       assert(typeof value === "object" && value !== null && !Array.isArray(value), "Plugin capability requirements must be an object.");
       const out = Object.create(null);
-      for (const [rawKey, rawMinimum] of Object.entries(value)) {
+      for (const [rawKey, rawMinimum] of Object.entries(requireRecord(value, "Plugin capability requirements"))) {
           const key = publicPluginText(rawKey, 64);
           assert(/^[a-z][a-zA-Z0-9]*$/.test(key), "Plugin capability names are invalid.");
           const minimum = Number(rawMinimum);
@@ -11471,13 +11524,14 @@ exports.withFuzzing = withFuzzing;
               localFiles: Object.freeze([...this.localFiles.values()].map((entry) => Object.freeze(clone(entry))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))),
           });
       }
-      async register(plugin) {
-          if (!plugin || typeof plugin !== "object" || typeof plugin.setup !== "function")
+      async register(input) {
+          if (!isRecord(input) || typeof input["setup"] !== "function")
               return false;
-          const name = publicPluginText(plugin.name, 80);
+          const setup = input["setup"];
+          const name = publicPluginText(input["name"], 80);
           if (!/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/.test(name))
               return false;
-          const version = publicPluginText(plugin.version, 40);
+          const version = publicPluginText(input["version"], 40);
           const previous = this.registrations.get(name);
           if (previous?.state === "registered")
               return true;
@@ -11489,7 +11543,7 @@ exports.withFuzzing = withFuzzing;
           const nextAttempt = attempts + 1;
           let requirements;
           try {
-              requirements = publicPluginRequirements(plugin.requires);
+              requirements = publicPluginRequirements(input["requires"]);
           }
           catch (error) {
               this.setRegistration({ name, version, state: "failed", attempts: nextAttempt, detail: publicPluginText(error instanceof Error ? error.message : error, 240), updatedAt: nowIso() });
@@ -11510,7 +11564,7 @@ exports.withFuzzing = withFuzzing;
           this.registrationRevision += 1;
           this.setRegistration({ name, version, state: "registering", attempts: nextAttempt, detail: "", updatedAt: nowIso() });
           try {
-              const result = await plugin.setup(this.requirePublicApi());
+              const result = await setup(this.requirePublicApi());
               const active = result !== false;
               this.setRegistration({ name, version, state: active ? "registered" : "inactive", attempts: nextAttempt, detail: active ? "" : "Plugin setup returned inactive.", updatedAt: nowIso() });
               return active;
@@ -11624,57 +11678,87 @@ exports.withFuzzing = withFuzzing;
               status: profile.status,
           })));
       }
-      async importStudyEvent(payload) {
+      async importStudyEvent(input) {
           assert(this.ownership.canMutate(), "Revision Director is read-only in this tab. Take control before importing study data.");
-          assert(typeof payload === "object" && payload !== null, "Study payload is required.");
-          assert(typeof payload.area === "string" && typeof payload.task === "string" && typeof payload.measure === "string", "Study payload requires area, task and measure.");
-          assert(Number.isFinite(payload.durationMinutes), "Study payload requires durationMinutes.");
-          assert(payload.activityMode === undefined || ["learn", "review", "practice", "test"].includes(payload.activityMode), "Study payload activityMode is invalid.");
-          assert(payload.understanding === undefined || [1, 2, 3, 4].includes(payload.understanding), "Study payload understanding is invalid.");
-          const occurredAt = payload.occurredAt ? parseDate(payload.occurredAt).toISOString() : nowIso();
+          const payload = requireRecord(input, "Study payload");
+          const area = payload["area"], task = payload["task"], measure = payload["measure"];
+          assert(typeof area === "string" && typeof task === "string" && typeof measure === "string", "Study payload requires area, task and measure.");
+          const durationMinutes = payload["durationMinutes"];
+          assert(typeof durationMinutes === "number" && Number.isFinite(durationMinutes), "Study payload requires durationMinutes.");
+          const activityMode = payload["activityMode"] === undefined ? "learn" : literalChoice(payload["activityMode"], ACTIVITY_MODES, "Study payload activityMode");
+          const understanding = payload["understanding"] === undefined ? 3 : literalChoice(payload["understanding"], UNDERSTANDING_LEVELS, "Study payload understanding");
+          const occurredAtValue = payload["occurredAt"];
+          assert(occurredAtValue === undefined || typeof occurredAtValue === "string", "Study payload occurredAt is invalid.");
+          const occurredAt = occurredAtValue ? parseDate(occurredAtValue).toISOString() : nowIso();
           const profiles = await this.service.profiles();
-          const profileId = payload.profileId || this.service.getSettings().activeProfileId || profiles[0]?.id;
+          const requestedProfileId = payload["profileId"];
+          assert(requestedProfileId === undefined || typeof requestedProfileId === "string", "Study payload profileId is invalid.");
+          const profileId = requestedProfileId || this.service.getSettings().activeProfileId || profiles[0]?.id;
           assert(profileId, "No exam profile exists.");
+          const optionalText = (key) => {
+              const value = payload[key];
+              assert(value === undefined || typeof value === "string", `Study payload ${key} is invalid.`);
+              return value ?? "";
+          };
           const event = await this.service.logStudyEvent({
               profileId,
               occurredAt,
-              activityMode: payload.activityMode ?? "learn",
-              area: payload.area,
-              task: payload.task,
-              measure: payload.measure,
-              source: payload.source ?? "",
-              durationMinutes: payload.durationMinutes,
-              understanding: payload.understanding ?? 3,
+              activityMode,
+              area,
+              task,
+              measure,
+              source: optionalText("source"),
+              durationMinutes,
+              understanding,
               linkedUnitIds: [],
-              notes: payload.notes ?? "",
+              notes: optionalText("notes"),
               origin: "study-director",
           });
           return Object.freeze({ id: event.id });
       }
-      async createRevisionCandidate(payload) {
+      async createRevisionCandidate(input) {
           assert(this.ownership.canMutate(), "Revision Director is read-only in this tab. Take control before creating revision candidates.");
-          assert(typeof payload === "object" && payload !== null, "Revision candidate is required.");
-          assert([payload.subject, payload.section, payload.topic, payload.title, payload.scope, payload.protocol, payload.successCriteria].every((value) => typeof value === "string" && value.trim()), "Revision candidate is incomplete.");
+          const payload = requireRecord(input, "Revision candidate");
+          const requiredText = (key) => {
+              const value = payload[key];
+              assert(typeof value === "string" && value.trim().length > 0, `Revision candidate ${key} is required.`);
+              return value;
+          };
+          const subject = requiredText("subject");
+          const section = requiredText("section");
+          const topic = requiredText("topic");
+          const title = requiredText("title");
+          const scope = requiredText("scope");
+          const protocol = requiredText("protocol");
+          const successCriteria = requiredText("successCriteria");
+          const requestedProfileId = payload["profileId"];
+          assert(requestedProfileId === undefined || typeof requestedProfileId === "string", "Revision candidate profileId is invalid.");
           const profiles = await this.service.profiles();
-          const profileId = payload.profileId || this.service.getSettings().activeProfileId || profiles[0]?.id;
+          const profileId = requestedProfileId || this.service.getSettings().activeProfileId || profiles[0]?.id;
           assert(profileId, "No exam profile exists.");
-          const obligationType = payload.obligationType ?? "memory-recall";
+          const obligationType = payload["obligationType"] === undefined ? "memory-recall" : literalChoice(payload["obligationType"], OBLIGATION_TYPES, "Revision candidate obligation type");
+          const expectedMinutesValue = payload["expectedMinutes"];
+          assert(expectedMinutesValue === undefined || (typeof expectedMinutesValue === "number" && Number.isFinite(expectedMinutesValue)), "Revision candidate expectedMinutes is invalid.");
+          const sourceValue = payload["source"];
+          assert(sourceValue === undefined || typeof sourceValue === "string", "Revision candidate source is invalid.");
+          const firstDueAtValue = payload["firstDueAt"];
+          assert(firstDueAtValue === undefined || typeof firstDueAtValue === "string", "Revision candidate firstDueAt is invalid.");
           const unit = await this.service.createUnit({
               profileId,
-              subject: payload.subject,
-              section: payload.section,
-              topic: payload.topic,
-              title: payload.title,
-              scope: payload.scope,
-              source: payload.source ?? "",
+              subject,
+              section,
+              topic,
+              title,
+              scope,
+              source: sourceValue ?? "",
               importance: 3,
               obligationType,
-              expectedMinutes: payload.expectedMinutes ?? 15,
-              protocol: payload.protocol,
-              successCriteria: payload.successCriteria,
-              firstDueAt: payload.firstDueAt ? new Date(payload.firstDueAt).toISOString() : addDays(new Date(), 1).toISOString(),
+              expectedMinutes: expectedMinutesValue ?? 15,
+              protocol,
+              successCriteria,
+              firstDueAt: firstDueAtValue ? parseDate(firstDueAtValue).toISOString() : addDays(new Date(), 1).toISOString(),
               freshnessDays: 30,
-              workflow: defaultWorkflowSpec(obligationType, payload.protocol, payload.successCriteria),
+              workflow: defaultWorkflowSpec(obligationType, protocol, successCriteria),
           });
           return Object.freeze({ unitId: unit.id });
       }
@@ -12184,8 +12268,8 @@ exports.withFuzzing = withFuzzing;
           const target = event.target instanceof Element ? event.target.closest("button,[data-action],[data-pane],[data-filter],[data-history-tab],[data-close-dialog],[data-gap-action]") : null;
           if (!target || (target instanceof HTMLButtonElement && target.disabled))
               return;
-          const pane = target.dataset["pane"];
-          if (pane && ["today", "review", "library", "study", "history", "settings"].includes(pane)) {
+          const pane = literalChoiceOrUndefined(target.dataset["pane"], ["today", "review", "library", "study", "history", "settings"]);
+          if (pane) {
               await this.openPane(pane);
               return;
           }
@@ -12294,14 +12378,14 @@ exports.withFuzzing = withFuzzing;
                   const typeName = form.getAttribute("id") === "unit-form" ? "obligationType" : "type";
                   const typeSelect = form.elements.namedItem(typeName);
                   if (target === typeSelect) {
-                      applyDefaultWorkflowToForm(form, typeSelect.value);
+                      applyDefaultWorkflowToForm(form, literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type"));
                       return;
                   }
                   if (target === form.elements.namedItem("workflowKind")) {
-                      const type = typeSelect.value;
+                      const type = literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type");
                       const protocol = form.elements.namedItem("protocol")?.value ?? "";
                       const success = form.elements.namedItem("successCriteria")?.value ?? "";
-                      const selected = target.value;
+                      const selected = literalChoice(target.value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
                       const spec = defaultWorkflowSpec(type, protocol, success);
                       spec.kind = selected;
                       spec.responseMedium = selected === "answer-writing" ? "paper" : "in-app";
@@ -12541,8 +12625,7 @@ exports.withFuzzing = withFuzzing;
               this.gapFocus.focus("#gap-focus-minutes");
               return;
           }
-          const classification = action === "apply-split" ? "split" : action;
-          assert(["focus", "break", "split", "ignore"].includes(classification), "Inactive-gap action is invalid.");
+          const classification = action === "apply-split" ? "split" : literalChoice(action, INACTIVE_GAP_CLASSIFICATIONS, "Inactive-gap action");
           const focusMs = classification === "split" ? Math.max(0, Number(this.gapFocusMinutes.value) || 0) * 60_000 : 0;
           const record = this.phaseTime.resolveGap(classification, focusMs);
           this.hideGapOverlay();
@@ -13164,13 +13247,13 @@ exports.withFuzzing = withFuzzing;
           const checkpoints = [...this.reviewContent.querySelectorAll("[data-checkpoint]")];
           const checkpointTotal = Math.max(1, spec.checkpoints.length);
           const checkpointsMet = checkpoints.filter((input) => input.checked).length;
-          const cueLevel = (this.reviewContent.querySelector("#cue-level")?.value ?? "none");
+          const cueLevel = literalChoice(this.reviewContent.querySelector("#cue-level")?.value ?? "none", CUE_LEVELS, "Cue level");
           let result;
           if (spec.kind === "recall") {
               result = { kind: "recall", responseMedium: spec.responseMedium, attemptText: text("#attempt-text"), checkpointTotal, checkpointsMet, cueLevel };
           }
           else if (spec.kind === "reconstruction") {
-              result = { kind: "reconstruction", responseMedium: spec.responseMedium, attemptText: text("#attempt-text"), shape: spec.reconstructionShape ?? "outline", checkpointTotal, checkpointsMet, structuralAccuracy: number("#structural-accuracy", 2), relationshipAccuracy: number("#relationship-accuracy", 2), cueLevel };
+              result = { kind: "reconstruction", responseMedium: spec.responseMedium, attemptText: text("#attempt-text"), shape: spec.reconstructionShape ?? "outline", checkpointTotal, checkpointsMet, structuralAccuracy: literalChoice(number("#structural-accuracy", 2), RUBRIC_SCORES, "Structural accuracy"), relationshipAccuracy: literalChoice(number("#relationship-accuracy", 2), RUBRIC_SCORES, "Relationship accuracy"), cueLevel };
           }
           else if (spec.kind === "questions") {
               const attempted = number("#questions-attempted", spec.targetCount ?? 1);
@@ -13179,15 +13262,15 @@ exports.withFuzzing = withFuzzing;
               result = { kind: "questions", targetCount: spec.targetCount ?? 1, attempted, correct, partial, incorrect: attempted - correct - partial, novelCount: number("#questions-novel"), cueLevel, questionSetRef: spec.questionSetRef ?? "External question set", attemptNotes: text("#attempt-text"), errorSummary: text("#questions-error-summary") };
           }
           else if (spec.kind === "diagram") {
-              result = { kind: "diagram", surface: spec.diagramSurface ?? "canvas", checkpointTotal, checkpointsMet, labelAccuracy: number("#diagram-labels", 2), spatialAccuracy: number("#diagram-spatial", 2), processAccuracy: number("#diagram-process", 2), cueLevel, attemptCompleted: checked("#diagram-attempt-completed"), notes: text("#diagram-notes") };
+              result = { kind: "diagram", surface: spec.diagramSurface ?? "canvas", checkpointTotal, checkpointsMet, labelAccuracy: literalChoice(number("#diagram-labels", 2), RUBRIC_SCORES, "Diagram label accuracy"), spatialAccuracy: literalChoice(number("#diagram-spatial", 2), RUBRIC_SCORES, "Diagram spatial accuracy"), processAccuracy: literalChoice(number("#diagram-process", 2), RUBRIC_SCORES, "Diagram process accuracy"), cueLevel, attemptCompleted: checked("#diagram-attempt-completed"), notes: text("#diagram-notes") };
           }
           else if (spec.kind === "answer-writing") {
               const timeLimitMinutes = spec.timeLimitMinutes ?? obligation.expectedMinutes;
               const attemptElapsedMs = Math.max(this.attemptElapsedMs, this.closedBookAttemptMs());
-              result = { kind: "answer-writing", mode: spec.answerMode ?? "full-answer", responseMedium: spec.responseMedium, answerText: text("#answer-text"), demandAddressed: number("#answer-demand", 2), structure: number("#answer-structure-score", 2), contentAccuracy: number("#answer-content", 2), examplesEvidence: number("#answer-examples", 2), conclusion: number("#answer-conclusion", 2), completedWithinTime: attemptElapsedMs <= timeLimitMinutes * 60_000, attemptElapsedMs, timeLimitMinutes, wordCount: number("#answer-word-count"), wordLimit: spec.wordLimit ?? 150, cueLevel };
+              result = { kind: "answer-writing", mode: spec.answerMode ?? "full-answer", responseMedium: spec.responseMedium, answerText: text("#answer-text"), demandAddressed: literalChoice(number("#answer-demand", 2), RUBRIC_SCORES, "Answer demand score"), structure: literalChoice(number("#answer-structure-score", 2), RUBRIC_SCORES, "Answer structure score"), contentAccuracy: literalChoice(number("#answer-content", 2), RUBRIC_SCORES, "Answer content score"), examplesEvidence: literalChoice(number("#answer-examples", 2), RUBRIC_SCORES, "Answer examples score"), conclusion: literalChoice(number("#answer-conclusion", 2), RUBRIC_SCORES, "Answer conclusion score"), completedWithinTime: attemptElapsedMs <= timeLimitMinutes * 60_000, attemptElapsedMs, timeLimitMinutes, wordCount: number("#answer-word-count"), wordLimit: spec.wordLimit ?? 150, cueLevel };
           }
           else {
-              result = { kind: "relearning", diagnosis: (this.reviewContent.querySelector("#relearn-diagnosis")?.value ?? "conceptual-misunderstanding"), repairAction: text("#relearn-repair-action"), verificationText: text("#relearn-verification-text"), checkpointTotal, checkpointsMet, sourceClosedForVerification: checked("#relearn-source-closed") && checked("#relearn-assessment-source-closed"), repairCompleted: checked("#relearn-repair-completed") };
+              result = { kind: "relearning", diagnosis: literalChoice(this.reviewContent.querySelector("#relearn-diagnosis")?.value ?? "conceptual-misunderstanding", ERROR_TYPE_VALUES, "Relearning diagnosis"), repairAction: text("#relearn-repair-action"), verificationText: text("#relearn-verification-text"), checkpointTotal, checkpointsMet, sourceClosedForVerification: checked("#relearn-source-closed") && checked("#relearn-assessment-source-closed"), repairCompleted: checked("#relearn-repair-completed") };
           }
           validateWorkflowResult(result, spec.kind);
           return result;
@@ -13195,7 +13278,7 @@ exports.withFuzzing = withFuzzing;
       collectEvidence(rating, obligation) {
           assert(this.reviewPhase === "compare", "Complete the retrieval and comparison before rating.");
           const workflowResult = this.collectWorkflowResult(obligation);
-          const errors = [...this.reviewContent.querySelectorAll("[data-error-type]:checked")].map((input) => input.value);
+          const errors = [...this.reviewContent.querySelectorAll("[data-error-type]:checked")].map((input) => literalChoice(input.value, ERROR_TYPE_VALUES, "Error type"));
           const correctionNote = this.reviewContent.querySelector("#correction-note")?.value.trim() ?? "";
           const normalized = workflowEvidence(workflowResult, errors, correctionNote);
           const timing = this.timingSummary();
@@ -13213,7 +13296,7 @@ exports.withFuzzing = withFuzzing;
               return;
           try {
               const result = this.collectWorkflowResult(obligation);
-              const errors = [...this.reviewContent.querySelectorAll("[data-error-type]:checked")].map((input) => input.value);
+              const errors = [...this.reviewContent.querySelectorAll("[data-error-type]:checked")].map((input) => literalChoice(input.value, ERROR_TYPE_VALUES, "Error type"));
               const evidence = workflowEvidence(result, errors, this.reviewContent.querySelector("#correction-note")?.value ?? "");
               const suggested = suggestRating(obligation.type, evidence);
               target.textContent = `${ratingName(suggested)} · score ${roundTo(objectiveScore(obligation.type, evidence), 1)}/4`;
@@ -13380,7 +13463,7 @@ exports.withFuzzing = withFuzzing;
               else if (action === "add-obligation")
                   await this.openObligationDialog(element.dataset["id"] ?? "");
               else if (action === "toggle-unit") {
-                  await this.service.updateUnitStatus(element.dataset["id"] ?? "", element.dataset["status"]);
+                  await this.service.updateUnitStatus(element.dataset["id"] ?? "", literalChoice(element.dataset["status"], ENTITY_STATUSES, "Unit status"));
                   await this.renderAll();
                   this.toast("Knowledge-unit status updated.");
               }
@@ -13673,22 +13756,22 @@ exports.withFuzzing = withFuzzing;
           event.preventDefault();
           try {
               const data = new FormData(this.unitForm);
-              const obligationType = String(data.get("obligationType"));
+              const obligationType = literalChoice(formText(data, "obligationType"), OBLIGATION_TYPES, "Obligation type");
               const workflow = workflowSpecFromForm(this.unitForm, obligationType);
               await this.service.createUnit({
-                  profileId: String(data.get("profileId") ?? ""),
-                  subject: String(data.get("subject") ?? ""),
-                  section: String(data.get("section") ?? ""),
-                  topic: String(data.get("topic") ?? ""),
-                  title: String(data.get("title") ?? ""),
-                  scope: String(data.get("scope") ?? ""),
-                  source: String(data.get("source") ?? ""),
-                  importance: Number(data.get("importance")),
+                  profileId: formText(data, "profileId"),
+                  subject: formText(data, "subject"),
+                  section: formText(data, "section"),
+                  topic: formText(data, "topic"),
+                  title: formText(data, "title"),
+                  scope: formText(data, "scope"),
+                  source: formText(data, "source"),
+                  importance: literalChoice(Number(data.get("importance")), IMPORTANCE_LEVELS, "Importance"),
                   obligationType,
                   expectedMinutes: Number(data.get("expectedMinutes")),
-                  protocol: String(data.get("protocol") ?? ""),
-                  successCriteria: String(data.get("successCriteria") ?? ""),
-                  firstDueAt: localInputToIso(String(data.get("firstDueAt") ?? "")),
+                  protocol: formText(data, "protocol"),
+                  successCriteria: formText(data, "successCriteria"),
+                  firstDueAt: localInputToIso(formText(data, "firstDueAt")),
                   freshnessDays: Number(data.get("freshnessDays")),
                   workflow,
               });
@@ -13730,17 +13813,17 @@ exports.withFuzzing = withFuzzing;
               const linked = [...this.studyForm.elements.namedItem("linkedUnitIds").selectedOptions].map((option) => option.value);
               await this.service.logStudyEvent({
                   profileId: String(data.get("profileId") ?? ""),
-                  occurredAt: localInputToIso(String(data.get("occurredAt") ?? "")),
-                  activityMode: String(data.get("activityMode")),
-                  area: String(data.get("area") ?? ""),
-                  task: String(data.get("task") ?? ""),
-                  measure: String(data.get("measure") ?? ""),
+                  occurredAt: localInputToIso(formText(data, "occurredAt")),
+                  activityMode: literalChoice(formText(data, "activityMode"), ACTIVITY_MODES, "Study activity mode"),
+                  area: formText(data, "area"),
+                  task: formText(data, "task"),
+                  measure: formText(data, "measure"),
                   source: String(data.get("source") ?? ""),
                   durationMinutes: Number(data.get("durationMinutes")),
-                  understanding: Number(data.get("understanding")),
+                  understanding: literalChoice(Number(data.get("understanding")), UNDERSTANDING_LEVELS, "Understanding"),
                   linkedUnitIds: linked,
-                  notes: String(data.get("notes") ?? ""),
-                  origin: String(data.get("origin")),
+                  notes: formText(data, "notes"),
+                  origin: literalChoice(formText(data, "origin"), STUDY_ORIGINS, "Study origin"),
               });
               this.dialogFocus.close(this.studyDialog);
               await this.renderAll();
@@ -13768,15 +13851,15 @@ exports.withFuzzing = withFuzzing;
           event.preventDefault();
           try {
               const data = new FormData(this.obligationForm);
-              const type = String(data.get("type"));
+              const type = literalChoice(formText(data, "type"), OBLIGATION_TYPES, "Obligation type");
               const workflow = workflowSpecFromForm(this.obligationForm, type);
               await this.service.createObligation({
-                  unitId: String(data.get("unitId") ?? ""),
+                  unitId: formText(data, "unitId"),
                   type,
                   expectedMinutes: Number(data.get("expectedMinutes")),
                   protocol: String(data.get("protocol") ?? ""),
                   successCriteria: String(data.get("successCriteria") ?? ""),
-                  dueAt: localInputToIso(String(data.get("dueAt") ?? "")),
+                  dueAt: localInputToIso(formText(data, "dueAt")),
                   freshnessDays: Number(data.get("freshnessDays")),
                   workflow,
               });
@@ -13972,9 +14055,8 @@ exports.withFuzzing = withFuzzing;
           assert(this.restoreCandidateId && this.restoreSafetyProofId, "Complete the safety-copy step before restoring.");
           const candidate = this.backupController.candidate(this.restoreCandidateId);
           const treatment = candidate.payload.activeRetrieval
-              ? this.restorePreview.querySelector('input[name="restore-active-treatment"]:checked')?.value
+              ? literalChoice(this.restorePreview.querySelector('input[name="restore-active-treatment"]:checked')?.value, BACKUP_ACTIVE_SESSION_TREATMENTS, "Active retrieval restore treatment")
               : "discard";
-          assert(treatment === "restore" || treatment === "discard", "Choose how to treat the unfinished retrieval.");
           const proceed = window.confirm("Final confirmation: replace all current Revision Director records with this verified backup?");
           if (!proceed)
               return;

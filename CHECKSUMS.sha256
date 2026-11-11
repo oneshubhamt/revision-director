@@ -1,12 +1,12 @@
 b98f5dc1088a91df05627f5cf03adcdd7d3402c1858ddc207c95ab06a41fcab9  ./build/build.py
 375b9643de6942c8766a857b373c050b5d2a71b5a02c42ea6a0922389e4ef02d  ./CHANGELOG.md
-db523bd6cae418669b1f11b8bfde5e667c909b0f32897947664840b4a00f7b49  ./dist/app.js
+1ebb35bcf9e8be39583e22a6f8a38f315d38f27d15d330d0336a92b678bb305a  ./dist/app.js
 8e48244a349f5aff4ddff09e51ef18b72e1b229f3e1e8fa3242287ba4de1fd65  ./docs/ARCHITECTURE.md
 0bd37b96cd8ebdab06f3124f204671ddf8f02f200bb1477dd7dde9156bb9683b  ./docs/DATA_AND_STORAGE.md
 1952855e4dd606717ddcda701baee0eaf9b5964c25664b173668f7f13af6ee7a  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ac0aa701620bb5736b7e061ff938ccc12bab2031e9ca781fe23143998bc028c7  ./docs/SCHEDULING_AND_PLANNING.md
-766af05ebd5f3efe46bcd20b79f5ca48f51c04ca38837340135e01c238dd3952  ./index.html
+b7ec5f5b5149588fd1f6825ad1afc71080a3ae68b8c2b57bdc1b528e5f2a52ea  ./index.html
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
 b4fa32dd7eedf436c1d0ee7d326f72b0fe3a2ed380e452d2c4f4ec375400cb1f  ./package-lock.json
@@ -15,7 +15,7 @@ f7a6df11a35c4f99bf7c68b77e5b2b46aa3f37cae931c84f259683ee725daf5c  ./README.md
 efe665c36301a4e01e593d9185d5840de7dd03beb41e54e7ccc747cef864ab2e  ./source/app/00-runtime-boundary.ts
 de8d46d2767a2cb078b3b2aacc097dc86a5e653a01b881fd3dcc43f575842c89  ./source/app/05-presentation-engine.ts
 ca9ab7236c8adf3e3f13a6496907fb9ef882c2daaddca73e8d3fc95ef668129d  ./source/app/10-domain-model.ts
-2e24242aa58c04c13fc12f567163bc1c66c8e6a84538e4063f9e6f7cf16322f3  ./source/app/11-domain-kernel.ts
+0a3baa2b45d89f36f2d69b31ecc0d3468343ca6094d826b2534e7120033d70ef  ./source/app/11-domain-kernel.ts
 5bfba87db6bb5c69cd562caea287cfac50bb7478a95623c2fdf88edb347646a5  ./source/app/12-production-contracts.ts
 776123e8c7f48b7c8c36964cf53ed61304337a18a8c6db129f96161cdb911fb2  ./source/app/20-policy-planning-kernel.ts
 97f6b10247d2589b2af754c0ad1301405777ac4523a4a3ddf6e02787531ed4ae  ./source/app/21-policy-implementations.ts
@@ -23,13 +23,13 @@ ca9ab7236c8adf3e3f13a6496907fb9ef882c2daaddca73e8d3fc95ef668129d  ./source/app/1
 008c5f95c87889eed0649b696db17496d744dbb20494c3b5a809501cf51823f6  ./source/app/31-storage-facade.ts
 9f12c0e0717566e482379c046a4bf18fff618554f21a6c8006fa903aaf0ef0c6  ./source/app/32-active-retrieval-persistence.ts
 ac494ddc8ae368b65427c0257e2fddd371ecd96a9f20466cccc3f412c6ed1f89  ./source/app/33-phase-time-runtime.ts
-c96ed6ce5997921f434f3d07401d431fa5ba482a58f08d3db129d5478210b57a  ./source/app/34-cross-tab-ownership.ts
+35b1a74b9fa68f7e0815356936ef138a3d457301394581b838516181aeca4101  ./source/app/34-cross-tab-ownership.ts
 b34af59751c8d064504e276b2d69ecb05f4ad957ac0c500e50c385d2c9819c14  ./source/app/40-application-services.ts
 6a99d19d21ef9c0d793ba492adff93c9d12f69b1401a8066e53810e1a85f3e29  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 905f9de469cda424e8182e11678e85aba2d536865de15a19956f9879cf585c76  ./source/app/45-ui-runtime.ts
-1de93740fa5df2df7552b4cf3a3a73aa3ad4cd285d969aec3edc88d20fb330a6  ./source/app/50-ui-controller.ts
-f9279e2d6722fe7644668323c0880ec060a7cec133889d30b8fee667635163f9  ./source/app/55-extension-runtime.ts
+c5f188d3b2740fc1e6da20d66abaecf7e9aa24f1a09085289bf2b0241347447d  ./source/app/50-ui-controller.ts
+f9560c8de7e7926321bb71dd697090c98ab34d680b3a4b225d5832f848f51949  ./source/app/55-extension-runtime.ts
 46b0e284c3c75a38743bed525e2b87814cd4294b1b39655577cb3809b516664e  ./source/app/60-public-bridge-bootstrap.ts
 bc35afed0272eab3da0355c34acd356c274e5261a377a0938832fa689040c9db  ./source/app/source-manifest.json
 23dcff5f93497835583522df6857556c8299350450dc2f3acefd569bdc058893  ./source/presentation/prepaint.js
@@ -39,7 +39,7 @@ bc35afed0272eab3da0355c34acd356c274e5261a377a0938832fa689040c9db  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 c2702d0b0548911f0b4be5a294ced0151b9295acf849eebec6b555c19de5d07a  ./tests/backup_fixture_codec.py
 be956fda4232345dce155347da82b2f0560e22ffaff0a91b7e3ba1e1127f981f  ./tests/browser-qa.spec.py
-2a9cc098859d6827da6f527ed180311a3afa37403bfedbea11f6acdf6e8badbb  ./tests/build-integrity.spec.py
+9ea9f7c8964ef6fb31a287b2a7b839970a82b40a0828650c1e6c9b52848a0b51  ./tests/build-integrity.spec.py
 fa4bd4c92b454bdca795924c8f275ab864b0028d9750576f18914a06888f9224  ./tests/fixtures/browser-baseline.json
 8f0b3a476ffb0602cd0b15d9f5925b4794cb82f1f45434387673b472bf6a9ef3  ./tests/fixtures/browser-baseline.rdbackup
 d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-qa-supplement.spec.py
@@ -51,7 +51,7 @@ e00d63f7185532678f16b1046e117284cdc5d75f39f004f510fa20d3f5d942a0  ./tests/pass-a
 7ca06a8f54a49bf9373e17d382c27189eb60c3781d1807cc21301347586ee14c  ./tests/pass-b2-browser.spec.py
 8b148bc0c1dd2d532231985090825f5e7d6142660bfc6a9142f427090074c632  ./tests/pass-b2.spec.js
 8073a927407d8bb8e366ff922dc0a83a52069db492f5d49f41f59261910f1214  ./tests/pass-b3-browser.spec.py
-650ff75a23e6a59102c670431ed826966e2e70bc43865eb8df66bae10a3258c6  ./tests/pass-b3.spec.js
+d18e9322c3d0260ec5999ebfd42c91f632d1d497e1786e7b18481b44ecb271bf  ./tests/pass-b3.spec.js
 998881182ee476429ac588554d22c8937d83b000929dfe8880a4e82d7b381127  ./tests/pass-c1-browser.spec.py
 b94b947e4d9b88a6876e7689a3c241adb2088902cc4bfbc42c71beab592dc19d  ./tests/pass-c1.spec.js
 dc02fca37a1878f665ddf3a74ea25e52888c5a9401264db2c92a86d29ce0f5a9  ./tests/pass-c2-browser.spec.py
@@ -64,7 +64,7 @@ e72a3be99a936adbb9355432d25b6aaf5ce83d05e1c6c594053041ada61901ca  ./tests/pass-d
 cb2771aefa631ee48dbd3e73ed47dfa1837bbdc6b814f6c4798b8c86f28e4f69  ./tests/pass-d2-browser.spec.py
 c31b4b0e3e460b8ef9249d45a461132814ec1036551baa2e2e77341d603e22e2  ./tests/pass-d2-controller.spec.js
 799f8019b23280f3a7e34b782ae85c1a28f1ed9aa048971a61d8c4afa0ecaaa2  ./tests/pass-e1-browser.spec.py
-2004bd385d52370292e0008a065def8041b963bf1aa4b74dd017d58095df0ce1  ./tests/pass-e1.spec.js
+3a2fc67b17ab25264d05f9732ffa736a1a3802b0984268b79c8510e2ed505d6a  ./tests/pass-e1.spec.js
 b26546ef834996b894c69574add9ccc5ca7ceafa25919a17da12d45342c6a15a  ./tests/planning.spec.js
 e36c6a7e9321a92ef914b179e527036d594e680502f75de4dcedd387747715ce  ./tests/source-ownership.spec.py
 e0622ca0dfe7e577e991c5a3a0a12f57bd21140ab2bcf513ebf936da7b6b52a9  ./tests/stage-b-hostile-recovery.spec.py
