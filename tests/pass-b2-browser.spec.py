@@ -26,7 +26,15 @@ CLOCK_SHIM = r"""
 </script>
 """
 BASE_HTML = (ROOT / "index.html").read_text()
-HTML = BASE_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM + CLOCK_SHIM, 1)
+# Pass B2 advances Date.now() by minutes in milliseconds to exercise phase timing.
+# Keep cross-tab ownership out of this synthetic clock domain; Pass B1 separately
+# exercises the production 15-second ownership lease.
+TIMING_TEST_HTML = BASE_HTML.replace(
+    "const REVIEW_OWNER_STALE_MS = 15_000;",
+    "const REVIEW_OWNER_STALE_MS = 315_360_000_000;",
+    1,
+)
+HTML = TIMING_TEST_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM + CLOCK_SHIM, 1)
 checks = 0
 
 
@@ -41,6 +49,19 @@ def wait(frame, ms=1150):
     frame.wait_for_timeout(ms)
 
 
+def wait_until(frame, predicate, timeout=6000):
+    import time
+    deadline = time.monotonic() + timeout / 1000
+    while time.monotonic() < deadline:
+        try:
+            if predicate():
+                return
+        except Exception:
+            pass
+        frame.wait_for_timeout(80)
+    raise AssertionError("Timed out waiting for persisted browser state")
+
+
 def state_get(page, store: str, key: str):
     return page.evaluate("""([store,key]) => {
       const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
@@ -48,6 +69,7 @@ def state_get(page, store: str, key: str):
       const found=records.find(([encoded]) => encoded === JSON.stringify(key));
       return found ? structuredClone(found[1]) : null;
     }""", [store, key])
+
 
 
 def boot_frame(page):
@@ -60,7 +82,11 @@ def boot_frame(page):
     if frame is None:
         raise AssertionError("QA app frame was not created")
     frame.set_content(HTML, wait_until="load")
-    frame.wait_for_timeout(1100)
+    wait_until(
+        frame,
+        lambda: frame.evaluate("typeof RevisionDirector === 'object'") and frame.locator("#import-backup").is_enabled(),
+        timeout=10000,
+    )
     check(not frame.locator("#fatal-error").is_visible(), "Fatal startup error")
     return frame
 
@@ -73,25 +99,74 @@ def active_session(page):
 
 
 
-def restore_fixture_d2(page, frame, fixture) -> None:
-    frame.locator("#import-backup").set_input_files([])
-    frame.locator("#import-backup").set_input_files(str(fixture))
-    frame.wait_for_timeout(900)
-    if not frame.locator("#restore-dialog").is_visible():
-        raise AssertionError("Restore preview did not open")
-    with TemporaryDirectory() as tmpdir:
-        with page.expect_download() as info:
-            frame.locator('[data-action="create-restore-safety"]').click()
-        path=Path(tmpdir)/info.value.suggested_filename
-        info.value.save_as(str(path))
-        if not path.exists() or path.stat().st_size <= 0:
-            raise AssertionError("Safety copy was not downloaded")
-    if frame.locator('input[name="restore-active-treatment"]').count():
-        frame.locator('input[name="restore-active-treatment"][value="discard"]').check()
-    frame.locator("#restore-safety-saved").check()
-    frame.locator("#restore-replace-confirm").check()
-    frame.locator("#restore-final-button").click()
-    frame.wait_for_timeout(1100)
+def seed_baseline_state(page) -> None:
+    payload = decode_file(BASELINE_BACKUP)
+    specs = {
+        "profiles": ("id", {"status": {"keyPath": "status", "unique": False}}),
+        "nodes": ("id", {
+            "profileId": {"keyPath": "profileId", "unique": False},
+            "parentId": {"keyPath": "parentId", "unique": False},
+            "pathLookup": {"keyPath": ["profileId", "parentId", "kind", "normalizedName"], "unique": True},
+        }),
+        "units": ("id", {
+            "profileId": {"keyPath": "profileId", "unique": False},
+            "topicNodeId": {"keyPath": "topicNodeId", "unique": False},
+            "status": {"keyPath": "status", "unique": False},
+        }),
+        "studyEvents": ("id", {
+            "profileId": {"keyPath": "profileId", "unique": False},
+            "occurredAt": {"keyPath": "occurredAt", "unique": False},
+        }),
+        "obligations": ("id", {
+            "unitId": {"keyPath": "unitId", "unique": False},
+            "dueAt": {"keyPath": "dueAt", "unique": False},
+            "status": {"keyPath": "status", "unique": False},
+            "type": {"keyPath": "type", "unique": False},
+        }),
+        "evidenceEvents": ("id", {
+            "profileId": {"keyPath": "profileId", "unique": False},
+            "unitId": {"keyPath": "unitId", "unique": False},
+            "obligationId": {"keyPath": "obligationId", "unique": False},
+            "reviewedAt": {"keyPath": "reviewedAt", "unique": False},
+        }),
+        "chunks": ("id", {
+            "obligationId": {"keyPath": "obligationId", "unique": False},
+            "cycleId": {"keyPath": "cycleId", "unique": False},
+            "status": {"keyPath": "status", "unique": False},
+        }),
+        "dailyPlans": ("id", {
+            "studyDayKey": {"keyPath": "studyDayKey", "unique": True},
+            "updatedAt": {"keyPath": "updatedAt", "unique": False},
+        }),
+        "settings": ("key", {}),
+        "metadata": ("key", {}),
+        "activeRetrieval": ("id", {}),
+    }
+    collections = {
+        "profiles": payload["profiles"],
+        "nodes": payload["nodes"],
+        "units": payload["units"],
+        "studyEvents": payload["studyEvents"],
+        "obligations": payload["obligations"],
+        "evidenceEvents": payload["evidenceEvents"],
+        "chunks": payload["chunks"],
+        "dailyPlans": payload["dailyPlans"],
+        "settings": [payload["settings"]],
+        "metadata": [],
+        "activeRetrieval": [payload["activeRetrieval"]] if payload.get("activeRetrieval") else [],
+    }
+    stores = {}
+    for name, (key_path, indices) in specs.items():
+        records = [
+            [json.dumps(item[key_path], separators=(",", ":")), item]
+            for item in collections[name]
+        ]
+        stores[name] = {"keyPath": key_path, "indices": indices, "records": records}
+    raw_db = {"version": 3, "stores": stores}
+    page.evaluate(
+        "(raw)=>{ window.__RD_B1_QA_STATE__={local:{},databases:{'revision-director':raw}}; }",
+        raw_db,
+    )
 
 def main() -> None:
     global checks
@@ -105,14 +180,11 @@ def main() -> None:
         page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
         page.on("dialog", lambda dialog: dialog.accept())
         page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
+        seed_baseline_state(page)
         frame = boot_frame(page)
 
-        frame.locator('[data-pane="settings"]').click()
-        restore_fixture_d2(page, frame, BASELINE_BACKUP)
-        check("restored" in frame.locator("#toast").inner_text().lower(), "Baseline fixture restore failed")
-
         frame.locator('[data-pane="today"]').click(); wait(frame, 200)
-        frame.locator('[data-action="review-one"]').first.click(); wait(frame, 300)
+        frame.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click(); wait(frame, 300)
         check(frame.locator('[data-action="toggle-pause"]').count() == 1, "Pause control is missing")
         initial = frame.locator("#review-timer").inner_text()
         check(initial in ("0:00", "0:01"), f"Unexpected initial timer: {initial}")
@@ -131,10 +203,11 @@ def main() -> None:
         check(session["timeRuntime"]["pauseHistory"][0]["durationMs"] == 30000, "Persisted pause duration is wrong")
 
         # Backward wall-clock movement is rebased rather than subtracted.
+        # Use the real lifecycle-return path to reconcile and persist the clock event;
+        # pause/resume is a user control, not a persistence flush mechanism.
         before_back = session["elapsedMs"]
-        frame.evaluate("__RD_TEST_CLOCK__.advance(-10000)"); wait(frame)
-        frame.evaluate("__RD_TEST_CLOCK__.advance(20000)"); wait(frame)
-        frame.locator('[data-action="toggle-pause"]').click(); frame.locator('[data-action="toggle-pause"]').click(); wait(frame, 220)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(-10000); window.dispatchEvent(new Event('focus'))"); wait(frame, 220)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(20000); window.dispatchEvent(new Event('focus'))"); wait(frame, 220)
         session = active_session(page)
         check(session["timeRuntime"]["backwardClockCount"] >= 1, "Backward-clock event was not persisted")
         check(session["elapsedMs"] >= before_back, "Backward clock reduced active time")
@@ -143,8 +216,9 @@ def main() -> None:
         timer_before_focus = session["elapsedMs"]
         frame.evaluate("__RD_TEST_CLOCK__.advance(130001)"); frame.evaluate("window.dispatchEvent(new Event('focus'))"); wait(frame)
         check(frame.locator("#gap-overlay").is_visible(), "120-second inactive gap was not detected")
+        wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "gap-pending")
         pending = active_session(page)["timeRuntime"]
-        check(pending["state"] == "gap-pending" and pending["pendingGap"]["gapMs"] > 120000, "Pending gap was not durably saved")
+        check(pending["pendingGap"]["gapMs"] > 120000, "Pending gap was not durably saved")
         frame.locator('[data-gap-action="focus"]').click(); wait(frame, 220)
         session = active_session(page)
         check(session["elapsedMs"] >= timer_before_focus + 130000, "Focus classification did not add active time")

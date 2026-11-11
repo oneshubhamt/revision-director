@@ -54,7 +54,7 @@ check("legacy monolith absent", not (SOURCE / "revision-director.va7.ts").exists
 check("sealed IIFE opening", assembled.lstrip().startswith('(() => {\n  "use strict";'))
 check("sealed IIFE closure", assembled.rstrip().endswith("void boot();\n})();"))
 check("no source modules", all(not re.search(r"^\s*(?:import|export)(?:\s|\{)", text, re.M) for text in texts))
-check("runtime boundary owned", "EXACT ts-fsrs 6.0.0 UMD / FSRS-7 CONTRACT" in texts[0])
+check("runtime boundary owned", "EXACT ts-fsrs 6.0.0 / FSRS-7 CONTRACT" in texts[0])
 check("presentation engine owned", "interface PresentationManifest" in texts[1] and "function installPresentationKernel" in texts[1])
 check("domain model owned", "interface ExamProfile" in texts[2] and "interface BackupPayload" in texts[2])
 check("production contracts owned", "function canonicalDocument" in texts[4] and "function canonicalAppMetadata" in texts[4])
@@ -77,6 +77,6 @@ check("compiled runtime present", (ROOT / "dist/app.js").is_file() and (ROOT / "
 check("deployable HTML present", (ROOT / "index.html").is_file() and (ROOT / "index.html").stat().st_size > 0)
 check("generated composite removed", not (ROOT / "build/generated/revision-director.combined.ts").exists())
 check("strict compile target retained", '"strict": true' in (SOURCE / "tsconfig.json").read_text())
-check("single compiled outFile retained", '"outFile": "../dist/app.js"' in (SOURCE / "tsconfig.json").read_text())
+check("TypeScript 7 single-entry compile retained", all(token in (SOURCE / "tsconfig.json").read_text() for token in ['"module": "preserve"', '"rootDir": "../build/generated"', '"outDir": "../build/generated-js"', '"../build/generated/revision-director.combined.ts"']))
 
 print(f"PASS {len(checks)} source-ownership checks")

@@ -5,7 +5,7 @@ const path = require('path');
 const { webcrypto } = require('crypto');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsSchedulers, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsScheduler, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -40,6 +40,10 @@ const strong = api.buildPlanningCandidate(strongJoined,[evidence('strong','stron
 check(weak.score > strong.score && weak.factors.weakness > strong.factors.weakness, 'Weakness evidence must affect rank');
 const sharedUnit = unit('shared',3,0); sharedUnit.profileId='shared-profile';
 const weakObligation = obligation('shared-recall',0,20,'memory-recall'); weakObligation.unitId='shared'; weakObligation.workflow={kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'};
+weakObligation.policyState = {
+  engine:'ts-fsrs',version:'6.0.0',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0,
+  fsrsCard:{model:'FSRS-7',cardId:'shared-recall',dueAt:weakObligation.dueAt,stability:0,stabilityFast:0,difficulty:0,scheduledDays:0,learningSteps:0,reps:0,lapses:0,state:0,scheduleStatus:'new'}
+};
 const strongObligation = obligation('shared-application',0,20,'application-practice'); strongObligation.unitId='shared'; strongObligation.workflow={kind:'questions',prompt:'attempt',checkpoints:['one'],responseMedium:'in-app',targetCount:10,questionSetRef:'set'};
 const sharedProfile = profile('shared-profile',60);
 const sharedEvidence = [evidence('shared','shared-recall',1,1),evidence('shared','shared-application',4,4)];
@@ -57,8 +61,14 @@ check(api.buildPlanningCandidate(joined('outside',3,10,3,200),[],settings,ref) =
 const brought = api.buildPlanningCandidate(joined('bring',1.5,10,3,10),[],settings,ref);
 check(brought && brought.dueState === 'brought-forward', 'Near-exam lookahead must permit controlled bring-forward');
 
+const synthesisReady = joined('synthesis',3,20,3,200);
+synthesisReady.obligation.chunking = {cycleId:'syn',status:'synthesis-ready',originalMinutes:20,synthesisMinutes:5,capacityMinutes:10,totalChunks:2,completedChunks:2,createdAt:ref.toISOString()};
+const synthesisCandidate = api.buildPlanningCandidate(synthesisReady,[],settings,ref);
+check(synthesisCandidate && synthesisCandidate.executionMinutes === 5, 'Synthesis-ready work must be immediately plannable without rewriting the policy due date');
+check(synthesisReady.obligation.dueAt === new Date(ref.getTime()+3*86400000).toISOString(), 'Planning synthesis readiness must not mutate the policy due date');
+
 async function testFsrsPlanning() {
-  await api.prepareFsrsSchedulers(.9);
+  await api.prepareFsrsScheduler(.9);
   const memoryPolicy = new api.FsrsMemoryPolicy(() => .9);
   const memoryState = memoryPolicy.createInitialState(ref.toISOString(), 'memory');
   const memoryObligation = { ...obligation('memory',0,12,'memory-recall'), type:'memory-recall', workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'}, policyState:memoryState };
@@ -69,6 +79,24 @@ async function testFsrsPlanning() {
   const r = api.fsrsRetrievability(memoryObligation, later, .9);
   check(typeof r === 'number' && r > 0 && r < 1, 'Reviewed memory obligations must use FSRS-7 retrievability');
   check(memoryObligation.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'Planning must consume persisted FSRS-7 dual-trace state');
+
+  const easy = memoryPolicy.complete({...memoryObligation, policyState:memoryState}, api.Rating.Easy, {completeness:4,independence:4,application:4,errorTypes:[],correctionNote:''}, ref);
+  const examBoundObligation = {...memoryObligation, dueAt:easy.dueAt, policyState:easy.policyState};
+  delete examBoundObligation.policyState.fsrsCard.lastReviewAt;
+  examBoundObligation.policyState.fsrsCard.reps = 0;
+  const examBoundJoined = {
+    obligation:examBoundObligation,
+    unit:{...unit('memory-exam'),id:'memory-unit',profileId:'memory-profile'},
+    profile:profile('memory-profile',2),
+    subject:'S',section:'C',topic:'T'
+  };
+  examBoundJoined.obligation.unitId='memory-unit';
+  const examCandidate = api.buildPlanningCandidate(examBoundJoined,[],settings,ref);
+  check(examCandidate && examCandidate.reasons.includes('final memory review before exam'), 'FSRS due dates beyond a known exam must create one final pre-exam memory opportunity');
+  check(examBoundJoined.obligation.dueAt === easy.dueAt, 'Exam-horizon planning must not rewrite the FSRS policy due date');
+  examBoundJoined.obligation.policyState.fsrsCard.lastReviewAt = ref.toISOString();
+  examBoundJoined.obligation.policyState.fsrsCard.reps = 1;
+  check(api.buildPlanningCandidate(examBoundJoined,[],settings,ref) === undefined, 'A memory review already completed inside the final exam window must not be forced again');
 }
 
 const item = (id, score, mins, type='concept-reconstruction', dueState='due') => ({joined:{obligation:{id,type,dueAt:ref.toISOString(),expectedMinutes:mins},unit:{},profile:{}},score,dueState,executionMinutes:mins,factors:{dueRisk:.8,examImportance:1,weakness:.5,reviewDuration:.8,examinationProximity:.7,weeklyBalance:.5}});

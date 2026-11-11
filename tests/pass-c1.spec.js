@@ -28,7 +28,7 @@ const api = context.__RD_C1_TEST__;
 let checks = 0;
 function check(value, message) { checks += 1; if (!value) throw new Error(message); }
 
-check(api.APP_VERSION === 'va7.1-pass-e1', 'Pass C1 identity is wrong');
+check(api.APP_VERSION === 'va7.1-pass-f1', 'Pass C1 identity is wrong');
 const kernel = api.PRESENTATION_KERNEL;
 check(kernel.format === 'revision-director.presentation-kernel' && kernel.version === 1, 'Kernel identity is wrong');
 check(Object.isFrozen(kernel) && Object.isFrozen(kernel.manifest), 'Kernel or manifest is mutable');

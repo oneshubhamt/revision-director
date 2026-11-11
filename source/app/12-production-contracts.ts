@@ -169,6 +169,15 @@
     event.evidence.correctionNote = canonicalText(event.evidence.correctionNote, "Evidence correction note");
     if (event.followUpObligationId !== undefined) event.followUpObligationId = canonicalId(event.followUpObligationId, "Evidence follow-up obligation ID");
     else delete event.followUpObligationId;
+    if (event.returnedMemoryTransition) {
+      const transition = event.returnedMemoryTransition;
+      transition.obligationId = canonicalId(transition.obligationId, "Returned memory obligation ID");
+      transition.beforeDueAt = canonicalIso(transition.beforeDueAt, "Returned memory prior due date");
+      transition.afterDueAt = canonicalIso(transition.afterDueAt, "Returned memory next due date");
+      transition.beforePolicyState = canonicalPolicyState(transition.beforePolicyState);
+      transition.afterPolicyState = canonicalPolicyState(transition.afterPolicyState);
+      transition.policyId = canonicalId(transition.policyId, "Returned memory policy ID");
+    } else delete event.returnedMemoryTransition;
     event.createdAt = canonicalIso(event.createdAt, "Evidence-event creation date");
     return event;
   }

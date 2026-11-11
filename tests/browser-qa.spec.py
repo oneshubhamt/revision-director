@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from datetime import date, timedelta
 from tempfile import TemporaryDirectory
 import os
 import json
@@ -43,7 +44,7 @@ INDEXEDDB_SHIM = r"""
     clear(){return asyncReq(this.tx,()=>{this.data.records.clear();return undefined})}
   }
   class DB { constructor(name,version){this.name=name;this.version=version;this._stores=new Map();this.onversionchange=null} createObjectStore(n,opts){const d=new StoreData(n,opts);this._stores.set(n,d);return new ObjStore(new Tx(this,[n],'versionchange'),d)} transaction(names,mode){return new Tx(this,names,mode)} close(){} }
-  Object.defineProperty(window,'indexedDB',{configurable:true,value:{open(name,version){const r=new Req();setTimeout(()=>{let db=databases.get(name);const fresh=!db;if(!db){db=new DB(name,version||1);databases.set(name,db)}r.result=db;if(fresh&&r.onupgradeneeded)r.onupgradeneeded({target:r});setTimeout(()=>r.onsuccess&&r.onsuccess({target:r}),0)},0);return r}}});
+  Object.defineProperty(window,'indexedDB',{configurable:true,value:{open(name,version){const r=new Req();setTimeout(()=>{let db=databases.get(name);const fresh=!db;if(!db){db=new DB(name,version||1);databases.set(name,db)}r.result=db;if(fresh&&r.onupgradeneeded)r.onupgradeneeded({target:r,oldVersion:0,newVersion:version||1});setTimeout(()=>r.onsuccess&&r.onsuccess({target:r}),0)},0);return r}}});
 })();
 </script>
 """
@@ -111,7 +112,14 @@ def open_page(browser, viewport=None, baseline: bool = False):
     if baseline:
         page.locator('[data-pane="settings"]').click()
         page.wait_for_timeout(120)
-        restore_selected_backup(page, BASELINE_BACKUP)
+        payload = decode_file(BASELINE_BACKUP)
+        test_exam_date = (date.today() + timedelta(days=14)).isoformat()
+        for profile in payload["profiles"]:
+            profile["examDate"] = test_exam_date
+        with TemporaryDirectory() as tmpdir:
+            current_fixture = Path(tmpdir) / "browser-baseline-current.rdbackup"
+            current_fixture.write_bytes(encode_payload(payload))
+            restore_selected_backup(page, current_fixture)
         check("restored" in page.locator("#toast").inner_text().lower(), "Baseline fixture restore failed")
     return page, errors
 
@@ -282,7 +290,10 @@ def scenario_keyboard_accessibility(browser) -> None:
         button = page.locator("button").nth(index)
         name = button.get_attribute("aria-label") or button.inner_text().strip() or button.get_attribute("title")
         check(bool(name), f"Unnamed button: {index}")
-    page.locator('[data-pane="today"]').click(); page.locator('[data-action="review-one"]').first.click(); page.wait_for_timeout(180)
+    page.locator('[data-pane="today"]').click()
+    application_row = page.locator(".planner-row").filter(has_text="Questions / application")
+    check(application_row.count() >= 1, "Application workflow missing from accessibility fixture")
+    application_row.first.locator('[data-action="review-one"]').click(); page.wait_for_timeout(180)
     page.locator("#attempt-text").fill("Reasoned answers."); page.locator("#attempt-completed").check()
     page.locator(".review-card").click(position={"x": 5, "y": 5}); page.keyboard.press("Space"); page.wait_for_timeout(120)
     check(page.locator('[data-review-phase="compare"]').is_visible(), "Keyboard reveal failed")
@@ -295,7 +306,7 @@ def scenario_keyboard_accessibility(browser) -> None:
 
 def scenario_bridge(browser) -> None:
     page, errors = open_page(browser, baseline=True)
-    check(page.evaluate("RevisionDirector.version") == "va7.1-pass-e1", "Public API version mismatch")
+    check(page.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version mismatch")
     invalid = [
         {"area":"A","task":"T","measure":"M","durationMinutes":10,"activityMode":"evil"},
         {"area":"A","task":"T","measure":"M","durationMinutes":10,"understanding":99},

@@ -1,6 +1,6 @@
-  const APP_VERSION = "va7.1-pass-e1";
+  const APP_VERSION = "va7.1-pass-f1";
   const DB_NAME = "revision-director";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const DOCUMENT_SCHEMA_VERSION: DocumentSchemaVersion = 1;
   const BACKUP_FORMAT = "revision-director-backup" as const;
   const BACKUP_SCHEMA_VERSION = 2 as const;
@@ -21,9 +21,12 @@
   const TIME_HISTORY_LIMIT = 200;
   const PLANNER_VERSION = "pass-d-2";
   const FSRS_PACKAGE_VERSION = "6.0.0" as const;
-  const FSRS_PRIMARY_MODEL: FsrsModelVersion = "FSRS-7";
-  const FSRS_LEGACY_MODEL: FsrsModelVersion = "FSRS-6";
+  const FSRS_MODEL: FsrsModelVersion = "FSRS-7";
+  const FSRS_LEARNING_STEPS = ["1d"] as const;
+  const FSRS_RELEARNING_STEPS = ["1d"] as const;
+  const FSRS_GRADUATING_INTERVAL_DAYS = 1 as const;
   const FSRS_MAXIMUM_INTERVAL_DAYS = 36_500;
+  const FINAL_MEMORY_REVIEW_WINDOW_DAYS = 3;
   const DAY_MS = 86_400_000;
 
   function assert(condition: unknown, message: string): asserts condition {
@@ -41,6 +44,12 @@
 
   function clone<T>(value: T): T {
     return structuredClone(value);
+  }
+
+  function ownedArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
   }
 
   function clamp(value: number, min: number, max: number): number {
@@ -482,6 +491,14 @@
   }
 
   function suggestRating(type: ObligationType, evidence: ObjectiveEvidence): Rating {
+    if (type === "memory-recall") {
+      // FSRS ratings describe recall quality, not a generic rubric percentile.
+      // Objective evidence can identify failure, partial/cued recall and solid recall;
+      // "Easy" remains a user judgement for unusually effortless retrieval.
+      if (evidence.completeness <= 1 || evidence.independence <= 1) return Rating.Again;
+      if (evidence.completeness < 4 || evidence.independence < 4 || evidence.errorTypes.length > 0) return Rating.Hard;
+      return Rating.Good;
+    }
     const score = objectiveScore(type, evidence);
     if (score < 1.45) return Rating.Again;
     if (score < 2.45) return Rating.Hard;

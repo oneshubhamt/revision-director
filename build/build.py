@@ -66,7 +66,7 @@ def compile_typescript(source: str) -> None:
     GENERATED_TS.write_text(source)
     try:
         if not TSC.is_file():
-            raise SystemExit("Local TypeScript compiler is missing. Run \`npm ci\` first.")
+            raise SystemExit("Local TypeScript compiler is missing. Run `npm ci` first.")
         version = subprocess.run(
             [str(TSC), "--version"],
             cwd=ROOT,

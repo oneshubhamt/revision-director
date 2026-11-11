@@ -100,7 +100,7 @@ def main():
 
         # A live unfinished retrieval must be included in the current-state safety copy.
         page.locator('[data-pane="today"]').click();wait(page,250)
-        page.locator('[data-action="start-due"]').click();wait(page,650)
+        page.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click();wait(page,650)
         attempt=page.locator('#attempt-text')
         check(attempt.count()==1,'Expected text retrieval did not start')
         attempt.fill('Stage D safety copy live draft')

@@ -7,16 +7,16 @@
    */
 
   /* ==========================================================================
-     EXACT ts-fsrs 6.0.0 UMD / FSRS-7 CONTRACT
+     EXACT ts-fsrs 6.0.0 / FSRS-7 CONTRACT
      ========================================================================== */
 
-  type FsrsModelVersion = "FSRS-6" | "FSRS-7";
+  type FsrsModelVersion = "FSRS-7";
   type FsrsScheduleStatus = "new" | "learning" | "review" | "suspended";
 
   interface FsrsMemoryStateRuntime {
     stability: number;
+    stabilityFast: number;
     difficulty: number;
-    stabilityFast?: number;
   }
 
   interface FsrsCardRuntime extends FsrsMemoryStateRuntime {
@@ -54,10 +54,6 @@
   interface FsrsSchedulerRuntime {
     readonly model: {
       forgettingCurve(state: FsrsMemoryStateRuntime, elapsedDays: number): number;
-      forward(input: {
-        history: readonly { rating: number; deltaT: number }[];
-        initialState?: FsrsMemoryStateRuntime | null;
-      }): readonly FsrsMemoryStateRuntime[];
     };
     newCard(input: { now?: Date; cardId?: string }): FsrsCardRuntime;
     preview(input: { card: FsrsCardRuntime; now: Date }): Iterable<FsrsPreviewRuntime>;
@@ -67,13 +63,14 @@
   interface FsrsDefaultSchedulerOptions {
     version: FsrsModelVersion;
     desiredRetention: number;
-    enableShortTerm: boolean;
+    enableShortTerm: true;
     learningSteps: readonly string[];
     relearningSteps: readonly string[];
-    allowModelOverride: boolean;
-    enableFuzz: boolean;
+    graduatingInterval: number;
+    allowModelOverride: true;
+    enableFuzz: false;
     maximumInterval: number;
-    clearStatsOnForget: boolean;
+    clearStatsOnForget: false;
   }
 
   interface FsrsUmdRuntime {
@@ -83,9 +80,9 @@
   }
 
   const FSRS = (window as Window & { FSRS?: FsrsUmdRuntime }).FSRS;
-  // The vendored UMD bundle necessarily creates a temporary global. Capture its
-  // frozen API reference, then remove the public property so the app retains a
-  // sealed runtime surface apart from the RevisionDirector capability API.
+  // The vendored UMD bundle creates a temporary global. Capture the runtime
+  // reference, then remove that public property so RevisionDirector remains the
+  // only application capability exposed on window.
   try { delete (window as Window & { FSRS?: FsrsUmdRuntime }).FSRS; } catch { /* non-fatal */ }
 
   /* ==========================================================================

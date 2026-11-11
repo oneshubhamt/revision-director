@@ -93,19 +93,18 @@
   }
 
   interface StoredFsrsCard {
-    // model/cardId/scheduleStatus/stabilityFast are absent only on legacy FSRS-6 records.
-    model?: FsrsModelVersion;
-    cardId?: string;
+    model: FsrsModelVersion;
+    cardId: string;
     dueAt: ISODateTime;
     stability: number;
-    stabilityFast?: number;
+    stabilityFast: number;
     difficulty: number;
     scheduledDays: number;
-    learningSteps: number;
+    learningStep: number;
     reps: number;
     lapses: number;
     state: number;
-    scheduleStatus?: FsrsScheduleStatus;
+    scheduleStatus: FsrsScheduleStatus;
     lastReviewAt?: ISODateTime;
   }
 
@@ -263,29 +262,20 @@
     correctionNote: string;
   }
 
-  interface LegacyFsrsConfigSnapshot {
-    requestRetention: number;
-    enableFuzz: false;
-    enableShortTerm: false;
-    learningSteps: number[];
-    relearningSteps: number[];
-  }
-
   interface FsrsConfigSnapshot {
     model: FsrsModelVersion;
     desiredRetention: number;
-    fractionalDays: boolean;
+    fractionalDays: true;
     enableFuzz: false;
-    enableShortTerm: false;
-    learningSteps: string[];
-    relearningSteps: string[];
-    allowModelOverride: boolean;
+    enableShortTerm: true;
+    learningSteps: ["1d"];
+    relearningSteps: ["1d"];
+    graduatingInterval: 1;
+    allowModelOverride: true;
     maximumInterval: number;
     clearStatsOnForget: false;
     weightsSource: "ts-fsrs-package-default";
   }
-
-  type PersistedFsrsConfigSnapshot = FsrsConfigSnapshot | LegacyFsrsConfigSnapshot;
 
   interface DurationObservation {
     plannedMinutes: number;
@@ -297,6 +287,21 @@
     exactSamples: number;
     unitWorkflowSamples: number;
     globalWorkflowSamples: number;
+  }
+
+  interface ReturnedMemoryTransition {
+    obligationId: string;
+    rating: 3;
+    beforeDueAt: ISODateTime;
+    afterDueAt: ISODateTime;
+    beforePolicyState: PolicyState;
+    afterPolicyState: PolicyState;
+    policyId: string;
+    schedulerPackage: "ts-fsrs";
+    schedulerVersion: "6.0.0";
+    schedulerModel: FsrsModelVersion;
+    schedulerConfig: FsrsConfigSnapshot;
+    reviewLog: Record<string, unknown>;
   }
 
   interface EvidenceEvent {
@@ -319,13 +324,14 @@
     afterPolicyState: PolicyState;
     policyId: string;
     schedulerPackage?: "ts-fsrs";
-    schedulerVersion?: string;
+    schedulerVersion?: "6.0.0";
     schedulerModel?: FsrsModelVersion;
-    schedulerConfig?: PersistedFsrsConfigSnapshot;
+    schedulerConfig?: FsrsConfigSnapshot;
     reviewLog?: Record<string, unknown>;
     durationObservation: DurationObservation;
     timing: TimingEvidenceSummary;
     followUpObligationId?: string;
+    returnedMemoryTransition?: ReturnedMemoryTransition;
     createdAt: ISODateTime;
   }
 

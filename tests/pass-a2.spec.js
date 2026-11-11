@@ -24,8 +24,8 @@ let checks = 0;
 function check(value, message) { checks += 1; if (!value) throw new Error(message); }
 function mustFail(fn, message) { checks += 1; try { fn(); } catch { return; } throw new Error(message); }
 
-check(api.APP_VERSION === 'va7.1-pass-e1', 'Pass A2 application version is wrong');
-check(api.DB_NAME === 'revision-director' && api.DB_VERSION === 2, 'Production database identity is wrong');
+check(api.APP_VERSION === 'va7.1-pass-f1', 'Pass A2 application version is wrong');
+check(api.DB_NAME === 'revision-director' && api.DB_VERSION === 3, 'Production database identity is wrong');
 check(api.BACKUP_FORMAT === 'revision-director-backup' && api.BACKUP_SCHEMA_VERSION === 2, 'Production backup identity is wrong');
 check(Object.values(api.Store).includes('metadata'), 'Metadata store is missing');
 const defaults = api.defaultSettings();
@@ -71,13 +71,13 @@ check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound')
 
   const service = new api.RevisionService(data);
   const emptyBackup = {
-    format:'revision-director-backup', schemaVersion:2, exportedAt:'2026-07-25T06:00:00.000Z', appVersion:'va7.1-pass-e1',
+    format:'revision-director-backup', schemaVersion:2, exportedAt:'2026-07-25T06:00:00.000Z', appVersion:'va7.1-pass-f1',
     profiles:[], nodes:[], units:[], studyEvents:[], obligations:[], evidenceEvents:[], chunks:[], dailyPlans:[],
     settings:{schemaVersion:1,key:'app',activeProfileId:'',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4},
     activeRetrieval:null,
   };
   check(service.validateBackup(emptyBackup).profiles.length === 0, 'Clean empty production backup was rejected');
-  mustFail(() => service.validateBackup({...emptyBackup, format:'revision-director-va7-1'}), 'Legacy backup identity was accepted');
+  mustFail(() => service.validateBackup({...emptyBackup, format:'revision-director-va7-1'}), 'Non-current backup identity was accepted');
   mustFail(() => service.validateBackup({...emptyBackup, settings:{...emptyBackup.settings, schemaVersion:2}}), 'Unsupported settings schema was accepted');
   console.log(`PASS ${checks} Pass A2 production-contract and storage-facade checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

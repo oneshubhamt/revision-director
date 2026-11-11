@@ -5,7 +5,7 @@ const { webcrypto } = require('crypto');
 const path = require('path');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsSchedulers, prepareFsrsCard, fsrsModelForCard, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsScheduler, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 
@@ -17,7 +17,6 @@ context.globalThis = context;
 vm.createContext(context);
 vm.runInContext(vendor, context, { filename: 'ts-fsrs-6.0.0.umd.js' });
 if (!context.FSRS || typeof context.FSRS.DefaultScheduler !== 'function') throw new Error('Modern ts-fsrs runtime did not load');
-const fsrsVendor = context.FSRS;
 vm.runInContext(source, context, { filename: 'app.js' });
 
 const api = context.__RD_TEST_API__;
@@ -98,7 +97,9 @@ check(normalized.completeness === 4 && normalized.independence === 4 && normaliz
 mustFail(() => api.validateWorkflowResult({...relearnResult,sourceClosedForVerification:false},'relearning'), 'Relearning verification must remain closed-book');
 
 check(api.suggestRating('memory-recall', evidence(0,0,0)) === 1, 'Failure should suggest Again');
-check(api.suggestRating('memory-recall', evidence(4,4,4)) === 4, 'Strong evidence should suggest Easy');
+check(api.suggestRating('memory-recall', evidence(3,4,2)) === 2, 'Incomplete recall should suggest Hard even when uncued');
+check(api.suggestRating('memory-recall', evidence(4,3,2)) === 2, 'Cued recall should suggest Hard even when complete');
+check(api.suggestRating('memory-recall', evidence(4,4,4)) === 3, 'Complete independent recall should default to Good; Easy remains a user judgement');
 check(api.suggestRating('application-practice', evidence(3,3,3,85)) >= 3, 'Good application evidence should pass');
 check(api.suggestRating('application-practice', evidence(3,3,3,85,['application-failure','conceptual-misunderstanding'])) <= 3, 'Errors should reduce suggestion');
 
@@ -116,70 +117,50 @@ for (const Policy of [api.MasteryPolicy, api.ApplicationPolicy, api.PerformanceP
   check(new Date(completed.dueAt) > new Date(due), `${policy.id} must schedule forward`);
 }
 async function testFsrs7Integration() {
-  await api.prepareFsrsSchedulers(.9);
+  await api.prepareFsrsScheduler(.9);
   const memory = new api.FsrsMemoryPolicy(() => .9);
   const memoryObligation = obligation('memory-recall', memory, 'recall');
   check(memoryObligation.policyState.fsrsCard.model === 'FSRS-7', 'New memory obligations must use FSRS-7');
   check(Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'FSRS-7 must persist the fast-memory trace');
   check(memoryObligation.policyState.fsrsCard.cardId === 'o', 'FSRS cards must retain stable obligation identity');
 
-  const memoryPreviews = memory.preview(memoryObligation, new Date(due));
-  check(memoryPreviews.length === 4 && memoryPreviews.map(item => item.rating).join(',') === '1,2,3,4', 'FSRS-7 must preview all four ratings');
-  check(memoryPreviews[0].intervalDays === 1 && memoryPreviews[0].label === 'relearn · 1d', 'Again must preview Revision Director next-day relearning, not a flashcard-scale interval');
-  check(memoryPreviews.slice(1).every(item => item.intervalDays > 0), 'Hard, Good and Easy must use valid forward FSRS-7 intervals');
+  const previews = memory.preview(memoryObligation, new Date(due));
+  check(previews.length === 4 && previews.map(item => item.rating).join(',') === '1,2,3,4', 'FSRS-7 must preview all four ratings');
+  check(Math.abs(previews[0].intervalDays - 1) < .001, 'Again must use the one-day corrective learning step');
+  check(previews[1].intervalDays > 1 && previews[1].intervalDays < 2, 'Hard must use the FSRS-7/model-override learning interval');
+  check(previews[2].intervalDays > previews[1].intervalDays && previews[3].intervalDays > previews[2].intervalDays, 'Good and Easy must preserve monotonic FSRS-7 model intervals');
 
-  const againComplete = memory.complete(memoryObligation, 1, evidence(4,4,4), new Date(due));
-  check(againComplete.followUpType === 'relearn', 'Again must always route through corrective relearning');
-  const memoryComplete = memory.complete(memoryObligation, 3, evidence(3,3,1), new Date(due));
-  check(memoryComplete.policyId === 'memory/ts-fsrs@6.0.0/fsrs-7', 'FSRS-7 policy provenance must be explicit');
-  check(memoryComplete.policyState.fsrsCard.reps === 1 && memoryComplete.policyState.fsrsCard.model === 'FSRS-7', 'FSRS-7 card state must persist');
-  check(Number.isFinite(memoryComplete.policyState.fsrsCard.stabilityFast), 'Reviewed FSRS-7 state must preserve fast stability');
-  check(memoryComplete.schedulerConfig.model === 'FSRS-7' && memoryComplete.schedulerConfig.desiredRetention === .9 && memoryComplete.schedulerConfig.fractionalDays === true, 'FSRS-7 configuration provenance must be complete');
-  check(memoryComplete.schedulerConfig.enableShortTerm === false && memoryComplete.schedulerConfig.learningSteps.length === 0 && memoryComplete.schedulerConfig.relearningSteps.length === 0, 'Revision Director must use model-driven FSRS-7 intervals rather than flashcard steps');
-  check(memoryComplete.schedulerConfig.allowModelOverride === true && memoryComplete.schedulerConfig.clearStatsOnForget === false, 'FSRS-7 scheduler policy flags must be explicit');
-  const halfDay = api.fsrsRetrievability({...memoryObligation, policyState:memoryComplete.policyState}, new Date(new Date(due).getTime()+12*60*60*1000), .9);
-  const fullDay = api.fsrsRetrievability({...memoryObligation, policyState:memoryComplete.policyState}, new Date(new Date(due).getTime()+24*60*60*1000), .9);
+  const again = memory.complete(memoryObligation, api.Rating.Again, evidence(4,4,4), new Date(due));
+  check(again.followUpType === 'relearn', 'Again must route through corrective relearning');
+  check(Math.abs((new Date(again.dueAt) - new Date(due)) / 86400000 - 1) < .001, 'Again must persist the one-day scheduler due date');
+  check(again.schedulerConfig.enableShortTerm === true && again.schedulerConfig.learningSteps.join(',') === '1d' && again.schedulerConfig.relearningSteps.join(',') === '1d', 'Revision Director must use one-day FSRS learning/relearning middleware');
+  check(again.schedulerConfig.graduatingInterval === 1 && again.schedulerConfig.allowModelOverride === true, 'FSRS-7 graduation and model override must be explicit');
+
+  const failedObligation = {...memoryObligation, dueAt:again.dueAt, policyState:again.policyState};
+  const nextDay = new Date(new Date(due).getTime() + 86400000);
+  const repaired = memory.complete(failedObligation, api.Rating.Good, evidence(4,4,3), nextDay);
+  const repairedDays = (new Date(repaired.dueAt) - nextDay) / 86400000;
+  check(repairedDays >= 2.9 && repairedDays <= 3.1, 'Successful next-day repair must return to FSRS-7 at about a three-day interval');
+
+  const good = memory.complete(memoryObligation, api.Rating.Good, evidence(3,3,1), new Date(due));
+  check(good.policyId === 'memory/ts-fsrs@6.0.0/fsrs-7', 'FSRS-7 policy provenance must be explicit');
+  check(good.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(good.policyState.fsrsCard.stabilityFast), 'Reviewed FSRS-7 state must preserve both traces');
+  check(good.schedulerConfig.model === 'FSRS-7' && good.schedulerConfig.desiredRetention === .9 && good.schedulerConfig.fractionalDays === true, 'FSRS-7 configuration provenance must be complete');
+  const halfDay = api.fsrsRetrievability({...memoryObligation, policyState:good.policyState}, new Date(new Date(due).getTime()+12*60*60*1000), .9);
+  const fullDay = api.fsrsRetrievability({...memoryObligation, policyState:good.policyState}, new Date(new Date(due).getTime()+24*60*60*1000), .9);
   check(halfDay > fullDay && halfDay < 1, 'FSRS-7 retrievability must preserve fractional elapsed time within a day');
   check(context.FSRS === undefined, 'Temporary FSRS global must be removed after private capture');
 
-  await Promise.all([api.prepareFsrsSchedulers(.85), api.prepareFsrsSchedulers(.95)]);
+  await Promise.all([api.prepareFsrsScheduler(.85), api.prepareFsrsScheduler(.95)]);
   const lowerRetention = new api.FsrsMemoryPolicy(() => .85);
   const higherRetention = new api.FsrsMemoryPolicy(() => .95);
   check(lowerRetention.preview(obligation('memory-recall', lowerRetention), new Date(due))[3].intervalDays > higherRetention.preview(obligation('memory-recall', higherRetention), new Date(due))[3].intervalDays, 'Higher desired retention must shorten the Easy interval');
 
-  const legacyScheduler = await fsrsVendor.DefaultScheduler({
-    version:'FSRS-6', desiredRetention:.9, enableShortTerm:false, learningSteps:[], relearningSteps:[],
-    allowModelOverride:false, enableFuzz:false, maximumInterval:36500, clearStatsOnForget:false,
-  });
-  const initial = legacyScheduler.newCard({ now:new Date(due), cardId:'legacy' });
-  const reviewed = legacyScheduler.review({ card:initial, now:new Date(due), grade:fsrsVendor.Rating.Good });
-  const storedLegacy = (card) => ({
-    dueAt:card.dueAt.toISOString(), stability:card.stability, difficulty:card.difficulty,
-    scheduledDays:card.scheduledDays, learningSteps:card.learningStep, reps:card.reps,
-    lapses:card.lapses, state:card.state, ...(card.lastReviewAt ? {lastReviewAt:card.lastReviewAt.toISOString()} : {}),
-  });
-  const beforeLegacy = storedLegacy(initial);
-  const afterLegacy = storedLegacy(reviewed.card);
-  const policyShell = (card) => ({engine:'ts-fsrs',version:'5.4.1',stage:card.state,successStreak:0,failureCount:0,lastIntervalDays:card.scheduledDays,fsrsCard:card});
-  const legacyObligation = {
-    ...memoryObligation, id:'legacy', dueAt:afterLegacy.dueAt,
-    policyState:policyShell(afterLegacy),
-  };
-  const legacyHistory = [{
-    id:'legacy-e1', obligationId:'legacy', obligationType:'memory-recall',
-    reviewedAt:due, createdAt:due, confirmedRating:api.Rating.Good,
-    beforePolicyState:policyShell(beforeLegacy), afterPolicyState:policyShell(afterLegacy),
-  }];
-  const migrated = api.prepareFsrsCard(legacyObligation, legacyHistory, .9);
-  check(migrated.model === 'FSRS-7' && Number.isFinite(migrated.stabilityFast), 'Complete legacy history must rebuild true FSRS-7 dual-trace memory');
-  check(migrated.dueAt === afterLegacy.dueAt && migrated.reps === afterLegacy.reps && migrated.lapses === afterLegacy.lapses, 'FSRS-7 migration must not reschedule or alter counters');
-  const fallback = api.prepareFsrsCard(legacyObligation, [], .9);
-  check(api.fsrsModelForCard(fallback) === 'FSRS-6' && fallback.stabilityFast === undefined, 'Incomplete legacy history must stay on FSRS-6 instead of fabricating FSRS-7 state');
-  const tamperedHistory = structuredClone(legacyHistory);
-  tamperedHistory[0].beforePolicyState.fsrsCard.difficulty += 0.5;
-  const tamperedFallback = api.prepareFsrsCard(legacyObligation, tamperedHistory, .9);
-  check(api.fsrsModelForCard(tamperedFallback) === 'FSRS-6', 'A broken legacy snapshot chain must fail closed even when row count and final timestamp match');
+  const invalid = structuredClone(memoryObligation);
+  delete invalid.policyState.fsrsCard.stabilityFast;
+  mustFail(() => memory.preview(invalid, new Date(due)), 'Non-current FSRS card shapes must be rejected rather than transformed');
 }
+
 // Pass C planning factors and capacity selection.
 check(api.examinationProximityScore(10) > api.examinationProximityScore(100), 'Closer examinations must raise planning priority');
 check(api.planningLookaheadDays(10) === 3 && api.planningLookaheadDays(200) === .5, 'Planning horizon must contract for distant exams');
@@ -209,9 +190,17 @@ for (const type of ['memory-recall','concept-reconstruction','application-practi
 // Workflow UI surfaces are distinct rather than one generic rubric.
 const ui = Object.create(api.UIController.prototype);
 ui.reviewPreviews = [{rating:1,label:'1d'},{rating:2,label:'2d'},{rating:3,label:'3d'},{rating:4,label:'8d'}];
+const uiMemoryPolicy = {
+  createInitialState(firstDueAt, cardId) {
+    return {
+      engine:'ts-fsrs',version:'6.0.0',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0,
+      fsrsCard:{model:'FSRS-7',cardId,dueAt:firstDueAt,stability:0,stabilityFast:0,difficulty:0,scheduledDays:0,learningSteps:0,reps:0,lapses:0,state:0,scheduleStatus:'new'}
+    };
+  }
+};
 const uiObligation = (kind) => {
   const type = kind === 'recall' ? 'memory-recall' : kind === 'reconstruction' ? 'concept-reconstruction' : kind === 'questions' ? 'application-practice' : kind === 'relearning' ? 'relearn' : 'performance-practice';
-  const policy = kind === 'recall' ? memory : kind === 'reconstruction' ? new api.MasteryPolicy() : kind === 'questions' ? new api.ApplicationPolicy() : kind === 'relearning' ? new api.RelearnPolicy() : new api.PerformancePolicy();
+  const policy = kind === 'recall' ? uiMemoryPolicy : kind === 'reconstruction' ? new api.MasteryPolicy() : kind === 'questions' ? new api.ApplicationPolicy() : kind === 'relearning' ? new api.RelearnPolicy() : new api.PerformancePolicy();
   return {...obligation(type, policy, kind), workflow:workflow(kind)};
 };
 check(ui.workflowAttemptPanel(uiObligation('recall')).includes('attempt-text'), 'Recall must provide a closed-book workspace');
@@ -232,7 +221,7 @@ check(ui.relearningTriggerPanel(failedEventForPanel).includes('WHY THIS RELEARNI
 
 const dummyRepo = {};
 const service = new api.RevisionService(dummyRepo);
-const validBackup = {format:'revision-director-backup',schemaVersion:2,exportedAt:due,appVersion:'x',profiles:[{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}],nodes:[{schemaVersion:1,id:'s',profileId:'p',parentId:null,kind:'subject',name:'S',normalizedName:'s',createdAt:due,updatedAt:due},{schemaVersion:1,id:'c',profileId:'p',parentId:'s',kind:'section',name:'C',normalizedName:'c',createdAt:due,updatedAt:due},{schemaVersion:1,id:'t',profileId:'p',parentId:'c',kind:'topic',name:'T',normalizedName:'t',createdAt:due,updatedAt:due}],units:[{schemaVersion:1,id:'u',profileId:'p',topicNodeId:'t',title:'U',scope:'scope',source:'',importance:3,status:'active',createdAt:due,updatedAt:due,evidenceCount:0,lapseCount:0}],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'p',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4},activeRetrieval:null};
+const validBackup = {format:'revision-director-backup',schemaVersion:2,exportedAt:due,appVersion:'va7.1-pass-f1',profiles:[{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}],nodes:[{schemaVersion:1,id:'s',profileId:'p',parentId:null,kind:'subject',name:'S',normalizedName:'s',createdAt:due,updatedAt:due},{schemaVersion:1,id:'c',profileId:'p',parentId:'s',kind:'section',name:'C',normalizedName:'c',createdAt:due,updatedAt:due},{schemaVersion:1,id:'t',profileId:'p',parentId:'c',kind:'topic',name:'T',normalizedName:'t',createdAt:due,updatedAt:due}],units:[{schemaVersion:1,id:'u',profileId:'p',topicNodeId:'t',title:'U',scope:'scope',source:'',importance:3,status:'active',createdAt:due,updatedAt:due,evidenceCount:0,lapseCount:0}],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'p',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4},activeRetrieval:null};
 check(service.validateBackup(validBackup).format === 'revision-director-backup', 'Valid backup should pass');
 const conceptPolicy = new api.MasteryPolicy();
 const conceptObligation = { schemaVersion:1, ...obligation('concept-reconstruction', conceptPolicy, 'reconstruction'), id:'o' };
@@ -276,8 +265,11 @@ async function testTriggerEvidenceLookup() {
 }
 
 async function testRelearningLifecycle() {
+  await api.prepareFsrsScheduler(.9);
+  const memory = new api.FsrsMemoryPolicy(() => .9);
   const unit = { id:'u', profileId:'p', topicNodeId:'t', title:'U', scope:'scope', source:'', importance:3, status:'active', createdAt:due, updatedAt:due, evidenceCount:0, lapseCount:0 };
   const original = { ...obligation('memory-recall', memory, 'recall'), id:'original', unitId:'u', priority:1 };
+  original.policyState.fsrsCard.cardId = 'original';
   const calls = [];
   const repo = { get: async (_store, key) => key === 'original' ? original : undefined, dailyPlanByStudyDay: async()=>undefined, recordReview: async (...args) => { calls.push(args); } };
   const lifecycle = new api.RevisionService(repo);
@@ -292,17 +284,30 @@ async function testRelearningLifecycle() {
   check(calls[0][1].status === 'suspended' && calls[0][1].suspensionReason === 'relearning', 'Failed original must be paused for relearning');
   check(calls[0][3]?.type === 'relearn' && calls[0][3]?.workflow.kind === 'relearning', 'Failed review must create a proper relearning workflow');
   check(calls[0][3]?.returnObligationId === 'original', 'Relearning must return to its exact original');
+  check(Math.abs((new Date(calls[0][1].dueAt) - new Date(due)) / 86400000 - 1) < .001, 'Failed FSRS memory must retain the one-day scheduler due date while suspended');
 
+  const failedState = structuredClone(calls[0][1].policyState);
+  original.policyState = failedState;
+  original.dueAt = calls[0][1].dueAt;
   const relearnPolicy = new api.RelearnPolicy();
-  const relearn = { ...obligation('relearn', relearnPolicy, 'relearning'), id:'relearn', unitId:'u', returnObligationId:'original', policyState:{ ...relearnPolicy.createInitialState(due), successStreak:1 } };
+  const nextDay = new Date(new Date(due).getTime() + 86400000);
+  const relearn = { ...obligation('relearn', relearnPolicy, 'relearning'), id:'relearn', unitId:'u', returnObligationId:'original', policyState:{ ...relearnPolicy.createInitialState(nextDay.toISOString()), successStreak:1 } };
   original.status = 'suspended'; original.suspensionReason='relearning';
   calls.length = 0;
   lifecycle.obligation = async () => relearn;
   lifecycle.obligationsForUnit = async () => [relearn];
-  await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, confirmedRating:3 }, new Date(due));
+  await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, confirmedRating:3 }, nextDay);
   check(calls[0][1].status === 'completed', 'Relearning must complete after two successful cycles');
-  check(calls[0][4]?.status === 'active', 'Original obligation must reactivate atomically');
-  check(calls[0][4]?.policyState.fsrsCard.dueAt === calls[0][4]?.dueAt, 'Reactivated FSRS due state must stay synchronized');
+  const returnedTransition = calls[0][2].returnedMemoryTransition;
+  check(returnedTransition?.obligationId === 'original' && returnedTransition?.rating === api.Rating.Good, 'Successful relearning must record the returned-memory FSRS transition');
+  check(returnedTransition?.schedulerModel === 'FSRS-7' && returnedTransition?.schedulerVersion === '6.0.0', 'Returned-memory transition must preserve exact FSRS-7 provenance');
+  const resumed = calls[0][4];
+  check(resumed?.status === 'active', 'Original obligation must reactivate atomically');
+  check(resumed?.policyState.fsrsCard.dueAt === resumed?.dueAt, 'Reactivated FSRS due state must stay synchronized');
+  check(returnedTransition?.afterDueAt === resumed?.dueAt && returnedTransition?.afterPolicyState.fsrsCard.dueAt === resumed?.dueAt, 'Returned-memory transition must exactly describe the reactivated FSRS state');
+  check(resumed?.policyState.fsrsCard.model === 'FSRS-7', 'Reactivated memory must remain FSRS-7');
+  const resumedDays = (new Date(resumed.dueAt) - nextDay) / 86400000;
+  check(resumedDays >= 2.9 && resumedDays <= 3.1, 'Successful relearning must advance the original through FSRS-7 rather than a fixed app interval');
 }
 
 

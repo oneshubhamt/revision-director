@@ -12,7 +12,7 @@ const api=context.__RD_D2_TEST__;let checks=0;
 function check(v,m){checks++;if(!v)throw new Error(m)}
 async function mustFail(fn,text){checks++;try{await fn()}catch(e){if(text&&!String(e.message).toLowerCase().includes(text.toLowerCase()))throw e;return}throw new Error('Expected failure: '+text)}
 const settings={schemaVersion:1,key:'app',activeProfileId:'',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4};
-const empty=()=>({format:'revision-director-backup',schemaVersion:2,exportedAt:new Date().toISOString(),appVersion:'va7.1-pass-e1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:structuredClone(settings),activeRetrieval:null});
+const empty=()=>({format:'revision-director-backup',schemaVersion:2,exportedAt:new Date().toISOString(),appVersion:'va7.1-pass-f1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:structuredClone(settings),activeRetrieval:null});
 const validator=new api.RevisionService({});
 class FakeService{
  constructor(){this.payload=empty();this.raw={profiles:[]};this.restores=0;this.failCreate=false;this.diags=[]}
@@ -26,7 +26,7 @@ class FakeService{
  diagnostics(){return structuredClone(this.diags)}
 }
 (async()=>{
- check(api.APP_VERSION==='va7.1-pass-e1','D2 app version wrong');
+ check(api.APP_VERSION==='va7.1-pass-f1','D2 app version wrong');
  check(api.BACKUP_ARCHIVE_VERSION===2&&api.BACKUP_SCHEMA_VERSION===2,'D2 backup version wrong');
  const service=new FakeService();const controller=new api.BackupController(service);
  const created=await controller.createVerified(false);

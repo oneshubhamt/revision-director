@@ -251,7 +251,6 @@
       };
       const payload = validate(candidate);
       const warnings: string[] = [];
-      if (manifest.appVersion !== APP_VERSION) warnings.push(`Created by ${manifest.appVersion}; current version is ${APP_VERSION}.`);
       if (manifest.hashAlgorithm === "fnv1a64") warnings.push("Integrity uses the local-runtime fallback hash because Web Crypto was unavailable when the backup was created.");
       const stateChecksum = await this.stateFingerprint(payload, manifest.hashAlgorithm);
       assert(stateChecksum === manifest.stateChecksum, "Backup state checksum failed verification.");
@@ -303,6 +302,7 @@
       assert(typeof input === "object" && input !== null, "Backup manifest is missing.");
       const value = input as Partial<BackupArchiveManifest>;
       assert(value.kind === "manifest" && value.format === BACKUP_ARCHIVE_FORMAT && value.version === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
+      assert(value.appVersion === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
       assert(value.payloadFormat === BACKUP_FORMAT && value.payloadSchemaVersion === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
       assert(value.compression === "none" || value.compression === "gzip", "Backup compression metadata is invalid.");
       assert(value.hashAlgorithm === "sha256" || value.hashAlgorithm === "fnv1a64", "Backup hash algorithm is unsupported.");
@@ -396,7 +396,7 @@
     private static async hashBytes(bytes: Uint8Array, algorithm: BackupArchiveHashAlgorithm): Promise<string> {
       if (algorithm === "sha256") {
         if (globalThis.crypto?.subtle) {
-          const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+          const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
           return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
         }
         return this.sha256Fallback(bytes);
@@ -455,13 +455,13 @@
     }
 
     private static async compress(bytes: Uint8Array): Promise<Uint8Array> {
-      const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
+      const stream = new Blob([ownedArrayBuffer(bytes)]).stream().pipeThrough(new CompressionStream("gzip"));
       return this.readStreamBounded(stream, BACKUP_ARCHIVE_MAX_FILE_BYTES, "Backup exceeds the file-size limit.");
     }
 
     private static async decompressBounded(bytes: Uint8Array): Promise<Uint8Array> {
       assert(typeof DecompressionStream !== "undefined", "This browser cannot decompress gzip backups.");
-      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+      const stream = new Blob([ownedArrayBuffer(bytes)]).stream().pipeThrough(new DecompressionStream("gzip"));
       return this.readStreamBounded(stream, BACKUP_ARCHIVE_MAX_EXPANDED_BYTES, "Backup exceeds the expanded-size limit.");
     }
 
