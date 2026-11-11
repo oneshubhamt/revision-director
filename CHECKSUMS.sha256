@@ -1,12 +1,12 @@
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 7e8b12c91e47ad0fd14536a30bbeec9c298c81f2ea2cf4d0c4114578f9ebacec  ./CHANGELOG.md
-908d8688dde350eb9a33fc2a6d56f78c90041c306b38fe8b9329d782f2c00fa3  ./dist/app.js
+691931f242f45ac1360352d4e3768a83b1ff2801e19390aedc132a0d7c23c4fe  ./dist/app.js
 2d0a82a531c43fbd748402efbcf28be37ae7be742b0d2ee9544ad994e55087eb  ./docs/ARCHITECTURE.md
 d5cd5c330a4c36d3241f7a835a26d4da4d6ac8926645ee6cb282ed106a3891bb  ./docs/DATA_AND_STORAGE.md
 c4e83c9c1a76884904e15ebdf5965a84ef8b23037f6d87efdf647ff928353522  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ac0aa701620bb5736b7e061ff938ccc12bab2031e9ca781fe23143998bc028c7  ./docs/SCHEDULING_AND_PLANNING.md
-ae46eee40b274c9f7c845dcb0bf6f4db7fee08a49e5e098b3af27e2c226340ab  ./index.html
+f633db77bd83f6fb7b83537201d02748e286c909794c32596edf690160573571  ./index.html
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
 b4fa32dd7eedf436c1d0ee7d326f72b0fe3a2ed380e452d2c4f4ec375400cb1f  ./package-lock.json
@@ -24,7 +24,7 @@ f051ba915324e4034aeaf753363ecc060615a2480301c7e6106b59d6e08363d4  ./source/app/3
 c835f78e652f1a6b67657e474f4b179fbb568dcc05e807977d516d674819e482  ./source/app/32-active-retrieval-persistence.ts
 ac494ddc8ae368b65427c0257e2fddd371ecd96a9f20466cccc3f412c6ed1f89  ./source/app/33-phase-time-runtime.ts
 35b1a74b9fa68f7e0815356936ef138a3d457301394581b838516181aeca4101  ./source/app/34-cross-tab-ownership.ts
-b6bbb3e31ad3a5090722a4cbfd5566eec379e6f569cb15f0e5b651b550920d73  ./source/app/40-application-services.ts
+69c27cff81794d1694c2f80540bf87d5755e1678222803ba73b99d5806243324  ./source/app/40-application-services.ts
 58747321383d719fe15cdce82b8506cda5140ebe0b00d518bc18226da4abb741  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 4e71aa41aaeeccad4345344f3cd1f66661ba1148267d91e55a52a6b44a7a4ca1  ./source/app/45-ui-runtime.ts

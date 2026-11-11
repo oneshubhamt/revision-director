@@ -1848,12 +1848,6 @@
           && left.state === right.state
           && left.scheduleStatus === right.scheduleStatus;
   }
-  function memoryStateMatches(card, state) {
-      const close = (left, right) => Math.abs(left - right) <= 1e-10 * Math.max(1, Math.abs(left), Math.abs(right));
-      return close(card.stability, state.stability)
-          && close(card.stabilityFast, requiredFsrs7StabilityFast(state.stabilityFast))
-          && close(card.difficulty, state.difficulty);
-  }
   function validateMemoryObservationChain(cardId, reviews, currentProjection) {
       let previous;
       for (let index = 0; index < reviews.length; index += 1) {
@@ -2019,6 +2013,10 @@
           for (let index = 0; index < reviews.length; index += 1) {
               const review = reviews[index];
               if (review.configFingerprint === this.configuration.fingerprint) {
+                  const expectedBefore = index === 0
+                      ? reviews[0].beforeCard
+                      : serializeFsrsCard(result.results[index - 1].card);
+                  assert(storedFsrsCardsEqual(review.beforeCard, expectedBefore), "FSRS replayed before-state diverges from immutable evidence recorded under the active scheduler configuration.");
                   assert(storedFsrsCardsEqual(review.afterCard, serializeFsrsCard(result.results[index].card)), "FSRS replay diverges from immutable evidence recorded under the active scheduler configuration.");
               }
           }
@@ -4196,6 +4194,7 @@
           const settings = canonicalAppSettings(requestedSettings);
           await prepareFsrsScheduler(settings.desiredRetention, profile);
           const [obligations, evidenceEvents] = await Promise.all([this.obligations(), this.evidenceEvents()]);
+          verifyMemoryDatasetIntegrity(obligations, evidenceEvents, this.settings.desiredRetention, activeFsrsOptimizerProfile(this.settings));
           const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
           const scheduler = revisionSchedulerPort(settings.desiredRetention, profile);
           const at = nowIso();
