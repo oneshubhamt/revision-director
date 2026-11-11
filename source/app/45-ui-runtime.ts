@@ -169,8 +169,8 @@
       private readonly onActivate: (pane: PaneId) => void | Promise<void>,
     ) {
       this.entries = Object.freeze(panes.map((pane) => {
-        const tab = requiredElement<HTMLButtonElement>(`[data-pane="${pane}"]`);
-        const panel = requiredElement<HTMLElement>(`#pane-${pane}`);
+        const tab = requiredElement(`[data-pane="${pane}"]`, HTMLButtonElement);
+        const panel = requiredElement(`#pane-${pane}`, HTMLElement);
         return Object.freeze({ pane, tab, panel });
       }));
     }
