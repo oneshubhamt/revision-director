@@ -523,7 +523,7 @@
       clearStatsOnForget: false,
     });
     const port = new TsFsrsSchedulerPort(scheduler, configuration);
-    const probe = port.newCard(new Date(0).toISOString(), "revision-director-fsrs7-probe");
+    const probe = port.newCard("2000-01-01T00:00:00.000Z", "revision-director-fsrs7-probe");
     requiredFsrs7StabilityFast(probe.stabilityFast);
     FSRS_SCHEDULER_CACHE.set(configuration.fingerprint, port);
   }
