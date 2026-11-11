@@ -10,7 +10,7 @@ const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, R
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
-const context = { crypto:webcrypto, structuredClone, console, Date, Intl, URL, Blob, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array };
+const context = { crypto:webcrypto, structuredClone, console, Date, Intl, URL, Blob, TextEncoder, TextDecoder, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array };
 context.window=context; context.self=context; context.globalThis=context;
 vm.createContext(context);
 vm.runInContext(vendor, context, { filename:'ts-fsrs-6.0.0.umd.js' });
@@ -250,7 +250,11 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   check(candidate&&candidate.factors.dueRisk>0,'Planner must consume the reprojected personalized memory state');
   check(joined.obligation.dueAt===plannerDueBefore,'Planner must never rewrite the scheduler due date');
 
-  const payload=service.validateBackup(await service.exportBackup());
+  const archive=await service.createBackupArchive(false);
+  check(archive.inspection.verified===true&&archive.inspection.compression==='none','Personalized history must create a verified uncompressed backup archive');
+  const decoded=await service.decodeBackupArchive(archive.bytes);
+  const payload=decoded.payload;
+  check(decoded.inspection.stateChecksum===archive.inspection.stateChecksum,'Backup archive round-trip must preserve the state checksum');
   check(payload.settings.fsrsPersonalization.active===true,'Backup must preserve active personalization');
   check(payload.evidenceEvents.length===repo.evidenceEvents.length,'Backup must preserve complete immutable review history');
 
