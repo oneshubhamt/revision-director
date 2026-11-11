@@ -6,12 +6,14 @@ Revision Director builds to one self-contained `index.html`. The maintained sour
 
 The build:
 
-1. validates the presentation contract;
-2. assembles an ephemeral TypeScript entry from the ownership manifest;
-3. compiles it with the project-local TypeScript compiler;
-4. emits `dist/app.js`;
+1. validates the source-ownership and presentation contracts;
+2. gives all nineteen maintained `source/app/*.ts` files directly to the pinned TypeScript 7 compiler as one project;
+3. verifies that TypeScript emitted exactly the manifest-owned JavaScript files;
+4. assembles those emitted files deterministically in manifest order inside one strict outer IIFE and emits `dist/app.js`;
 5. embeds the runtime, CSS and presentation state into `index.html`;
-6. removes ephemeral generated sources.
+6. removes ephemeral compiler output.
+
+There is no synthetic combined TypeScript source. The maintained files share one compile-time script namespace; the build, rather than any individual source file, owns the runtime IIFE boundary. This lets TypeScript 7 parse and check the real source graph while preserving the single sealed offline runtime.
 
 There is no runtime module loader, framework, CDN or network dependency.
 

@@ -21,11 +21,12 @@ The build rejects a missing or mismatched local TypeScript compiler. A global `t
 
 Authoritative application source lives under `source/`. The TypeScript ownership order is defined by `source/app/source-manifest.json`.
 
+TypeScript compiles the real manifest-owned `source/app/*.ts` files directly. The files share a script namespace for type checking; no synthetic combined TypeScript file is created. The emitted JavaScript fragments are verified against the manifest, assembled in manifest order, and wrapped once in the build-owned strict IIFE.
+
 Generated/intermediate paths:
 
-- `build/generated/revision-director.combined.ts` — ephemeral;
-- `build/generated-js/` — ephemeral compiler output;
-- `dist/app.js` — generated deployable runtime;
+- `build/generated-js/` — ephemeral per-source compiler output;
+- `dist/app.js` — generated sealed deployable runtime;
 - `index.html` — generated self-contained application.
 
 Never hand-edit `dist/app.js` or `index.html`.

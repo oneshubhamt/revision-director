@@ -1,6 +1,5 @@
 {
   "schemaVersion": 1,
-  "entrypoint": "dist/app.js",
   "parts": [
     {
       "order": 0,
@@ -97,5 +96,10 @@
       "path": "app/60-public-bridge-bootstrap.ts",
       "layer": "Validated public bridge and boot sequence; the build owns the outer sealed IIFE."
     }
-  ]
+  ],
+  "runtime": {
+    "assembly": "manifest-ordered-emitted-js",
+    "boundary": "build-owned-iife",
+    "output": "../dist/app.js"
+  }
 }

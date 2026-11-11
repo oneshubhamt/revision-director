@@ -31,6 +31,13 @@ def source_parts() -> list[Path]:
     manifest = json.loads(SOURCE_MANIFEST.read_text())
     if manifest.get("schemaVersion") != 1:
         raise SystemExit("Unsupported source-manifest schema.")
+    runtime = manifest.get("runtime")
+    if runtime != {
+        "assembly": "manifest-ordered-emitted-js",
+        "boundary": "build-owned-iife",
+        "output": "../dist/app.js",
+    }:
+        raise SystemExit("Source manifest runtime assembly contract is invalid.")
     parts = manifest.get("parts")
     if not isinstance(parts, list) or not parts:
         raise SystemExit("Source manifest has no parts.")
