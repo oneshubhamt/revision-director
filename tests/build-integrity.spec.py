@@ -140,7 +140,7 @@ check("FSRS-7 dual trace", "stabilityFast: number" in ts and "requiredFsrs7Stabi
 check("FSRS-7 long-form interval policy", "fractionalDays: true" in ts and "enableShortTerm: true" in ts and 'learningSteps: ["1d"]' in ts and 'relearningSteps: ["1d"]' in ts and "graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS" in ts and "allowModelOverride: true" in ts)
 check("Again routes to corrective relearning", 'if (rating === Rating.Again) completion.followUpType = "relearn"' in ts)
 check("FSRS rating semantics", 'if (type === "memory-recall")' in ts and '"Easy" remains a user judgement' in ts and "partial or cued recall" in ts)
-check("strict current data only", "event.oldVersion === 0" in ts and "canonical.applicationVersion === APP_VERSION" in ts and "candidate.appVersion === APP_VERSION" in ts)
+check("strict current data only", "event.oldVersion === 0" in ts and "canonical.applicationVersion === APP_VERSION" in ts and 'candidate["appVersion"] === APP_VERSION' in ts)
 check("no timing compatibility synthesis", "fallbackElapsedMs" not in ts and "canonicalTimingEvidenceSummary(value: TimingEvidenceSummary)" in ts and "completeChunk(chunkId: string, timing: TimingEvidenceSummary" in ts)
 check("no current-shape repair coercions", "reliabilityFlags.push" not in contracts_ts and "checked[key] = Boolean(rawValue)" not in contracts_ts and "sourceVisible: Boolean(value.sourceVisible)" not in contracts_ts and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
 check("backup payload narrows from unknown", "const candidate = requireRecord(input, \"Backup\")" in ts and "canonicalDocumentArray(\"profile\"" in ts and "candidate.profiles as ExamProfile[]" not in ts and "candidate.evidenceEvents as EvidenceEvent[]" not in ts)
