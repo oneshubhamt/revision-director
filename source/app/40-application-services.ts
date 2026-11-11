@@ -137,6 +137,12 @@
       const settings = canonicalAppSettings(requestedSettings);
       await prepareFsrsScheduler(settings.desiredRetention, profile);
       const [obligations, evidenceEvents] = await Promise.all([this.obligations(), this.evidenceEvents()]);
+      verifyMemoryDatasetIntegrity(
+        obligations,
+        evidenceEvents,
+        this.settings.desiredRetention,
+        activeFsrsOptimizerProfile(this.settings),
+      );
       const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
       const scheduler = revisionSchedulerPort(settings.desiredRetention, profile);
       const at = nowIso();
