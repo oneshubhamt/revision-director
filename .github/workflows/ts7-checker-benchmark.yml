@@ -1,0 +1,118 @@
+name: Temporary TS7 checker benchmark
+
+on:
+  push:
+    branches:
+      - working
+    paths:
+      - .github/workflows/ts7-checker-benchmark.yml
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked toolchain
+        run: npm ci
+
+      - name: Confirm TS7 checker control
+        run: |
+          ./node_modules/.bin/tsc --version
+          ./node_modules/.bin/tsc --help --all | grep -A4 -- '--checkers'
+
+      - name: Benchmark checker counts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import shutil
+          import statistics
+          import subprocess
+          import time
+
+          root = Path.cwd()
+          tsc = root / "node_modules/.bin/tsc"
+          configs = [
+              ("default", None),
+              ("checkers-1", 1),
+              ("checkers-2", 2),
+              ("checkers-4", 4),
+              ("checkers-8", 8),
+          ]
+          results = {name: [] for name, _ in configs}
+          rss = {name: [] for name, _ in configs}
+          bench_root = Path("/tmp/revision-director-ts7-benchmark")
+
+          def run_one(name, checkers):
+              out = bench_root / name
+              shutil.rmtree(out, ignore_errors=True)
+              command = [str(tsc), "-p", "source/tsconfig.json", "--outDir", str(out)]
+              if checkers is not None:
+                  command += ["--checkers", str(checkers)]
+              wrapped = ["/usr/bin/time", "-f", "__RD_METRIC__ %e %M", *command]
+              started = time.perf_counter()
+              completed = subprocess.run(wrapped, cwd=root, text=True, capture_output=True)
+              elapsed = time.perf_counter() - started
+              if completed.returncode:
+                  print(completed.stdout)
+                  print(completed.stderr)
+                  raise SystemExit(f"{name} failed with {completed.returncode}")
+              metric = next(
+                  (line for line in completed.stderr.splitlines() if line.startswith("__RD_METRIC__ ")),
+                  None,
+              )
+              if metric is None:
+                  raise SystemExit(f"{name} produced no resource metric")
+              _, reported_seconds, max_rss_kib = metric.split()
+              return elapsed, float(reported_seconds), int(max_rss_kib)
+
+          # One complete warmup cycle prevents first-run dependency and filesystem
+          # effects from deciding the result.
+          for name, checkers in configs:
+              run_one(name, checkers)
+
+          # Seven rotated rounds give each configuration every relative position.
+          for round_index in range(7):
+              order = configs[round_index % len(configs):] + configs[:round_index % len(configs)]
+              for name, checkers in order:
+                  elapsed, reported, max_rss = run_one(name, checkers)
+                  results[name].append(reported)
+                  rss[name].append(max_rss)
+
+          summary = {}
+          for name, values in results.items():
+              ordered = sorted(values)
+              p95_index = min(len(ordered) - 1, max(0, round(0.95 * (len(ordered) - 1))))
+              summary[name] = {
+                  "runs": len(values),
+                  "median_seconds": round(statistics.median(values), 4),
+                  "p95_seconds": round(ordered[p95_index], 4),
+                  "min_seconds": round(min(values), 4),
+                  "max_seconds": round(max(values), 4),
+                  "median_max_rss_kib": int(statistics.median(rss[name])),
+              }
+
+          default = summary["default"]["median_seconds"]
+          for name, metrics in summary.items():
+              metrics["median_vs_default_pct"] = 0.0 if name == "default" else round(
+                  ((metrics["median_seconds"] - default) / default) * 100,
+                  2,
+              )
+          print("TS7_BENCHMARK_JSON=" + json.dumps(summary, sort_keys=True))
+          shutil.rmtree(bench_root, ignore_errors=True)
+          PY
