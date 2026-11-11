@@ -1938,7 +1938,7 @@
           }
           return previews.sort((a, b) => a.rating - b.rating);
       }
-      complete(obligation, rating, evidence, now) {
+      complete(obligation, rating, _evidence, now) {
           const card = obligation.policyState.fsrsCard;
           assert(card, "Memory obligation has no FSRS-7 card state.");
           const api = runtimeFsrs();
