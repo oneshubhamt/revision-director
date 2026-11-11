@@ -66,7 +66,7 @@
         scheduledDays: result.revlog.scheduledDays,
         learningStep: result.revlog.learningStep,
       };
-      if (result.revlog.scheduleStatus !== undefined) log.scheduleStatus = result.revlog.scheduleStatus;
+      if (result.revlog.scheduleStatus !== undefined) log["scheduleStatus"] = result.revlog.scheduleStatus;
       const completion: PolicyCompletion = {
         dueAt: next.dueAt,
         policyState: state,

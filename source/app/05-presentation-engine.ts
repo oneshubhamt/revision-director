@@ -81,9 +81,9 @@
 
   function parsePresentationProfile(value: unknown, requiredContractVersion: number): PresentationProfileDefinition | null {
     const source = presentationRecord(value);
-    if (!source || Number(source.contractVersion) !== requiredContractVersion) return null;
-    const id = presentationId(source.id);
-    const label = String(source.label ?? id).trim().slice(0, 60);
+    if (!source || Number(source["contractVersion"]) !== requiredContractVersion) return null;
+    const id = presentationId(source["id"]);
+    const label = String(source["label"] ?? id).trim().slice(0, 60);
     if (!id || !label) return null;
     const profile: PresentationProfileDefinition = {
       id,
@@ -97,7 +97,7 @@
       responsive: "",
       motion: "",
       charts: "",
-      immutable: source.immutable === true,
+      immutable: source["immutable"] === true,
     };
     for (const axis of PRESENTATION_AXES) {
       const clean = presentationId(source[axis]);
@@ -121,20 +121,20 @@
       }
     }
     const source = presentationRecord(raw);
-    const defaults = presentationRecord(source?.defaults);
-    const profilesSource = presentationRecord(source?.profiles);
-    const tokensSource = presentationRecord(source?.tokens);
-    const publicSource = presentationRecord(tokensSource?.public);
-    const breakpointsSource = presentationRecord(source?.breakpoints);
-    const invariantsSource = presentationRecord(source?.invariants);
-    const stateMeanings = presentationRecord(invariantsSource?.semanticStateMeaning);
-    if (source?.format !== "revision-director.presentation-manifest" || source.version !== 1 || !defaults || !profilesSource || !tokensSource || !publicSource || !breakpointsSource || !invariantsSource || !stateMeanings) {
+    const defaults = presentationRecord(source?.["defaults"]);
+    const profilesSource = presentationRecord(source?.["profiles"]);
+    const tokensSource = presentationRecord(source?.["tokens"]);
+    const publicSource = presentationRecord(tokensSource?.["public"]);
+    const breakpointsSource = presentationRecord(source?.["breakpoints"]);
+    const invariantsSource = presentationRecord(source?.["invariants"]);
+    const stateMeanings = presentationRecord(invariantsSource?.["semanticStateMeaning"]);
+    if (source?.["format"] !== "revision-director.presentation-manifest" || source["version"] !== 1 || !defaults || !profilesSource || !tokensSource || !publicSource || !breakpointsSource || !invariantsSource || !stateMeanings) {
       throw new Error("Revision Director presentation manifest is incompatible.");
     }
-    const contractVersion = Number(tokensSource.contractVersion);
-    const defaultId = presentationId(defaults.presentation);
-    const storageKey = String(source.storageKey ?? "").trim();
-    const namespace = String(tokensSource.namespace ?? "").trim();
+    const contractVersion = Number(tokensSource["contractVersion"]);
+    const defaultId = presentationId(defaults["presentation"]);
+    const storageKey = String(source["storageKey"] ?? "").trim();
+    const namespace = String(tokensSource["namespace"] ?? "").trim();
     if (!Number.isInteger(contractVersion) || contractVersion < 1 || !defaultId || !storageKey || namespace !== "--rd-") {
       throw new Error("Revision Director presentation manifest contract is invalid.");
     }
@@ -166,7 +166,7 @@
     }
     const semanticStateMeaning: Record<string, string> = {};
     for (const [state, meaning] of Object.entries(stateMeanings)) semanticStateMeaning[state] = String(meaning);
-    if (invariantsSource.defaultProfileImmutable !== true || invariantsSource.exactPixelReference !== defaultId || invariantsSource.domOrder !== "application-owned" || invariantsSource.focusOrder !== "application-owned") {
+    if (invariantsSource["defaultProfileImmutable"] !== true || invariantsSource["exactPixelReference"] !== defaultId || invariantsSource["domOrder"] !== "application-owned" || invariantsSource["focusOrder"] !== "application-owned") {
       throw new Error("Revision Director presentation invariants are invalid.");
     }
     return freezePresentationValue({
@@ -199,28 +199,28 @@
     const manifest = parsePresentationManifest();
     const registry = new Map<string, PresentationProfileDefinition>(Object.entries(manifest.profiles));
     const root = typeof document === "undefined" || !document.documentElement ? null : document.documentElement;
-    let preferredPresentationId = manifest.defaults.presentation;
-    let activePresentationId = manifest.defaults.presentation;
+    let preferredPresentationId = manifest.defaults["presentation"];
+    let activePresentationId = manifest.defaults["presentation"];
 
     const safeRead = (): string => {
       try {
         const stored = localStorage.getItem(manifest.storageKey);
         const clean = presentationId(stored);
-        preferredPresentationId = clean || manifest.defaults.presentation;
+        preferredPresentationId = clean || manifest.defaults["presentation"];
       } catch {
-        preferredPresentationId = manifest.defaults.presentation;
+        preferredPresentationId = manifest.defaults["presentation"];
       }
-      return registry.has(preferredPresentationId) ? preferredPresentationId : manifest.defaults.presentation;
+      return registry.has(preferredPresentationId) ? preferredPresentationId : manifest.defaults["presentation"];
     };
 
     const apply = (value: unknown): string => {
       const candidate = presentationId(value);
-      const clean = candidate && registry.has(candidate) ? candidate : manifest.defaults.presentation;
-      const profile = registry.get(clean) ?? manifest.profiles[manifest.defaults.presentation];
+      const clean = candidate && registry.has(candidate) ? candidate : manifest.defaults["presentation"];
+      const profile = registry.get(clean) ?? manifest.profiles[manifest.defaults["presentation"]];
       if (!profile) throw new Error("Revision Director default presentation is unavailable.");
       activePresentationId = profile.id;
       if (root) {
-        root.dataset.presentation = profile.id;
+        root.dataset["presentation"] = profile.id;
         for (const axis of PRESENTATION_AXES) root.dataset[axis] = profile[axis];
       }
       return profile.id;
@@ -239,7 +239,7 @@
       listPresentations: () => Object.freeze([...registry.values()]),
       normalizePresentationId: (value: unknown) => {
         const clean = presentationId(value);
-        return clean && registry.has(clean) ? clean : manifest.defaults.presentation;
+        return clean && registry.has(clean) ? clean : manifest.defaults["presentation"];
       },
       readStoredPresentation: safeRead,
       restoreStoredPresentation: () => apply(safeRead()),
@@ -254,7 +254,7 @@
       },
       switchPresentation: (value: unknown, options: { persist?: boolean } = {}) => {
         const clean = presentationId(value);
-        preferredPresentationId = clean || manifest.defaults.presentation;
+        preferredPresentationId = clean || manifest.defaults["presentation"];
         const applied = apply(preferredPresentationId);
         if (options.persist) {
           try { localStorage.setItem(manifest.storageKey, preferredPresentationId); } catch { /* presentation persistence is best-effort */ }

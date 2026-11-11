@@ -270,7 +270,7 @@
   function updateWorkflowFields(form: HTMLFormElement): void {
     const kind = (form.elements.namedItem("workflowKind") as HTMLSelectElement).value as RetrievalWorkflow;
     form.querySelectorAll<HTMLElement>("[data-workflow-field]").forEach((field) => {
-      field.hidden = field.dataset.workflowField !== kind;
+      field.hidden = field.dataset["workflowField"] !== kind;
     });
   }
 

@@ -327,7 +327,7 @@
           }, 5_000);
           script.src = url;
           script.async = false;
-          script.dataset.revisionDirectorPluginFile = name;
+          script.dataset["revisionDirectorPluginFile"] = name;
           script.onload = () => { window.clearTimeout(timeout); script.remove(); resolve(); };
           script.onerror = () => { window.clearTimeout(timeout); script.remove(); rejectPromise(new Error(executionError || "Plugin file could not be evaluated.")); };
           document.head.appendChild(script);

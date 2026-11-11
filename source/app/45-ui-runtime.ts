@@ -24,14 +24,14 @@
 
   function focusSelector(element: HTMLElement): string {
     if (element.id) return `#${CSS.escape(element.id)}`;
-    const pane = element.dataset.pane;
+    const pane = element.dataset["pane"];
     if (pane) return `[data-pane="${attributeSelectorValue(pane)}"]`;
-    const focusKey = element.dataset.focusKey;
+    const focusKey = element.dataset["focusKey"];
     if (focusKey) return `[data-focus-key="${attributeSelectorValue(focusKey)}"]`;
-    const action = element.dataset.action;
+    const action = element.dataset["action"];
     if (action) {
-      const id = element.dataset.id;
-      const rating = element.dataset.rating;
+      const id = element.dataset["id"];
+      const rating = element.dataset["rating"];
       return `[data-action="${attributeSelectorValue(action)}"]${id ? `[data-id="${attributeSelectorValue(id)}"]` : ""}${rating ? `[data-rating="${attributeSelectorValue(rating)}"]` : ""}`;
     }
     const name = element.getAttribute("name");

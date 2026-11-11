@@ -149,7 +149,7 @@
     private async handleDelegatedClick(event: MouseEvent): Promise<void> {
       const target = event.target instanceof Element ? event.target.closest<HTMLElement>("button,[data-action],[data-pane],[data-filter],[data-history-tab],[data-close-dialog],[data-gap-action]") : null;
       if (!target || (target instanceof HTMLButtonElement && target.disabled)) return;
-      const pane = target.dataset.pane;
+      const pane = target.dataset["pane"];
       if (pane && ["today", "review", "library", "study", "history", "settings"].includes(pane)) {
         await this.openPane(pane as PaneId);
         return;
@@ -166,28 +166,28 @@
         await this.takeControl();
         return;
       }
-      const closeId = target.dataset.closeDialog;
+      const closeId = target.dataset["closeDialog"];
       if (closeId) {
         this.dialogFocus.close(requiredElement<HTMLDialogElement>(`#${closeId}`));
         return;
       }
-      const gapAction = target.dataset.gapAction;
+      const gapAction = target.dataset["gapAction"];
       if (gapAction) {
         await this.handleGapAction(gapAction);
         return;
       }
       if (target.hasAttribute("data-filter")) {
-        this.libraryFilter = target.dataset.filter ?? "";
+        this.libraryFilter = target.dataset["filter"] ?? "";
         await this.renderCoordinator.invalidateAndWait("library", "ownership");
         return;
       }
-      const historyTab = target.dataset.historyTab;
+      const historyTab = target.dataset["historyTab"];
       if (historyTab === "evidence" || historyTab === "study") {
         this.historyTab = historyTab;
         await this.renderCoordinator.invalidateAndWait("history", "ownership");
         return;
       }
-      if (target.dataset.action) await this.handleAction(target);
+      if (target.dataset["action"]) await this.handleAction(target);
     }
 
     private async handleDelegatedSubmit(event: SubmitEvent): Promise<void> {
@@ -324,18 +324,18 @@
       const primary = this.ownership.canMutate();
       const controls = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>("input,textarea,select,button");
       controls.forEach((control) => {
-        const action = control instanceof HTMLElement ? control.dataset.action : undefined;
+        const action = control instanceof HTMLElement ? control.dataset["action"] : undefined;
         const safe = control === this.takeControlButton
           || control.matches("[data-pane],[data-history-tab],[data-close-dialog]")
           || action === "export-backup"
           || action === "cancel-restore"
           || control.id === "library-search";
         if (!primary && !safe) {
-          if (!control.disabled) control.dataset.ownershipDisabled = "1";
+          if (!control.disabled) control.dataset["ownershipDisabled"] = "1";
           control.disabled = true;
-        } else if (primary && control.dataset.ownershipDisabled === "1") {
+        } else if (primary && control.dataset["ownershipDisabled"] === "1") {
           control.disabled = false;
-          delete control.dataset.ownershipDisabled;
+          delete control.dataset["ownershipDisabled"];
         }
       });
       const canvas = this.reviewContent.querySelector<HTMLCanvasElement>("#diagram-canvas");
@@ -1042,7 +1042,7 @@
     }
 
     private applyReviewPhase(): void {
-      this.reviewContent.querySelectorAll<HTMLElement>("[data-review-phase]").forEach((section) => { section.hidden = section.dataset.reviewPhase !== this.reviewPhase; });
+      this.reviewContent.querySelectorAll<HTMLElement>("[data-review-phase]").forEach((section) => { section.hidden = section.dataset["reviewPhase"] !== this.reviewPhase; });
     }
 
     private validateAttemptBeforeCompare(obligation: RevisionObligation): void {
@@ -1236,22 +1236,22 @@
     }
 
     private async handleAction(element: HTMLElement): Promise<void> {
-      const action = element.dataset.action;
+      const action = element.dataset["action"];
       try {
         if (action !== "export-backup" && !this.requireMutable("change Revision Director data")) return;
         if (action === "add-unit") await this.openUnitDialog();
         else if (action === "log-study") await this.openStudyDialog();
         else if (action === "start-due") await this.startDueSession();
-        else if (action === "review-one") await this.startObligationSession(element.dataset.id ?? "");
-        else if (action === "review-chunk") await this.startReviewSession([`chunk:${element.dataset.id ?? ""}`]);
+        else if (action === "review-one") await this.startObligationSession(element.dataset["id"] ?? "");
+        else if (action === "review-chunk") await this.startReviewSession([`chunk:${element.dataset["id"] ?? ""}`]);
         else if (action === "regenerate-plan") { await this.service.dailyPlan(new Date(), true); await this.renderAll(); this.toast("Daily plan regenerated and previous version preserved."); }
-        else if (action === "review-unit") await this.startUnitSession(element.dataset.id ?? "");
-        else if (action === "add-obligation") await this.openObligationDialog(element.dataset.id ?? "");
+        else if (action === "review-unit") await this.startUnitSession(element.dataset["id"] ?? "");
+        else if (action === "add-obligation") await this.openObligationDialog(element.dataset["id"] ?? "");
         else if (action === "toggle-unit") {
-          await this.service.updateUnitStatus(element.dataset.id ?? "", element.dataset.status as EntityStatus);
+          await this.service.updateUnitStatus(element.dataset["id"] ?? "", element.dataset["status"] as EntityStatus);
           await this.renderAll();
           this.toast("Knowledge-unit status updated.");
-        } else if (action === "derive-unit") await this.deriveUnitFromStudy(element.dataset.id ?? "");
+        } else if (action === "derive-unit") await this.deriveUnitFromStudy(element.dataset["id"] ?? "");
         else if (action === "reveal") {
           const obligationId = this.activeReviewIds[this.activeReviewIndex];
           assert(obligationId, "Review obligation is missing.");
@@ -1299,12 +1299,12 @@
         } else if (action === "diagram-undo") {
           this.diagramStrokes.pop(); this.redrawDiagram(); this.scheduleActiveRetrievalSave();
         } else if (action === "complete-chunk") await this.completeActiveChunk();
-        else if (action === "rate") await this.commitRating(validateRating(Number(element.dataset.rating)));
+        else if (action === "rate") await this.commitRating(validateRating(Number(element.dataset["rating"])));
         else if (action === "end-session") {
           await this.endReviewSession();
           await this.openPane("today");
         } else if (action === "add-profile") await this.addProfileFromSettings();
-        else if (action === "save-profile") await this.saveProfileFromSettings(element.dataset.id ?? "");
+        else if (action === "save-profile") await this.saveProfileFromSettings(element.dataset["id"] ?? "");
         else if (action === "toggle-pause") this.togglePause();
         else if (action === "refresh-storage") { await this.service.refreshStorageHealth(true); await this.renderCoordinator.invalidateAndWait("settings", "storage", "ownership"); this.toast("Storage capability refreshed."); }
         else if (action === "export-backup") await this.exportBackup();

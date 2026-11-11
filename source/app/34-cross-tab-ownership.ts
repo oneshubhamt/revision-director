@@ -140,7 +140,7 @@
       if (this.state !== next) this.revision += 1;
       this.state = next;
       this.lastError = error;
-      document.documentElement.dataset.reviewOwnership = next;
+      document.documentElement.dataset["reviewOwnership"] = next;
       this.callbacks?.changed(this.snapshot());
     }
 
