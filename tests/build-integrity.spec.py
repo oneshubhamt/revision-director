@@ -189,7 +189,7 @@ check("plugin capability negotiation", "REVISION_DIRECTOR_CAPABILITIES" in ts an
 check("plugin failure isolation", 'state: "failed"' in ts and "Plugin file could not be evaluated" in ts and "Plugin setup returned inactive" in ts)
 check("trusted local plugin loader", "LOCAL_PLUGIN_MAX_BYTES = 1 * 1024 * 1024" in ts and "revisionDirectorPluginFile" in ts and "script-src 'self' 'unsafe-inline' blob:" in shell)
 check("minimal canonical public operations", all(term in ts for term in ["getDueSummary", "listProfiles", "importStudyEvent", "createRevisionCandidate"]) and all(term not in ts[ts.index("interface RevisionDirectorPublicApi"):ts.index("const REVISION_DIRECTOR_PUBLIC_API_VERSION")] for term in ["rawDump", "recordReview", "replaceFromBackup"]))
-check("production backup format", 'format: BACKUP_FORMAT' in ts and 'candidate.format === BACKUP_FORMAT' in ts)
+check("production backup format", 'format: BACKUP_FORMAT' in ts and 'candidate["format"] === BACKUP_FORMAT' in ts)
 check("D1 backup archive codec", "class BackupCodec" in ts and 'const BACKUP_ARCHIVE_FORMAT = "revision-director-backup-archive"' in ts and 'const BACKUP_ARCHIVE_VERSION = 2' in ts)
 check("D1 bounded chunks", "BACKUP_ARCHIVE_CHUNK_TARGET_BYTES = 512 * 1024" in ts and "BACKUP_ARCHIVE_CHUNK_MAX_ITEMS = 100" in ts and "BACKUP_ARCHIVE_MAX_DOCUMENT_BYTES" in ts)
 check("D1 compression detection", 'bytes[0] === 0x1f && bytes[1] === 0x8b' in ts and 'DecompressionStream("gzip")' in ts)
