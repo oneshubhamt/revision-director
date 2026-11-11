@@ -37,7 +37,7 @@
       return previews.sort((a, b) => a.rating - b.rating);
     }
 
-    complete(obligation: RevisionObligation, rating: Rating, evidence: ObjectiveEvidence, now: Date): PolicyCompletion {
+    complete(obligation: RevisionObligation, rating: Rating, _evidence: ObjectiveEvidence, now: Date): PolicyCompletion {
       const card = obligation.policyState.fsrsCard;
       assert(card, "Memory obligation has no FSRS-7 card state.");
       const api = runtimeFsrs();
