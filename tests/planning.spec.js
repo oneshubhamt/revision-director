@@ -40,6 +40,10 @@ const strong = api.buildPlanningCandidate(strongJoined,[evidence('strong','stron
 check(weak.score > strong.score && weak.factors.weakness > strong.factors.weakness, 'Weakness evidence must affect rank');
 const sharedUnit = unit('shared',3,0); sharedUnit.profileId='shared-profile';
 const weakObligation = obligation('shared-recall',0,20,'memory-recall'); weakObligation.unitId='shared'; weakObligation.workflow={kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'};
+weakObligation.policyState = {
+  engine:'ts-fsrs',version:'6.0.0',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0,
+  fsrsCard:{model:'FSRS-7',cardId:'shared-recall',dueAt:weakObligation.dueAt,stability:0,stabilityFast:0,difficulty:0,scheduledDays:0,learningSteps:0,reps:0,lapses:0,state:0,scheduleStatus:'new'}
+};
 const strongObligation = obligation('shared-application',0,20,'application-practice'); strongObligation.unitId='shared'; strongObligation.workflow={kind:'questions',prompt:'attempt',checkpoints:['one'],responseMedium:'in-app',targetCount:10,questionSetRef:'set'};
 const sharedProfile = profile('shared-profile',60);
 const sharedEvidence = [evidence('shared','shared-recall',1,1),evidence('shared','shared-application',4,4)];
