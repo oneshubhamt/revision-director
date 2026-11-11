@@ -322,8 +322,11 @@
     assert(value && typeof value === "object", "Phase-time runtime is invalid.");
     const currentPhase = canonicalReviewPhase(value.currentPhase);
     assert(["running", "paused", "gap-pending"].includes(value.state), "Phase-time state is invalid.");
+    assert(value.activeByPhase && typeof value.activeByPhase === "object", "Phase-time breakdown is required.");
+    const phaseTotal = (["attempt", "compare", "relearn-repair", "relearn-verify"] as ReviewPhase[])
+      .reduce((sum, phase) => sum + Number(value.activeByPhase[phase]), 0);
     const activeByPhase = canonicalTimingEvidenceSummary({
-      totalActiveMs: 0,
+      totalActiveMs: phaseTotal,
       activeByPhase: value.activeByPhase,
       pauseMs: 0, pauseCount: 0, inactiveGapCount: 0,
       classifiedFocusMs: 0, classifiedBreakMs: 0, ignoredGapMs: 0, promptExcludedMs: 0,
