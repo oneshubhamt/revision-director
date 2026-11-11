@@ -72,31 +72,53 @@ async function testFsrsPlanning() {
   const memoryPolicy = new api.FsrsMemoryPolicy(() => .9);
   const memoryState = memoryPolicy.createInitialState(ref.toISOString(), 'memory');
   const memoryObligation = { ...obligation('memory',0,12,'memory-recall'), type:'memory-recall', workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'}, policyState:memoryState };
-  check(api.fsrsRetrievability(memoryObligation, ref, .9) === undefined, 'New FSRS obligations must not claim measured retrievability');
-  const completion = memoryPolicy.complete(memoryObligation, api.Rating.Good, {completeness:4,independence:4,application:3,errorTypes:[],correctionNote:''}, ref);
+  check(api.fsrsRetrievability(memoryObligation, [], ref, .9) === undefined, 'New FSRS obligations must not claim measured retrievability');
+  const memoryEvidence = {completeness:4,independence:4,application:3,errorTypes:[],correctionNote:''};
+  const completion = memoryPolicy.complete(memoryObligation, api.Rating.Good, memoryEvidence, ref);
+  const memoryEvent = {
+    id:'memory-good',unitId:'memory',obligationId:'memory',obligationType:'memory-recall',
+    reviewedAt:ref.toISOString(),confirmedRating:api.Rating.Good,evidence:memoryEvidence,
+    beforePolicyState:structuredClone(memoryState),afterPolicyState:structuredClone(completion.policyState),
+    schedulerConfig:structuredClone(completion.schedulerConfig)
+  };
   memoryObligation.policyState = completion.policyState;
+  memoryObligation.dueAt = completion.dueAt;
   const later = new Date(ref.getTime()+3*86400000);
-  const r = api.fsrsRetrievability(memoryObligation, later, .9);
+  const r = api.fsrsRetrievability(memoryObligation, [memoryEvent], later, .9);
   check(typeof r === 'number' && r > 0 && r < 1, 'Reviewed memory obligations must use FSRS-7 retrievability');
   check(memoryObligation.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'Planning must consume persisted FSRS-7 dual-trace state');
 
-  const easy = memoryPolicy.complete({...memoryObligation, policyState:memoryState}, api.Rating.Easy, {completeness:4,independence:4,application:4,errorTypes:[],correctionNote:''}, ref);
-  const examBoundObligation = {...memoryObligation, dueAt:easy.dueAt, policyState:easy.policyState};
-  delete examBoundObligation.policyState.fsrsCard.lastReviewAt;
-  examBoundObligation.policyState.fsrsCard.reps = 0;
+  const easyEvidence = {completeness:4,independence:4,application:4,errorTypes:[],correctionNote:''};
+  const easy = memoryPolicy.complete({...memoryObligation, dueAt:memoryState.fsrsCard.dueAt, policyState:memoryState}, api.Rating.Easy, easyEvidence, ref);
+  const unreviewedExamState = memoryPolicy.createInitialState(easy.dueAt, 'memory-exam');
+  const examBoundObligation = {
+    ...obligation('memory-exam',0,12,'memory-recall'),
+    id:'memory-exam',unitId:'memory-unit',type:'memory-recall',dueAt:easy.dueAt,
+    workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'},
+    policyState:unreviewedExamState
+  };
   const examBoundJoined = {
     obligation:examBoundObligation,
     unit:{...unit('memory-exam'),id:'memory-unit',profileId:'memory-profile'},
     profile:profile('memory-profile',2),
     subject:'S',section:'C',topic:'T'
   };
-  examBoundJoined.obligation.unitId='memory-unit';
   const examCandidate = api.buildPlanningCandidate(examBoundJoined,[],settings,ref);
   check(examCandidate && examCandidate.reasons.includes('final memory review before exam'), 'FSRS due dates beyond a known exam must create one final pre-exam memory opportunity');
   check(examBoundJoined.obligation.dueAt === easy.dueAt, 'Exam-horizon planning must not rewrite the FSRS policy due date');
-  examBoundJoined.obligation.policyState.fsrsCard.lastReviewAt = ref.toISOString();
-  examBoundJoined.obligation.policyState.fsrsCard.reps = 1;
-  check(api.buildPlanningCandidate(examBoundJoined,[],settings,ref) === undefined, 'A memory review already completed inside the final exam window must not be forced again');
+
+  const reviewedExamObligation = {
+    ...examBoundObligation,id:'memory',dueAt:easy.dueAt,policyState:structuredClone(easy.policyState)
+  };
+  reviewedExamObligation.policyState.fsrsCard.cardId='memory';
+  const easyEvent = {
+    id:'memory-easy',unitId:'memory-unit',obligationId:'memory',obligationType:'memory-recall',
+    reviewedAt:ref.toISOString(),confirmedRating:api.Rating.Easy,evidence:easyEvidence,
+    beforePolicyState:structuredClone(memoryState),afterPolicyState:structuredClone(easy.policyState),
+    schedulerConfig:structuredClone(easy.schedulerConfig)
+  };
+  const reviewedExamJoined = {...examBoundJoined,obligation:reviewedExamObligation};
+  check(api.buildPlanningCandidate(reviewedExamJoined,[easyEvent],settings,ref) === undefined, 'A memory review already completed inside the final exam window must not be forced again');
 }
 
 const item = (id, score, mins, type='concept-reconstruction', dueState='due') => ({joined:{obligation:{id,type,dueAt:ref.toISOString(),expectedMinutes:mins},unit:{},profile:{}},score,dueState,executionMinutes:mins,factors:{dueRisk:.8,examImportance:1,weakness:.5,reviewDuration:.8,examinationProximity:.7,weeklyBalance:.5}});
