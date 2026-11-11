@@ -5,7 +5,7 @@ const { webcrypto } = require('crypto');
 const path = require('path');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsScheduler, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, fsrsConfigurationFingerprint, validateFsrsConfigSnapshot, Reschedule, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 
@@ -135,10 +135,18 @@ async function testFsrs7Integration() {
   check(Math.abs((new Date(again.dueAt) - new Date(due)) / 86400000 - 1) < .001, 'Again must persist the one-day scheduler due date');
   check(again.schedulerConfig.enableShortTerm === true && again.schedulerConfig.learningSteps.join(',') === '1d' && again.schedulerConfig.relearningSteps.join(',') === '1d', 'Revision Director must use one-day FSRS learning/relearning middleware');
   check(again.schedulerConfig.graduatingInterval === 1 && again.schedulerConfig.allowModelOverride === true, 'FSRS-7 graduation and model override must be explicit');
+  check(/^fnv1a64:[0-9a-f]{16}$/.test(again.schedulerConfig.fingerprint), 'FSRS configuration must carry a deterministic fingerprint');
+  mustFail(() => api.validateFsrsConfigSnapshot({...again.schedulerConfig, desiredRetention:.91}), 'Tampered FSRS configuration must fail its fingerprint');
 
+  const againObservation = {
+    evidenceEventId:'again-event', reviewedAt:due, rating:api.Rating.Again, source:'direct-memory',
+    beforeCard:structuredClone(memoryObligation.policyState.fsrsCard),
+    afterCard:structuredClone(again.policyState.fsrsCard),
+    configFingerprint:again.schedulerConfig.fingerprint
+  };
   const failedObligation = {...memoryObligation, dueAt:again.dueAt, policyState:again.policyState};
   const nextDay = new Date(new Date(due).getTime() + 86400000);
-  const repaired = memory.complete(failedObligation, api.Rating.Good, evidence(4,4,3), nextDay);
+  const repaired = memory.complete(failedObligation, api.Rating.Good, evidence(4,4,3), nextDay, {memoryReviews:[againObservation]});
   const repairedDays = (new Date(repaired.dueAt) - nextDay) / 86400000;
   check(repairedDays >= 2.9 && repairedDays <= 3.1, 'Successful next-day repair must return to FSRS-7 at about a three-day interval');
 
@@ -146,9 +154,37 @@ async function testFsrs7Integration() {
   check(good.policyId === 'memory/ts-fsrs@6.0.0/fsrs-7', 'FSRS-7 policy provenance must be explicit');
   check(good.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(good.policyState.fsrsCard.stabilityFast), 'Reviewed FSRS-7 state must preserve both traces');
   check(good.schedulerConfig.model === 'FSRS-7' && good.schedulerConfig.desiredRetention === .9 && good.schedulerConfig.fractionalDays === true, 'FSRS-7 configuration provenance must be complete');
-  const halfDay = api.fsrsRetrievability({...memoryObligation, policyState:good.policyState}, new Date(new Date(due).getTime()+12*60*60*1000), .9);
-  const fullDay = api.fsrsRetrievability({...memoryObligation, policyState:good.policyState}, new Date(new Date(due).getTime()+24*60*60*1000), .9);
+
+  const goodObservation = {
+    evidenceEventId:'good-event', reviewedAt:due, rating:api.Rating.Good, source:'direct-memory',
+    beforeCard:structuredClone(memoryObligation.policyState.fsrsCard),
+    afterCard:structuredClone(good.policyState.fsrsCard),
+    configFingerprint:good.schedulerConfig.fingerprint
+  };
+  const port = api.revisionSchedulerPort(.9);
+  port.verifyProjection(good.policyState.fsrsCard, [goodObservation]); checks++;
+  const materialized = port.materialize(good.policyState.fsrsCard, [goodObservation]);
+  check(materialized.stability === good.policyState.fsrsCard.stability && materialized.stabilityFast === good.policyState.fsrsCard.stabilityFast, 'Materialized projection must be reproduced from canonical replay truth');
+  const rescheduled = port.reschedule(memoryObligation.policyState.fsrsCard, [goodObservation]);
+  check(rescheduled.dueAt === good.policyState.fsrsCard.dueAt && rescheduled.stabilityFast === good.policyState.fsrsCard.stabilityFast, 'Reschedule must reproduce a same-policy review transition');
+
+  const halfDay = port.retrievability(good.policyState.fsrsCard, [goodObservation], new Date(new Date(due).getTime()+12*60*60*1000));
+  const fullDay = port.retrievability(good.policyState.fsrsCard, [goodObservation], new Date(new Date(due).getTime()+24*60*60*1000));
   check(halfDay > fullDay && halfDay < 1, 'FSRS-7 retrievability must preserve fractional elapsed time within a day');
+
+  const normalized = api.memoryReviewObservationsFor('o', [{
+    id:'good-event', obligationId:'o', obligationType:'memory-recall', reviewedAt:due,
+    confirmedRating:api.Rating.Good, beforePolicyState:memoryObligation.policyState,
+    afterPolicyState:good.policyState, schedulerConfig:good.schedulerConfig
+  }]);
+  check(normalized.length === 1 && normalized[0].source === 'direct-memory' && normalized[0].configFingerprint === good.schedulerConfig.fingerprint, 'Evidence Events must normalize into canonical memory-review observations');
+
+  const corruptedProjection = structuredClone(good.policyState.fsrsCard);
+  corruptedProjection.stability += .01;
+  mustFail(() => port.verifyProjection(corruptedProjection, [goodObservation]), 'Replay integrity must reject a corrupted materialized projection');
+  const corruptedHistory = structuredClone([goodObservation]);
+  corruptedHistory[0].rating = api.Rating.Again;
+  mustFail(() => port.verifyProjection(good.policyState.fsrsCard, corruptedHistory), 'Replay integrity must reject history that no longer produces the immutable transition');
   check(context.FSRS === undefined, 'Temporary FSRS global must be removed after private capture');
 
   await Promise.all([api.prepareFsrsScheduler(.85), api.prepareFsrsScheduler(.95)]);
@@ -286,6 +322,7 @@ async function testRelearningLifecycle() {
   check(calls[0][3]?.type === 'relearn' && calls[0][3]?.workflow.kind === 'relearning', 'Failed review must create a proper relearning workflow');
   check(calls[0][3]?.returnObligationId === 'original', 'Relearning must return to its exact original');
   check(Math.abs((new Date(calls[0][1].dueAt) - new Date(due)) / 86400000 - 1) < .001, 'Failed FSRS memory must retain the one-day scheduler due date while suspended');
+  const failedMemoryEvent = structuredClone(calls[0][2]);
 
   const failedState = structuredClone(calls[0][1].policyState);
   original.policyState = failedState;
@@ -297,6 +334,7 @@ async function testRelearningLifecycle() {
   calls.length = 0;
   lifecycle.obligation = async () => relearn;
   lifecycle.obligationsForUnit = async () => [relearn];
+  lifecycle.evidenceEvents = async () => [failedMemoryEvent];
   await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, timing:{totalActiveMs:1000,activeByPhase:{attempt:1000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}, confirmedRating:3 }, nextDay);
   check(calls[0][1].status === 'completed', 'Relearning must complete after two successful cycles');
   const returnedTransition = calls[0][2].returnedMemoryTransition;

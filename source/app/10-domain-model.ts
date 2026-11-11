@@ -108,6 +108,20 @@
     lastReviewAt?: ISODateTime;
   }
 
+  type MemoryMaterializedProjection = StoredFsrsCard;
+
+  type MemoryReviewSource = "direct-memory" | "relearning-return";
+
+  interface MemoryReviewObservation {
+    evidenceEventId: string;
+    reviewedAt: ISODateTime;
+    rating: Rating;
+    source: MemoryReviewSource;
+    beforeCard: StoredFsrsCard;
+    afterCard: StoredFsrsCard;
+    configFingerprint: string;
+  }
+
   interface PolicyState {
     engine: "ts-fsrs" | "mastery" | "application" | "performance" | "relearn" | "freshness";
     version: string;
@@ -275,6 +289,7 @@
     maximumInterval: number;
     clearStatsOnForget: false;
     weightsSource: "ts-fsrs-package-default";
+    fingerprint: string;
   }
 
   interface DurationObservation {

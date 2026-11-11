@@ -2,6 +2,15 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-11 — FSRS-7 replay-truth scheduler boundary
+
+- Introduced an application-owned revision scheduler port so domain policy no longer operates directly on the TS-FSRS runtime.
+- Made append-only Evidence Events the canonical memory-review history, including returns from corrective relearning.
+- Retained the persisted FSRS card as a fast materialized projection, with replay verification before preview, review and retrievability.
+- Added the TS-FSRS v6 Reschedule contract over the pinned scheduler forward APIs, preserving full-history memory replay without altering historical due dates.
+- Fingerprinted every FSRS configuration snapshot and validate fingerprints on historical evidence and restore.
+- Added startup, backup/restore and regression integrity checks for projection-chain continuity and independently replayed FSRS-7 memory.
+
 ## 2026-11-11 — Type-safety boundary hardening
 
 - Narrow external browser, plugin, recovery, backup and restore inputs from `unknown` through checked current-format parsers before entering trusted domain logic.

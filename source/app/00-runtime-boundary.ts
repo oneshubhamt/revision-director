@@ -50,13 +50,35 @@
     grade: number;
   }
 
+  interface FsrsHistoryReviewRuntime {
+    rating: number;
+    reviewTime: Date;
+  }
+
+  interface FsrsModelReviewRuntime {
+    rating: number;
+    deltaT: number;
+  }
+
   interface FsrsSchedulerRuntime {
     readonly model: {
       forgettingCurve(state: FsrsMemoryStateRuntime, elapsedDays: number): number;
+      forward(input: {
+        history: readonly FsrsModelReviewRuntime[];
+        initialState?: FsrsMemoryStateRuntime;
+      }): FsrsMemoryStateRuntime[];
+    };
+    readonly chrono: {
+      difference(from: Date, to: Date): number;
+      compare?(left: Date, right: Date): number;
     };
     newCard(input: { now?: Date; cardId?: string }): FsrsCardRuntime;
     preview(input: { card: FsrsCardRuntime; now: Date }): Iterable<FsrsPreviewRuntime>;
     review(input: { card: FsrsCardRuntime; now: Date; grade: number }): FsrsRecordRuntime;
+    forward(input: {
+      history: readonly FsrsHistoryReviewRuntime[];
+      initialCard?: FsrsCardRuntime;
+    }): FsrsRecordRuntime[];
   }
 
   interface FsrsDefaultSchedulerOptions {

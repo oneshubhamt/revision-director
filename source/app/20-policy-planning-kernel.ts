@@ -1,102 +1,19 @@
+  interface SchedulerPolicyContext {
+    readonly memoryReviews?: readonly MemoryReviewObservation[];
+  }
+
   interface SchedulerPolicy {
     readonly id: string;
     readonly type: ObligationType;
     createInitialState(firstDueAt: ISODateTime, cardId: string): PolicyState;
-    preview(obligation: RevisionObligation, now: Date): SchedulePreview[];
-    complete(obligation: RevisionObligation, rating: Rating, evidence: ObjectiveEvidence, now: Date): PolicyCompletion;
-  }
-
-  function requiredFsrs7StabilityFast(value: number): number {
-    assert(Number.isFinite(value), "FSRS-7 memory state is missing fast stability.");
-    return value;
-  }
-
-  function serializeFsrsCard(card: FsrsCardRuntime): StoredFsrsCard {
-    const stored: StoredFsrsCard = {
-      model: FSRS_MODEL,
-      cardId: card.cardId,
-      dueAt: card.dueAt.toISOString(),
-      stability: card.stability,
-      stabilityFast: requiredFsrs7StabilityFast(card.stabilityFast),
-      difficulty: card.difficulty,
-      scheduledDays: card.scheduledDays,
-      learningStep: card.learningStep,
-      reps: card.reps,
-      lapses: card.lapses,
-      state: card.state,
-      scheduleStatus: card.scheduleStatus,
-    };
-    if (card.lastReviewAt) stored.lastReviewAt = card.lastReviewAt.toISOString();
-    return stored;
-  }
-
-  function hydrateFsrsCard(card: StoredFsrsCard, obligationId: string): FsrsCardRuntime {
-    assert(card.model === FSRS_MODEL, "Memory obligation does not use the current FSRS-7 model.");
-    assert(card.cardId === obligationId, "FSRS card identity does not match its obligation.");
-    return {
-      cardId: card.cardId,
-      dueAt: new Date(card.dueAt),
-      lastReviewAt: card.lastReviewAt ? new Date(card.lastReviewAt) : null,
-      stability: card.stability,
-      stabilityFast: requiredFsrs7StabilityFast(card.stabilityFast),
-      difficulty: card.difficulty,
-      scheduledDays: card.scheduledDays,
-      learningStep: card.learningStep,
-      reps: card.reps,
-      lapses: card.lapses,
-      state: card.state,
-      scheduleStatus: card.scheduleStatus,
-    };
-  }
-
-  function fsrsConfigSnapshot(desiredRetention: number): FsrsConfigSnapshot {
-    return {
-      model: FSRS_MODEL,
-      desiredRetention,
-      fractionalDays: true,
-      enableFuzz: false,
-      enableShortTerm: true,
-      learningSteps: ["1d"],
-      relearningSteps: ["1d"],
-      graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
-      allowModelOverride: true,
-      maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
-      clearStatsOnForget: false,
-      weightsSource: "ts-fsrs-package-default",
-    };
-  }
-
-  const FSRS_SCHEDULER_CACHE = new Map<string, FsrsSchedulerRuntime>();
-
-  function fsrsSchedulerCacheKey(desiredRetention: number): string {
-    return desiredRetention.toFixed(6);
-  }
-
-  async function prepareFsrsScheduler(desiredRetention: number): Promise<void> {
-    assert(Number.isFinite(desiredRetention) && desiredRetention > 0 && desiredRetention < 1, "Desired retention is invalid.");
-    const key = fsrsSchedulerCacheKey(desiredRetention);
-    if (FSRS_SCHEDULER_CACHE.has(key)) return;
-    const scheduler = await runtimeFsrs().DefaultScheduler({
-      version: FSRS_MODEL,
-      desiredRetention,
-      enableShortTerm: true,
-      learningSteps: FSRS_LEARNING_STEPS,
-      relearningSteps: FSRS_RELEARNING_STEPS,
-      graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
-      allowModelOverride: true,
-      enableFuzz: false,
-      maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
-      clearStatsOnForget: false,
-    });
-    const probe = scheduler.newCard({ cardId: "revision-director-fsrs7-probe" });
-    requiredFsrs7StabilityFast(probe.stabilityFast);
-    FSRS_SCHEDULER_CACHE.set(key, scheduler);
-  }
-
-  function fsrsScheduler(desiredRetention: number): FsrsSchedulerRuntime {
-    const scheduler = FSRS_SCHEDULER_CACHE.get(fsrsSchedulerCacheKey(desiredRetention));
-    assert(scheduler, "FSRS-7 scheduler has not been initialized for the current retention setting.");
-    return scheduler;
+    preview(obligation: RevisionObligation, now: Date, context?: SchedulerPolicyContext): SchedulePreview[];
+    complete(
+      obligation: RevisionObligation,
+      rating: Rating,
+      evidence: ObjectiveEvidence,
+      now: Date,
+      context?: SchedulerPolicyContext,
+    ): PolicyCompletion;
   }
 
   const PLANNER_WEIGHTS = Object.freeze({
@@ -408,20 +325,15 @@
     };
   }
 
-  function fsrsRetrievability(obligation: RevisionObligation, reference: Date, desiredRetention: number): number | undefined {
+  function fsrsRetrievability(
+    obligation: RevisionObligation,
+    evidenceEvents: EvidenceEvent[],
+    reference: Date,
+    desiredRetention: number,
+  ): number | undefined {
     if (obligation.type !== "memory-recall" || !obligation.policyState.fsrsCard) return undefined;
-    const stored = obligation.policyState.fsrsCard;
-    if (stored.reps === 0 || !stored.lastReviewAt) return undefined;
-    const elapsedDays = Math.max(0, (reference.getTime() - new Date(stored.lastReviewAt).getTime()) / DAY_MS);
-    const retrievability = fsrsScheduler(desiredRetention).model.forgettingCurve(
-      {
-        stability: stored.stability,
-        stabilityFast: requiredFsrs7StabilityFast(stored.stabilityFast),
-        difficulty: stored.difficulty,
-      },
-      elapsedDays,
-    );
-    return clamp(Number(retrievability), 0, 1);
+    const reviews = memoryReviewObservationsFor(obligation.id, evidenceEvents);
+    return revisionSchedulerPort(desiredRetention).retrievability(obligation.policyState.fsrsCard, reviews, reference);
   }
 
   function finalMemoryExamDeadline(item: JoinedObligation): Date | undefined {
@@ -488,7 +400,7 @@
     const synthesisReady = item.obligation.chunking?.status === "synthesis-ready";
     if (!synthesisReady && planningDueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
     const temporalRisk = temporalDueRisk(planningDueAt, dayStart, dayEnd, lookaheadDays);
-    const retrievability = fsrsRetrievability(item.obligation, reference, settings.desiredRetention);
+    const retrievability = fsrsRetrievability(item.obligation, evidenceEvents, reference, settings.desiredRetention);
     const memoryRisk = retrievability === undefined ? 0 : clamp((settings.desiredRetention - retrievability) / Math.max(settings.desiredRetention - 0.5, 0.1), 0, 1);
     const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
     const factors: PlanningFactors = {

@@ -652,12 +652,6 @@
     assert(typeof evidence.correctionNote === "string", "Evidence correction note is invalid.");
   }
 
-  function runtimeFsrs(): FsrsUmdRuntime {
-    assert(typeof FSRS === "object" && FSRS !== null, "Embedded ts-fsrs 6.0.0 failed to initialize. The deployment file may be damaged.");
-    assert(typeof FSRS.DefaultScheduler === "function", "Invalid ts-fsrs v6 scheduler runtime.");
-    return FSRS;
-  }
-
   /* ========================================================================== 
      SCHEDULER-POLICY ROUTER
      ========================================================================== */

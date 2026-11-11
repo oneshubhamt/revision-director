@@ -62,6 +62,12 @@ Writes are serialized; normal edits are debounced; lifecycle events force recove
 
 Only active operational state is duplicated locally. Historical evidence, scheduler history and plans remain IndexedDB-owned.
 
+## FSRS memory truth
+
+Memory review truth is append-only Evidence Events, including successful returns from corrective relearning. These events normalize to chronological rating/review-time observations for FSRS-7 replay.
+
+The current FSRS card stored on each memory obligation is a materialized projection, not an independent source of truth. Before memory preview, review or retrievability, the scheduler port verifies the projection chain and replays FSRS-7 memory from the canonical observations. Configuration snapshots carry a deterministic fingerprint so a transition cannot silently claim different scheduler settings.
+
 ## Storage health
 
 The storage facade reports persistence capability and quota pressure. Persistence is requested only through the explicit user action. Quota status is warning from 75% and critical from 90%.

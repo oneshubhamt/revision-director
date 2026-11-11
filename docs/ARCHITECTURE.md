@@ -53,7 +53,9 @@ The built-in `revision-current` profile owns independent typography, shape, mate
 
 `RevisionService` owns domain use cases. Durable review completion is transaction-bound: evidence, scheduler state, obligation state, plan outcomes and active-session transitions are committed together.
 
-Evidence Events are append-only audit records. Scheduler transitions that affect memory obligations are recorded with before/after state and exact scheduler provenance.
+Evidence Events are append-only audit records and the canonical review history for memory obligations. The persisted FSRS card is a materialized projection for fast planning; the application-owned scheduler port normalizes review observations and verifies that projection against FSRS-7 replay before memory scheduling or retrievability is used.
+
+Every memory transition retains before/after projection state plus a deterministic scheduler-configuration fingerprint, so historical scheduling provenance and current replay integrity are independently inspectable.
 
 ## Active retrieval and timing
 
