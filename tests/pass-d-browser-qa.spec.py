@@ -110,8 +110,17 @@ def scenario_hostile_planning_import(browser):
         check(valid['dailyPlans'],'Expected persisted daily plan')
         hostile=json.loads(json.dumps(valid)); hostile['dailyPlans'][0]['studyDayKey']='2026-02-31'
         hp=Path(tmp)/'hostile.rdbackup'; hp.write_bytes(encode_payload(hostile))
-        page.locator('[data-pane="settings"]').click(); page.locator('#import-backup').set_input_files(str(hp)); page.wait_for_timeout(350)
-        check('invalid' in page.locator('#toast').inner_text().lower(),'Impossible planning date was accepted through UI import')
+        page.locator('[data-pane="settings"]').click()
+        page.evaluate("document.querySelector('#toast').textContent=''")
+        page.locator('#import-backup').set_input_files(str(hp))
+        deadline=time.monotonic()+8
+        while time.monotonic()<deadline:
+            toast=page.locator('#toast').inner_text().lower()
+            if 'invalid' in toast or page.locator('#restore-dialog').is_visible(): break
+            page.wait_for_timeout(80)
+        toast=page.locator('#toast').inner_text().lower()
+        check('invalid' in toast and not page.locator('#restore-dialog').is_visible(),
+              'Impossible planning date was accepted through UI import')
     check(not errors,f'Hostile-import errors: {errors}')
     page.close()
 
