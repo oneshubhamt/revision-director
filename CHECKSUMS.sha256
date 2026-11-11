@@ -19,12 +19,12 @@ ca9ab7236c8adf3e3f13a6496907fb9ef882c2daaddca73e8d3fc95ef668129d  ./source/app/1
 490ca481a51c848ac11e23edad777942b4fd8a430c80ab9a94c3e4c5a4359c72  ./source/app/12-production-contracts.ts
 776123e8c7f48b7c8c36964cf53ed61304337a18a8c6db129f96161cdb911fb2  ./source/app/20-policy-planning-kernel.ts
 97f6b10247d2589b2af754c0ad1301405777ac4523a4a3ddf6e02787531ed4ae  ./source/app/21-policy-implementations.ts
-3fd668dadcab5a18bf75add2f30a8dd22fc9b0cf015a46d79ec3fdcf5f6a0756  ./source/app/30-indexeddb-repository.ts
-af067053d1157b31b1fa50ef82921940ae9d2857308d25419e2b560c05510baf  ./source/app/31-storage-facade.ts
-9bd24e7ff8670513196c5cf9b94833548d060d1590f8068ffa87ae73b0c1ed1e  ./source/app/32-active-retrieval-persistence.ts
+33e36d88871be004ca82ff780804c5467ac335ff3a43aed7ba53345767c1b4e9  ./source/app/30-indexeddb-repository.ts
+746aa340169ac4c96a4087c88b2c4d389d7478c9ce6d67bf9b6e93f6d22b4766  ./source/app/31-storage-facade.ts
+c835f78e652f1a6b67657e474f4b179fbb568dcc05e807977d516d674819e482  ./source/app/32-active-retrieval-persistence.ts
 ac494ddc8ae368b65427c0257e2fddd371ecd96a9f20466cccc3f412c6ed1f89  ./source/app/33-phase-time-runtime.ts
 35b1a74b9fa68f7e0815356936ef138a3d457301394581b838516181aeca4101  ./source/app/34-cross-tab-ownership.ts
-b34af59751c8d064504e276b2d69ecb05f4ad957ac0c500e50c385d2c9819c14  ./source/app/40-application-services.ts
+d492bb2704cf3a70d6a3d78a19bfa55b1e0484bb67a99e2a6d5f0f98d5da12a9  ./source/app/40-application-services.ts
 58747321383d719fe15cdce82b8506cda5140ebe0b00d518bc18226da4abb741  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 905f9de469cda424e8182e11678e85aba2d536865de15a19956f9879cf585c76  ./source/app/45-ui-runtime.ts
@@ -39,7 +39,7 @@ bc35afed0272eab3da0355c34acd356c274e5261a377a0938832fa689040c9db  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 c2702d0b0548911f0b4be5a294ced0151b9295acf849eebec6b555c19de5d07a  ./tests/backup_fixture_codec.py
 be956fda4232345dce155347da82b2f0560e22ffaff0a91b7e3ba1e1127f981f  ./tests/browser-qa.spec.py
-2a6247738f5498ed1cad515f6fe451809751a64a6187aecb6931de9134f0b17d  ./tests/build-integrity.spec.py
+5bbd2bc50ebfb1fbc6584e5a1e83a79bd63f607f902b57c546ce0122dc5633a0  ./tests/build-integrity.spec.py
 fa4bd4c92b454bdca795924c8f275ab864b0028d9750576f18914a06888f9224  ./tests/fixtures/browser-baseline.json
 8f0b3a476ffb0602cd0b15d9f5925b4794cb82f1f45434387673b472bf6a9ef3  ./tests/fixtures/browser-baseline.rdbackup
 d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-qa-supplement.spec.py
