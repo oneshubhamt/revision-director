@@ -133,7 +133,7 @@ check("eleven durable stores", all(value in ts for value in [
 ]))
 check("exact FSRS-7 adapter", 'readonly id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`' in ts)
 check("FSRS limited to memory", 'readonly type: ObligationType = "memory-recall"' in ts)
-check("modern FSRS scheduler API", "DefaultScheduler(options: FsrsDefaultSchedulerOptions)" in ts and "prepareFsrsScheduler" in ts and ".review({ card:" in ts and ".preview({ card:" in ts)
+check("modern FSRS scheduler API", "DefaultScheduler(options: FsrsDefaultSchedulerOptions)" in ts and "interface RevisionSchedulerPort" in ts and "class TsFsrsSchedulerPort" in ts and "prepareFsrsScheduler" in ts and "this.scheduler.review({" in ts and "this.scheduler.preview({" in ts and "this.scheduler.model.forward({" in ts)
 check("FSRS scheduler warmup lifecycle", "await prepareFsrsScheduler(this.settings.desiredRetention)" in ts and "await prepareFsrsScheduler(next.desiredRetention)" in ts and "await prepareFsrsScheduler(validated.settings.desiredRetention)" in ts)
 check("no deprecated FSRS scheduler API", all(token not in ts for token in ["api.fsrs(", ".createEmptyCard(", "generatorParameters("]))
 check("FSRS-7 only", 'type FsrsModelVersion = "FSRS-7"' in ts and 'const FSRS_MODEL: FsrsModelVersion = "FSRS-7"' in ts)
