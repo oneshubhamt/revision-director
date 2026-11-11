@@ -264,7 +264,7 @@ check(ui.relearningTriggerPanel(failedEventForPanel).includes('WHY THIS RELEARNI
 
 const dummyRepo = {};
 const service = new api.RevisionService(dummyRepo);
-const validBackup = {format:'revision-director-backup',schemaVersion:2,exportedAt:due,appVersion:'va7.1-pass-f1',profiles:[{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}],nodes:[{schemaVersion:1,id:'s',profileId:'p',parentId:null,kind:'subject',name:'S',normalizedName:'s',createdAt:due,updatedAt:due},{schemaVersion:1,id:'c',profileId:'p',parentId:'s',kind:'section',name:'C',normalizedName:'c',createdAt:due,updatedAt:due},{schemaVersion:1,id:'t',profileId:'p',parentId:'c',kind:'topic',name:'T',normalizedName:'t',createdAt:due,updatedAt:due}],units:[{schemaVersion:1,id:'u',profileId:'p',topicNodeId:'t',title:'U',scope:'scope',source:'',importance:3,status:'active',createdAt:due,updatedAt:due,evidenceCount:0,lapseCount:0}],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'p',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4},activeRetrieval:null};
+const validBackup = {format:'revision-director-backup',schemaVersion:2,exportedAt:due,appVersion:'va7.1-pass-f1',profiles:[{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}],nodes:[{schemaVersion:1,id:'s',profileId:'p',parentId:null,kind:'subject',name:'S',normalizedName:'s',createdAt:due,updatedAt:due},{schemaVersion:1,id:'c',profileId:'p',parentId:'s',kind:'section',name:'C',normalizedName:'c',createdAt:due,updatedAt:due},{schemaVersion:1,id:'t',profileId:'p',parentId:'c',kind:'topic',name:'T',normalizedName:'t',createdAt:due,updatedAt:due}],units:[{schemaVersion:1,id:'u',profileId:'p',topicNodeId:'t',title:'U',scope:'scope',source:'',importance:3,status:'active',createdAt:due,updatedAt:due,evidenceCount:0,lapseCount:0}],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'p',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}},activeRetrieval:null};
 check(service.validateBackup(validBackup).format === 'revision-director-backup', 'Valid backup should pass');
 const conceptPolicy = new api.MasteryPolicy();
 const conceptObligation = { schemaVersion:1, ...obligation('concept-reconstruction', conceptPolicy, 'reconstruction'), id:'o' };
@@ -450,7 +450,7 @@ async function testStudyEventRuntimeBoundary() {
 
 async function testDueSummaryScope() {
   const svc = new api.RevisionService({});
-  svc.settings = { schemaVersion:1, key:'app', activeProfileId:'active', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4 };
+  svc.settings = { schemaVersion:1, key:'app', activeProfileId:'active', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4, fsrsPersonalization:{profile:null,active:false} };
   const obligation = { id:'o', unitId:'u', type:'concept-reconstruction', status:'active', dueAt:'2026-07-25T05:00:00Z', expectedMinutes:10, baselineMinutes:10, durationSampleCount:0, protocol:'x', successCriteria:'x', workflow:{kind:'reconstruction',prompt:'x',checkpoints:['x'],responseMedium:'in-app',reconstructionShape:'outline'}, freshnessDays:30, priority:0, policyState:{engine:'mastery',version:'1',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0}, createdAt:due, updatedAt:due };
   const unit = { id:'u', profileId:'p', topicNodeId:'t', title:'U', scope:'x', source:'', importance:3, status:'active', createdAt:due, updatedAt:due, evidenceCount:0, lapseCount:0 };
   const join = (id,status,examDate) => ({ obligation:{...obligation,id}, unit:{...unit,id:'u'+id,profileId:id}, profile:{id,name:id,examDate,status,createdAt:due,updatedAt:due}, subject:'S',section:'C',topic:'T' });
@@ -462,7 +462,7 @@ async function testDueSummaryScope() {
 async function testSettingsBoundary() {
   const repo = { getAll: async () => [{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}], get: async (_store,key) => key==='p' ? {schemaVersion:1,id:'p',status:'active'} : undefined, put: async()=>{} };
   const svc = new api.RevisionService(repo);
-  const base = { schemaVersion:1, key:'app', activeProfileId:'p', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4 };
+  const base = { schemaVersion:1, key:'app', activeProfileId:'p', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4, fsrsPersonalization:{profile:null,active:false} };
   await svc.saveSettings(base); check(true, 'Valid settings should save');
   for (const mutation of [{...base,activeProfileId:'missing'},{...base,dailyCapacityMinutes:60.5},{...base,studyDayBoundaryHour:4.5}]) {
     let failed=false; try { await svc.saveSettings(mutation); } catch { failed=true; }
