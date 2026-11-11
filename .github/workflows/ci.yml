@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - working
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: revision-director-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CI: "true"
+
+jobs:
+  core:
+    name: Core / TypeScript 7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install locked Node toolchain
+        run: npm ci
+
+      - name: Build with pinned TypeScript 7
+        run: npm run build
+
+      - name: Verify generated artifacts are committed
+        run: git diff --exit-code -- dist/app.js index.html
+
+      - name: JavaScript syntax
+        run: node --check dist/app.js
+
+      - name: Core integrity and ownership
+        run: |
+          python3 tests/build-integrity.spec.py
+          python3 tests/html-sanity.spec.py
+          python3 tests/source-ownership.spec.py
+
+      - name: Non-browser JavaScript regressions
+        run: |
+          set -euo pipefail
+          for file in tests/*.spec.js; do
+            echo "==> $file"
+            node "$file"
+          done
+
+      - name: Verify tracked checksums
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          root = Path(".")
+          for line in (root / "CHECKSUMS.sha256").read_text().splitlines():
+              if not line:
+                  continue
+              digest, relative = line.split("  ./", 1)
+              path = root / relative
+              if not path.is_file():
+                  raise SystemExit(f"Missing checksum target: {relative}")
+              actual = hashlib.sha256(path.read_bytes()).hexdigest()
+              if actual != digest:
+                  raise SystemExit(f"Checksum mismatch: {relative}")
+          PY
+
+  browser:
+    name: Browser / durability
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install locked Node toolchain
+        run: npm ci
+
+      - name: Build with pinned TypeScript 7
+        run: npm run build
+
+      - name: Install Playwright
+        run: |
+          python3 -m pip install --disable-pip-version-check playwright
+          python3 -m playwright install --with-deps chromium
+
+      - name: Pass B2 durability gate
+        run: python3 tests/pass-b2-browser.spec.py
+
+      - name: Python and Chromium regressions
+        run: |
+          set -euo pipefail
+          for file in tests/*.spec.py; do
+            case "$file" in
+              tests/build-integrity.spec.py|tests/html-sanity.spec.py|tests/source-ownership.spec.py|tests/pass-b2-browser.spec.py) continue ;;
+            esac
+            echo "==> $file"
+            python3 "$file"
+          done
