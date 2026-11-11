@@ -325,6 +325,25 @@
       assert(typeof value === "string", `${name} must be text.`);
       return value;
   }
+  function formNumber(data, name) {
+      const value = Number(formText(data, name));
+      assert(Number.isFinite(value), `${name} must be a finite number.`);
+      return value;
+  }
+  function requiredNamedFormControl(form, name, constructor) {
+      const control = form.elements.namedItem(name);
+      assert(control instanceof constructor, `Missing or invalid form control: ${name}.`);
+      return control;
+  }
+  function formInput(form, name) {
+      return requiredNamedFormControl(form, name, HTMLInputElement);
+  }
+  function formSelect(form, name) {
+      return requiredNamedFormControl(form, name, HTMLSelectElement);
+  }
+  function formTextarea(form, name) {
+      return requiredNamedFormControl(form, name, HTMLTextAreaElement);
+  }
   const ENTITY_STATUSES = ["active", "suspended", "archived"];
   const ACTIVITY_MODES = ["learn", "review", "practice", "test"];
   const STUDY_ORIGINS = ["manual", "study-director"];
@@ -563,7 +582,7 @@
           responseMedium: literalChoice(formText(data, "responseMedium", "in-app"), RESPONSE_MEDIA, "Response medium"),
       };
       if (kind === "questions") {
-          spec.targetCount = Number(data.get("targetCount"));
+          spec.targetCount = formNumber(data, "targetCount");
           spec.questionSetRef = formText(data, "questionSetRef").trim();
       }
       if (kind === "reconstruction")
@@ -572,42 +591,42 @@
           spec.diagramSurface = literalChoice(formText(data, "diagramSurface", "canvas"), DIAGRAM_SURFACES, "Diagram surface");
       if (kind === "answer-writing") {
           spec.answerMode = literalChoice(formText(data, "answerMode", "full-answer"), ANSWER_MODES, "Answer mode");
-          spec.timeLimitMinutes = Number(data.get("timeLimitMinutes"));
-          spec.wordLimit = Number(data.get("wordLimit"));
+          spec.timeLimitMinutes = formNumber(data, "timeLimitMinutes");
+          spec.wordLimit = formNumber(data, "wordLimit");
       }
       validateWorkflowSpec(spec, type);
       return spec;
   }
   function populateWorkflowOptions(form, type, selected) {
-      const select = form.elements.namedItem("workflowKind");
+      const select = formSelect(form, "workflowKind");
       const allowed = compatibleWorkflows(type);
       select.innerHTML = allowed.map((kind) => `<option value="${kind}">${escapeHtml(workflowLabel(kind))}</option>`).join("");
       select.value = selected && allowed.includes(selected) ? selected : allowed[0];
   }
   function populateWorkflowForm(form, spec, type) {
       populateWorkflowOptions(form, type, spec.kind);
-      form.elements.namedItem("workflowKind").value = spec.kind;
-      form.elements.namedItem("responseMedium").value = spec.responseMedium;
-      form.elements.namedItem("workflowPrompt").value = spec.prompt;
-      form.elements.namedItem("workflowCheckpoints").value = spec.checkpoints.join("\n");
-      form.elements.namedItem("targetCount").value = String(spec.targetCount ?? 10);
-      form.elements.namedItem("questionSetRef").value = spec.questionSetRef ?? "External question set";
-      form.elements.namedItem("reconstructionShape").value = spec.reconstructionShape ?? "outline";
-      form.elements.namedItem("diagramSurface").value = spec.diagramSurface ?? "canvas";
-      form.elements.namedItem("answerMode").value = spec.answerMode ?? "full-answer";
-      form.elements.namedItem("timeLimitMinutes").value = String(spec.timeLimitMinutes ?? 10);
-      form.elements.namedItem("wordLimit").value = String(spec.wordLimit ?? 150);
+      formSelect(form, "workflowKind").value = spec.kind;
+      formSelect(form, "responseMedium").value = spec.responseMedium;
+      formTextarea(form, "workflowPrompt").value = spec.prompt;
+      formTextarea(form, "workflowCheckpoints").value = spec.checkpoints.join("\n");
+      formInput(form, "targetCount").value = String(spec.targetCount ?? 10);
+      formInput(form, "questionSetRef").value = spec.questionSetRef ?? "External question set";
+      formSelect(form, "reconstructionShape").value = spec.reconstructionShape ?? "outline";
+      formSelect(form, "diagramSurface").value = spec.diagramSurface ?? "canvas";
+      formSelect(form, "answerMode").value = spec.answerMode ?? "full-answer";
+      formInput(form, "timeLimitMinutes").value = String(spec.timeLimitMinutes ?? 10);
+      formInput(form, "wordLimit").value = String(spec.wordLimit ?? 150);
       updateWorkflowFields(form);
   }
   function updateWorkflowFields(form) {
-      const kind = literalChoice(form.elements.namedItem("workflowKind").value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
+      const kind = literalChoice(formSelect(form, "workflowKind").value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
       form.querySelectorAll("[data-workflow-field]").forEach((field) => {
           field.hidden = field.dataset["workflowField"] !== kind;
       });
   }
   function applyDefaultWorkflowToForm(form, type) {
-      const protocol = form.elements.namedItem("protocol")?.value ?? "";
-      const success = form.elements.namedItem("successCriteria")?.value ?? "";
+      const protocol = formTextarea(form, "protocol").value;
+      const success = formTextarea(form, "successCriteria").value;
       populateWorkflowForm(form, defaultWorkflowSpec(type, protocol, success), type);
   }
   function checkpointScore(met, total) {
@@ -5874,8 +5893,8 @@
           this.tablist = tablist;
           this.onActivate = onActivate;
           this.entries = Object.freeze(panes.map((pane) => {
-              const tab = requiredElement(`[data-pane="${pane}"]`);
-              const panel = requiredElement(`#pane-${pane}`);
+              const tab = requiredElement(`[data-pane="${pane}"]`, HTMLButtonElement);
+              const panel = requiredElement(`#pane-${pane}`, HTMLElement);
               return Object.freeze({ pane, tab, panel });
           }));
       }
@@ -6077,9 +6096,9 @@
       }
   }
 
-  function requiredElement(selector) {
+  function requiredElement(selector, constructor) {
       const element = document.querySelector(selector);
-      assert(element, `Missing required element: ${selector}`);
+      assert(element instanceof constructor, `Missing or invalid required element: ${selector}`);
       return element;
   }
   function downloadBlob(filename, content, type) {
@@ -6123,32 +6142,32 @@
       ownershipSnapshot;
       restoreCandidateId = "";
       restoreSafetyProofId = "";
-      todayContent = requiredElement("#today-content");
-      reviewContent = requiredElement("#review-content");
-      libraryContent = requiredElement("#library-content");
-      studyContent = requiredElement("#study-content");
-      historyContent = requiredElement("#history-content");
-      settingsContent = requiredElement("#settings-content");
-      toastElement = requiredElement("#toast");
-      gapOverlay = requiredElement("#gap-overlay");
-      gapMeta = requiredElement("#gap-meta");
-      gapSplit = requiredElement("#gap-split");
-      gapFocusMinutes = requiredElement("#gap-focus-minutes");
-      unitDialog = requiredElement("#unit-dialog");
-      studyDialog = requiredElement("#study-dialog");
-      obligationDialog = requiredElement("#obligation-dialog");
-      restoreDialog = requiredElement("#restore-dialog");
-      restorePreview = requiredElement("#restore-preview");
-      unitForm = requiredElement("#unit-form");
-      studyForm = requiredElement("#study-form");
-      obligationForm = requiredElement("#obligation-form");
-      ownershipBanner = requiredElement("#ownership-banner");
-      ownershipTitle = requiredElement("#ownership-title");
-      ownershipMessage = requiredElement("#ownership-message");
-      takeControlButton = requiredElement("#take-review-control");
-      storageCapacityBanner = requiredElement("#storage-capacity-banner");
-      appShell = requiredElement(".app-shell");
-      primaryNav = requiredElement(".nav");
+      todayContent = requiredElement("#today-content", HTMLDivElement);
+      reviewContent = requiredElement("#review-content", HTMLDivElement);
+      libraryContent = requiredElement("#library-content", HTMLDivElement);
+      studyContent = requiredElement("#study-content", HTMLDivElement);
+      historyContent = requiredElement("#history-content", HTMLDivElement);
+      settingsContent = requiredElement("#settings-content", HTMLDivElement);
+      toastElement = requiredElement("#toast", HTMLDivElement);
+      gapOverlay = requiredElement("#gap-overlay", HTMLDivElement);
+      gapMeta = requiredElement("#gap-meta", HTMLDivElement);
+      gapSplit = requiredElement("#gap-split", HTMLDivElement);
+      gapFocusMinutes = requiredElement("#gap-focus-minutes", HTMLInputElement);
+      unitDialog = requiredElement("#unit-dialog", HTMLDialogElement);
+      studyDialog = requiredElement("#study-dialog", HTMLDialogElement);
+      obligationDialog = requiredElement("#obligation-dialog", HTMLDialogElement);
+      restoreDialog = requiredElement("#restore-dialog", HTMLDialogElement);
+      restorePreview = requiredElement("#restore-preview", HTMLDivElement);
+      unitForm = requiredElement("#unit-form", HTMLFormElement);
+      studyForm = requiredElement("#study-form", HTMLFormElement);
+      obligationForm = requiredElement("#obligation-form", HTMLFormElement);
+      ownershipBanner = requiredElement("#ownership-banner", HTMLDivElement);
+      ownershipTitle = requiredElement("#ownership-title", HTMLElement);
+      ownershipMessage = requiredElement("#ownership-message", HTMLElement);
+      takeControlButton = requiredElement("#take-review-control", HTMLButtonElement);
+      storageCapacityBanner = requiredElement("#storage-capacity-banner", HTMLDivElement);
+      appShell = requiredElement(".app-shell", HTMLElement);
+      primaryNav = requiredElement(".nav", HTMLElement);
       renderCoordinator;
       tabRegistry;
       dialogFocus;
@@ -6251,7 +6270,7 @@
           }
           const closeId = target.dataset["closeDialog"];
           if (closeId) {
-              this.dialogFocus.close(requiredElement(`#${closeId}`));
+              this.dialogFocus.close(requiredElement(`#${closeId}`, HTMLDialogElement));
               return;
           }
           const gapAction = target.dataset["gapAction"];
@@ -6338,15 +6357,15 @@
               const form = target.closest("#unit-form,#obligation-form");
               if (form) {
                   const typeName = form.getAttribute("id") === "unit-form" ? "obligationType" : "type";
-                  const typeSelect = form.elements.namedItem(typeName);
+                  const typeSelect = formSelect(form, typeName);
                   if (target === typeSelect) {
                       applyDefaultWorkflowToForm(form, literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type"));
                       return;
                   }
-                  if (target === form.elements.namedItem("workflowKind")) {
+                  if (target === formSelect(form, "workflowKind")) {
                       const type = literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type");
-                      const protocol = form.elements.namedItem("protocol")?.value ?? "";
-                      const success = form.elements.namedItem("successCriteria")?.value ?? "";
+                      const protocol = formTextarea(form, "protocol").value;
+                      const success = formTextarea(form, "successCriteria").value;
                       const selected = literalChoice(target.value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
                       const spec = defaultWorkflowSpec(type, protocol, success);
                       spec.kind = selected;
@@ -6744,7 +6763,7 @@
           this.toast(askBeforeResume ? "Unfinished retrieval session recovered." : "Canonical retrieval state hydrated after ownership transfer.");
       }
       startClock() {
-          const clock = requiredElement("#clock");
+          const clock = requiredElement("#clock", HTMLDivElement);
           const update = () => { clock.textContent = new Date().toLocaleTimeString("en-IN", { hour12: false }); };
           update();
           window.setInterval(update, 1000);
@@ -6765,9 +6784,9 @@
       async renderSidebar() {
           const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
           const units = (await this.service.units()).filter((unit) => unit.status === "active");
-          requiredElement("#sb-due").textContent = String(plan.selected.length);
-          requiredElement("#sb-units").textContent = String(units.length);
-          requiredElement("#sb-load").textContent = `${plan.plannedMinutes}m`;
+          requiredElement("#sb-due", HTMLElement).textContent = String(plan.selected.length);
+          requiredElement("#sb-units", HTMLElement).textContent = String(units.length);
+          requiredElement("#sb-load", HTMLElement).textContent = `${plan.plannedMinutes}m`;
       }
       pageHead(eyebrow, title, description, actions = "") {
           return `<header class="page-head"><div><div class="eyebrow">${escapeHtml(eyebrow)}</div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p></div><div class="actions">${actions}</div></header>`;
@@ -7694,23 +7713,23 @@
       async openUnitDialog(prefill) {
           const profiles = (await this.service.profiles()).filter((profile) => profile.status === "active");
           assert(profiles.length > 0, "Create an active exam profile in Settings before adding a knowledge unit.");
-          const profileSelect = this.unitForm.elements.namedItem("profileId");
+          const profileSelect = formSelect(this.unitForm, "profileId");
           profileSelect.innerHTML = profiles.map((profile) => `<option value="${profile.id}">${escapeHtml(profile.name)}</option>`).join("");
           const settings = this.service.getSettings();
           profileSelect.value = prefill?.profileId ?? settings.activeProfileId ?? profiles[0]?.id ?? "";
-          this.unitForm.elements.namedItem("subject").value = prefill?.subject ?? "";
-          this.unitForm.elements.namedItem("section").value = prefill?.section ?? "";
-          this.unitForm.elements.namedItem("topic").value = prefill?.topic ?? "";
-          this.unitForm.elements.namedItem("title").value = prefill?.title ?? "";
-          this.unitForm.elements.namedItem("scope").value = prefill?.scope ?? "";
-          this.unitForm.elements.namedItem("source").value = prefill?.source ?? "";
-          this.unitForm.elements.namedItem("importance").value = String(prefill?.importance ?? 3);
-          this.unitForm.elements.namedItem("obligationType").value = prefill?.obligationType ?? "memory-recall";
-          this.unitForm.elements.namedItem("expectedMinutes").value = String(prefill?.expectedMinutes ?? 15);
-          this.unitForm.elements.namedItem("protocol").value = prefill?.protocol ?? "";
-          this.unitForm.elements.namedItem("successCriteria").value = prefill?.successCriteria ?? "";
-          this.unitForm.elements.namedItem("firstDueAt").value = toLocalInput(prefill?.firstDueAt ?? addDays(new Date(), 1).toISOString());
-          this.unitForm.elements.namedItem("freshnessDays").value = String(prefill?.freshnessDays ?? 30);
+          formInput(this.unitForm, "subject").value = prefill?.subject ?? "";
+          formInput(this.unitForm, "section").value = prefill?.section ?? "";
+          formInput(this.unitForm, "topic").value = prefill?.topic ?? "";
+          formInput(this.unitForm, "title").value = prefill?.title ?? "";
+          formTextarea(this.unitForm, "scope").value = prefill?.scope ?? "";
+          formInput(this.unitForm, "source").value = prefill?.source ?? "";
+          formSelect(this.unitForm, "importance").value = String(prefill?.importance ?? 3);
+          formSelect(this.unitForm, "obligationType").value = prefill?.obligationType ?? "memory-recall";
+          formInput(this.unitForm, "expectedMinutes").value = String(prefill?.expectedMinutes ?? 15);
+          formTextarea(this.unitForm, "protocol").value = prefill?.protocol ?? "";
+          formTextarea(this.unitForm, "successCriteria").value = prefill?.successCriteria ?? "";
+          formInput(this.unitForm, "firstDueAt").value = toLocalInput(prefill?.firstDueAt ?? addDays(new Date(), 1).toISOString());
+          formInput(this.unitForm, "freshnessDays").value = String(prefill?.freshnessDays ?? 30);
           const unitType = prefill?.obligationType ?? "memory-recall";
           populateWorkflowForm(this.unitForm, prefill?.workflow ?? defaultWorkflowSpec(unitType, prefill?.protocol ?? "", prefill?.successCriteria ?? ""), unitType);
           this.dialogFocus.open(this.unitDialog, '[name="profileId"]');
@@ -7731,13 +7750,13 @@
                   title: formText(data, "title"),
                   scope: formText(data, "scope"),
                   source: formText(data, "source"),
-                  importance: literalChoice(Number(data.get("importance")), IMPORTANCE_LEVELS, "Importance"),
+                  importance: literalChoice(formNumber(data, "importance"), IMPORTANCE_LEVELS, "Importance"),
                   obligationType,
-                  expectedMinutes: Number(data.get("expectedMinutes")),
+                  expectedMinutes: formNumber(data, "expectedMinutes"),
                   protocol: formText(data, "protocol"),
                   successCriteria: formText(data, "successCriteria"),
                   firstDueAt: localInputToIso(formText(data, "firstDueAt")),
-                  freshnessDays: Number(data.get("freshnessDays")),
+                  freshnessDays: formNumber(data, "freshnessDays"),
                   workflow,
               });
               this.dialogFocus.close(this.unitDialog);
@@ -7752,20 +7771,20 @@
           const profiles = (await this.service.profiles()).filter((profile) => profile.status === "active");
           assert(profiles.length > 0, "Create an active exam profile in Settings before logging study.");
           const units = (await this.service.units()).filter((unit) => unit.status === "active");
-          const profileSelect = this.studyForm.elements.namedItem("profileId");
+          const profileSelect = formSelect(this.studyForm, "profileId");
           profileSelect.innerHTML = profiles.map((profile) => `<option value="${profile.id}">${escapeHtml(profile.name)}</option>`).join("");
           profileSelect.value = prefill?.profileId ?? this.service.getSettings().activeProfileId ?? profiles[0]?.id ?? "";
-          this.studyForm.elements.namedItem("occurredAt").value = toLocalInput(prefill?.occurredAt ?? nowIso());
-          this.studyForm.elements.namedItem("activityMode").value = prefill?.activityMode ?? "learn";
-          this.studyForm.elements.namedItem("area").value = prefill?.area ?? "";
-          this.studyForm.elements.namedItem("task").value = prefill?.task ?? "";
-          this.studyForm.elements.namedItem("measure").value = prefill?.measure ?? "";
-          this.studyForm.elements.namedItem("source").value = prefill?.source ?? "";
-          this.studyForm.elements.namedItem("durationMinutes").value = String(prefill?.durationMinutes ?? 45);
-          this.studyForm.elements.namedItem("understanding").value = String(prefill?.understanding ?? 3);
-          this.studyForm.elements.namedItem("origin").value = prefill?.origin ?? "manual";
-          this.studyForm.elements.namedItem("notes").value = prefill?.notes ?? "";
-          const linked = this.studyForm.elements.namedItem("linkedUnitIds");
+          formInput(this.studyForm, "occurredAt").value = toLocalInput(prefill?.occurredAt ?? nowIso());
+          formSelect(this.studyForm, "activityMode").value = prefill?.activityMode ?? "learn";
+          formInput(this.studyForm, "area").value = prefill?.area ?? "";
+          formInput(this.studyForm, "task").value = prefill?.task ?? "";
+          formInput(this.studyForm, "measure").value = prefill?.measure ?? "";
+          formInput(this.studyForm, "source").value = prefill?.source ?? "";
+          formInput(this.studyForm, "durationMinutes").value = String(prefill?.durationMinutes ?? 45);
+          formSelect(this.studyForm, "understanding").value = String(prefill?.understanding ?? 3);
+          formSelect(this.studyForm, "origin").value = prefill?.origin ?? "manual";
+          formTextarea(this.studyForm, "notes").value = prefill?.notes ?? "";
+          const linked = formSelect(this.studyForm, "linkedUnitIds");
           linked.innerHTML = units.map((unit) => `<option value="${unit.id}" ${prefill?.linkedUnitIds?.includes(unit.id) ? "selected" : ""}>${escapeHtml(unit.title)}</option>`).join("");
           this.dialogFocus.open(this.studyDialog, '[name="profileId"]');
       }
@@ -7775,17 +7794,17 @@
           event.preventDefault();
           try {
               const data = new FormData(this.studyForm);
-              const linked = [...this.studyForm.elements.namedItem("linkedUnitIds").selectedOptions].map((option) => option.value);
+              const linked = [...(formSelect(this.studyForm, "linkedUnitIds")).selectedOptions].map((option) => option.value);
               await this.service.logStudyEvent({
-                  profileId: String(data.get("profileId") ?? ""),
+                  profileId: formText(data, "profileId"),
                   occurredAt: localInputToIso(formText(data, "occurredAt")),
                   activityMode: literalChoice(formText(data, "activityMode"), ACTIVITY_MODES, "Study activity mode"),
                   area: formText(data, "area"),
                   task: formText(data, "task"),
                   measure: formText(data, "measure"),
-                  source: String(data.get("source") ?? ""),
-                  durationMinutes: Number(data.get("durationMinutes")),
-                  understanding: literalChoice(Number(data.get("understanding")), UNDERSTANDING_LEVELS, "Understanding"),
+                  source: formText(data, "source"),
+                  durationMinutes: formNumber(data, "durationMinutes"),
+                  understanding: literalChoice(formNumber(data, "understanding"), UNDERSTANDING_LEVELS, "Understanding"),
                   linkedUnitIds: linked,
                   notes: formText(data, "notes"),
                   origin: literalChoice(formText(data, "origin"), STUDY_ORIGINS, "Study origin"),
@@ -7800,13 +7819,13 @@
       }
       async openObligationDialog(unitId) {
           const unit = await this.service.unit(unitId);
-          this.obligationForm.elements.namedItem("unitId").value = unit.id;
-          this.obligationForm.elements.namedItem("type").value = "application-practice";
-          this.obligationForm.elements.namedItem("expectedMinutes").value = "20";
-          this.obligationForm.elements.namedItem("protocol").value = "";
-          this.obligationForm.elements.namedItem("successCriteria").value = "";
-          this.obligationForm.elements.namedItem("dueAt").value = toLocalInput(addDays(new Date(), 1).toISOString());
-          this.obligationForm.elements.namedItem("freshnessDays").value = "30";
+          formInput(this.obligationForm, "unitId").value = unit.id;
+          formSelect(this.obligationForm, "type").value = "application-practice";
+          formInput(this.obligationForm, "expectedMinutes").value = "20";
+          formTextarea(this.obligationForm, "protocol").value = "";
+          formTextarea(this.obligationForm, "successCriteria").value = "";
+          formInput(this.obligationForm, "dueAt").value = toLocalInput(addDays(new Date(), 1).toISOString());
+          formInput(this.obligationForm, "freshnessDays").value = "30";
           populateWorkflowForm(this.obligationForm, defaultWorkflowSpec("application-practice", "", ""), "application-practice");
           this.dialogFocus.open(this.obligationDialog, '[name="type"]');
       }
@@ -7821,11 +7840,11 @@
               await this.service.createObligation({
                   unitId: formText(data, "unitId"),
                   type,
-                  expectedMinutes: Number(data.get("expectedMinutes")),
-                  protocol: String(data.get("protocol") ?? ""),
-                  successCriteria: String(data.get("successCriteria") ?? ""),
+                  expectedMinutes: formNumber(data, "expectedMinutes"),
+                  protocol: formText(data, "protocol"),
+                  successCriteria: formText(data, "successCriteria"),
                   dueAt: localInputToIso(formText(data, "dueAt")),
-                  freshnessDays: Number(data.get("freshnessDays")),
+                  freshnessDays: formNumber(data, "freshnessDays"),
                   workflow,
               });
               this.dialogFocus.close(this.obligationDialog);
@@ -7868,10 +7887,10 @@
               await this.service.saveSettings({
                   schemaVersion: DOCUMENT_SCHEMA_VERSION,
                   key: "app",
-                  activeProfileId: String(data.get("activeProfileId") ?? ""),
-                  desiredRetention: Number(data.get("desiredRetention")),
-                  dailyCapacityMinutes: Number(data.get("dailyCapacityMinutes")),
-                  studyDayBoundaryHour: Number(data.get("studyDayBoundaryHour")),
+                  activeProfileId: formText(data, "activeProfileId"),
+                  desiredRetention: formNumber(data, "desiredRetention"),
+                  dailyCapacityMinutes: formNumber(data, "dailyCapacityMinutes"),
+                  studyDayBoundaryHour: formNumber(data, "studyDayBoundaryHour"),
               });
               await this.renderAll();
               this.toast("Settings saved.");
@@ -7950,7 +7969,9 @@
       async importBackup(event) {
           if (!this.requireMutable("restore a backup"))
               return;
-          const input = event.target;
+          const target = event.target;
+          assert(target instanceof HTMLInputElement, "Backup file input is unavailable.");
+          const input = target;
           const file = input.files?.[0];
           if (!file)
               return;
@@ -8047,7 +8068,7 @@
               return;
           if (this.activeReviewIds[this.activeReviewIndex]?.startsWith("chunk:"))
               return;
-          const target = event.target;
+          const target = event.target instanceof HTMLElement ? event.target : null;
           if (target?.matches("input,textarea,select"))
               return;
           if (this.reviewPhase === "attempt" && (event.key === " " || event.key === "Enter")) {
@@ -8095,7 +8116,7 @@
           extensions.announceReady();
       }
       catch (error) {
-          const fatal = requiredElement("#fatal-error");
+          const fatal = requiredElement("#fatal-error", HTMLDivElement);
           fatal.hidden = false;
           fatal.textContent = `Revision Director could not start: ${error instanceof Error ? error.message : String(error)}`;
           console.error(error);
