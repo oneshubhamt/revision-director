@@ -190,9 +190,17 @@ for (const type of ['memory-recall','concept-reconstruction','application-practi
 // Workflow UI surfaces are distinct rather than one generic rubric.
 const ui = Object.create(api.UIController.prototype);
 ui.reviewPreviews = [{rating:1,label:'1d'},{rating:2,label:'2d'},{rating:3,label:'3d'},{rating:4,label:'8d'}];
+const uiMemoryPolicy = {
+  createInitialState(firstDueAt, cardId) {
+    return {
+      engine:'ts-fsrs',version:'6.0.0',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0,
+      fsrsCard:{model:'FSRS-7',cardId,dueAt:firstDueAt,stability:0,stabilityFast:0,difficulty:0,scheduledDays:0,learningSteps:0,reps:0,lapses:0,state:0,scheduleStatus:'new'}
+    };
+  }
+};
 const uiObligation = (kind) => {
   const type = kind === 'recall' ? 'memory-recall' : kind === 'reconstruction' ? 'concept-reconstruction' : kind === 'questions' ? 'application-practice' : kind === 'relearning' ? 'relearn' : 'performance-practice';
-  const policy = kind === 'recall' ? memory : kind === 'reconstruction' ? new api.MasteryPolicy() : kind === 'questions' ? new api.ApplicationPolicy() : kind === 'relearning' ? new api.RelearnPolicy() : new api.PerformancePolicy();
+  const policy = kind === 'recall' ? uiMemoryPolicy : kind === 'reconstruction' ? new api.MasteryPolicy() : kind === 'questions' ? new api.ApplicationPolicy() : kind === 'relearning' ? new api.RelearnPolicy() : new api.PerformancePolicy();
   return {...obligation(type, policy, kind), workflow:workflow(kind)};
 };
 check(ui.workflowAttemptPanel(uiObligation('recall')).includes('attempt-text'), 'Recall must provide a closed-book workspace');
