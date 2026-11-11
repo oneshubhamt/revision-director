@@ -53,7 +53,7 @@ def main() -> None:
         page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
         frame=boot_frame(page)
 
-        check(frame.evaluate("RevisionDirector.version") == "va7.1-pass-e1", "Public API version wrong")
+        check(frame.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version wrong")
         check(frame.evaluate("RevisionDirector.apiVersion") == 1, "Public API contract version wrong")
         check(frame.evaluate("typeof RevisionDirectorBridge") == "undefined", "Legacy bridge remains public")
         check(frame.evaluate("Object.isFrozen(RevisionDirector) && Object.isFrozen(RevisionDirector.records) && Object.isFrozen(RevisionDirector.intake) && Object.isFrozen(RevisionDirector.plugins)"), "Public API is not frozen")
@@ -64,7 +64,7 @@ def main() -> None:
         good = frame.evaluate("""async () => {
           return await RevisionDirector.registerPlugin({name:'Browser Good',version:'1.0',requires:{pluginApi:1},setup(api){window.__RD_GOOD_API__=api.version;return true;}});
         }""")
-        check(good is True and frame.evaluate("window.__RD_GOOD_API__") == "va7.1-pass-e1", "Compatible browser plugin failed")
+        check(good is True and frame.evaluate("window.__RD_GOOD_API__") == "va7.1-pass-f1", "Compatible browser plugin failed")
         incompatible = frame.evaluate("""async () => await RevisionDirector.registerPlugin({name:'Browser Future',requires:{pluginApi:2},setup(){return true;}})""")
         check(incompatible is False, "Incompatible browser plugin registered")
         failed = frame.evaluate("""async () => await RevisionDirector.registerPlugin({name:'Browser Failed',setup(){throw new Error('browser isolated failure')}})""")
