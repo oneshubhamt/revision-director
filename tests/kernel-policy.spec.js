@@ -328,6 +328,14 @@ const chunkRecords=[
 const dailyPlan={schemaVersion:1,id:'dp',studyDayKey:'2026-07-25',createdAt:due,updatedAt:due,plannerVersion:'pass-d-2',versions:[{version:1,generatedAt:due,capacityMinutes:60,reason:'initial',items:[{key:'o::ch1',obligationId:'o',chunkId:'ch1',profileId:'p',unitId:'u',subject:'S',workflow:'reconstruction',title:'U · Part 1 of 2',estimatedMinutes:5,score:70,disposition:'selected',reasons:[]}]}],outcomes:[{itemKey:'o::ch1',status:'completed',startedAt:due,completedAt:due,actualMinutes:6}]};
 const passDBackup={...validBackup,obligations:[chunkedObligation],chunks:chunkRecords,dailyPlans:[dailyPlan]};
 check(service.validateBackup(passDBackup).dailyPlans.length===1,'Chunk and persisted-plan records must survive relational backup validation');
+const suspendedOnlyBackup={...validBackup,profiles:[{...validBackup.profiles[0],status:'suspended'}],settings:{...validBackup.settings,activeProfileId:''}};
+check(service.validateBackup(suspendedOnlyBackup).settings.activeProfileId==='','All-suspended profiles must use the canonical empty default profile');
+mustFail(()=>service.validateBackup({...validBackup,settings:{...validBackup.settings,activeProfileId:''}}),'An active profile set must require an active default profile');
+mustFail(()=>service.validateBackup({...suspendedOnlyBackup,settings:{...suspendedOnlyBackup.settings,activeProfileId:'p'}}),'A suspended profile cannot be the default profile');
+mustFail(()=>service.validateBackup({...validBackup,profiles:[{...validBackup.profiles[0],retiredField:true}]}),'Current durable documents must reject unknown top-level fields');
+mustFail(()=>service.validateBackup({...validBackup,retiredField:true}),'Current backup payloads must reject unknown top-level fields');
+const stringTiming={...conceptEvidence,timing:{...conceptEvidence.timing,activeByPhase:{...conceptEvidence.timing.activeByPhase,attempt:'1000'}}};
+mustFail(()=>service.validateBackup({...validBackup,units:[{...validBackup.units[0],evidenceCount:1}],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[stringTiming]}),'Timing canonicalization must reject numeric strings');
 const relearnPolicyForPause=new api.RelearnPolicy();
 const pausedOriginal={...conceptObligation,status:'suspended',suspensionReason:'relearning'};
 const pausedRepair={schemaVersion:1,...obligation('relearn',relearnPolicyForPause,'relearning'),id:'repair',unitId:'u',status:'suspended',suspensionReason:'unit',parentObligationId:'o',returnObligationId:'o'};
@@ -532,15 +540,50 @@ async function testDueSummaryScope() {
 }
 
 async function testSettingsBoundary() {
-  const repo = { getAll: async () => [{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}], get: async (_store,key) => key==='p' ? {schemaVersion:1,id:'p',status:'active'} : undefined, put: async()=>{} };
+  const activeProfile={schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due};
+  const repo = { getAll: async () => [activeProfile], get: async (_store,key) => key==='p' ? activeProfile : undefined, put: async()=>{} };
   const svc = new api.RevisionService(repo);
   const base = { schemaVersion:1, key:'app', activeProfileId:'p', fsrsScheduling:{policy:fixed(.9)}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4, fsrsPersonalization:{profile:null,active:false} };
   svc.settings = structuredClone(base);
   await svc.saveSettings(base); check(true, 'Valid settings should save');
-  for (const mutation of [{...base,activeProfileId:'missing'},{...base,dailyCapacityMinutes:60.5},{...base,studyDayBoundaryHour:4.5},{...base,memoryDifficultyPolicy:{...base.memoryDifficultyPolicy,remediationLapses:1}},{...base,memoryDifficultyPolicy:{...base.memoryDifficultyPolicy,persistentDifficultyLapses:2}}]) {
+  for (const mutation of [{...base,activeProfileId:'missing'},{...base,activeProfileId:''},{...base,dailyCapacityMinutes:60.5},{...base,studyDayBoundaryHour:4.5},{...base,memoryDifficultyPolicy:{...base.memoryDifficultyPolicy,remediationLapses:1}},{...base,memoryDifficultyPolicy:{...base.memoryDifficultyPolicy,persistentDifficultyLapses:2}}]) {
     let failed=false; try { await svc.saveSettings(mutation); } catch { failed=true; }
     check(failed, 'Invalid settings boundary must fail');
   }
+  repo.getAll=async()=>[{...activeProfile,status:'suspended'}];
+  const noActive={...base,activeProfileId:''};
+  svc.settings=structuredClone(noActive);
+  await svc.saveSettings(noActive); check(true,'No active profiles must permit the canonical empty default');
+  let failed=false; try { await svc.saveSettings({...noActive,activeProfileId:'p'}); } catch { failed=true; }
+  check(failed,'Suspended profiles cannot remain selected');
 }
 
-Promise.all([testFsrs7Integration(), testTriggerEvidenceLookup(), testRelearningLifecycle(), testPersistentDifficultyResume(), testAutomaticPersistentDifficultyHold(), testDifficultyPolicyReconciliation(), testStudyEventRuntimeBoundary(), testDueSummaryScope(), testSettingsBoundary()]).then(() => console.log(`PASS ${checks} kernel, workflow, policy and backup checks`)).catch((error) => { console.error(error); process.exitCode = 1; });
+async function testCanonicalProfilePersistence() {
+  const baseSettings={schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}};
+  let profiles=[];
+  const commits=[];
+  const repo={
+    getAll:async()=>structuredClone(profiles),
+    putProfileAndSettings:async(profile,settings)=>{commits.push([structuredClone(profile),structuredClone(settings)]);profiles=profiles.filter(x=>x.id!==profile.id);profiles.push(structuredClone(profile));},
+  };
+  const svc=new api.RevisionService(repo);svc.settings=structuredClone(baseSettings);
+  const first=await svc.createProfile('Exam A','');
+  check(commits.length===1&&commits[0][1].activeProfileId===first.id,'First profile and default selection must commit atomically');
+  const second=await svc.createProfile('Exam B','');
+  check(commits.length===2&&commits[1][1].activeProfileId===first.id,'Adding another active profile must preserve the canonical selected profile');
+  await svc.updateProfile(first.id,'Exam A','', 'suspended');
+  check(commits.length===3&&commits[2][1].activeProfileId===second.id,'Suspending the selected profile must atomically select an active replacement');
+  await svc.updateProfile(second.id,'Exam B','', 'suspended');
+  check(commits.length===4&&commits[3][1].activeProfileId==='','Suspending the final active profile must atomically clear the default');
+  await svc.updateProfile(first.id,'Exam A','', 'active');
+  check(commits.length===5&&commits[4][1].activeProfileId===first.id,'Reactivating into an all-suspended set must atomically establish the default');
+}
+
+async function testMissingSettingsFailsClosed() {
+  let writes=0;
+  const populated={get:async()=>undefined,hasStoredData:async()=>true,getAll:async()=>[],put:async()=>{writes++;}};
+  let failed=false;try{await new api.RevisionService(populated).initialize();}catch{failed=true;}
+  check(failed&&writes===0,'Missing settings in populated storage must fail closed without synthesizing state');
+}
+
+Promise.all([testFsrs7Integration(), testTriggerEvidenceLookup(), testRelearningLifecycle(), testPersistentDifficultyResume(), testAutomaticPersistentDifficultyHold(), testDifficultyPolicyReconciliation(), testStudyEventRuntimeBoundary(), testDueSummaryScope(), testSettingsBoundary(), testCanonicalProfilePersistence(), testMissingSettingsFailsClosed()]).then(() => console.log(`PASS ${checks} kernel, workflow, policy and backup checks`)).catch((error) => { console.error(error); process.exitCode = 1; });
