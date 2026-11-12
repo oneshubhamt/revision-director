@@ -816,7 +816,7 @@
           ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
           : "";
       return `<section class="panel settings-card wide"><h3>FSRS-7 personalization</h3>
-        <div class="dependency-status"><span>Scheduling mode</span><strong class="${statusClass}">${status}</strong></div>
+        <div class="dependency-status"><span>Weights</span><strong class="${statusClass}">${status}</strong></div>
         <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards</strong></div>
         ${profileDetail}
         <div class="settings-actions"><button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json"></label>${profileActions}</div>
@@ -838,7 +838,7 @@
         ${this.pageHead("SYSTEM CONTROL", "Settings", "Revision Director remains deterministic and local-first; AI can later advise without owning the record.")}
         <form id="settings-form" class="settings-grid">
           <section class="panel settings-card"><h3>Planning</h3><label>Default exam profile for new records<select name="activeProfileId" ${profiles.length ? "" : "disabled"}>${profiles.length ? profiles.map((profile) => `<option value="${profile.id}" ${profile.id === settings.activeProfileId ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("") : '<option value="">Create an exam profile first</option>'}</select></label><label>Daily revision capacity<input name="dailyCapacityMinutes" type="number" min="5" max="600" value="${settings.dailyCapacityMinutes}"></label><label>Study-day boundary hour<input name="studyDayBoundaryHour" type="number" min="0" max="12" value="${settings.studyDayBoundaryHour}"></label></section>
-          <section class="panel settings-card"><h3>Memory scheduling</h3><label>Desired retention<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${settings.desiredRetention}"></label><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">FSRS is routed only to memory-recall obligations. It does not schedule answer writing, conceptual mastery or freshness work.</p></section>
+          <section class="panel settings-card"><h3>Memory scheduling</h3><div class="dependency-status"><span>Policy</span><strong>Fixed retention</strong></div><label>Desired retention<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${fixedRetentionForPolicy(settings.fsrsScheduling.policy)}"></label><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">FSRS is routed only to memory-recall obligations. Scheduling policy and personalized weights are independent configuration axes; Cost-ADR is reserved by the scheduler contract but is not enabled in this build.</p></section>
           ${this.fsrsPersonalizationCard(settings, optimizerEvidence)}
           <section class="panel settings-card"><h3>Add exam profile</h3><label>Name<input id="new-profile-name" placeholder="IFoS 2027, USMLE Step 1..."></label><label>Exam date<input id="new-profile-date" type="date"></label><button class="btn" type="button" data-action="add-profile">ADD PROFILE</button></section>
           <section class="panel settings-card"><h3>Backup and recovery</h3><button class="btn" type="button" data-action="export-backup">EXPORT BACKUP</button><label class="btn file-btn">IMPORT BACKUP<input id="import-backup" type="file" accept=".rdbackup,application/x-revision-director-backup,application/gzip,application/octet-stream"></label><p class="helper">Export remains one click. Import verifies and previews the file first, then requires a current-state safety copy and explicit restore confirmation.</p></section>
@@ -1707,7 +1707,10 @@
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
           key: "app",
           activeProfileId: formText(data, "activeProfileId"),
-          desiredRetention: formNumber(data, "desiredRetention"),
+          fsrsScheduling: {
+            ...current.fsrsScheduling,
+            policy: { kind: "fixed-retention", desiredRetention: formNumber(data, "desiredRetention") },
+          },
           dailyCapacityMinutes: formNumber(data, "dailyCapacityMinutes"),
           studyDayBoundaryHour: formNumber(data, "studyDayBoundaryHour"),
         });

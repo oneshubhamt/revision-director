@@ -4,7 +4,7 @@
 
     constructor(private readonly repo: RevisionData) {
       this.router = new SchedulerPolicyRouter(
-        () => this.settings.desiredRetention,
+        () => this.settings.fsrsScheduling.policy,
         () => activeFsrsOptimizerProfile(this.settings),
       );
     }
@@ -12,7 +12,7 @@
     async initialize(): Promise<void> {
       const stored = await this.repo.get(Store.Settings, "app");
       this.settings = stored ? canonicalAppSettings(stored) : defaultSettings();
-      await prepareFsrsScheduler(this.settings.desiredRetention, activeFsrsOptimizerProfile(this.settings));
+      await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings));
       if (!stored) await this.repo.put(Store.Settings, this.settings);
       const profiles = await this.profiles();
       const active = profiles.filter((profile) => profile.status === "active");
@@ -31,7 +31,7 @@
       verifyMemoryDatasetIntegrity(
         obligations,
         evidenceEvents,
-        this.settings.desiredRetention,
+        this.settings.fsrsScheduling.policy,
         activeFsrsOptimizerProfile(this.settings),
       );
     }
@@ -53,7 +53,6 @@
     }
 
     async saveSettings(next: AppSettings): Promise<void> {
-      assert(Number.isFinite(next.desiredRetention) && next.desiredRetention >= 0.75 && next.desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
       assert(Number.isInteger(next.dailyCapacityMinutes) && next.dailyCapacityMinutes >= 5 && next.dailyCapacityMinutes <= 600, "Daily capacity is invalid.");
       assert(Number.isInteger(next.studyDayBoundaryHour) && next.studyDayBoundaryHour >= 0 && next.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
       const activeProfiles = (await this.profiles()).filter((profile) => profile.status === "active");
@@ -66,11 +65,15 @@
         JSON.stringify(effectiveFsrsPersonalization(canonical)) === JSON.stringify(effectiveFsrsPersonalization(this.settings)),
         "Use the explicit FSRS personalization controls to stage, activate, deactivate or remove an optimizer profile.",
       );
-      if (canonical.desiredRetention !== this.settings.desiredRetention) {
-        await this.rebaseMemoryScheduler(canonical, activeFsrsOptimizerProfile(canonical), "retention-change");
+      assert(
+        JSON.stringify(canonical.fsrsScheduling.lastRebase ?? null) === JSON.stringify(this.settings.fsrsScheduling.lastRebase ?? null),
+        "FSRS scheduler rebase metadata is service-owned.",
+      );
+      if (!fsrsSchedulingPoliciesEqual(canonical.fsrsScheduling.policy, this.settings.fsrsScheduling.policy)) {
+        await this.rebaseMemoryScheduler(canonical, activeFsrsOptimizerProfile(canonical), "scheduler-policy-change");
         return;
       }
-      await prepareFsrsScheduler(canonical.desiredRetention, activeFsrsOptimizerProfile(canonical));
+      await prepareFsrsScheduler(canonical.fsrsScheduling.policy, activeFsrsOptimizerProfile(canonical));
       this.settings = canonical;
       await this.repo.put(Store.Settings, this.settings);
     }
@@ -87,7 +90,7 @@
       const personalization = effectiveFsrsPersonalization(this.settings);
       assert(!personalization.active, "Return to stock FSRS-7 before staging a different optimizer profile.");
       const profile = validateFsrsOptimizerProfile(input);
-      await prepareFsrsScheduler(this.settings.desiredRetention, profile);
+      await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, profile);
       const next = canonicalAppSettings({
         ...this.settings,
         fsrsPersonalization: { ...personalization, profile, active: false },
@@ -102,7 +105,7 @@
       assert(!personalization.active, "Return to stock FSRS-7 before removing the optimizer profile.");
       const next = canonicalAppSettings({
         ...this.settings,
-        fsrsPersonalization: { profile: null, active: false, ...(personalization.lastRebase ? { lastRebase: personalization.lastRebase } : {}) },
+        fsrsPersonalization: { profile: null, active: false },
       });
       this.settings = next;
       await this.repo.put(Store.Settings, next);
@@ -131,20 +134,22 @@
     private async rebaseMemoryScheduler(
       requestedSettings: AppSettings,
       profile: FsrsOptimizerProfile | null,
-      reason: FsrsPersonalizationRebase["reason"],
+      reason: FsrsSchedulerRebase["reason"],
     ): Promise<void> {
       assert(!(await this.currentActiveRetrieval()), "Finish or end the active retrieval session before changing FSRS scheduler parameters.");
       const settings = canonicalAppSettings(requestedSettings);
-      await prepareFsrsScheduler(settings.desiredRetention, profile);
+      const currentProfile = activeFsrsOptimizerProfile(this.settings);
+      const currentConfiguration = fsrsConfigSnapshot(this.settings.fsrsScheduling.policy, currentProfile);
+      await prepareFsrsScheduler(settings.fsrsScheduling.policy, profile);
       const [obligations, evidenceEvents] = await Promise.all([this.obligations(), this.evidenceEvents()]);
       verifyMemoryDatasetIntegrity(
         obligations,
         evidenceEvents,
-        this.settings.desiredRetention,
-        activeFsrsOptimizerProfile(this.settings),
+        this.settings.fsrsScheduling.policy,
+        currentProfile,
       );
       const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
-      const scheduler = revisionSchedulerPort(settings.desiredRetention, profile);
+      const scheduler = revisionSchedulerPort(settings.fsrsScheduling.policy, profile);
       const at = nowIso();
       let rescheduledObligations = 0;
       const updatedMemory = obligations.filter((obligation) => obligation.type === "memory-recall").map((obligation) => {
@@ -166,25 +171,28 @@
           },
         };
       });
+      assert(currentConfiguration.fingerprint !== scheduler.configuration.fingerprint, "FSRS scheduler rebase must change scheduler identity.");
       const personalization = effectiveFsrsPersonalization(settings);
-      const target = profile ? "personalized" as const : "stock" as const;
       const finalized = canonicalAppSettings({
         ...settings,
-        fsrsPersonalization: {
-          ...personalization,
-          active: Boolean(profile),
+        fsrsScheduling: {
+          policy: canonicalFsrsSchedulingPolicy(settings.fsrsScheduling.policy),
           lastRebase: {
             at,
             reason,
-            target,
+            fromConfigFingerprint: currentConfiguration.fingerprint,
+            toConfigFingerprint: scheduler.configuration.fingerprint,
             rescheduledObligations,
-            ...(profile ? { profileSourceSha256: profile.sourceSha256 } : {}),
           },
+        },
+        fsrsPersonalization: {
+          ...personalization,
+          active: Boolean(profile),
         },
       });
       await this.repo.replaceMemoryScheduling(finalized, updatedMemory);
       this.settings = finalized;
-      verifyMemoryDatasetIntegrity(updatedMemory, evidenceEvents, finalized.desiredRetention, profile);
+      verifyMemoryDatasetIntegrity(updatedMemory, evidenceEvents, finalized.fsrsScheduling.policy, profile);
     }
 
     async profiles(): Promise<ExamProfile[]> {
@@ -1052,7 +1060,7 @@
       verifyMemoryDatasetIntegrity(
         payload.obligations,
         payload.evidenceEvents,
-        payload.settings.desiredRetention,
+        payload.settings.fsrsScheduling.policy,
         activeFsrsOptimizerProfile(payload.settings),
       );
       return BackupCodec.create(payload, preferCompression);
@@ -1068,11 +1076,11 @@
 
     async restoreBackupPayload(payload: BackupPayload, activeTreatment: BackupActiveSessionTreatment): Promise<void> {
       const validated = this.validateBackup(payload);
-      await prepareFsrsScheduler(validated.settings.desiredRetention, activeFsrsOptimizerProfile(validated.settings));
+      await prepareFsrsScheduler(validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings));
       verifyMemoryDatasetIntegrity(
         validated.obligations,
         validated.evidenceEvents,
-        validated.settings.desiredRetention,
+        validated.settings.fsrsScheduling.policy,
         activeFsrsOptimizerProfile(validated.settings),
       );
       await this.repo.replaceFromBackup(validated, activeTreatment);
@@ -1247,7 +1255,6 @@
           const config = event.schedulerConfig;
           assert(config, "Memory evidence lacks scheduler configuration.");
           validateFsrsConfigSnapshot(config);
-          assert(config.desiredRetention >= 0.75 && config.desiredRetention <= 0.97, "Memory evidence lacks a valid scheduler retention.");
         } else assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined, "Non-memory evidence cannot claim FSRS provenance.");
 
         const returned = event.returnedMemoryTransition;
@@ -1269,7 +1276,6 @@
           assert(returned.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Returned-memory policy provenance is invalid.");
           assert(returned.schedulerPackage === "ts-fsrs" && returned.schedulerVersion === FSRS_PACKAGE_VERSION && returned.schedulerModel === FSRS_MODEL, "Returned-memory scheduler provenance is invalid.");
           validateFsrsConfigSnapshot(returned.schedulerConfig);
-          assert(returned.schedulerConfig.desiredRetention >= 0.75 && returned.schedulerConfig.desiredRetention <= 0.97, "Returned-memory scheduler retention is invalid.");
           for (const state of [returned.beforePolicyState, returned.afterPolicyState]) {
             assert(state.engine === "ts-fsrs" && state.version === FSRS_PACKAGE_VERSION && state.fsrsCard?.model === FSRS_MODEL, "Returned-memory policy state is invalid.");
             assert(state.fsrsCard.cardId === returned.obligationId, "Returned-memory card identity is invalid.");
@@ -1408,7 +1414,7 @@
       }
       assertDocumentSchema(settings, "Backup settings");
       assert(settings.key === "app" && (profileMap.size === 0 ? settings.activeProfileId === "" : profileMap.has(settings.activeProfileId)), "Backup settings reference an invalid active profile.");
-      assert(Number.isFinite(settings.desiredRetention) && settings.desiredRetention >= 0.75 && settings.desiredRetention <= 0.97, "Desired retention is invalid.");
+      canonicalFsrsSchedulingSettings(settings.fsrsScheduling);
       assert(Number.isFinite(settings.dailyCapacityMinutes) && settings.dailyCapacityMinutes >= 5 && settings.dailyCapacityMinutes <= 600, "Daily revision capacity is invalid.");
       assert(Number.isInteger(settings.studyDayBoundaryHour) && settings.studyDayBoundaryHour >= 0 && settings.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
       return {

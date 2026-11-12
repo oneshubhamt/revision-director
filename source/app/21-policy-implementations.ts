@@ -3,12 +3,12 @@
     readonly type: ObligationType = "memory-recall";
 
     constructor(
-      private readonly desiredRetention: () => number,
+      private readonly schedulingPolicy: () => FsrsSchedulingPolicy,
       private readonly optimizerProfile: () => FsrsOptimizerProfile | null = () => null,
     ) {}
 
     private scheduler(): RevisionSchedulerPort {
-      return revisionSchedulerPort(this.desiredRetention(), this.optimizerProfile());
+      return revisionSchedulerPort(this.schedulingPolicy(), this.optimizerProfile());
     }
 
     private reviews(context?: SchedulerPolicyContext): readonly MemoryReviewObservation[] {
@@ -181,11 +181,11 @@
     private readonly policies = new Map<ObligationType, SchedulerPolicy>();
 
     constructor(
-      desiredRetention: () => number,
+      schedulingPolicy: () => FsrsSchedulingPolicy,
       optimizerProfile: () => FsrsOptimizerProfile | null = () => null,
     ) {
       const all: SchedulerPolicy[] = [
-        new FsrsMemoryPolicy(desiredRetention, optimizerProfile),
+        new FsrsMemoryPolicy(schedulingPolicy, optimizerProfile),
         new MasteryPolicy(),
         new ApplicationPolicy(),
         new PerformancePolicy(),

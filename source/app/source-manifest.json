@@ -29,7 +29,7 @@
     {
       "order": 5,
       "path": "app/18-fsrs-personalization.ts",
-      "layer": "FSRS-7 optimizer profile contracts, exact weight validation, evidence export and personalization state."
+      "layer": "FSRS-7 scheduling-policy and optimizer-profile contracts, exact validation, evidence export and personalization state."
     },
     {
       "order": 6,
