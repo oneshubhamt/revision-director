@@ -591,10 +591,10 @@ async function testCanonicalProfilePersistence() {
 }
 
 async function testMissingSettingsFailsClosed() {
-  let writes=0;
-  const populated={get:async()=>undefined,hasStoredData:async()=>true,getAll:async()=>[],put:async()=>{writes++;}};
-  let failed=false;try{await new api.RevisionService(populated).initialize();}catch{failed=true;}
-  check(failed&&writes===0,'Missing settings in populated storage must fail closed without synthesizing state');
+  let failed=false;
+  const missing={backupState:async()=>{throw new Error('Canonical storage must contain exactly one application-settings document.');}};
+  try{await new api.RevisionService(missing).initialize();}catch(error){failed=String(error.message).includes('application-settings');}
+  check(failed,'Missing settings must fail closed without a service-level synthesis path');
 }
 
 Promise.all([testFsrs7Integration(), testTriggerEvidenceLookup(), testRelearningLifecycle(), testPersistentDifficultyResume(), testAutomaticPersistentDifficultyHold(), testDifficultyPolicyReconciliation(), testStudyEventRuntimeBoundary(), testDueSummaryScope(), testSettingsBoundary(), testCanonicalProfilePersistence(), testMissingSettingsFailsClosed()]).then(() => console.log(`PASS ${checks} kernel, workflow, policy and backup checks`)).catch((error) => { console.error(error); process.exitCode = 1; });
