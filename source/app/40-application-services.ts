@@ -1021,10 +1021,12 @@
         }
       }
 
+      const verificationRating = obligation.type === "relearn"
+        ? correctiveMemoryRating(confirmed, normalizedDraft)
+        : confirmed;
       const relearningMastered =
         obligation.type === "relearn" &&
-        confirmed >= Rating.Good &&
-        objectiveScore(obligation.type, normalizedDraft) >= 2.7;
+        verificationRating >= Rating.Good;
       if (obligation.type === "relearn" && obligation.returnObligationId) {
         const original = await this.repo.get(Store.Obligations, obligation.returnObligationId);
         assert(original, "Relearning return target is missing.");
@@ -1034,7 +1036,7 @@
           const priorOriginalReviews = memoryReviewIndex.get(original.id) ?? [];
           const verification = this.router.get("memory-recall").complete(
             original,
-            confirmed,
+            verificationRating,
             normalizedDraft,
             reviewedAt,
             { memoryReviews: priorOriginalReviews },
@@ -1045,7 +1047,7 @@
           original.lastCompletedAt = reviewedAt.toISOString();
           correctiveMemoryTransition = {
             obligationId: original.id,
-            rating: confirmed,
+            rating: verificationRating,
             beforeDueAt: verificationBeforeDueAt,
             afterDueAt: verification.dueAt,
             beforePolicyState: verificationBeforePolicyState,
@@ -1063,7 +1065,7 @@
           const currentVerification: MemoryReviewObservation = {
             evidenceEventId: "pending",
             reviewedAt: reviewedAt.toISOString(),
-            rating: confirmed,
+            rating: verificationRating,
             source: "relearning-verification",
             beforeCard: clone(beforeCard),
             afterCard: clone(afterCard),
@@ -1460,7 +1462,7 @@
         if (corrective) {
           assert(correctiveTarget?.type === "memory-recall", "Corrective-memory transition lacks a valid memory target.");
           assert(corrective.obligationId === correctiveTarget.id, "Corrective-memory transition targets the wrong obligation.");
-          assert(corrective.rating === event.confirmedRating, "Corrective-memory transition rating must match the closed-book verification.");
+          assert(corrective.rating === correctiveMemoryRating(event.confirmedRating, event.evidence), "Corrective-memory transition rating does not match the closed-book verification outcome.");
           validDate(corrective.beforeDueAt, "Corrective-memory prior due date");
           validDate(corrective.afterDueAt, "Corrective-memory next due date");
           assert(corrective.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Corrective-memory policy provenance is invalid.");
