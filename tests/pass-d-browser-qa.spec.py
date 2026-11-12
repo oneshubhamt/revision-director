@@ -29,10 +29,7 @@ def open_page(browser, viewport=None):
     page.wait_for_timeout(1300)
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup')
     page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(100)
-    with TemporaryDirectory() as tmpdir:
-        fixture = Path(tmpdir) / 'browser-baseline-current.rdbackup'
-        fixture.write_bytes(encode_payload(decode_file(main_qa.BASELINE_BACKUP)))
-        main_qa.restore_selected_backup(page, fixture)
+    main_qa.restore_selected_backup(page, main_qa.BASELINE_BACKUP)
     check('restored' in page.locator('#toast').inner_text().lower(), 'Baseline fixture restore failed')
     return page, errors
 

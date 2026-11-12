@@ -1,8 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import os, runpy, shutil
-from backup_fixture_codec import canonical_fixture_copy
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,9 +41,7 @@ def launch_page(browser, viewport={"width": 1440, "height": 1000}):
 
 def restore_baseline(page):
     page.locator('[data-pane="settings"]').click(); wait(page)
-    with TemporaryDirectory() as tmpdir:
-        fixture = canonical_fixture_copy(BASELINE_BACKUP, Path(tmpdir) / "browser-baseline-current.rdbackup")
-        restore_selected_backup(page, fixture)
+    restore_selected_backup(page, BASELINE_BACKUP)
     check("restored" in page.locator("#toast").inner_text().lower(), "Baseline restore failed")
 
 def main():

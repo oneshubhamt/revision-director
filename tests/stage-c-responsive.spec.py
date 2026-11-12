@@ -1,8 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import os, runpy, shutil
-from backup_fixture_codec import canonical_fixture_copy
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -20,8 +18,7 @@ def main():
  executable=os.environ.get('CHROMIUM_EXECUTABLE') or shutil.which('chromium') or '/usr/bin/chromium'
  viewports=[(320,568),(360,640),(375,667),(390,844),(412,915),(460,800),(560,800),(700,700),(820,900),(821,900),(1024,768),(1280,800),(1440,1000),(1920,1080)]
  panes=('today','review','library','study','history','settings')
- with sync_playwright() as pw, TemporaryDirectory() as td:
-  fixture=canonical_fixture_copy(BASELINE,Path(td)/'browser-baseline-current.rdbackup')
+ with sync_playwright() as pw:
   browser=pw.chromium.launch(headless=True,executable_path=executable,args=['--no-sandbox','--disable-dev-shm-usage'])
   page=browser.new_page(viewport={'width':1440,'height':1000})
   errors=[]
@@ -30,7 +27,7 @@ def main():
   page.on('dialog',lambda d:d.accept())
   page.set_content(HTML,wait_until='load'); page.wait_for_timeout(1300)
   page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(150)
-  restore_selected_backup(page, fixture)
+  restore_selected_backup(page, BASELINE)
   check('restored' in page.locator('#toast').inner_text().lower(),'Fixture restore failed')
   for width,height in viewports:
    page.set_viewport_size({'width':width,'height':height}); page.wait_for_timeout(200)

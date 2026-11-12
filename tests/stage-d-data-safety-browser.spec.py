@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tests'))
-from backup_fixture_codec import canonical_fixture_copy, decode_file
+from backup_fixture_codec import decode_file
 base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_stage_d_base')
 HOOK="window.__RD_STAGE_D_STORAGE__={RevisionData,RevisionService,Store,APP_VERSION,DB_NAME,DB_VERSION}; void boot();"
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base['INDEXEDDB_SHIM'],1).replace('void boot();',HOOK,1)
@@ -48,7 +48,6 @@ def main():
     exe=os.environ.get('CHROMIUM_EXECUTABLE') or shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
     with sync_playwright() as pw, TemporaryDirectory() as td:
         tmp=Path(td)
-        fixture=canonical_fixture_copy(FIXTURE,tmp/'browser-baseline-current.rdbackup')
         browser=pw.chromium.launch(headless=True,executable_path=exe if exe else None,args=['--no-sandbox','--disable-dev-shm-usage'])
         page=browser.new_page(viewport={'width':1440,'height':1000})
         errors=[]
@@ -106,7 +105,7 @@ def main():
 
         # Inspection is non-mutating, cancellable, and the same file can be selected again.
         before=page.locator('#sb-units').inner_text()
-        page.locator('#import-backup').set_input_files(str(fixture));wait(page,900)
+        page.locator('#import-backup').set_input_files(str(FIXTURE));wait(page,900)
         check(page.locator('#restore-dialog').is_visible(),'Import selection did not open preview')
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated local records')
         preview=page.locator('#restore-preview').inner_text()
@@ -117,7 +116,7 @@ def main():
         page.get_by_role('button',name='CANCEL',exact=True).click();wait(page,200)
         check(not page.locator('#restore-dialog').is_visible(),'Cancel did not close restore preview')
         check(page.locator('#sb-units').inner_text()==before,'Cancel mutated data')
-        page.locator('#import-backup').set_input_files(str(fixture));wait(page,800)
+        page.locator('#import-backup').set_input_files(str(FIXTURE));wait(page,800)
         check(page.locator('#restore-dialog').is_visible(),'Same backup could not be reselected after cancellation')
 
         safety=safety_download(page,tmp)
@@ -136,7 +135,7 @@ def main():
         attempt.fill('Stage D safety copy live draft')
         wait(page,500)
         page.locator('[data-pane="settings"]').click();wait(page,300)
-        page.locator('#import-backup').set_input_files(str(fixture));wait(page,800)
+        page.locator('#import-backup').set_input_files(str(FIXTURE));wait(page,800)
         active_safety=safety_download(page,tmp)
         active_safety_payload=decode_file(active_safety)
         check(active_safety_payload['activeRetrieval'] is not None,'Current-state safety copy omitted unfinished retrieval')
@@ -163,7 +162,7 @@ def main():
 
         # Corrupt current relational state after inspection: the controller must provide a forensic rescue, not deadlock.
         page.locator('[data-pane="settings"]').click();wait(page,220)
-        page.locator('#import-backup').set_input_files(str(fixture));wait(page,800)
+        page.locator('#import-backup').set_input_files(str(FIXTURE));wait(page,800)
         page.evaluate("""async()=>{const db=await new Promise((res,rej)=>{const r=indexedDB.open('revision-director',1);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});await new Promise((res,rej)=>{const tx=db.transaction(['profiles'],'readwrite');tx.objectStore('profiles').put({schemaVersion:1,id:'corrupt-profile'});tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});}""")
         rescue=safety_download(page,tmp)
         check(rescue.suffix=='.rdrescue','Corrupted state did not create .rdrescue')

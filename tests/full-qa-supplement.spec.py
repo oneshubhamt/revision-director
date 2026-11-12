@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import importlib.util
 
 from playwright.sync_api import Browser, Page, sync_playwright
@@ -47,11 +46,7 @@ def open_page(browser: Browser) -> tuple[Page, list[str]]:
 def restore_fixture(page: Page) -> None:
     page.locator('[data-pane="settings"]').click()
     page.wait_for_timeout(80)
-    payload = MAIN_QA.decode_file(MAIN_QA.BASELINE_BACKUP)
-    with TemporaryDirectory() as tmpdir:
-        current_fixture = Path(tmpdir) / "browser-baseline-current.rdbackup"
-        current_fixture.write_bytes(MAIN_QA.encode_payload(payload))
-        MAIN_QA.restore_selected_backup(page, current_fixture)
+    MAIN_QA.restore_selected_backup(page, MAIN_QA.BASELINE_BACKUP)
     check("restored" in page.locator("#toast").inner_text().lower(), "Fixture import failed")
 
 
