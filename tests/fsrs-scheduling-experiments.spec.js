@@ -18,27 +18,45 @@ const HOUR_MS=3_600_000;
 const START=new Date('2026-01-01T08:00:00.000Z');
 const MAX_INTERVAL=36_500;
 const SESSION_MINUTES=15;
-const clone=value=>structuredClone(value);
+const CARDS=48;
+const HORIZONS=[90,365,730];
+const SCENARIOS=[
+  {name:'fragile',newRecall:.58,repairBoost:.05},
+  {name:'balanced',newRecall:.72,repairBoost:.12},
+  {name:'familiar',newRecall:.84,repairBoost:.18},
+];
+const STEP_VARIANTS=[
+  {name:'one-day',learningSteps:['1d'],relearningSteps:['1d']},
+  {name:'near-daily-23h',learningSteps:['23h'],relearningSteps:['23h']},
+  {name:'eighteen-hour',learningSteps:['18h'],relearningSteps:['18h']},
+  {name:'half-day-12h',learningSteps:['12h'],relearningSteps:['12h']},
+  {name:'no-explicit-steps',learningSteps:[],relearningSteps:[]},
+  {name:'upstream-minute-steps',learningSteps:['1m','10m'],relearningSteps:['10m']},
+];
+const FIXED_RETENTIONS=[.84,.86,.88,.90,.92];
+const COST_WEIGHTS=[64,128,256,384,512,640,768,896,1024];
+
 const hoursBetween=(left,right)=>(new Date(left).getTime()-new Date(right).getTime())/HOUR_MS;
 const daysBetween=(left,right)=>(new Date(left).getTime()-new Date(right).getTime())/DAY_MS;
+const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 
-async function fixedScheduler({learningSteps,relearningSteps,enableShortTerm=true,desiredRetention=.9}){
+async function fixedScheduler({learningSteps,relearningSteps,desiredRetention=.9,enableFuzz=false}){
   return F.DefaultScheduler({
     version:'FSRS-7',
     desiredRetention,
-    enableShortTerm,
+    enableShortTerm:true,
     learningSteps,
     relearningSteps,
     graduatingInterval:1,
     allowModelOverride:true,
-    enableFuzz:false,
+    enableFuzz,
     maximumInterval:MAX_INTERVAL,
     clearStatsOnForget:false,
   });
 }
 
-async function costAdrScheduler(goalCostWeight,{learningSteps=['23h'],relearningSteps=['23h']}={}){
-  const reference=await fixedScheduler({learningSteps,relearningSteps});
+async function costAdrScheduler(goalCostWeight,{learningSteps,relearningSteps,enableFuzz=false}){
+  const reference=await fixedScheduler({learningSteps,relearningSteps,enableFuzz});
   const definition=F.defineScheduler({model:reference.definition.model,chrono:reference.definition.chrono})
     .use(
       F.schedulerCostAdrMiddleware,
@@ -54,7 +72,7 @@ async function costAdrScheduler(goalCostWeight,{learningSteps=['23h'],relearning
     fractionalDays:true,
     costAdrPolicy:F.COST_ADR_DEFAULT_POLICY,
     goalCostWeight,
-    enableFuzz:false,
+    enableFuzz,
     clearStatsOnForget:false,
     enableShortTerm:true,
     learningSteps:Array.from(learningSteps),
@@ -68,304 +86,369 @@ async function costAdrScheduler(goalCostWeight,{learningSteps=['23h'],relearning
 function memoryState(card){
   return {stability:card.stability,stabilityFast:card.stabilityFast,difficulty:card.difficulty};
 }
+
 function predictedRetrievability(scheduler,card,at){
-  if(!card.lastReviewAt||card.reps===0) return 1;
+  if(!card.lastReviewAt||card.reps===0) return undefined;
   const elapsedDays=Math.max(0,scheduler.chrono.difference(new Date(card.lastReviewAt),at));
-  return Number(scheduler.model.forgettingCurve(memoryState(card),elapsedDays));
+  return clamp(Number(scheduler.model.forgettingCurve(memoryState(card),elapsedDays)),0,1);
 }
 
-async function learningStepExperiment(){
-  const variants=[
-    {name:'current-1d',learningSteps:['1d'],relearningSteps:['1d']},
-    {name:'near-daily-23h',learningSteps:['23h'],relearningSteps:['23h']},
-    {name:'half-day-12h',learningSteps:['12h'],relearningSteps:['12h']},
-    {name:'no-explicit-steps',learningSteps:[],relearningSteps:[]},
-    {name:'upstream-default',learningSteps:['1m','10m'],relearningSteps:['10m']},
-  ];
-  const results=[];
-  for(const variant of variants){
-    const scheduler=await fixedScheduler(variant);
-    const first=scheduler.newCard({now:START,cardId:`learn-${variant.name}`});
-    const again1=scheduler.review({card:first,grade:F.Rating.Again,now:START}).card;
-    const again2=scheduler.review({card:again1,grade:F.Rating.Again,now:new Date(again1.dueAt)}).card;
-
-    const seeded=scheduler.newCard({now:START,cardId:`review-${variant.name}`});
-    const established=scheduler.review({card:seeded,grade:F.Rating.Good,now:START}).card;
-    const lapseAt=new Date(established.dueAt);
-    const lapsed=scheduler.review({card:established,grade:F.Rating.Again,now:lapseAt}).card;
-
-    // Revision Director does not follow an Again card directly. It suspends the
-    // memory obligation, runs corrective relearning, then records one successful
-    // closed-book return roughly a day later. Measure the actual host lifecycle.
-    const initialReturnAt=new Date(START.getTime()+DAY_MS);
-    const initialReturned=scheduler.review({card:again1,grade:F.Rating.Good,now:initialReturnAt}).card;
-    const lapseReturnAt=new Date(lapseAt.getTime()+DAY_MS);
-    const lapseReturned=scheduler.review({card:lapsed,grade:F.Rating.Good,now:lapseReturnAt}).card;
-
-    results.push({
-      name:variant.name,
-      firstAgainHours:hoursBetween(again1.dueAt,START),
-      firstAgainState:again1.state,
-      firstAgainStatus:again1.scheduleStatus,
-      secondAgainHours:hoursBetween(again2.dueAt,new Date(again1.dueAt)),
-      secondAgainState:again2.state,
-      secondAgainLapses:again2.lapses,
-      establishedAfterGoodState:established.state,
-      lapseAgainHours:hoursBetween(lapsed.dueAt,lapseAt),
-      lapseAgainState:lapsed.state,
-      lapseAgainStatus:lapsed.scheduleStatus,
-      lapseCount:lapsed.lapses,
-      initialCorrectiveReturnState:initialReturned.state,
-      initialCorrectiveNextDays:daysBetween(initialReturned.dueAt,initialReturnAt),
-      initialCorrectiveLapses:initialReturned.lapses,
-      lapseCorrectiveReturnState:lapseReturned.state,
-      lapseCorrectiveNextDays:daysBetween(lapseReturned.dueAt,lapseReturnAt),
-      lapseCorrectiveLapses:lapseReturned.lapses,
-    });
+function fnv1a32(value){
+  let hash=0x811c9dc5;
+  for(let i=0;i<value.length;i++){
+    hash^=value.charCodeAt(i);
+    hash=Math.imul(hash,0x01000193);
   }
-  const byName=new Map(results.map(row=>[row.name,row]));
-  const current=byName.get('current-1d');
-  const nearDaily=byName.get('near-daily-23h');
-  assert.ok(current&&nearDaily,'Required learning-step variants missing');
-  assert.ok(nearDaily.firstAgainHours>=22.9&&nearDaily.firstAgainHours<=24,'23h policy must remain operationally near-daily');
-  assert.equal(nearDaily.firstAgainState,F.State.Learning,'23h Again must retain initial-learning state');
-  assert.equal(nearDaily.secondAgainLapses,0,'Repeated initial-learning failure under 23h must not invent an established-memory lapse');
-  assert.equal(nearDaily.lapseAgainState,F.State.Relearning,'23h established lapse must retain relearning state');
-  return results;
+  return hash>>>0;
 }
 
-const RATING_PATTERNS=[
-  [F.Rating.Good,F.Rating.Good,F.Rating.Hard,F.Rating.Good,F.Rating.Easy,F.Rating.Good],
-  [F.Rating.Good,F.Rating.Hard,F.Rating.Good,F.Rating.Hard,F.Rating.Good,F.Rating.Good],
-  [F.Rating.Again,F.Rating.Good,F.Rating.Good,F.Rating.Hard,F.Rating.Good,F.Rating.Easy],
-  [F.Rating.Good,F.Rating.Good,F.Rating.Good,F.Rating.Easy,F.Rating.Good,F.Rating.Good],
-  [F.Rating.Hard,F.Rating.Good,F.Rating.Hard,F.Rating.Good,F.Rating.Good,F.Rating.Easy],
-  [F.Rating.Again,F.Rating.Good,F.Rating.Hard,F.Rating.Good,F.Rating.Again,F.Rating.Good],
-];
+function deterministicUnit(key){
+  let a=fnv1a32(key);
+  a=(a+0x6d2b79f5)>>>0;
+  let t=a;
+  t=Math.imul(t^(t>>>15),t|1);
+  t^=t+Math.imul(t^(t>>>7),t|61);
+  return ((t^(t>>>14))>>>0)/4294967296;
+}
 
-function projectWorkload(scheduler,pattern,cardIndex,horizonDays){
-  let card=scheduler.newCard({now:new Date(START.getTime()+cardIndex*6*HOUR_MS),cardId:`workload-${cardIndex}`});
+function outcomeRating(retrievability,key){
+  const r=clamp(retrievability,0,1);
+  if(deterministicUnit(key+':recall')>=r) return F.Rating.Again;
+  const quality=deterministicUnit(key+':quality');
+  if(quality<.10) return F.Rating.Easy;
+  if(quality>.82) return F.Rating.Hard;
+  return F.Rating.Good;
+}
+
+function directRetrievability(scheduler,card,at,scenario){
+  return predictedRetrievability(scheduler,card,at)??scenario.newRecall;
+}
+
+function correctiveRetrievability(scheduler,card,at,scenario){
+  const model=predictedRetrievability(scheduler,card,at)??scenario.newRecall;
+  return clamp(model+scenario.repairBoost,0,.995);
+}
+
+function percentile(values,p){
+  if(values.length===0) return 0;
+  const sorted=[...values].sort((a,b)=>a-b);
+  return sorted[Math.min(sorted.length-1,Math.max(0,Math.ceil(sorted.length*p)-1))];
+}
+
+function projectCard(scheduler,step,scenario,cardIndex,horizonDays){
+  let card=scheduler.newCard({now:new Date(START.getTime()+cardIndex*6*HOUR_MS),cardId:'r2-card-'+cardIndex});
   let now=new Date(card.dueAt);
   const horizon=START.getTime()+horizonDays*DAY_MS;
-  let memoryAttempts=0,correctiveSessions=0,fsrsReviews=0;
-  let retentionSum=0,minRetention=1,intervalSum=0,sub20h=0,againCount=0;
-  let reviewStateAttempts=0,reviewStateRetentionSum=0,minReviewStateRetention=1;
-  while(now.getTime()<=horizon&&memoryAttempts<300){
-    const retention=predictedRetrievability(scheduler,card,now);
-    retentionSum+=retention;
-    minRetention=Math.min(minRetention,retention);
-    if(card.state===F.State.Review){
-      reviewStateAttempts++;
-      reviewStateRetentionSum+=retention;
-      minReviewStateRetention=Math.min(minReviewStateRetention,retention);
-    }
+  let directAttempts=0,correctiveSessions=0,fsrsReviews=0,directAgain=0,correctiveFailures=0;
+  let directRetrievabilitySum=0,minDirectRetrievability=1,intervalSum=0,intervalCount=0,sub20h=0;
+  let observationIndex=0;
+  const dueDays=[];
 
-    const rating=pattern[memoryAttempts%pattern.length];
-    memoryAttempts++;
-    if(rating===F.Rating.Again) againCount++;
-    const direct=scheduler.review({card,grade:rating,now});
+  while(now.getTime()<=horizon&&directAttempts<500){
+    const directR=directRetrievability(scheduler,card,now,scenario);
+    directRetrievabilitySum+=directR;
+    minDirectRetrievability=Math.min(minDirectRetrievability,directR);
+    const directRating=outcomeRating(directR,scenario.name+':'+cardIndex+':'+observationIndex+':direct');
+    observationIndex++;
+    directAttempts++;
+    if(directRating===F.Rating.Again) directAgain++;
+    const direct=scheduler.review({card,grade:directRating,now});
     fsrsReviews++;
-
+    card=direct.card;
     let completedAt=now;
-    if(rating===F.Rating.Again){
-      // Revision Director suspends failed memory and owns a separate corrective
-      // relearning obligation due one day later. A successful closed-book
-      // verification records a Good return transition through FSRS.
-      const correctiveAt=new Date(now.getTime()+DAY_MS);
-      if(correctiveAt.getTime()>horizon) break;
-      correctiveSessions++;
-      const returned=scheduler.review({card:direct.card,grade:F.Rating.Good,now:correctiveAt});
-      fsrsReviews++;
-      card=returned.card;
-      completedAt=correctiveAt;
-    }else{
-      card=direct.card;
+
+    if(directRating===F.Rating.Again){
+      let correctiveAt=new Date(now.getTime()+DAY_MS);
+      let repaired=false;
+      let correctiveAttempt=0;
+      while(correctiveAt.getTime()<=horizon&&correctiveAttempt<12){
+        const verificationR=correctiveRetrievability(scheduler,card,correctiveAt,scenario);
+        const verificationRating=outcomeRating(verificationR,scenario.name+':'+cardIndex+':'+observationIndex+':verify');
+        observationIndex++;
+        correctiveAttempt++;
+        correctiveSessions++;
+        if(verificationRating<F.Rating.Good) correctiveFailures++;
+        const verification=scheduler.review({card,grade:verificationRating,now:correctiveAt});
+        fsrsReviews++;
+        card=verification.card;
+        completedAt=correctiveAt;
+        if(verificationRating>=F.Rating.Good){
+          repaired=true;
+          break;
+        }
+        correctiveAt=new Date(correctiveAt.getTime()+(verificationRating===F.Rating.Again?1:2)*DAY_MS);
+      }
+      if(!repaired) break;
     }
 
     const intervalDays=daysBetween(card.dueAt,completedAt);
     intervalSum+=intervalDays;
+    intervalCount++;
     if(intervalDays<20/24) sub20h++;
+    const dueDay=Math.floor((new Date(card.dueAt).getTime()-START.getTime())/DAY_MS);
+    if(dueDay>=0&&dueDay<=horizonDays) dueDays.push(dueDay);
     now=new Date(card.dueAt);
   }
-  const workloadSessions=memoryAttempts+correctiveSessions;
+
   return {
-    workloadSessions,memoryAttempts,correctiveSessions,fsrsReviews,
-    retentionSum,minRetention,intervalSum,sub20h,againCount,
-    reviewStateAttempts,reviewStateRetentionSum,minReviewStateRetention,
+    directAttempts,correctiveSessions,fsrsReviews,directAgain,correctiveFailures,
+    directRetrievabilitySum,minDirectRetrievability,intervalSum,intervalCount,sub20h,dueDays,
   };
 }
 
 function aggregateWorkload(rows){
-  const total=rows.reduce((acc,row)=>{
-    for(const key of ['workloadSessions','memoryAttempts','correctiveSessions','fsrsReviews','retentionSum','intervalSum','sub20h','againCount','reviewStateAttempts','reviewStateRetentionSum']) acc[key]+=row[key];
-    acc.minRetention=Math.min(acc.minRetention,row.minRetention);
-    acc.minReviewStateRetention=Math.min(acc.minReviewStateRetention,row.minReviewStateRetention);
-    return acc;
-  },{workloadSessions:0,memoryAttempts:0,correctiveSessions:0,fsrsReviews:0,retentionSum:0,minRetention:1,intervalSum:0,sub20h:0,againCount:0,reviewStateAttempts:0,reviewStateRetentionSum:0,minReviewStateRetention:1});
+  const total={
+    directAttempts:0,correctiveSessions:0,fsrsReviews:0,directAgain:0,correctiveFailures:0,
+    directRetrievabilitySum:0,minDirectRetrievability:1,intervalSum:0,intervalCount:0,sub20h:0,
+  };
+  const dueCounts=new Map();
+  for(const row of rows){
+    for(const key of ['directAttempts','correctiveSessions','fsrsReviews','directAgain','correctiveFailures','directRetrievabilitySum','intervalSum','intervalCount','sub20h']) total[key]+=row[key];
+    total.minDirectRetrievability=Math.min(total.minDirectRetrievability,row.minDirectRetrievability);
+    for(const day of row.dueDays) dueCounts.set(day,(dueCounts.get(day)??0)+1);
+  }
+  const dueLoads=[...dueCounts.values()];
+  const workloadSessions=total.directAttempts+total.correctiveSessions;
   return {
     cards:rows.length,
-    workloadSessions:total.workloadSessions,
-    memoryAttempts:total.memoryAttempts,
+    workloadSessions,
+    workloadMinutes:workloadSessions*SESSION_MINUTES,
+    directAttempts:total.directAttempts,
     correctiveSessions:total.correctiveSessions,
     fsrsReviews:total.fsrsReviews,
-    workloadMinutes:total.workloadSessions*SESSION_MINUTES,
-    meanDueRetrievability:total.retentionSum/Math.max(1,total.memoryAttempts),
-    minDueRetrievability:total.minRetention,
-    meanReviewStateRetrievability:total.reviewStateRetentionSum/Math.max(1,total.reviewStateAttempts),
-    minReviewStateRetrievability:total.minReviewStateRetention,
-    reviewStateAttempts:total.reviewStateAttempts,
-    meanIntervalDays:total.intervalSum/Math.max(1,total.memoryAttempts-total.againCount+total.correctiveSessions),
+    directAgain:total.directAgain,
+    correctiveFailures:total.correctiveFailures,
+    directAgainRate:total.directAgain/Math.max(1,total.directAttempts),
+    correctiveFailureRate:total.correctiveFailures/Math.max(1,total.correctiveSessions),
+    meanDirectRetrievability:total.directRetrievabilitySum/Math.max(1,total.directAttempts),
+    minDirectRetrievability:total.minDirectRetrievability,
+    meanIntervalDays:total.intervalSum/Math.max(1,total.intervalCount),
     sub20hReviews:total.sub20h,
-    againCount:total.againCount,
+    occupiedDueDays:dueLoads.length,
+    p95DueDayLoad:percentile(dueLoads,.95),
+    peakDueDayLoad:dueLoads.length?Math.max(...dueLoads):0,
   };
 }
 
-async function productionPolicyExperiment(){
-  const cards=72;
-  const horizons=[90,365,730];
-  const schedulers=[
-    {name:'fixed-0.84',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.84})},
-    {name:'fixed-0.86',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.86})},
-    {name:'fixed-0.88',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.88})},
-    {name:'fixed-0.90',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.9})},
-    {name:'fixed-0.92',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.92})},
-    {name:'cost-adr-832',kind:'cost-adr',scheduler:await costAdrScheduler(832,{learningSteps:['1d'],relearningSteps:['1d']})},
-    {name:'cost-adr-896',kind:'cost-adr',scheduler:await costAdrScheduler(896,{learningSteps:['1d'],relearningSteps:['1d']})},
-    {name:'cost-adr-960',kind:'cost-adr',scheduler:await costAdrScheduler(960,{learningSteps:['1d'],relearningSteps:['1d']})},
-    {name:'cost-adr-992',kind:'cost-adr',scheduler:await costAdrScheduler(992,{learningSteps:['1d'],relearningSteps:['1d']})},
-    {name:'cost-adr-1024',kind:'cost-adr',scheduler:await costAdrScheduler(1024,{learningSteps:['1d'],relearningSteps:['1d']})},
-  ];
-  const experiments=[];
-  for(const horizonDays of horizons){
-    const results=[];
-    for(const entry of schedulers){
-      const rows=[];
-      for(let i=0;i<cards;i++) rows.push(projectWorkload(entry.scheduler,RATING_PATTERNS[i%RATING_PATTERNS.length],i,horizonDays));
-      results.push({name:entry.name,kind:entry.kind,...aggregateWorkload(rows)});
-    }
-    const baseline=results.find(row=>row.name==='fixed-0.90');
-    assert.ok(baseline,'Production fixed-retention baseline missing');
-    const fixedRows=results.filter(row=>row.kind==='fixed');
-    for(const row of results){
-      row.reviewDelta=(row.workloadSessions-baseline.workloadSessions)/baseline.workloadSessions;
-      row.retentionDelta=row.meanReviewStateRetrievability-baseline.meanReviewStateRetrievability;
-      if(row.kind==='cost-adr'){
-        const dominator=fixedRows.find(fixedRow=>
-          fixedRow.workloadSessions<=row.workloadSessions
-          && fixedRow.meanReviewStateRetrievability>=row.meanReviewStateRetrievability-.001
-          && (fixedRow.workloadSessions<row.workloadSessions||fixedRow.meanReviewStateRetrievability>row.meanReviewStateRetrievability+.001)
-        );
-        row.paretoDominatedBy=dominator?.name??null;
-        row.meaningfulBenefit=(
-          (
-            row.reviewDelta<=-.10
-            && row.retentionDelta>=-.01
-            && row.minReviewStateRetrievability>=baseline.minReviewStateRetrievability-.02
-          )||(
-            row.retentionDelta>=.01&&row.reviewDelta<=.05
-          )
-        )&&!dominator;
-      }
-    }
-    experiments.push({horizonDays,results});
-  }
-  const costNames=schedulers.filter(entry=>entry.kind==='cost-adr').map(entry=>entry.name);
-  const robustCostAdr=costNames.map(name=>({
-    name,
-    allHorizonsMeaningful:experiments.every(experiment=>experiment.results.find(row=>row.name===name)?.meaningfulBenefit===true),
-    worstReviewDelta:Math.max(...experiments.map(experiment=>experiment.results.find(row=>row.name===name).reviewDelta)),
-    worstRetentionLoss:Math.max(...experiments.map(experiment=>Math.max(0,-experiment.results.find(row=>row.name===name).retentionDelta))),
-    paretoDominatedAnywhere:experiments.some(experiment=>Boolean(experiment.results.find(row=>row.name===name).paretoDominatedBy)),
-  }));
-  return {experiments,robustCostAdr};
+async function runWorkload(scheduler,step,scenario,horizonDays){
+  const rows=[];
+  for(let i=0;i<CARDS;i++) rows.push(projectCard(scheduler,step,scenario,i,horizonDays));
+  return aggregateWorkload(rows);
 }
 
-async function policyWorkloadExperiment(){
-  const cards=72;
-  const horizons=[90,365,730];
-  const schedulers=[
-    {name:'current-step-fixed-0.90',kind:'fixed-reference',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.9})},
-    {name:'fixed-0.84',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.84})},
-    {name:'fixed-0.86',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.86})},
-    {name:'fixed-0.88',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.88})},
-    {name:'fixed-0.90',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.9})},
-    {name:'fixed-0.92',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.92})},
-    {name:'cost-adr-512',kind:'cost-adr',scheduler:await costAdrScheduler(512)},
-    {name:'cost-adr-768',kind:'cost-adr',scheduler:await costAdrScheduler(768)},
-    {name:'cost-adr-832',kind:'cost-adr',scheduler:await costAdrScheduler(832)},
-    {name:'cost-adr-896',kind:'cost-adr',scheduler:await costAdrScheduler(896)},
-    {name:'cost-adr-960',kind:'cost-adr',scheduler:await costAdrScheduler(960)},
-    {name:'cost-adr-1024',kind:'cost-adr',scheduler:await costAdrScheduler(1024)},
-  ];
-  const experiments=[];
-  for(const horizonDays of horizons){
-    const results=[];
-    for(const entry of schedulers){
-      const rows=[];
-      for(let i=0;i<cards;i++) rows.push(projectWorkload(entry.scheduler,RATING_PATTERNS[i%RATING_PATTERNS.length],i,horizonDays));
-      results.push({name:entry.name,kind:entry.kind,...aggregateWorkload(rows)});
-    }
-    const baseline=results.find(row=>row.name==='fixed-0.90');
-    const currentStep=results.find(row=>row.name==='current-step-fixed-0.90');
-    assert.ok(baseline&&currentStep,'Required fixed-retention baselines missing');
-    const fixedRows=results.filter(row=>row.kind==='fixed');
-    for(const row of results){
-      row.reviewDelta=(row.workloadSessions-baseline.workloadSessions)/baseline.workloadSessions;
-      row.retentionDelta=row.meanReviewStateRetrievability-baseline.meanReviewStateRetrievability;
-      if(row.kind==='cost-adr'){
-        const dominator=fixedRows.find(fixedRow=>
-          fixedRow.workloadSessions<=row.workloadSessions
-          && fixedRow.meanReviewStateRetrievability>=row.meanReviewStateRetrievability-.001
-          && (fixedRow.workloadSessions<row.workloadSessions||fixedRow.meanReviewStateRetrievability>row.meanReviewStateRetrievability+.001)
-        );
-        row.paretoDominatedBy=dominator?.name??null;
-        const initialBenefit=(
-          row.reviewDelta<=-.10&&row.retentionDelta>=-.01&&row.minReviewStateRetrievability>=baseline.minReviewStateRetrievability-.02
-        )||(
-          row.retentionDelta>=.01&&row.reviewDelta<=.05
-        );
-        row.meaningfulBenefit=initialBenefit&&!dominator;
+function summarizeAgainstBaseline(rows,names,baselineName){
+  const baselineByCell=new Map(rows.filter(row=>row.name===baselineName).map(row=>[row.cell,row]));
+  return names.map(name=>{
+    const own=rows.filter(row=>row.name===name);
+    const totals=own.reduce((acc,row)=>{
+      acc.sessions+=row.workloadSessions;
+      acc.directAttempts+=row.directAttempts;
+      acc.directAgain+=row.directAgain;
+      acc.directRWeighted+=row.meanDirectRetrievability*row.directAttempts;
+      acc.sub20h+=row.sub20hReviews;
+      acc.p95Due+=row.p95DueDayLoad;
+      acc.peakDue+=row.peakDueDayLoad;
+      return acc;
+    },{sessions:0,directAttempts:0,directAgain:0,directRWeighted:0,sub20h:0,p95Due:0,peakDue:0});
+    const comparisons=own.map(row=>{
+      const base=baselineByCell.get(row.cell);
+      assert.ok(base,'Missing baseline cell '+row.cell);
+      return {
+        sessionDelta:(row.workloadSessions-base.workloadSessions)/Math.max(1,base.workloadSessions),
+        againRateDelta:row.directAgainRate-base.directAgainRate,
+        meanRLoss:base.meanDirectRetrievability-row.meanDirectRetrievability,
+        minRLoss:base.minDirectRetrievability-row.minDirectRetrievability,
+      };
+    });
+    return {
+      name,
+      totalSessions:totals.sessions,
+      directAgainRate:totals.directAgain/Math.max(1,totals.directAttempts),
+      meanDirectRetrievability:totals.directRWeighted/Math.max(1,totals.directAttempts),
+      sub20hReviews:totals.sub20h,
+      meanP95DueDayLoad:totals.p95Due/Math.max(1,own.length),
+      meanPeakDueDayLoad:totals.peakDue/Math.max(1,own.length),
+      worstSessionDelta:Math.max(...comparisons.map(x=>x.sessionDelta)),
+      worstAgainRateDelta:Math.max(...comparisons.map(x=>x.againRateDelta)),
+      worstMeanRLoss:Math.max(...comparisons.map(x=>x.meanRLoss)),
+      worstMinRLoss:Math.max(...comparisons.map(x=>x.minRLoss)),
+    };
+  });
+}
+
+async function learningStepExperiment(){
+  const rows=[];
+  for(const step of STEP_VARIANTS){
+    for(const scenario of SCENARIOS){
+      for(const horizonDays of HORIZONS){
+        const scheduler=await fixedScheduler({...step,desiredRetention:.90,enableFuzz:false});
+        rows.push({
+          name:step.name,
+          cell:scenario.name+'-'+horizonDays,
+          scenario:scenario.name,
+          horizonDays,
+          ...await runWorkload(scheduler,step,scenario,horizonDays),
+        });
       }
     }
-    const stepReviewDelta=(baseline.workloadSessions-currentStep.workloadSessions)/currentStep.workloadSessions;
-    const stepRetentionDelta=baseline.meanReviewStateRetrievability-currentStep.meanReviewStateRetrievability;
-    experiments.push({
-      horizonDays,
-      stepComparison:{reviewDelta:stepReviewDelta,retentionDelta:stepRetentionDelta,currentReviews:currentStep.workloadSessions,nearDailyReviews:baseline.workloadSessions,currentSub20h:currentStep.sub20hReviews,nearDailySub20h:baseline.sub20hReviews},
-      results,
+  }
+  const summaries=summarizeAgainstBaseline(rows,STEP_VARIANTS.map(x=>x.name),'one-day');
+  const eligible=summaries.filter(row=>row.sub20hReviews===0&&row.worstAgainRateDelta<=.01&&row.worstMeanRLoss<=.01&&row.worstMinRLoss<=.02);
+  assert.ok(eligible.length>0,'No operationally valid learning-step policy survived memory guardrails');
+  const selected=eligible.reduce((best,row)=>row.totalSessions<best.totalSessions?row:best);
+  return {rows,summaries,selected};
+}
+
+function policyEntries(step,enableFuzz=false){
+  return [
+    ...FIXED_RETENTIONS.map(value=>({name:'fixed-'+value.toFixed(2),kind:'fixed',create:()=>fixedScheduler({...step,desiredRetention:value,enableFuzz})})),
+    ...COST_WEIGHTS.map(value=>({name:'cost-adr-'+value,kind:'cost-adr',create:()=>costAdrScheduler(value,{...step,enableFuzz})})),
+  ];
+}
+
+async function schedulingPolicyExperiment(step){
+  const entries=policyEntries(step,false);
+  const rows=[];
+  for(const entry of entries){
+    for(const scenario of SCENARIOS){
+      for(const horizonDays of HORIZONS){
+        const scheduler=await entry.create();
+        rows.push({
+          name:entry.name,
+          kind:entry.kind,
+          cell:scenario.name+'-'+horizonDays,
+          scenario:scenario.name,
+          horizonDays,
+          ...await runWorkload(scheduler,step,scenario,horizonDays),
+        });
+      }
+    }
+  }
+  const summaries=summarizeAgainstBaseline(rows,entries.map(x=>x.name),'fixed-0.90').map(summary=>{
+    const kind=entries.find(x=>x.name===summary.name).kind;
+    const own=rows.filter(row=>row.name===summary.name);
+    let paretoDominatedCells=0;
+    for(const row of own){
+      const fixedRows=rows.filter(candidate=>candidate.cell===row.cell&&candidate.kind==='fixed');
+      if(fixedRows.some(candidate=>
+        candidate.workloadSessions<=row.workloadSessions
+        && candidate.meanDirectRetrievability>=row.meanDirectRetrievability-.002
+        && candidate.directAgainRate<=row.directAgainRate+.002
+        && (candidate.workloadSessions<row.workloadSessions||candidate.meanDirectRetrievability>row.meanDirectRetrievability+.002||candidate.directAgainRate<row.directAgainRate-.002)
+      )) paretoDominatedCells++;
+    }
+    return {...summary,kind,paretoDominatedCells};
+  });
+  const baseline=summaries.find(x=>x.name==='fixed-0.90');
+  assert.ok(baseline,'Fixed 0.90 baseline missing');
+  const eligible=summaries.filter(row=>
+    row.sub20hReviews===0
+    && row.worstAgainRateDelta<=.01
+    && row.worstMeanRLoss<=.01
+    && row.worstMinRLoss<=.02
+    && (row.kind!=='cost-adr'||row.paretoDominatedCells===0)
+  );
+  assert.ok(eligible.length>0,'No scheduling policy survived memory guardrails');
+  const rawWinner=eligible.reduce((best,row)=>row.totalSessions<best.totalSessions?row:best);
+  const improvement=(baseline.totalSessions-rawWinner.totalSessions)/baseline.totalSessions;
+  const selected=rawWinner.name==='fixed-0.90'||improvement>=.05?rawWinner:baseline;
+  return {rows,summaries,rawWinner,selected,improvement};
+}
+
+async function createSelectedScheduler(policy,step,enableFuzz){
+  if(policy.name.startsWith('fixed-')){
+    const retention=Number(policy.name.slice('fixed-'.length));
+    return fixedScheduler({...step,desiredRetention:retention,enableFuzz});
+  }
+  const weight=Number(policy.name.slice('cost-adr-'.length));
+  return costAdrScheduler(weight,{...step,enableFuzz});
+}
+
+async function fuzzExperiment(policy,step){
+  const rows=[];
+  for(const enabled of [false,true]){
+    for(const scenario of SCENARIOS){
+      for(const horizonDays of HORIZONS){
+        const scheduler=await createSelectedScheduler(policy,step,enabled);
+        rows.push({
+          name:enabled?'fuzz-on':'fuzz-off',
+          cell:scenario.name+'-'+horizonDays,
+          ...await runWorkload(scheduler,step,scenario,horizonDays),
+        });
+      }
+    }
+  }
+  const summaries=summarizeAgainstBaseline(rows,['fuzz-off','fuzz-on'],'fuzz-off');
+  const off=summaries.find(x=>x.name==='fuzz-off');
+  const on=summaries.find(x=>x.name==='fuzz-on');
+  assert.ok(off&&on,'Fuzz comparison rows missing');
+  const workloadDelta=(on.totalSessions-off.totalSessions)/off.totalSessions;
+  const p95Improvement=(off.meanP95DueDayLoad-on.meanP95DueDayLoad)/Math.max(1,off.meanP95DueDayLoad);
+  const peakImprovement=(off.meanPeakDueDayLoad-on.meanPeakDueDayLoad)/Math.max(1,off.meanPeakDueDayLoad);
+  const safe=on.worstAgainRateDelta<=.005&&on.worstMeanRLoss<=.005&&on.worstMinRLoss<=.01&&workloadDelta<=.01;
+  const enable=safe&&(p95Improvement>=.05||peakImprovement>=.05);
+  return {rows,summaries,workloadDelta,p95Improvement,peakImprovement,enable};
+}
+
+async function lifecycleShapeExperiment(){
+  const results=[];
+  for(const step of STEP_VARIANTS){
+    const scheduler=await fixedScheduler({...step,desiredRetention:.90,enableFuzz:false});
+    const initial=scheduler.newCard({now:START,cardId:'shape-'+step.name});
+    const failed=scheduler.review({card:initial,grade:F.Rating.Again,now:START}).card;
+    const firstVerificationAt=new Date(START.getTime()+DAY_MS);
+    const verificationAgain=scheduler.review({card:failed,grade:F.Rating.Again,now:firstVerificationAt}).card;
+    const secondVerificationAt=new Date(firstVerificationAt.getTime()+DAY_MS);
+    const verificationGood=scheduler.review({card:verificationAgain,grade:F.Rating.Good,now:secondVerificationAt}).card;
+    results.push({
+      name:step.name,
+      firstAgainHours:hoursBetween(failed.dueAt,START),
+      firstAgainState:failed.state,
+      firstVerificationAgainState:verificationAgain.state,
+      firstVerificationAgainLapses:verificationAgain.lapses,
+      successfulReturnState:verificationGood.state,
+      successfulReturnNextDays:daysBetween(verificationGood.dueAt,secondVerificationAt),
     });
   }
-  const costNames=schedulers.filter(entry=>entry.kind==='cost-adr').map(entry=>entry.name);
-  const robustCostAdr=costNames.map(name=>({
-    name,
-    allHorizonsMeaningful:experiments.every(experiment=>experiment.results.find(row=>row.name===name)?.meaningfulBenefit===true),
-    worstReviewDelta:Math.max(...experiments.map(experiment=>experiment.results.find(row=>row.name===name).reviewDelta)),
-    worstRetentionLoss:Math.max(...experiments.map(experiment=>Math.max(0,-experiment.results.find(row=>row.name===name).retentionDelta))),
-    paretoDominatedAnywhere:experiments.some(experiment=>Boolean(experiment.results.find(row=>row.name===name).paretoDominatedBy)),
-  }));
-  return {experiments,robustCostAdr};
+  return results;
 }
 
 (async()=>{
-  const learning=await learningStepExperiment();
-  const workload=await policyWorkloadExperiment();
-  const production=await productionPolicyExperiment();
+  let lowFailures=0,highFailures=0;
+  for(let i=0;i<5000;i++){
+    if(outcomeRating(.65,'sensitivity-'+i)===F.Rating.Again) lowFailures++;
+    if(outcomeRating(.90,'sensitivity-'+i)===F.Rating.Again) highFailures++;
+  }
+  assert.ok(lowFailures>highFailures*2,'Outcome simulator must materially increase failure as retrievability falls');
+  assert.equal(outcomeRating(.73,'determinism'),outcomeRating(.73,'determinism'),'Outcome simulator must be deterministic');
 
-  const currentStep=learning.find(row=>row.name==='current-1d');
-  const nearDaily=learning.find(row=>row.name==='near-daily-23h');
-  assert.ok(currentStep&&nearDaily,'Learning-step decision rows are missing');
-  assert.equal(currentStep.initialCorrectiveReturnState,F.State.Review,'Current one-day policy must return to Review after successful host corrective work');
-  assert.equal(nearDaily.initialCorrectiveReturnState,F.State.Review,'Near-daily alternative must also return to Review after successful host corrective work');
-  assert.ok(currentStep.initialCorrectiveNextDays>nearDaily.initialCorrectiveNextDays+.5,'Near-daily learning step must not replace the current one-day adaptation without a workload benefit');
+  const lifecycle=await lifecycleShapeExperiment();
+  const steps=await learningStepExperiment();
+  const selectedStep=STEP_VARIANTS.find(x=>x.name===steps.selected.name);
+  assert.ok(selectedStep,'Selected learning-step definition missing');
 
-  const robust=production.robustCostAdr.filter(row=>row.allHorizonsMeaningful&&!row.paretoDominatedAnywhere);
-  assert.ok(robust.length>0,'No Cost-ADR preset demonstrated a robust production-configuration benefit');
-  const selected=robust.reduce((best,row)=>row.worstReviewDelta<best.worstReviewDelta?row:best);
-  assert.equal(selected.name,'cost-adr-1024','The enabled Cost-ADR preset must remain the strongest measured robust production candidate');
-  assert.ok(selected.worstRetentionLoss<.01,'Enabled Cost-ADR preset exceeded the one-percentage-point established-memory retention guard');
+  const policy=await schedulingPolicyExperiment(selectedStep);
+  assert.ok(policy.rows.some(row=>row.correctiveFailures>0),'Corrected benchmark must exercise failed closed-book verification and repeated host corrective work');
 
-  console.log('PASS Pass 5 learning-step experiment: '+JSON.stringify(learning));
-  console.log('PASS Pass 5 scheduling-policy workload experiment: '+JSON.stringify(workload));
-  console.log('PASS Pass 5 production-policy workload experiment: '+JSON.stringify(production));
-  console.log('PASS Pass 5 activation decision: '+JSON.stringify({learningSteps:'retain-1d',costAdrGoalCostWeight:1024,worstReviewDelta:selected.worstReviewDelta,worstRetentionLoss:selected.worstRetentionLoss}));
+  const fuzz=await fuzzExperiment(policy.selected,selectedStep);
+  const fuzzSchedulerA=await createSelectedScheduler(policy.selected,selectedStep,true);
+  const fuzzSchedulerB=await createSelectedScheduler(policy.selected,selectedStep,true);
+  const deterministicA=await runWorkload(fuzzSchedulerA,selectedStep,SCENARIOS[1],365);
+  const deterministicB=await runWorkload(fuzzSchedulerB,selectedStep,SCENARIOS[1],365);
+  assert.deepEqual(deterministicA,deterministicB,'Fuzzing must remain deterministic for fixed card identities and review counts');
+
+  const decision={
+    learningSteps:selectedStep.learningSteps,
+    relearningSteps:selectedStep.relearningSteps,
+    policy:policy.selected.name,
+    policyImprovementVsFixed090:(policy.summaries.find(x=>x.name==='fixed-0.90').totalSessions-policy.selected.totalSessions)/policy.summaries.find(x=>x.name==='fixed-0.90').totalSessions,
+    enableFuzz:fuzz.enable,
+  };
+
+  console.log('PASS FSRS-R2 corrected lifecycle shape: '+JSON.stringify(lifecycle));
+  console.log('PASS FSRS-R2 learning-step summary: '+JSON.stringify(steps.summaries));
+  console.log('PASS FSRS-R2 policy summary: '+JSON.stringify(policy.summaries));
+  console.log('PASS FSRS-R2 raw policy winner: '+JSON.stringify({winner:policy.rawWinner.name,improvement:policy.improvement,selected:policy.selected.name}));
+  console.log('PASS FSRS-R2 fuzz summary: '+JSON.stringify({summaries:fuzz.summaries,workloadDelta:fuzz.workloadDelta,p95Improvement:fuzz.p95Improvement,peakImprovement:fuzz.peakImprovement,enable:fuzz.enable}));
+  console.log('PASS FSRS-R2 measured decision: '+JSON.stringify(decision));
 })().catch(error=>{console.error(error);process.exitCode=1;});
