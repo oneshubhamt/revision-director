@@ -41,13 +41,13 @@ mustFail(() => api.canonicalExamProfile({...rawProfile, schemaVersion:2}), 'Unsu
 
 const node = api.canonicalKnowledgeNode({ schemaVersion:1, id:'n', profileId:'p', parentId:null, kind:'subject', name:'  Public   Administration ', normalizedName:'wrong', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt });
 check(node.name === 'Public Administration' && node.normalizedName === 'public administration', 'Node canonical name contract failed');
-const settings = api.canonicalAppSettings({ schemaVersion:1, key:'app', activeProfileId:'  p ', fsrsScheduling:{policy:fixed(.9)}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} });
+const settings = api.canonicalAppSettings({ schemaVersion:1, key:'app', activeProfileId:'  p ', fsrsScheduling:{policy:fixed(.9)}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]} });
 check(settings.activeProfileId === 'p' && settings.fsrsScheduling.policy.kind === 'fixed-retention', 'Settings canonicalisation failed');
 mustFail(() => api.canonicalAppSettings({ ...settings, desiredRetention:.9 }), 'Obsolete top-level desiredRetention was accepted');
 mustFail(() => api.canonicalAppSettings((({memoryDifficultyPolicy,...rest})=>rest)(settings)), 'Missing canonical memory-difficulty policy was accepted');
 mustFail(() => api.canonicalAppSettings({ ...settings, memoryDifficultyPolicy:{...settings.memoryDifficultyPolicy,automaticHold:{enabled:true,lapseThreshold:3}} }), 'Automatic hold below persistent-difficulty threshold was accepted');
 mustFail(() => api.canonicalAppSettings({ ...settings, memoryDifficultyPolicy:{...settings.memoryDifficultyPolicy,automaticHold:{enabled:true,lapseThreshold:4}} }), 'Automatic hold at the persistent-difficulty boundary was accepted');
-mustFail(() => api.canonicalAppSettings({ schemaVersion:1, key:'app', fsrsScheduling:{policy:fixed(.9)}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} }), 'Missing current settings fields were accepted');
+mustFail(() => api.canonicalAppSettings({ schemaVersion:1, key:'app', fsrsScheduling:{policy:fixed(.9)}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]} }), 'Missing current settings fields were accepted');
 
 const plan = api.canonicalDailyPlanRecord({ schemaVersion:1, id:' d ', studyDayKey:'2026-07-25', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt, plannerVersion:' pass-d-2 ', versions:[{version:1,generatedAt:rawProfile.createdAt,capacityMinutes:60,reason:'initial',items:[]}], outcomes:[] });
 check(plan.id === 'd' && plan.plannerVersion === 'pass-d-2', 'Daily-plan canonicalisation failed');
@@ -81,7 +81,7 @@ check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound')
   const emptyBackup = {
     format:'revision-director-backup', schemaVersion:2, exportedAt:'2026-07-25T06:00:00.000Z', appVersion:'va7.1-pass-f1',
     profiles:[], nodes:[], units:[], studyEvents:[], obligations:[], evidenceEvents:[], chunks:[], dailyPlans:[],
-    settings:{schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}},
+    settings:{schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}},
     activeRetrieval:null,
   };
   check(service.validateBackup(emptyBackup).profiles.length === 0, 'Clean empty production backup was rejected');
