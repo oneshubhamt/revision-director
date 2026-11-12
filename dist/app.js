@@ -1654,6 +1654,24 @@
           },
       };
   }
+  const FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT = 1024;
+  function upstreamDefaultFsrsCostAdrPolicy() {
+      return {
+          coefficients: [-0.202, 9.14, -0.0978, 0.226, -5.31, -7.44, 24.1, -0.375, 1.81, -22.9, -5.82, 22.3, 1.72, -1.99, -19.4],
+          costWeightMin: 0,
+          costWeightMax: 1024,
+          retentionMin: 0.3,
+          retentionMax: 0.995,
+          bounds: { sMin: 0.0001, sMax: 36500, dMin: 1, dMax: 10 },
+      };
+  }
+  function measuredCostAdrSchedulingPolicy() {
+      return {
+          kind: "cost-adr",
+          goalCostWeight: FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT,
+          costAdrPolicy: upstreamDefaultFsrsCostAdrPolicy(),
+      };
+  }
   function canonicalFsrsCostAdrPolicy(value) {
       const record = requireRecord(value, "FSRS Cost-ADR policy");
       const allowed = new Set(["coefficients", "costWeightMin", "costWeightMax", "retentionMin", "retentionMax", "bounds"]);
@@ -1701,8 +1719,10 @@
           const allowed = new Set(["kind", "goalCostWeight", "costAdrPolicy"]);
           assert(Object.keys(record).every((key) => allowed.has(key)), "Cost-ADR scheduling policy contains unexpected fields.");
           const goalCostWeight = Number(record["goalCostWeight"]);
-          assert(Number.isFinite(goalCostWeight) && goalCostWeight >= 0 && goalCostWeight <= 1024, "FSRS Cost-ADR goal cost weight is invalid.");
-          return { kind, goalCostWeight, costAdrPolicy: canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]) };
+          const costAdrPolicy = canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]);
+          assert(goalCostWeight === FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT
+              && JSON.stringify(costAdrPolicy) === JSON.stringify(upstreamDefaultFsrsCostAdrPolicy()), "Only the measured Revision Director Cost-ADR preset is enabled.");
+          return { kind, goalCostWeight, costAdrPolicy };
       }
       assert(false, "FSRS scheduling policy kind is invalid.");
   }
@@ -1731,7 +1751,7 @@
   }
   function fixedRetentionForPolicy(value) {
       const policy = canonicalFsrsSchedulingPolicy(value);
-      assert(policy.kind === "fixed-retention", "Cost-ADR scheduling is defined but not enabled in this build.");
+      assert(policy.kind === "fixed-retention", "Fixed retention is not available from an adaptive Cost-ADR policy.");
       return policy.desiredRetention;
   }
   function defaultFsrsSchedulingSettings() {
@@ -2464,16 +2484,11 @@
       }
   }
   const FSRS_SCHEDULER_CACHE = new Map();
-  async function prepareFsrsScheduler(schedulingPolicy, profile = null) {
-      const policy = canonicalFsrsSchedulingPolicy(schedulingPolicy);
-      const desiredRetention = fixedRetentionForPolicy(policy);
-      const validatedProfile = profile ? validateFsrsOptimizerProfile(profile) : null;
-      const configuration = fsrsConfigSnapshot(policy, validatedProfile);
-      if (FSRS_SCHEDULER_CACHE.has(configuration.fingerprint))
-          return;
-      const scheduler = await runtimeFsrs().DefaultScheduler({
+  async function createCostAdrFsrsScheduler(runtime, policy, profile) {
+      const weights = profile ? profile.weights : [...FSRS7_DEFAULT_WEIGHTS];
+      const reference = await runtime.DefaultScheduler({
           version: FSRS_MODEL,
-          desiredRetention,
+          desiredRetention: 0.9,
           enableShortTerm: true,
           learningSteps: FSRS_LEARNING_STEPS,
           relearningSteps: FSRS_RELEARNING_STEPS,
@@ -2482,8 +2497,50 @@
           enableFuzz: false,
           maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
           clearStatsOnForget: false,
-          ...(validatedProfile ? { weights: validatedProfile.weights } : {}),
+          weights,
       });
+      assert(typeof runtime.defineScheduler === "function", "Embedded ts-fsrs runtime does not expose scheduler composition.");
+      return runtime.defineScheduler(reference.definition)
+          .use(runtime.schedulerCostAdrMiddleware, runtime.schedulerFuzzingMiddleware, runtime.schedulerStatsMiddleware, runtime.schedulerScheduledDaysMiddleware, runtime.schedulerLearningStepsMiddleware, runtime.schedulerMaximumIntervalMiddleware, runtime.schedulerMonotonicIntervalMiddleware)
+          .create({
+          config: {
+              weights: [...weights],
+              fractionalDays: true,
+              costAdrPolicy: clone(policy.costAdrPolicy),
+              goalCostWeight: policy.goalCostWeight,
+              enableFuzz: false,
+              clearStatsOnForget: false,
+              enableShortTerm: true,
+              learningSteps: [...FSRS_LEARNING_STEPS],
+              relearningSteps: [...FSRS_RELEARNING_STEPS],
+              graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
+              allowModelOverride: true,
+              maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
+          },
+      });
+  }
+  async function prepareFsrsScheduler(schedulingPolicy, profile = null) {
+      const policy = canonicalFsrsSchedulingPolicy(schedulingPolicy);
+      const validatedProfile = profile ? validateFsrsOptimizerProfile(profile) : null;
+      const configuration = fsrsConfigSnapshot(policy, validatedProfile);
+      if (FSRS_SCHEDULER_CACHE.has(configuration.fingerprint))
+          return;
+      const runtime = runtimeFsrs();
+      const scheduler = policy.kind === "fixed-retention"
+          ? await runtime.DefaultScheduler({
+              version: FSRS_MODEL,
+              desiredRetention: fixedRetentionForPolicy(policy),
+              enableShortTerm: true,
+              learningSteps: FSRS_LEARNING_STEPS,
+              relearningSteps: FSRS_RELEARNING_STEPS,
+              graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
+              allowModelOverride: true,
+              enableFuzz: false,
+              maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
+              clearStatsOnForget: false,
+              ...(validatedProfile ? { weights: validatedProfile.weights } : {}),
+          })
+          : await createCostAdrFsrsScheduler(runtime, policy, validatedProfile);
       const port = new TsFsrsSchedulerPort(scheduler, configuration);
       const probe = port.newCard("2000-01-01T00:00:00.000Z", "revision-director-fsrs7-probe");
       requiredFsrs7StabilityFast(probe.stabilityFast);
@@ -2492,7 +2549,7 @@
   function revisionSchedulerPort(schedulingPolicy, profile = null) {
       const configuration = fsrsConfigSnapshot(canonicalFsrsSchedulingPolicy(schedulingPolicy), profile ? validateFsrsOptimizerProfile(profile) : null);
       const scheduler = FSRS_SCHEDULER_CACHE.get(configuration.fingerprint);
-      assert(scheduler, "FSRS-7 scheduler has not been initialized for the current retention setting.");
+      assert(scheduler, "FSRS-7 scheduler has not been initialized for the current scheduling policy.");
       return scheduler;
   }
   function validateMemoryDatasetProjectionChain(obligations, reviewIndex) {
@@ -3024,8 +3081,12 @@
           ? memoryReviews?.get(item.obligation.id) ?? memoryReviewObservationsFor(item.obligation.id, evidenceEvents)
           : [];
       const retrievability = fsrsRetrievability(item.obligation, reference, settings.fsrsScheduling.policy, memoryHistory, activeFsrsOptimizerProfile(settings));
-      const desiredRetention = fixedRetentionForPolicy(settings.fsrsScheduling.policy);
-      const memoryRisk = retrievability === undefined ? 0 : clamp((desiredRetention - retrievability) / Math.max(desiredRetention - 0.5, 0.1), 0, 1);
+      const schedulingPolicy = settings.fsrsScheduling.policy;
+      const memoryRisk = retrievability === undefined || schedulingPolicy.kind === "cost-adr"
+          ? 0
+          : clamp((schedulingPolicy.desiredRetention - retrievability) / Math.max(schedulingPolicy.desiredRetention - 0.5, 0.1), 0, 1);
+      // Cost-ADR has a state-dependent retention target. Its dueAt already encodes
+      // that adaptive target, so the planner must not invent a second approximation.
       const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
       const difficulty = item.obligation.type === "memory-recall"
           ? memoryDifficultyAssessment(item.obligation, settings.memoryDifficultyPolicy, memoryHistory)
@@ -8386,6 +8447,8 @@
               this.service.optimizerEvidenceSummary(),
           ]);
           const planningReference = studyDayStart(new Date(), settings.studyDayBoundaryHour);
+          const schedulingPolicy = settings.fsrsScheduling.policy;
+          const fixedRetentionValue = schedulingPolicy.kind === "fixed-retention" ? schedulingPolicy.desiredRetention : 0.9;
           const fsrsOk = fsrsRuntimeAvailable();
           const storage = this.service.storageHealth();
           const storageUsage = storage.usageRatio === undefined ? "Usage estimate unavailable" : `${roundTo(storage.usageRatio * 100, 1)}% of browser quota used`;
@@ -8394,7 +8457,7 @@
           ${this.pageHead("SYSTEM CONTROL", "Settings", "Revision Director remains deterministic and local-first; AI can later advise without owning the record.")}
           <form id="settings-form" class="settings-grid">
             <section class="panel settings-card"><h3>Planning</h3><label>Default exam profile for new records<select name="activeProfileId" ${profiles.length ? "" : "disabled"}>${profiles.length ? profiles.map((profile) => `<option value="${profile.id}" ${profile.id === settings.activeProfileId ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("") : '<option value="">Create an exam profile first</option>'}</select></label><label>Daily revision capacity<input name="dailyCapacityMinutes" type="number" min="5" max="600" value="${settings.dailyCapacityMinutes}"></label><label>Study-day boundary hour<input name="studyDayBoundaryHour" type="number" min="0" max="12" value="${settings.studyDayBoundaryHour}"></label></section>
-            <section class="panel settings-card"><h3>Memory scheduling</h3><div class="dependency-status"><span>Policy</span><strong>Fixed retention</strong></div><label>Desired retention<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${fixedRetentionForPolicy(settings.fsrsScheduling.policy)}"></label><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">FSRS is routed only to memory-recall obligations. Scheduling policy and personalized weights are independent configuration axes; Cost-ADR is reserved by the scheduler contract but is not enabled in this build.</p></section>
+            <section class="panel settings-card"><h3>Memory scheduling</h3><label>Scheduling policy<select name="memorySchedulingPolicy"><option value="fixed-retention" ${schedulingPolicy.kind === "fixed-retention" ? "selected" : ""}>Fixed retention · default</option><option value="cost-adr" ${schedulingPolicy.kind === "cost-adr" ? "selected" : ""}>Adaptive workload · measured Cost-ADR</option></select></label><label>Fixed-retention target<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${fixedRetentionValue}"></label><div class="dependency-status"><span>Active policy</span><strong>${schedulingPolicy.kind === "cost-adr" ? `Cost-ADR · cost weight ${FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT}` : `Fixed · ${roundTo(schedulingPolicy.desiredRetention * 100, 0)}%`}</strong></div><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">Fixed 90% remains the default. The adaptive option is the single measured Revision Director Cost-ADR preset; arbitrary cost weights are intentionally unavailable. The fixed-retention target applies only in fixed mode. Switching policy performs an explicit atomic FSRS replay/rebase.</p></section>
             <section class="panel settings-card"><h3>Persistent difficulty</h3><label>Escalate to remediation after FSRS lapses<input name="difficultyRemediationLapses" type="number" min="2" max="99" value="${settings.memoryDifficultyPolicy.remediationLapses}"></label><label>Persistent difficulty after FSRS lapses<input name="difficultyPersistentLapses" type="number" min="3" max="100" value="${settings.memoryDifficultyPolicy.persistentDifficultyLapses}"></label><label class="check-option strong-check"><input name="difficultyAutomaticHold" type="checkbox" ${settings.memoryDifficultyPolicy.automaticHold.enabled ? "checked" : ""}>Hold persistent-difficulty memory out of the normal queue after successful remediation</label><label>Automatic-hold lapse threshold<input name="difficultyAutomaticHoldLapses" type="number" min="${settings.memoryDifficultyPolicy.persistentDifficultyLapses + 1}" max="1000" value="${settings.memoryDifficultyPolicy.automaticHold.lapseThreshold}"></label><p class="helper">The signal is the FSRS lapse counter: Again from Review state. Early failures still use ordinary relearning; repeated lapses escalate the remediation itself. Revision Director owns any queue hold; the FSRS card is never marked suspended.</p></section>
             ${this.fsrsPersonalizationCard(settings, optimizerEvidence)}
             <section class="panel settings-card"><h3>Add exam profile</h3><label>Name<input id="new-profile-name" placeholder="IFoS 2027, USMLE Step 1..."></label><label>Exam date<input id="new-profile-date" type="date"></label><button class="btn" type="button" data-action="add-profile">ADD PROFILE</button></section>
@@ -9375,6 +9438,11 @@
               assert(form instanceof HTMLFormElement && form.getAttribute("id") === "settings-form", "Settings form is unavailable.");
               const data = new FormData(form);
               const current = this.service.getSettings();
+              const schedulingKind = formText(data, "memorySchedulingPolicy");
+              assert(schedulingKind === "fixed-retention" || schedulingKind === "cost-adr", "Memory scheduling policy is invalid.");
+              const schedulingPolicy = schedulingKind === "cost-adr"
+                  ? measuredCostAdrSchedulingPolicy()
+                  : { kind: "fixed-retention", desiredRetention: formNumber(data, "desiredRetention") };
               await this.service.saveSettings({
                   ...current,
                   schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -9382,7 +9450,7 @@
                   activeProfileId: formText(data, "activeProfileId"),
                   fsrsScheduling: {
                       ...current.fsrsScheduling,
-                      policy: { kind: "fixed-retention", desiredRetention: formNumber(data, "desiredRetention") },
+                      policy: schedulingPolicy,
                   },
                   memoryDifficultyPolicy: {
                       remediationLapses: formNumber(data, "difficultyRemediationLapses"),
