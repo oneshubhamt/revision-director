@@ -4,7 +4,7 @@
 
   interface RevisionSchedulerReviewResult {
     card: MemoryMaterializedProjection;
-    reviewLog: Record<string, unknown>;
+    reviewLog: FsrsReviewLog;
   }
 
   interface RevisionSchedulerPort {
@@ -538,7 +538,7 @@
         grade: this.grade(rating),
       });
       const next = serializeFsrsCard(result.card);
-      const reviewLog: Record<string, unknown> = {
+      const reviewLog: FsrsReviewLog = {
         model: FSRS_MODEL,
         rating: result.revlog.rating,
         state: result.revlog.state,
