@@ -186,7 +186,7 @@ check("no current-shape repair coercions", all(token not in contracts_ts for tok
     "Number(value.classifiedBreakMs)", "Number(value.promptExcludedMs)", "const value = Number(raw);",
     "queueTargetIds.slice(0, 500)", "value.diagramStrokes.slice(0, 256)", "Object.entries(value.values).slice(0, 96)",
 ]) and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
-check("strict settings numeric boundaries", "Number(record[" not in fsrs_personalization_ts and "Number(value)" not in fsrs_personalization_ts and "Number(record[" not in planning_ts and "requiredFiniteNumber" in fsrs_personalization_ts and "requiredSafeInteger" in planning_ts)
+check("strict settings numeric boundaries", not re.search(r"\bNumber\(", fsrs_personalization_ts) and "Number(record[" not in planning_ts and "requiredFiniteNumber" in fsrs_personalization_ts and "requiredSafeInteger" in planning_ts)
 check("evidence-only memory difficulty truth", "memoryReviews: readonly MemoryReviewObservation[]" in planning_ts and "card.lapses" not in planning_ts and "conservative fallback" not in planning_ts)
 check("atomic backup state snapshot", "this.db.transaction(stores, \"readonly\")" in repository_ts and "async backupState()" in storage_ts and "const state = await this.repo.backupState();" in service_ts)
 check("single verified restore path", "async importBackup(input: unknown)" not in service_ts and "restoreBackupPayload" in service_ts and "class BackupController" in ts)
