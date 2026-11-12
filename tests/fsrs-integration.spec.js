@@ -269,37 +269,50 @@ async function testCostAdrRebase(){
   check(restoreRepo.evidenceEvents.length===built.events.length,'Cost-ADR round-trip must not synthesize or drop memory evidence');
 }
 
-async function testReturnedMemoryReplay(){
+async function testCorrectiveMemoryVerificationReplay(){
   await api.prepareFsrsScheduler(fixed(.9));
   const policy=new api.FsrsMemoryPolicy(()=>fixed(.9));
-  const id='returned-memory';
+  const id='corrective-memory';
   const start='2026-09-01T08:00:00.000Z';
   let obligation={id,unitId:'u',type:'memory-recall',status:'active',dueAt:start,expectedMinutes:15,baselineMinutes:15,durationSampleCount:0,
     protocol:'Recall',successCriteria:'Complete recall',workflow:clone(recallWorkflow),freshnessDays:30,priority:0,
     policyState:policy.createInitialState(start,id),createdAt:start,updatedAt:start};
+
   const failed=policy.complete(obligation,api.Rating.Again,ratingEvidence(api.Rating.Again),new Date(start),{memoryReviews:[]});
-  const failedEvent={id:'returned-fail',obligationId:id,obligationType:'memory-recall',reviewedAt:start,confirmedRating:api.Rating.Again,
+  const failedEvent={id:'direct-fail',obligationId:id,obligationType:'memory-recall',reviewedAt:start,confirmedRating:api.Rating.Again,
     beforePolicyState:clone(obligation.policyState),afterPolicyState:clone(failed.policyState),schedulerConfig:clone(failed.schedulerConfig)};
   obligation={...obligation,dueAt:failed.dueAt,policyState:clone(failed.policyState)};
-  const history=api.memoryReviewObservationsFor(id,[failedEvent]);
-  const returnedAt=new Date(new Date(start).getTime()+86400000).toISOString();
-  const repaired=policy.complete(obligation,api.Rating.Good,ratingEvidence(api.Rating.Good),new Date(returnedAt),{memoryReviews:history});
-  const returnEvent={id:'returned-success',obligationId:'relearn',obligationType:'relearn',reviewedAt:returnedAt,
-    returnedMemoryTransition:{obligationId:id,rating:api.Rating.Good,beforeDueAt:obligation.dueAt,afterDueAt:repaired.dueAt,
-      beforePolicyState:clone(obligation.policyState),afterPolicyState:clone(repaired.policyState),policyId:repaired.policyId,
-      schedulerPackage:'ts-fsrs',schedulerVersion:'6.0.0',schedulerModel:'FSRS-7',schedulerConfig:clone(repaired.schedulerConfig),reviewLog:clone(repaired.reviewLog)}};
-  const canonical=api.memoryReviewObservationsFor(id,[failedEvent,returnEvent]);
-  check(canonical.length===2&&canonical[0].source==='direct-memory'&&canonical[1].source==='relearning-return','Returned memory must be canonical replay evidence');
-  returnEvent.timing={...clone(timing),totalActiveMs:1140000,activeByPhase:{attempt:0,compare:300000,'relearn-repair':600000,'relearn-verify':240000}};
-  returnEvent.elapsedMs=1140000;
-  const returnedOptimizerRow=api.fsrsOptimizerEvidenceRows([returnEvent])[0];
-  check(returnedOptimizerRow.source==='relearning-return'&&returnedOptimizerRow.durationPhase==='relearn-verify'&&returnedOptimizerRow.durationMs===240000,'Returned-memory optimizer cost must use closed-book verification time only');
-  api.revisionSchedulerPort(fixed(.9)).verifyProjection(repaired.policyState.fsrsCard,canonical); checks++;
-  const corrupted=clone(returnEvent);
-  corrupted.returnedMemoryTransition.beforePolicyState.fsrsCard.reps+=1;
-  mustFail(()=>api.memoryReviewObservationsFor(id,[failedEvent,corrupted]),'Returned-memory corruption must fail chain validation');
-}
 
+  const firstHistory=api.memoryReviewObservationsFor(id,[failedEvent]);
+  const failedVerificationAt=new Date(new Date(start).getTime()+86400000).toISOString();
+  const failedVerification=policy.complete(obligation,api.Rating.Again,ratingEvidence(api.Rating.Again),new Date(failedVerificationAt),{memoryReviews:firstHistory});
+  const failedVerificationEvent={id:'corrective-fail',obligationId:'relearn',obligationType:'relearn',reviewedAt:failedVerificationAt,
+    correctiveMemoryTransition:{obligationId:id,rating:api.Rating.Again,beforeDueAt:obligation.dueAt,afterDueAt:failedVerification.dueAt,
+      beforePolicyState:clone(obligation.policyState),afterPolicyState:clone(failedVerification.policyState),policyId:failedVerification.policyId,
+      schedulerPackage:'ts-fsrs',schedulerVersion:'6.0.0',schedulerModel:'FSRS-7',schedulerConfig:clone(failedVerification.schedulerConfig),reviewLog:clone(failedVerification.reviewLog)},
+    timing:{...clone(timing),totalActiveMs:1140000,activeByPhase:{attempt:0,compare:300000,'relearn-repair':600000,'relearn-verify':240000}},elapsedMs:1140000};
+  obligation={...obligation,dueAt:failedVerification.dueAt,policyState:clone(failedVerification.policyState)};
+
+  const secondHistory=api.memoryReviewObservationsFor(id,[failedEvent,failedVerificationEvent]);
+  const successfulVerificationAt=new Date(new Date(failedVerificationAt).getTime()+86400000).toISOString();
+  const successfulVerification=policy.complete(obligation,api.Rating.Good,ratingEvidence(api.Rating.Good),new Date(successfulVerificationAt),{memoryReviews:secondHistory});
+  const successfulVerificationEvent={id:'corrective-success',obligationId:'relearn',obligationType:'relearn',reviewedAt:successfulVerificationAt,
+    correctiveMemoryTransition:{obligationId:id,rating:api.Rating.Good,beforeDueAt:obligation.dueAt,afterDueAt:successfulVerification.dueAt,
+      beforePolicyState:clone(obligation.policyState),afterPolicyState:clone(successfulVerification.policyState),policyId:successfulVerification.policyId,
+      schedulerPackage:'ts-fsrs',schedulerVersion:'6.0.0',schedulerModel:'FSRS-7',schedulerConfig:clone(successfulVerification.schedulerConfig),reviewLog:clone(successfulVerification.reviewLog)},
+    timing:{...clone(timing),totalActiveMs:900000,activeByPhase:{attempt:0,compare:180000,'relearn-repair':480000,'relearn-verify':240000}},elapsedMs:900000};
+
+  const canonical=api.memoryReviewObservationsFor(id,[failedEvent,failedVerificationEvent,successfulVerificationEvent]);
+  check(canonical.length===3&&canonical.map(row=>row.source).join(',')==='direct-memory,relearning-verification,relearning-verification','Every closed-book corrective verification must be canonical replay evidence');
+  check(canonical.map(row=>row.rating).join(',')==='1,1,3','Corrective replay evidence must preserve failed and successful ratings');
+  const optimizerRows=api.fsrsOptimizerEvidenceRows([failedVerificationEvent,successfulVerificationEvent]);
+  check(optimizerRows.length===2&&optimizerRows[0].rating===api.Rating.Again&&optimizerRows[1].rating===api.Rating.Good,'Optimizer evidence must preserve corrective verification outcomes');
+  check(optimizerRows.every(row=>row.source==='relearning-verification'&&row.durationPhase==='relearn-verify'&&row.durationMs===240000),'Corrective optimizer cost must use closed-book verification time only');
+  api.revisionSchedulerPort(fixed(.9)).verifyProjection(successfulVerification.policyState.fsrsCard,canonical); checks++;
+  const corrupted=clone(failedVerificationEvent);
+  corrupted.correctiveMemoryTransition.beforePolicyState.fsrsCard.reps+=1;
+  mustFail(()=>api.memoryReviewObservationsFor(id,[failedEvent,corrupted]),'Corrective-memory corruption must fail chain validation');
+}
 
 
 async function testCanonicalOptimizerEvidence(){
@@ -505,7 +518,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
 (async()=>{
   await testSchedulingPolicyBoundary();
   await testCostAdrRebase();
-  await testReturnedMemoryReplay();
+  await testCorrectiveMemoryVerificationReplay();
   await testCanonicalOptimizerEvidence();
   await testTransactionalSettingsPublication();
   await testRebasesBackupRestorePlannerAndCorruption();
