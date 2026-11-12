@@ -39,7 +39,7 @@
     {
       "order": 7,
       "path": "app/20-policy-planning-kernel.ts",
-      "layer": "Scheduler policy contract and adaptive daily-planning kernel."
+      "layer": "Scheduler-policy context, persistent-difficulty host policy and adaptive daily-planning kernel."
     },
     {
       "order": 8,

@@ -1058,10 +1058,12 @@
       assert(obligation.status === "suspended" && obligation.suspensionReason === "persistent-difficulty", "Memory obligation is not held for persistent difficulty.");
       const unit = await this.unit(obligation.unitId);
       assert(unit.status === "active", "Reactivate the knowledge unit before resuming this memory obligation.");
-      const activeRepair = (await this.obligationsForUnit(unit.id)).some((item) =>
-        item.type === "relearn" && item.status === "active" && item.returnObligationId === obligation.id
+      const unresolvedRepair = (await this.obligationsForUnit(unit.id)).some((item) =>
+        item.type === "relearn" &&
+        (item.status === "active" || item.status === "suspended") &&
+        item.returnObligationId === obligation.id
       );
-      assert(!activeRepair, "Complete the active relearning repair before resuming this memory obligation.");
+      assert(!unresolvedRepair, "Complete the unresolved relearning repair before resuming this memory obligation.");
       obligation.status = "active";
       delete obligation.suspensionReason;
       obligation.updatedAt = nowIso();
