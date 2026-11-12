@@ -307,8 +307,12 @@
       return this.operation("backupState", async () => {
         const raw = await this.repository.rawDump();
         const settings = raw[Store.Settings];
+        const metadata = raw[Store.Metadata];
         const activeRetrieval = raw[Store.ActiveRetrieval];
         assert(settings.length === 1, "Canonical storage must contain exactly one application-settings document.");
+        assert(metadata.length === 1, "Canonical storage must contain exactly one database-metadata document.");
+        const canonicalMetadata = canonicalDocument("metadata", metadata[0]);
+        assert(canonicalMetadata.databaseName === DB_NAME && canonicalMetadata.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
         assert(activeRetrieval.length <= 1, "Canonical storage may contain at most one active retrieval session.");
         return {
           profiles: canonicalDocumentArray("profile", raw[Store.Profiles], "Stored exam profiles"),
