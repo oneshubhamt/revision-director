@@ -318,23 +318,52 @@
     };
   }
 
-  interface FsrsPersonalizationRebase {
+  interface FsrsCostAdrPolicy {
+    coefficients: number[];
+    costWeightMin: number;
+    costWeightMax: number;
+    retentionMin: number;
+    retentionMax: number;
+    bounds: {
+      sMin: number;
+      sMax: number;
+      dMin: number;
+      dMax: number;
+    };
+  }
+
+  type FsrsSchedulingPolicy =
+    | {
+        kind: "fixed-retention";
+        desiredRetention: number;
+      }
+    | {
+        kind: "cost-adr";
+        goalCostWeight: number;
+        costAdrPolicy: FsrsCostAdrPolicy;
+      };
+
+  interface FsrsSchedulerRebase {
     at: ISODateTime;
-    reason: "activate-profile" | "deactivate-profile" | "retention-change";
-    target: "stock" | "personalized";
+    reason: "scheduler-policy-change" | "activate-profile" | "deactivate-profile";
+    fromConfigFingerprint: string;
+    toConfigFingerprint: string;
     rescheduledObligations: number;
-    profileSourceSha256?: string;
+  }
+
+  interface FsrsSchedulingSettings {
+    policy: FsrsSchedulingPolicy;
+    lastRebase?: FsrsSchedulerRebase;
   }
 
   interface FsrsPersonalizationSettings {
     profile: FsrsOptimizerProfile | null;
     active: boolean;
-    lastRebase?: FsrsPersonalizationRebase;
   }
 
   interface FsrsConfigSnapshot {
     model: FsrsModelVersion;
-    desiredRetention: number;
+    schedulingPolicy: FsrsSchedulingPolicy;
     fractionalDays: true;
     enableFuzz: false;
     enableShortTerm: true;
@@ -412,7 +441,7 @@
     schemaVersion: DocumentSchemaVersion;
     key: "app";
     activeProfileId: string;
-    desiredRetention: number;
+    fsrsScheduling: FsrsSchedulingSettings;
     dailyCapacityMinutes: number;
     studyDayBoundaryHour: number;
     fsrsPersonalization: FsrsPersonalizationSettings;

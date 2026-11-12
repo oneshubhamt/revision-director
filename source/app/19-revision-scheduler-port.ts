@@ -102,7 +102,7 @@
     const canonical = [
       config.model,
       FSRS_PACKAGE_VERSION,
-      config.desiredRetention.toFixed(6),
+      fsrsSchedulingPolicyIdentity(config.schedulingPolicy),
       config.fractionalDays ? "fractional" : "whole",
       config.enableFuzz ? "fuzz" : "no-fuzz",
       config.enableShortTerm ? "short-term" : "long-term",
@@ -119,11 +119,12 @@
     return fingerprintText64(canonical);
   }
 
-  function fsrsConfigSnapshot(desiredRetention: number, profile: FsrsOptimizerProfile | null = null): FsrsConfigSnapshot {
+  function fsrsConfigSnapshot(schedulingPolicy: FsrsSchedulingPolicy, profile: FsrsOptimizerProfile | null = null): FsrsConfigSnapshot {
     const validatedProfile = profile ? validateFsrsOptimizerProfile(profile) : null;
+    const policy = canonicalFsrsSchedulingPolicy(schedulingPolicy);
     const identity: FsrsConfigIdentity = {
       model: FSRS_MODEL,
-      desiredRetention,
+      schedulingPolicy: policy,
       fractionalDays: true,
       enableFuzz: false,
       enableShortTerm: true,
@@ -142,7 +143,8 @@
 
   function validateFsrsConfigSnapshot(config: FsrsConfigSnapshot): FsrsConfigSnapshot {
     assert(config.model === FSRS_MODEL, "FSRS configuration model is invalid.");
-    assert(Number.isFinite(config.desiredRetention) && config.desiredRetention > 0 && config.desiredRetention < 1, "FSRS desired retention is invalid.");
+    const schedulingPolicy = canonicalFsrsSchedulingPolicy(config.schedulingPolicy);
+    assert(JSON.stringify(config.schedulingPolicy) === JSON.stringify(schedulingPolicy), "FSRS scheduling policy is not canonical.");
     assert(config.fractionalDays === true, "FSRS-7 requires fractional-day memory semantics.");
     assert(config.enableFuzz === false && config.enableShortTerm === true, "FSRS scheduler flags are invalid.");
     assert(config.learningSteps.length === 1 && config.learningSteps[0] === "1d", "FSRS learning-step policy is invalid.");
@@ -533,10 +535,11 @@
 
   const FSRS_SCHEDULER_CACHE = new Map<string, RevisionSchedulerPort>();
 
-  async function prepareFsrsScheduler(desiredRetention: number, profile: FsrsOptimizerProfile | null = null): Promise<void> {
-    assert(Number.isFinite(desiredRetention) && desiredRetention > 0 && desiredRetention < 1, "Desired retention is invalid.");
+  async function prepareFsrsScheduler(schedulingPolicy: FsrsSchedulingPolicy, profile: FsrsOptimizerProfile | null = null): Promise<void> {
+    const policy = canonicalFsrsSchedulingPolicy(schedulingPolicy);
+    const desiredRetention = fixedRetentionForPolicy(policy);
     const validatedProfile = profile ? validateFsrsOptimizerProfile(profile) : null;
-    const configuration = fsrsConfigSnapshot(desiredRetention, validatedProfile);
+    const configuration = fsrsConfigSnapshot(policy, validatedProfile);
     if (FSRS_SCHEDULER_CACHE.has(configuration.fingerprint)) return;
     const scheduler = await runtimeFsrs().DefaultScheduler({
       version: FSRS_MODEL,
@@ -557,8 +560,8 @@
     FSRS_SCHEDULER_CACHE.set(configuration.fingerprint, port);
   }
 
-  function revisionSchedulerPort(desiredRetention: number, profile: FsrsOptimizerProfile | null = null): RevisionSchedulerPort {
-    const configuration = fsrsConfigSnapshot(desiredRetention, profile ? validateFsrsOptimizerProfile(profile) : null);
+  function revisionSchedulerPort(schedulingPolicy: FsrsSchedulingPolicy, profile: FsrsOptimizerProfile | null = null): RevisionSchedulerPort {
+    const configuration = fsrsConfigSnapshot(canonicalFsrsSchedulingPolicy(schedulingPolicy), profile ? validateFsrsOptimizerProfile(profile) : null);
     const scheduler = FSRS_SCHEDULER_CACHE.get(configuration.fingerprint);
     assert(scheduler, "FSRS-7 scheduler has not been initialized for the current retention setting.");
     return scheduler;
@@ -579,10 +582,10 @@
   function verifyMemoryDatasetIntegrity(
     obligations: readonly RevisionObligation[],
     evidenceEvents: readonly EvidenceEvent[],
-    desiredRetention: number,
+    schedulingPolicy: FsrsSchedulingPolicy,
     profile: FsrsOptimizerProfile | null = null,
   ): void {
-    const scheduler = revisionSchedulerPort(desiredRetention, profile);
+    const scheduler = revisionSchedulerPort(schedulingPolicy, profile);
     const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
     validateMemoryDatasetProjectionChain(obligations, reviewIndex);
     for (const obligation of obligations) {

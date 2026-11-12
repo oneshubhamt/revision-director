@@ -254,16 +254,20 @@
 
   function canonicalAppSettings(value: AppSettings): AppSettings {
     assertDocumentSchema(value, "Application settings");
+    const allowed = new Set(["schemaVersion", "key", "activeProfileId", "fsrsScheduling", "dailyCapacityMinutes", "studyDayBoundaryHour", "fsrsPersonalization"]);
+    assert(Object.keys(value).every((key) => allowed.has(key)), "Application settings contain unexpected fields.");
     assert(value.key === "app", "Application settings key is invalid.");
     assert(typeof value.activeProfileId === "string", "Active profile ID must be a string.");
-    assert(Number.isFinite(value.desiredRetention) && value.desiredRetention >= 0.75 && value.desiredRetention <= 0.97, "Desired retention is invalid.");
+    const fsrsScheduling = canonicalFsrsSchedulingSettings(value.fsrsScheduling);
     assert(Number.isInteger(value.dailyCapacityMinutes) && value.dailyCapacityMinutes >= 5 && value.dailyCapacityMinutes <= 600, "Daily capacity is invalid.");
     assert(Number.isInteger(value.studyDayBoundaryHour) && value.studyDayBoundaryHour >= 0 && value.studyDayBoundaryHour <= 12, "Study-day boundary hour is invalid.");
     return {
-      ...clone(value),
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
       key: "app",
       activeProfileId: value.activeProfileId ? canonicalId(value.activeProfileId, "Active profile ID") : "",
+      fsrsScheduling,
+      dailyCapacityMinutes: value.dailyCapacityMinutes,
+      studyDayBoundaryHour: value.studyDayBoundaryHour,
       fsrsPersonalization: canonicalFsrsPersonalizationSettings(value.fsrsPersonalization),
     };
   }

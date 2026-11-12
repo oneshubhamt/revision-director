@@ -592,7 +592,7 @@
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
       key: "app",
       activeProfileId: "",
-      desiredRetention: 0.9,
+      fsrsScheduling: defaultFsrsSchedulingSettings(),
       dailyCapacityMinutes: 60,
       studyDayBoundaryHour: 4,
       fsrsPersonalization: defaultFsrsPersonalizationSettings(),

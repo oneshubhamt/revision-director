@@ -156,37 +156,134 @@
     };
   }
 
+  function canonicalFsrsCostAdrPolicy(value: unknown): FsrsCostAdrPolicy {
+    const record = requireRecord(value, "FSRS Cost-ADR policy");
+    const allowed = new Set(["coefficients", "costWeightMin", "costWeightMax", "retentionMin", "retentionMax", "bounds"]);
+    assert(Object.keys(record).every((key) => allowed.has(key)), "FSRS Cost-ADR policy contains unexpected fields.");
+    const coefficientsRaw = record["coefficients"];
+    assert(Array.isArray(coefficientsRaw) && coefficientsRaw.length === 15, "FSRS Cost-ADR policy must contain exactly 15 coefficients.");
+    const coefficients = coefficientsRaw.map((value) => {
+      const coefficient = Number(value);
+      assert(Number.isFinite(coefficient) && coefficient >= -64 && coefficient <= 64, "FSRS Cost-ADR coefficient is invalid.");
+      return coefficient;
+    });
+    const costWeightMin = Number(record["costWeightMin"]);
+    const costWeightMax = Number(record["costWeightMax"]);
+    const retentionMin = Number(record["retentionMin"]);
+    const retentionMax = Number(record["retentionMax"]);
+    assert(Number.isFinite(costWeightMin) && Number.isFinite(costWeightMax) && costWeightMin >= 0 && costWeightMax > costWeightMin, "FSRS Cost-ADR cost-weight bounds are invalid.");
+    assert(Number.isFinite(retentionMin) && Number.isFinite(retentionMax) && retentionMin > 0 && retentionMax > retentionMin && retentionMax < 1, "FSRS Cost-ADR retention bounds are invalid.");
+    const boundsRecord = requireRecord(record["bounds"], "FSRS Cost-ADR state bounds");
+    const boundsAllowed = new Set(["sMin", "sMax", "dMin", "dMax"]);
+    assert(Object.keys(boundsRecord).every((key) => boundsAllowed.has(key)), "FSRS Cost-ADR state bounds contain unexpected fields.");
+    const bounds = {
+      sMin: Number(boundsRecord["sMin"]),
+      sMax: Number(boundsRecord["sMax"]),
+      dMin: Number(boundsRecord["dMin"]),
+      dMax: Number(boundsRecord["dMax"]),
+    };
+    assert(Number.isFinite(bounds.sMin) && Number.isFinite(bounds.sMax) && bounds.sMin > 0 && bounds.sMax > bounds.sMin, "FSRS Cost-ADR stability bounds are invalid.");
+    assert(Number.isFinite(bounds.dMin) && Number.isFinite(bounds.dMax) && bounds.dMax > bounds.dMin, "FSRS Cost-ADR difficulty bounds are invalid.");
+    return { coefficients, costWeightMin, costWeightMax, retentionMin, retentionMax, bounds };
+  }
+
+  function canonicalFsrsSchedulingPolicy(value: unknown): FsrsSchedulingPolicy {
+    const record = requireRecord(value, "FSRS scheduling policy");
+    const kind = record["kind"];
+    if (kind === "fixed-retention") {
+      const allowed = new Set(["kind", "desiredRetention"]);
+      assert(Object.keys(record).every((key) => allowed.has(key)), "Fixed-retention scheduling policy contains unexpected fields.");
+      const desiredRetention = Number(record["desiredRetention"]);
+      assert(Number.isFinite(desiredRetention) && desiredRetention >= 0.75 && desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
+      return { kind, desiredRetention };
+    }
+    if (kind === "cost-adr") {
+      const allowed = new Set(["kind", "goalCostWeight", "costAdrPolicy"]);
+      assert(Object.keys(record).every((key) => allowed.has(key)), "Cost-ADR scheduling policy contains unexpected fields.");
+      const goalCostWeight = Number(record["goalCostWeight"]);
+      assert(Number.isFinite(goalCostWeight) && goalCostWeight >= 0 && goalCostWeight <= 1024, "FSRS Cost-ADR goal cost weight is invalid.");
+      return { kind, goalCostWeight, costAdrPolicy: canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]) };
+    }
+    assert(false, "FSRS scheduling policy kind is invalid.");
+  }
+
+  function fsrsSchedulingPolicyIdentity(value: FsrsSchedulingPolicy): string {
+    const policy = canonicalFsrsSchedulingPolicy(value);
+    if (policy.kind === "fixed-retention") {
+      return ["fixed-retention", policy.desiredRetention.toFixed(6)].join("|");
+    }
+    const cost = policy.costAdrPolicy;
+    return [
+      "cost-adr",
+      policy.goalCostWeight.toString(),
+      ...cost.coefficients.map((coefficient) => coefficient.toString()),
+      cost.costWeightMin.toString(),
+      cost.costWeightMax.toString(),
+      cost.retentionMin.toString(),
+      cost.retentionMax.toString(),
+      cost.bounds.sMin.toString(),
+      cost.bounds.sMax.toString(),
+      cost.bounds.dMin.toString(),
+      cost.bounds.dMax.toString(),
+    ].join("|");
+  }
+
+  function fsrsSchedulingPoliciesEqual(left: FsrsSchedulingPolicy, right: FsrsSchedulingPolicy): boolean {
+    return fsrsSchedulingPolicyIdentity(left) === fsrsSchedulingPolicyIdentity(right);
+  }
+
+  function fixedRetentionForPolicy(value: FsrsSchedulingPolicy): number {
+    const policy = canonicalFsrsSchedulingPolicy(value);
+    assert(policy.kind === "fixed-retention", "Cost-ADR scheduling is defined but not enabled in this build.");
+    return policy.desiredRetention;
+  }
+
+  function defaultFsrsSchedulingSettings(): FsrsSchedulingSettings {
+    return { policy: { kind: "fixed-retention", desiredRetention: 0.9 } };
+  }
+
+  function canonicalFsrsSchedulingSettings(value: unknown): FsrsSchedulingSettings {
+    const record = requireRecord(value, "FSRS scheduling settings");
+    const allowed = new Set(["policy", "lastRebase"]);
+    assert(Object.keys(record).every((key) => allowed.has(key)), "FSRS scheduling settings contain unexpected fields.");
+    const policy = canonicalFsrsSchedulingPolicy(record["policy"]);
+    let lastRebase: FsrsSchedulerRebase | undefined;
+    if (record["lastRebase"] !== undefined) {
+      const rebase = requireRecord(record["lastRebase"], "FSRS scheduler rebase");
+      const rebaseAllowed = new Set(["at", "reason", "fromConfigFingerprint", "toConfigFingerprint", "rescheduledObligations"]);
+      assert(Object.keys(rebase).every((key) => rebaseAllowed.has(key)), "FSRS scheduler rebase contains unexpected fields.");
+      const reason = rebase["reason"];
+      assert(reason === "scheduler-policy-change" || reason === "activate-profile" || reason === "deactivate-profile", "FSRS scheduler rebase reason is invalid.");
+      const fromConfigFingerprint = requiredString(rebase["fromConfigFingerprint"], "FSRS prior configuration fingerprint");
+      const toConfigFingerprint = requiredString(rebase["toConfigFingerprint"], "FSRS target configuration fingerprint");
+      assert(/^fnv1a64:[0-9a-f]{16}$/.test(fromConfigFingerprint) && /^fnv1a64:[0-9a-f]{16}$/.test(toConfigFingerprint), "FSRS scheduler rebase fingerprint is invalid.");
+      assert(fromConfigFingerprint !== toConfigFingerprint, "FSRS scheduler rebase must change scheduler identity.");
+      const rescheduledObligations = Number(rebase["rescheduledObligations"]);
+      assert(Number.isSafeInteger(rescheduledObligations) && rescheduledObligations >= 0, "FSRS scheduler rebase count is invalid.");
+      lastRebase = {
+        at: canonicalIso(requiredString(rebase["at"], "FSRS scheduler rebase date"), "FSRS scheduler rebase date"),
+        reason,
+        fromConfigFingerprint,
+        toConfigFingerprint,
+        rescheduledObligations,
+      };
+    }
+    return { policy, ...(lastRebase ? { lastRebase } : {}) };
+  }
+
   function defaultFsrsPersonalizationSettings(): FsrsPersonalizationSettings {
     return { profile: null, active: false };
   }
 
   function canonicalFsrsPersonalizationSettings(value: unknown): FsrsPersonalizationSettings {
     const record = requireRecord(value, "FSRS personalization settings");
+    const allowed = new Set(["profile", "active"]);
+    assert(Object.keys(record).every((key) => allowed.has(key)), "FSRS personalization settings contain unexpected fields.");
     const profile = record["profile"] === null ? null : validateFsrsOptimizerProfile(record["profile"]);
     const active = record["active"];
     assert(typeof active === "boolean", "FSRS personalization active flag is invalid.");
     assert(!active || profile !== null, "Active FSRS personalization requires an optimizer profile.");
-    let lastRebase: FsrsPersonalizationRebase | undefined;
-    if (record["lastRebase"] !== undefined) {
-      const rebase = requireRecord(record["lastRebase"], "FSRS personalization rebase");
-      const reason = rebase["reason"];
-      const target = rebase["target"];
-      const rescheduledObligations = Number(rebase["rescheduledObligations"]);
-      assert(reason === "activate-profile" || reason === "deactivate-profile" || reason === "retention-change", "FSRS personalization rebase reason is invalid.");
-      assert(target === "stock" || target === "personalized", "FSRS personalization rebase target is invalid.");
-      assert(Number.isSafeInteger(rescheduledObligations) && rescheduledObligations >= 0, "FSRS personalization rebase count is invalid.");
-      const profileSourceSha256 = rebase["profileSourceSha256"];
-      if (target === "personalized") assert(typeof profileSourceSha256 === "string" && /^[a-f0-9]{64}$/.test(profileSourceSha256), "Personalized rebase lacks optimizer provenance.");
-      if (target === "stock") assert(profileSourceSha256 === undefined, "Stock rebase cannot claim optimizer provenance.");
-      lastRebase = {
-        at: canonicalIso(requiredString(rebase["at"], "FSRS personalization rebase date"), "FSRS personalization rebase date"),
-        reason,
-        target,
-        rescheduledObligations,
-        ...(typeof profileSourceSha256 === "string" ? { profileSourceSha256 } : {}),
-      };
-    }
-    return { profile, active, ...(lastRebase ? { lastRebase } : {}) };
+    return { profile, active };
   }
 
   function effectiveFsrsPersonalization(settings: AppSettings): FsrsPersonalizationSettings {
