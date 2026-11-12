@@ -593,6 +593,7 @@
       key: "app",
       activeProfileId: "",
       fsrsScheduling: defaultFsrsSchedulingSettings(),
+      memoryDifficultyPolicy: defaultMemoryDifficultyPolicy(),
       dailyCapacityMinutes: 60,
       studyDayBoundaryHour: 4,
       fsrsPersonalization: defaultFsrsPersonalizationSettings(),

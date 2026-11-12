@@ -1,3 +1,82 @@
+  const MEMORY_DIFFICULTY_ACTION_LABELS = {
+    "scope-review": "reconsider the scope",
+    "split-scope": "split oversized material",
+    "prerequisite-review": "revisit prerequisites",
+    "source-revisit": "revisit source material",
+    "representation-change": "change retrieval representation",
+    "deliberate-intervention": "flag for deliberate intervention",
+  } satisfies Record<MemoryDifficultyAction, string>;
+
+  function defaultMemoryDifficultyPolicy(): MemoryDifficultyPolicy {
+    return {
+      remediationLapses: 2,
+      persistentDifficultyLapses: 4,
+      automaticHold: { enabled: false, lapseThreshold: 8 },
+    };
+  }
+
+  function canonicalMemoryDifficultyPolicy(value: unknown): MemoryDifficultyPolicy {
+    const record = requireRecord(value, "Memory difficulty policy");
+    const allowed = new Set(["remediationLapses", "persistentDifficultyLapses", "automaticHold"]);
+    assert(Object.keys(record).every((key) => allowed.has(key)), "Memory difficulty policy contains unexpected fields.");
+    const remediationLapses = Number(record["remediationLapses"]);
+    const persistentDifficultyLapses = Number(record["persistentDifficultyLapses"]);
+    assert(Number.isSafeInteger(remediationLapses) && remediationLapses >= 2 && remediationLapses <= 100, "Memory remediation lapse threshold is invalid.");
+    assert(Number.isSafeInteger(persistentDifficultyLapses) && persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
+    const automaticHoldRecord = requireRecord(record["automaticHold"], "Memory automatic-hold policy");
+    const holdAllowed = new Set(["enabled", "lapseThreshold"]);
+    assert(Object.keys(automaticHoldRecord).every((key) => holdAllowed.has(key)), "Memory automatic-hold policy contains unexpected fields.");
+    const enabled = automaticHoldRecord["enabled"];
+    const lapseThreshold = Number(automaticHoldRecord["lapseThreshold"]);
+    assert(typeof enabled === "boolean", "Memory automatic-hold flag is invalid.");
+    assert(Number.isSafeInteger(lapseThreshold) && lapseThreshold >= persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold is invalid.");
+    return {
+      remediationLapses,
+      persistentDifficultyLapses,
+      automaticHold: { enabled, lapseThreshold },
+    };
+  }
+
+  function memoryDifficultyActionLabel(action: MemoryDifficultyAction): string {
+    return MEMORY_DIFFICULTY_ACTION_LABELS[action];
+  }
+
+  function memoryDifficultyAssessment(
+    obligation: RevisionObligation,
+    policy: MemoryDifficultyPolicy,
+  ): MemoryDifficultyAssessment {
+    assert(obligation.type === "memory-recall", "Persistent-difficulty assessment is only valid for memory recall.");
+    const canonicalPolicy = canonicalMemoryDifficultyPolicy(policy);
+    const card = obligation.policyState.fsrsCard;
+    assert(card, "Memory obligation has no FSRS card for difficulty assessment.");
+    const fsrsLapses = card.lapses;
+    const level: MemoryDifficultyLevel =
+      fsrsLapses >= canonicalPolicy.persistentDifficultyLapses ? "persistent-difficulty"
+        : fsrsLapses >= canonicalPolicy.remediationLapses ? "remediation"
+          : "normal";
+    const recommendedActions: MemoryDifficultyAction[] = [];
+    if (level === "remediation") {
+      recommendedActions.push("source-revisit", "representation-change");
+    } else if (level === "persistent-difficulty") {
+      recommendedActions.push("scope-review");
+      if (obligation.expectedMinutes > 45 || obligation.chunking !== undefined) recommendedActions.push("split-scope");
+      recommendedActions.push("prerequisite-review", "source-revisit", "representation-change", "deliberate-intervention");
+    }
+    return {
+      level,
+      fsrsLapses,
+      recommendedActions,
+      automaticHoldEligible:
+        level === "persistent-difficulty" &&
+        canonicalPolicy.automaticHold.enabled &&
+        fsrsLapses >= canonicalPolicy.automaticHold.lapseThreshold,
+    };
+  }
+
+  function memoryDifficultyWeaknessFloor(level: MemoryDifficultyLevel): number {
+    return level === "persistent-difficulty" ? 0.9 : level === "remediation" ? 0.72 : 0;
+  }
+
   interface SchedulerPolicyContext {
     readonly memoryReviews?: readonly MemoryReviewObservation[];
   }
@@ -423,10 +502,13 @@
     const desiredRetention = fixedRetentionForPolicy(settings.fsrsScheduling.policy);
     const memoryRisk = retrievability === undefined ? 0 : clamp((desiredRetention - retrievability) / Math.max(desiredRetention - 0.5, 0.1), 0, 1);
     const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
+    const difficulty = item.obligation.type === "memory-recall"
+      ? memoryDifficultyAssessment(item.obligation, settings.memoryDifficultyPolicy)
+      : undefined;
     const factors: PlanningFactors = {
       dueRisk,
       examImportance: examImportanceScore(item.unit.importance),
-      weakness: obligationWeaknessScore(item, evidenceEvents),
+      weakness: Math.max(obligationWeaknessScore(item, evidenceEvents), memoryDifficultyWeaknessFloor(difficulty?.level ?? "normal")),
       reviewDuration: reviewDurationScore(chunk?.expectedMinutes ?? (item.obligation.chunking?.status === "synthesis-ready" ? item.obligation.chunking.synthesisMinutes : item.obligation.expectedMinutes), settings.dailyCapacityMinutes),
       examinationProximity: examinationProximityScore(daysToExam),
       weeklyBalance,
@@ -445,6 +527,7 @@
       reasons: [
         ...(chunk ? [`split scope: ${chunk.scope}`] : item.obligation.chunking?.status === "synthesis-ready" ? ["final synthesis after split work"] : []),
         ...(examBoundMemory ? ["final memory review before exam"] : []),
+        ...(difficulty?.level === "persistent-difficulty" ? [`persistent difficulty · ${difficulty.fsrsLapses} FSRS lapses`] : difficulty?.level === "remediation" ? [`remediation · ${difficulty.fsrsLapses} FSRS lapses`] : []),
         ...planningReasons(item, factors, dueState, daysFromDue, daysToExam),
         ...(weeklyBalance >= 0.7 ? ["subject underrepresented this week"] : []),
       ].slice(0, 6),

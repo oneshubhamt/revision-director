@@ -180,7 +180,7 @@
     assert(Number.isInteger(card.learningStep) && card.learningStep >= 0, "FSRS learning step is invalid.");
     assert(Number.isInteger(card.reps) && card.reps >= 0 && Number.isInteger(card.lapses) && card.lapses >= 0, "FSRS review counters are invalid.");
     assert(Number.isInteger(card.state) && card.state >= 0 && card.state <= 3, "FSRS card state is invalid.");
-    assert(card.scheduleStatus === "new" || card.scheduleStatus === "learning" || card.scheduleStatus === "review" || card.scheduleStatus === "suspended", "FSRS schedule status is invalid.");
+    assert(card.scheduleStatus === "new" || card.scheduleStatus === "learning" || card.scheduleStatus === "review", "Revision Director does not persist FSRS-owned suspension state.");
   }
 
   function serializeFsrsCard(card: FsrsCardRuntime): StoredFsrsCard {

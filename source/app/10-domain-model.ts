@@ -13,7 +13,7 @@
     | "relearn"
     | "freshness-review";
   type ObligationStatus = "active" | "completed" | "suspended" | "archived";
-  type SuspensionReason = "unit" | "relearning";
+  type SuspensionReason = "unit" | "relearning" | "persistent-difficulty";
   type ChunkStatus = "pending" | "completed" | "archived";
   type PlanItemStatus = "planned" | "started" | "completed" | "skipped";
   type RetrievalWorkflow = "recall" | "reconstruction" | "questions" | "diagram" | "answer-writing" | "relearning";
@@ -361,6 +361,31 @@
     active: boolean;
   }
 
+  type MemoryDifficultyLevel = "normal" | "remediation" | "persistent-difficulty";
+  type MemoryDifficultyAction =
+    | "scope-review"
+    | "split-scope"
+    | "prerequisite-review"
+    | "source-revisit"
+    | "representation-change"
+    | "deliberate-intervention";
+
+  interface MemoryDifficultyPolicy {
+    remediationLapses: number;
+    persistentDifficultyLapses: number;
+    automaticHold: {
+      enabled: boolean;
+      lapseThreshold: number;
+    };
+  }
+
+  interface MemoryDifficultyAssessment {
+    level: MemoryDifficultyLevel;
+    fsrsLapses: number;
+    recommendedActions: MemoryDifficultyAction[];
+    automaticHoldEligible: boolean;
+  }
+
   interface FsrsConfigSnapshot {
     model: FsrsModelVersion;
     schedulingPolicy: FsrsSchedulingPolicy;
@@ -442,6 +467,7 @@
     key: "app";
     activeProfileId: string;
     fsrsScheduling: FsrsSchedulingSettings;
+    memoryDifficultyPolicy: MemoryDifficultyPolicy;
     dailyCapacityMinutes: number;
     studyDayBoundaryHour: number;
     fsrsPersonalization: FsrsPersonalizationSettings;

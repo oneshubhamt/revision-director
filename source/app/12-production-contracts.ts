@@ -254,11 +254,12 @@
 
   function canonicalAppSettings(value: AppSettings): AppSettings {
     assertDocumentSchema(value, "Application settings");
-    const allowed = new Set(["schemaVersion", "key", "activeProfileId", "fsrsScheduling", "dailyCapacityMinutes", "studyDayBoundaryHour", "fsrsPersonalization"]);
+    const allowed = new Set(["schemaVersion", "key", "activeProfileId", "fsrsScheduling", "memoryDifficultyPolicy", "dailyCapacityMinutes", "studyDayBoundaryHour", "fsrsPersonalization"]);
     assert(Object.keys(value).every((key) => allowed.has(key)), "Application settings contain unexpected fields.");
     assert(value.key === "app", "Application settings key is invalid.");
     assert(typeof value.activeProfileId === "string", "Active profile ID must be a string.");
     const fsrsScheduling = canonicalFsrsSchedulingSettings(value.fsrsScheduling);
+    const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(value.memoryDifficultyPolicy);
     assert(Number.isInteger(value.dailyCapacityMinutes) && value.dailyCapacityMinutes >= 5 && value.dailyCapacityMinutes <= 600, "Daily capacity is invalid.");
     assert(Number.isInteger(value.studyDayBoundaryHour) && value.studyDayBoundaryHour >= 0 && value.studyDayBoundaryHour <= 12, "Study-day boundary hour is invalid.");
     return {
@@ -266,6 +267,7 @@
       key: "app",
       activeProfileId: value.activeProfileId ? canonicalId(value.activeProfileId, "Active profile ID") : "",
       fsrsScheduling,
+      memoryDifficultyPolicy,
       dailyCapacityMinutes: value.dailyCapacityMinutes,
       studyDayBoundaryHour: value.studyDayBoundaryHour,
       fsrsPersonalization: canonicalFsrsPersonalizationSettings(value.fsrsPersonalization),

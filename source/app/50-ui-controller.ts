@@ -710,6 +710,7 @@
     }
 
     private async renderLibrary(): Promise<void> {
+      const settings = this.service.getSettings();
       const profiles = await this.service.profiles();
       const units = (await this.service.units()).filter((unit) => unit.status !== "archived");
       const nodes = await this.service.nodes();
@@ -735,7 +736,16 @@
             const section = topic?.parentId ? nodeMap.get(topic.parentId) : undefined;
             const subject = section?.parentId ? nodeMap.get(section.parentId) : undefined;
             const unitObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.status === "active");
-            return `<article class="unit-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(unit.profileId)?.name ?? "Exam")} · ${escapeHtml(subject?.name ?? "")} › ${escapeHtml(section?.name ?? "")} › ${escapeHtml(topic?.name ?? "")}</div><div class="row-title">${escapeHtml(unit.title)}</div><p>${escapeHtml(unit.scope)}</p><div class="row-meta">${unitObligations.map((obligation) => `<span class="chip ${obligationChip(obligation.type)}">${escapeHtml(obligationLabel(obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(obligation.workflow.kind))}</span>`).join("")}<span>${unit.evidenceCount} evidence events</span><span>${unit.lapseCount} failures</span></div></div><div class="row-actions"><button class="mini-btn" data-action="review-unit" data-id="${unit.id}">REVIEW</button><button class="mini-btn" data-action="add-obligation" data-id="${unit.id}">ADD OBLIGATION</button><button class="mini-btn" data-action="toggle-unit" data-id="${unit.id}" data-status="${unit.status === "active" ? "suspended" : "active"}">${unit.status === "active" ? "SUSPEND" : "ACTIVATE"}</button></div></article>`;
+            const memoryObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.type === "memory-recall" && obligation.status !== "archived");
+            const difficultyPanels = memoryObligations.map((obligation) => {
+              const assessment = memoryDifficultyAssessment(obligation, settings.memoryDifficultyPolicy);
+              if (assessment.level === "normal") return "";
+              const label = assessment.level === "persistent-difficulty" ? "Persistent difficulty" : "Remediation";
+              const actions = assessment.recommendedActions.map(memoryDifficultyActionLabel).join(" · ");
+              return `<div class="policy-box"><strong>${label} · ${assessment.fsrsLapses} FSRS lapses.</strong> ${escapeHtml(actions)}.</div>`;
+            }).join("");
+            const heldMemory = memoryObligations.filter((obligation) => obligation.status === "suspended" && obligation.suspensionReason === "persistent-difficulty");
+            return `<article class="unit-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(unit.profileId)?.name ?? "Exam")} · ${escapeHtml(subject?.name ?? "")} › ${escapeHtml(section?.name ?? "")} › ${escapeHtml(topic?.name ?? "")}</div><div class="row-title">${escapeHtml(unit.title)}</div><p>${escapeHtml(unit.scope)}</p><div class="row-meta">${unitObligations.map((obligation) => `<span class="chip ${obligationChip(obligation.type)}">${escapeHtml(obligationLabel(obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(obligation.workflow.kind))}</span>`).join("")}<span>${unit.evidenceCount} evidence events</span><span>${unit.lapseCount} failures</span></div>${difficultyPanels}</div><div class="row-actions"><button class="mini-btn" data-action="review-unit" data-id="${unit.id}">REVIEW</button><button class="mini-btn" data-action="add-obligation" data-id="${unit.id}">ADD OBLIGATION</button>${heldMemory.map((obligation) => `<button class="mini-btn" data-action="resume-persistent-difficulty" data-id="${obligation.id}">RESUME MEMORY</button>`).join("")}<button class="mini-btn" data-action="toggle-unit" data-id="${unit.id}" data-status="${unit.status === "active" ? "suspended" : "active"}">${unit.status === "active" ? "SUSPEND" : "ACTIVATE"}</button></div></article>`;
           }).join("")}</div>` : this.emptyState("No matching knowledge", "Create a unit or change the search filter.")}</div>
         </div>`;
     }
@@ -839,6 +849,7 @@
         <form id="settings-form" class="settings-grid">
           <section class="panel settings-card"><h3>Planning</h3><label>Default exam profile for new records<select name="activeProfileId" ${profiles.length ? "" : "disabled"}>${profiles.length ? profiles.map((profile) => `<option value="${profile.id}" ${profile.id === settings.activeProfileId ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("") : '<option value="">Create an exam profile first</option>'}</select></label><label>Daily revision capacity<input name="dailyCapacityMinutes" type="number" min="5" max="600" value="${settings.dailyCapacityMinutes}"></label><label>Study-day boundary hour<input name="studyDayBoundaryHour" type="number" min="0" max="12" value="${settings.studyDayBoundaryHour}"></label></section>
           <section class="panel settings-card"><h3>Memory scheduling</h3><div class="dependency-status"><span>Policy</span><strong>Fixed retention</strong></div><label>Desired retention<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${fixedRetentionForPolicy(settings.fsrsScheduling.policy)}"></label><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">FSRS is routed only to memory-recall obligations. Scheduling policy and personalized weights are independent configuration axes; Cost-ADR is reserved by the scheduler contract but is not enabled in this build.</p></section>
+          <section class="panel settings-card"><h3>Persistent difficulty</h3><label>Escalate to remediation after FSRS lapses<input name="difficultyRemediationLapses" type="number" min="2" max="100" value="${settings.memoryDifficultyPolicy.remediationLapses}"></label><label>Persistent difficulty after FSRS lapses<input name="difficultyPersistentLapses" type="number" min="3" max="100" value="${settings.memoryDifficultyPolicy.persistentDifficultyLapses}"></label><label class="check-option strong-check"><input name="difficultyAutomaticHold" type="checkbox" ${settings.memoryDifficultyPolicy.automaticHold.enabled ? "checked" : ""}>Hold persistent-difficulty memory out of the normal queue after successful remediation</label><label>Automatic-hold lapse threshold<input name="difficultyAutomaticHoldLapses" type="number" min="${settings.memoryDifficultyPolicy.persistentDifficultyLapses}" max="1000" value="${settings.memoryDifficultyPolicy.automaticHold.lapseThreshold}"></label><p class="helper">The signal is the FSRS lapse counter: Again from Review state. Early failures still use ordinary relearning; repeated lapses escalate the remediation itself. Revision Director owns any queue hold; the FSRS card is never marked suspended.</p></section>
           ${this.fsrsPersonalizationCard(settings, optimizerEvidence)}
           <section class="panel settings-card"><h3>Add exam profile</h3><label>Name<input id="new-profile-name" placeholder="IFoS 2027, USMLE Step 1..."></label><label>Exam date<input id="new-profile-date" type="date"></label><button class="btn" type="button" data-action="add-profile">ADD PROFILE</button></section>
           <section class="panel settings-card"><h3>Backup and recovery</h3><button class="btn" type="button" data-action="export-backup">EXPORT BACKUP</button><label class="btn file-btn">IMPORT BACKUP<input id="import-backup" type="file" accept=".rdbackup,application/x-revision-director-backup,application/gzip,application/octet-stream"></label><p class="helper">Export remains one click. Import verifies and previews the file first, then requires a current-state safety copy and explicit restore confirmation.</p></section>
@@ -1063,7 +1074,15 @@
       const ratingGuidance = obligation.type === "memory-recall"
         ? `<div class="policy-box"><strong>FSRS rating:</strong> Again = failed recall; Hard = partial or cued recall; Good = complete independent recall; choose Easy only when recall was unusually effortless.</div>`
         : "";
-      return `<section class="evidence-panel"><div class="workflow-head"><div><span>COMPARE & RECORD</span><h2>${escapeHtml(workflowLabel(spec.kind))} evidence</h2></div><p>The app converts modality-specific results into a common evidence record.</p></div>${specific}${this.commonEvidenceFields()}<div class="suggested-rating"><span>Evidence-based suggestion</span><strong id="suggested-rating">Complete the assessment</strong></div>${ratingGuidance}<div class="rating-grid">${this.reviewPreviews.map((preview) => `<button class="rating-btn ${ratingName(preview.rating).toLowerCase()}" data-action="rate" data-rating="${preview.rating}"><strong>${ratingName(preview.rating)}</strong><span>${escapeHtml(preview.label)}</span></button>`).join("")}</div><div class="policy-box"><strong>Policy:</strong> ${escapeHtml(obligation.policyState.engine)}. The workflow produces evidence; the policy determines the next obligation date.</div></section>`;
+      const difficultyGuidance = obligation.type === "memory-recall"
+        ? (() => {
+            const assessment = memoryDifficultyAssessment(obligation, this.service.getSettings().memoryDifficultyPolicy);
+            if (assessment.level === "normal") return "";
+            const label = assessment.level === "persistent-difficulty" ? "Persistent difficulty" : "Remediation";
+            return `<div class="policy-box"><strong>${label}:</strong> ${assessment.fsrsLapses} FSRS lapses · ${escapeHtml(assessment.recommendedActions.map(memoryDifficultyActionLabel).join(" · "))}.</div>`;
+          })()
+        : "";
+      return `<section class="evidence-panel"><div class="workflow-head"><div><span>COMPARE & RECORD</span><h2>${escapeHtml(workflowLabel(spec.kind))} evidence</h2></div><p>The app converts modality-specific results into a common evidence record.</p></div>${specific}${this.commonEvidenceFields()}${difficultyGuidance}<div class="suggested-rating"><span>Evidence-based suggestion</span><strong id="suggested-rating">Complete the assessment</strong></div>${ratingGuidance}<div class="rating-grid">${this.reviewPreviews.map((preview) => `<button class="rating-btn ${ratingName(preview.rating).toLowerCase()}" data-action="rate" data-rating="${preview.rating}"><strong>${ratingName(preview.rating)}</strong><span>${escapeHtml(preview.label)}</span></button>`).join("")}</div><div class="policy-box"><strong>Policy:</strong> ${escapeHtml(obligation.policyState.engine)}. The workflow produces evidence; the policy determines the next obligation date.</div></section>`;
     }
 
     private checkpointAssessment(checkpoints: string[]): string {
@@ -1290,7 +1309,11 @@
         else if (action === "regenerate-plan") { await this.service.dailyPlan(new Date(), true); await this.renderAll(); this.toast("Daily plan regenerated and previous version preserved."); }
         else if (action === "review-unit") await this.startUnitSession(element.dataset["id"] ?? "");
         else if (action === "add-obligation") await this.openObligationDialog(element.dataset["id"] ?? "");
-        else if (action === "toggle-unit") {
+        else if (action === "resume-persistent-difficulty") {
+          await this.service.resumePersistentDifficulty(element.dataset["id"] ?? "");
+          await this.renderAll();
+          this.toast("Memory obligation returned to the normal queue.");
+        } else if (action === "toggle-unit") {
           await this.service.updateUnitStatus(element.dataset["id"] ?? "", literalChoice(element.dataset["status"], ENTITY_STATUSES, "Unit status"));
           await this.renderAll();
           this.toast("Knowledge-unit status updated.");
@@ -1710,6 +1733,14 @@
           fsrsScheduling: {
             ...current.fsrsScheduling,
             policy: { kind: "fixed-retention", desiredRetention: formNumber(data, "desiredRetention") },
+          },
+          memoryDifficultyPolicy: {
+            remediationLapses: formNumber(data, "difficultyRemediationLapses"),
+            persistentDifficultyLapses: formNumber(data, "difficultyPersistentLapses"),
+            automaticHold: {
+              enabled: data.has("difficultyAutomaticHold"),
+              lapseThreshold: formNumber(data, "difficultyAutomaticHoldLapses"),
+            },
           },
           dailyCapacityMinutes: formNumber(data, "dailyCapacityMinutes"),
           studyDayBoundaryHour: formNumber(data, "studyDayBoundaryHour"),

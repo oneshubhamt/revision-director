@@ -818,6 +818,9 @@
 
       obligation.dueAt = completion.dueAt;
       obligation.policyState = completion.policyState;
+      const memoryDifficulty = obligation.type === "memory-recall"
+        ? memoryDifficultyAssessment(obligation, this.settings.memoryDifficultyPolicy)
+        : undefined;
       obligation.updatedAt = reviewedAt.toISOString();
       obligation.lastCompletedAt = reviewedAt.toISOString();
       if (durationObservation.accepted) {
@@ -855,6 +858,13 @@
           const policy = this.router.get("relearn");
           const time = reviewedAt.toISOString();
           const followUpId = uid("obligation");
+          const actions = memoryDifficulty?.recommendedActions.map(memoryDifficultyActionLabel) ?? [];
+          const escalation = memoryDifficulty?.level === "persistent-difficulty"
+            ? `Persistent difficulty (${memoryDifficulty.fsrsLapses} FSRS lapses): ${actions.join("; ")}. `
+            : memoryDifficulty?.level === "remediation"
+              ? `Repeated lapse remediation (${memoryDifficulty.fsrsLapses} FSRS lapses): ${actions.join("; ")}. `
+              : "";
+          const priorityBoost = memoryDifficulty?.level === "persistent-difficulty" ? 4 : memoryDifficulty?.level === "remediation" ? 3 : 2;
           followUp = {
             schemaVersion: DOCUMENT_SCHEMA_VERSION,
             id: followUpId,
@@ -865,16 +875,16 @@
             expectedMinutes: Math.max(10, obligation.expectedMinutes),
             baselineMinutes: Math.max(10, obligation.expectedMinutes),
             durationSampleCount: 0,
-            protocol: `Relearn the weak foundations, then repeat: ${obligation.protocol}`,
-            successCriteria: `Explain the corrected concept independently before returning to ${obligationLabel(obligation.type)}.`,
+            protocol: `${escalation}Relearn the weak foundations, then repeat: ${obligation.protocol}`,
+            successCriteria: `${escalation}Explain the corrected concept independently before returning to ${obligationLabel(obligation.type)}.`,
             workflow: {
               kind: "relearning",
-              prompt: `Repair the failure, then verify independently: ${obligation.workflow.prompt}`,
+              prompt: `${escalation}Repair the failure, then verify independently: ${obligation.workflow.prompt}`,
               checkpoints: [...obligation.workflow.checkpoints],
               responseMedium: "in-app",
             },
             freshnessDays: obligation.freshnessDays,
-            priority: obligation.priority + 2,
+            priority: obligation.priority + priorityBoost,
             policyState: policy.createInitialState(dueAt, followUpId),
             parentObligationId: obligation.id,
             returnObligationId: obligation.id,
@@ -925,8 +935,13 @@
             } else {
               original.dueAt = addDays(reviewedAt, 3).toISOString();
             }
-            original.status = "active";
-            delete original.suspensionReason;
+            if (original.type === "memory-recall" && memoryDifficultyAssessment(original, this.settings.memoryDifficultyPolicy).automaticHoldEligible) {
+              original.status = "suspended";
+              original.suspensionReason = "persistent-difficulty";
+            } else {
+              original.status = "active";
+              delete original.suspensionReason;
+            }
             original.updatedAt = reviewedAt.toISOString();
             relatedObligation = original;
           }
@@ -980,6 +995,22 @@
       const dailyPlan = await this.completedPlanRecord(obligation.id, undefined, roundTo(timing.totalActiveMs / 60_000, 1), reviewedAt, event.id);
       await this.repo.recordReview(unit, obligation, event, followUp, relatedObligation, chunkUpdates, dailyPlan, commitGuard, postCommitSession);
       return event;
+    }
+
+    async resumePersistentDifficulty(obligationId: string): Promise<void> {
+      const obligation = await this.obligation(obligationId);
+      assert(obligation.type === "memory-recall", "Only memory recall can be resumed from persistent-difficulty hold.");
+      assert(obligation.status === "suspended" && obligation.suspensionReason === "persistent-difficulty", "Memory obligation is not held for persistent difficulty.");
+      const unit = await this.unit(obligation.unitId);
+      assert(unit.status === "active", "Reactivate the knowledge unit before resuming this memory obligation.");
+      const activeRepair = (await this.obligationsForUnit(unit.id)).some((item) =>
+        item.type === "relearn" && item.status === "active" && item.returnObligationId === obligation.id
+      );
+      assert(!activeRepair, "Complete the active relearning repair before resuming this memory obligation.");
+      obligation.status = "active";
+      delete obligation.suspensionReason;
+      obligation.updatedAt = nowIso();
+      await this.repo.put(Store.Obligations, obligation);
     }
 
     async studyEvents(): Promise<StudyEvent[]> {
@@ -1189,9 +1220,12 @@
         assert(unit, "Obligation references a missing unit.");
         assert(Object.hasOwn(POLICY_ENGINE_BY_OBLIGATION, obligation.type), "Obligation type is invalid.");
         assert(["active", "completed", "suspended", "archived"].includes(obligation.status), "Obligation status is invalid.");
-        if (obligation.status === "suspended") assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning", "Suspended obligation lacks a valid reason.");
+        if (obligation.status === "suspended") assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning" || obligation.suspensionReason === "persistent-difficulty", "Suspended obligation lacks a valid reason.");
         else assert(obligation.suspensionReason === undefined, "Only suspended obligations may retain a suspension reason.");
-        if (obligation.suspensionReason === "relearning") assert(obligationMap.size > 0, "Relearning suspension is invalid.");
+        if (obligation.suspensionReason === "relearning") {
+          assert([...obligationMap.values()].some((item) => item.type === "relearn" && item.status === "active" && item.returnObligationId === obligation.id), "Relearning suspension lacks its active repair obligation.");
+        }
+        if (obligation.suspensionReason === "persistent-difficulty") assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
         validDate(obligation.dueAt, "Obligation"); validDate(obligation.createdAt, "Obligation"); validDate(obligation.updatedAt, "Obligation");
         assert(Number.isFinite(obligation.expectedMinutes) && obligation.expectedMinutes >= 1 && obligation.expectedMinutes <= 240, "Obligation duration is invalid.");
         assert(Number.isFinite(obligation.baselineMinutes) && obligation.baselineMinutes >= 1 && obligation.baselineMinutes <= 240, "Obligation baseline duration is invalid.");
@@ -1415,6 +1449,11 @@
       assertDocumentSchema(settings, "Backup settings");
       assert(settings.key === "app" && (profileMap.size === 0 ? settings.activeProfileId === "" : profileMap.has(settings.activeProfileId)), "Backup settings reference an invalid active profile.");
       canonicalFsrsSchedulingSettings(settings.fsrsScheduling);
+      const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(settings.memoryDifficultyPolicy);
+      for (const obligation of obligations) {
+        if (obligation.suspensionReason !== "persistent-difficulty") continue;
+        assert(memoryDifficultyAssessment(obligation, memoryDifficultyPolicy).level === "persistent-difficulty", "Persistent-difficulty hold lacks a sufficient FSRS lapse signal.");
+      }
       assert(Number.isFinite(settings.dailyCapacityMinutes) && settings.dailyCapacityMinutes >= 5 && settings.dailyCapacityMinutes <= 600, "Daily revision capacity is invalid.");
       assert(Number.isInteger(settings.studyDayBoundaryHour) && settings.studyDayBoundaryHour >= 0 && settings.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
       return {
