@@ -1,4 +1,4 @@
-8b5b2ef6e18621421cc2e1db1518726d4ef073ff3389cea1cf5455decf90ac0f  ./build/build-optimizer-static.mjs
+96af52d2ab0375669b3bb2e42163a2af0c72bc845eb7f521196076c6e1eaab6d  ./build/build-optimizer-static.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 764e820752d3c12b0fbd2caefabc82a8f5375bde97a06dbbb194bfb1edd116fd  ./CHANGELOG.md
 d09e58f20f79f3125293c0dd1aa70b0c0a6c9c58f40c5657c0867b2f6da25f62  ./dist/app.js
@@ -44,7 +44,7 @@ bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 7e7b56ad14f284e16581b687e66dd18a42fdb6973456e8bb68b0fe8a52b477fb  ./tests/backup_fixture_codec.py
 9920072cbd942611e0dede8e5489e5500b70bd12f3e0932c0d97e3b935a7cb31  ./tests/browser-qa.spec.py
-3480353cabdca708c6fd660b59895189e727860986b152bcdb74052cc9627c9c  ./tests/build-integrity.spec.py
+3246496905f0c6062f1ea01204d020684e6f5fd5f51113e3b12763fc6aff112d  ./tests/build-integrity.spec.py
 15c2c5eb0dcddef5fad2806cc650e9a169a257c03268609bd876aa8baabfacae  ./tests/fixtures/browser-baseline.json
 ca2f42822f71ee00d2dff9b1846806545634c79e2ef75c3cfae46feae5f1cdfb  ./tests/fixtures/browser-baseline.rdbackup
 2f010c3992938c424e2a45ef97f6991e3695a6a77059271436f948e5b6e8b5bb  ./tests/fsrs-browser-optimizer.spec.py
@@ -82,7 +82,7 @@ f7fedb2f577b1130a4328cabfba618851ce2cc08a78513fd5fa787a9470e051f  ./tests/stage-
 0694726071e6300ee1129d0d1bebaa3529568e218fbe1510a88c6ede5f775f11  ./tests/stage-d-data-safety-browser.spec.py
 fb274b5516753df9c04a96ea334d834daa7d4f1e1ee2ba6ff187925276e8a000  ./tests/stage-d-data-safety.spec.js
 f5ea0c53a9220c8e20205d3e79308615279ff2663be759ace6ef551cade23897  ./tests/stage-d-restore-ui.spec.py
-00d0a6c0b45fa23fa29e5a32233d2a2de14184a35aa8b0e433823850b1841d34  ./THIRD_PARTY_NOTICES.md
+3a574cbc82a6011d5b7c792540d992efde6d1d7caa1fdb41c3502e59b8a87896  ./THIRD_PARTY_NOTICES.md
 51eac5b08c41d79a0f00b03e537e2de3446bac20571d0da4ed567fa705f2b1fa  ./tools/fsrs-optimizer/browser-worker.mjs
 b55d9a5b5f985f9b8b4a8b58109e2ca2d0001f11c42d23c51154ff07be8c6eb8  ./tools/fsrs-optimizer/optimize.mjs
 cb72d68f7778430b9df8b192a4190144c0a425322a59cd23513a19db1d3435b8  ./tools/fsrs-optimizer/optimizer-core.mjs
