@@ -35,6 +35,8 @@ The current database contains:
 
 The database creation path creates stores only for a fresh database (`oldVersion === 0`). Existing databases open normally when their IndexedDB layout version and metadata database identity match the current schema. An attempted unsupported layout upgrade is aborted before schema mutation; a database created by a newer layout also fails closed. Both cases direct the user toward a compatible-build backup path rather than destructive clearing.
 
+Metadata and settings are initialization records, not reconstruction hints. A genuinely empty fresh database may create them. If metadata or settings are missing while other durable state already exists, startup fails closed without synthesizing replacements or mutating the surviving records.
+
 ## Durable documents
 
 Every top-level durable document carries `schemaVersion: 1`. Core documents include exam profiles, knowledge nodes and units, study events, revision obligations, evidence events, chunks, daily plans, settings, metadata and the active retrieval session.
@@ -49,7 +51,9 @@ Durable data follows:
 capture → sanitise → validate → canonicalise → transact → derive → render
 ```
 
-Canonicalizers reject non-finite values, invalid ranges, impossible relations, malformed timing state, invalid workflow combinations and inconsistent scheduler provenance. Required current-schema fields must be present; canonicalization may normalize valid values, but it does not synthesize missing fields or repair older shapes.
+Canonicalizers reject non-finite values, invalid ranges, impossible relations, malformed timing state, invalid workflow combinations, inconsistent scheduler provenance and unknown current-document fields. Required current-schema fields must be present; numeric fields are not string-coerced; canonicalization may normalize valid values, but it does not synthesize missing fields or repair older shapes.
+
+Cross-document invariants are also canonical. If one or more exam profiles are active, `settings.activeProfileId` must identify an active profile. If no profile is active, it must be the empty string. Profile lifecycle changes that can alter this invariant commit the profile and settings together in one IndexedDB transaction. Startup validates the invariant and fails closed rather than silently repairing it.
 
 ## Active retrieval recovery
 
