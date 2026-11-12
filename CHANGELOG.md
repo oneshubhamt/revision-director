@@ -2,6 +2,15 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-12 — FSRS scheduler-policy boundary
+
+- Replaced the free-standing retention setting with one canonical discriminated FSRS scheduling-policy object.
+- Made scheduler configuration fingerprints include policy kind and every policy-defining parameter, independently of stock or personalized FSRS-7 weights.
+- Added the exact ts-fsrs 6.0.0 Cost-ADR policy shape to the application contract while keeping Cost-ADR execution deliberately fail-closed until its dedicated implementation/evaluation pass.
+- Moved scheduler-rebase metadata out of personalization state and record prior/target configuration fingerprints instead.
+- Routed policy changes and weight activation/deactivation through the same atomic replay-from-immutable-history path; Evidence Events remain append-only.
+- Tightened settings parsing to reject obsolete or unexpected fields rather than retaining a second scheduler topology.
+
 ## 2026-11-11 — FSRS-7 scheduling architecture and personalization
 
 - Made FSRS-7 the sole memory scheduler, using the pinned `ts-fsrs@6.0.0` dual-trace model with fractional elapsed time and one-day learning/relearning policy for long-form revision.

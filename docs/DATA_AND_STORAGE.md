@@ -66,7 +66,7 @@ Only active operational state is duplicated locally. Historical evidence, schedu
 
 Memory review truth is append-only Evidence Events, including successful returns from corrective relearning. The obligation's current FSRS card is a verified materialized projection.
 
-Settings persist stock/staged/active personalization state and the last explicit scheduler rebase. Configuration and weight fingerprints preserve transition provenance. Activation, deactivation and retention changes replace settings plus reviewed memory projections transactionally; historical Evidence Events are never rewritten.
+Settings persist the canonical scheduling policy, stock/staged/active personalization state and the last explicit scheduler rebase. Configuration fingerprints cover the complete scheduling policy and weight provenance. Policy changes, activation and deactivation replace settings plus reviewed memory projections transactionally; historical Evidence Events are never rewritten.
 
 Backup and restore carry the same current-format state. Restore verifies the referenced scheduler and every reviewed memory projection before replacement. Scheduling policy and optimizer-gate details are documented in `SCHEDULING_AND_PLANNING.md`.
 

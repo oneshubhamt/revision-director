@@ -30,7 +30,7 @@ The manifest separates the application into these logical layers:
 - runtime boundary and FSRS contract;
 - presentation kernel;
 - domain model and canonical contracts;
-- FSRS personalization contracts and optimizer evidence boundary;
+- FSRS scheduling-policy, personalization and optimizer-evidence contracts;
 - scheduling and planning;
 - IndexedDB and storage facade;
 - active-retrieval persistence;
@@ -54,9 +54,9 @@ The built-in `revision-current` profile owns independent typography, shape, mate
 
 `RevisionService` owns domain use cases. Durable review completion is transaction-bound: evidence, scheduler state, obligation state, plan outcomes and active-session transitions are committed together.
 
-Evidence Events are append-only audit records and the canonical review history for memory obligations. The stored FSRS card is a verified materialized projection, while the scheduler port owns replay, scheduler identity and explicit reprojection across retention/profile changes.
+Evidence Events are append-only audit records and the canonical review history for memory obligations. The stored FSRS card is a verified materialized projection, while the scheduler port owns replay, scheduler identity and explicit reprojection across scheduling-policy or weight changes.
 
-Personalization remains behind an application-owned profile/evidence boundary; optimizer computation is external to the browser runtime. Detailed scheduler, replay, optimizer-gate and rebase semantics live in `SCHEDULING_AND_PLANNING.md`.
+Scheduling policy and personalization are orthogonal application-owned configuration axes. Personalization remains behind the profile/evidence boundary; optimizer computation is external to the browser runtime. Detailed scheduler, replay, optimizer-gate and rebase semantics live in `SCHEDULING_AND_PLANNING.md`.
 
 ## Active retrieval and timing
 

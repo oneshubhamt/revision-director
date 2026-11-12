@@ -15,7 +15,7 @@ Memory recall uses the vendored `ts-fsrs@6.0.0` runtime with **FSRS-7 only**.
 
 Current runtime policy:
 
-- desired retention: user setting, default `0.90`;
+- scheduling policy: an application-owned discriminated policy; the currently enabled policy is `fixed-retention`, with user target default `0.90`;
 - dual-trace state: `stability`, `stabilityFast`, `difficulty`;
 - fractional elapsed days;
 - short-term middleware enabled;
@@ -26,6 +26,8 @@ Current runtime policy:
 - fuzz disabled;
 - maximum interval: 36,500 days;
 - stock FSRS-7 weights by default, with an explicitly activated validated optimizer profile as the only alternative.
+
+Scheduler policy and model weights are independent configuration axes. Scheduler identity contains the complete policy plus complete weight provenance. The policy contract is discriminated as `fixed-retention` or `cost-adr`; the Cost-ADR variant already validates the exact upstream policy shape (15 coefficients, cost-weight bounds, retention bounds, state bounds and goal cost weight), but **Cost-ADR execution is intentionally fail-closed in this build** until its runtime middleware is implemented and evaluated.
 
 The one-day step is a product adaptation for long-form revision sessions: it prevents seconds/minutes-scale flashcard behaviour while still allowing the FSRS model to choose longer intervals when appropriate.
 
@@ -52,12 +54,13 @@ A profile is eligible only when it contains exactly 34 valid FSRS-7 weights and 
 5. retrains final weights on all eligible evidence after the gate passes;
 6. records upstream time-series evaluation separately.
 
-Importing a profile only stages it. Activation, deactivation and desired-retention changes are explicit scheduler rebases. A rebase:
+Importing a profile only stages it. Activation, deactivation and every scheduling-policy change are explicit scheduler rebases. A rebase:
 
 - is rejected while an active retrieval exists;
 - first verifies the current dataset against the current scheduler;
 - replays every reviewed memory obligation under the target scheduler;
 - atomically stores the target settings identity and rebuilt memory projections;
+- records the prior and target configuration fingerprints in scheduler-owned rebase metadata;
 - never rewrites historical Evidence Events.
 
 Backup/restore preserves staged or active personalization state. Restore prepares the referenced scheduler configuration and independently verifies every materialized memory projection before replacing current data.
