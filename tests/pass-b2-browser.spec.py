@@ -152,7 +152,15 @@ def seed_baseline_state(page) -> None:
         "chunks": payload["chunks"],
         "dailyPlans": payload["dailyPlans"],
         "settings": [payload["settings"]],
-        "metadata": [],
+        "metadata": [{
+            "schemaVersion": 1,
+            "key": "database",
+            "databaseName": "revision-director",
+            "databaseVersion": 3,
+            "applicationVersion": payload["appVersion"],
+            "createdAt": payload["exportedAt"],
+            "updatedAt": payload["exportedAt"],
+        }],
         "activeRetrieval": [payload["activeRetrieval"]] if payload.get("activeRetrieval") else [],
     }
     stores = {}
