@@ -511,6 +511,7 @@ async function testSettingsBoundary() {
   const repo = { getAll: async () => [{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}], get: async (_store,key) => key==='p' ? {schemaVersion:1,id:'p',status:'active'} : undefined, put: async()=>{} };
   const svc = new api.RevisionService(repo);
   const base = { schemaVersion:1, key:'app', activeProfileId:'p', fsrsScheduling:{policy:fixed(.9)}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4, fsrsPersonalization:{profile:null,active:false} };
+  svc.settings = structuredClone(base);
   await svc.saveSettings(base); check(true, 'Valid settings should save');
   for (const mutation of [{...base,activeProfileId:'missing'},{...base,dailyCapacityMinutes:60.5},{...base,studyDayBoundaryHour:4.5},{...base,memoryDifficultyPolicy:{...base.memoryDifficultyPolicy,remediationLapses:1}},{...base,memoryDifficultyPolicy:{...base.memoryDifficultyPolicy,persistentDifficultyLapses:2}}]) {
     let failed=false; try { await svc.saveSettings(mutation); } catch { failed=true; }
