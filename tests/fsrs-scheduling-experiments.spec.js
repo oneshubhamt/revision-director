@@ -147,51 +147,74 @@ function projectWorkload(scheduler,pattern,cardIndex,horizonDays){
   let card=scheduler.newCard({now:new Date(START.getTime()+cardIndex*6*HOUR_MS),cardId:`workload-${cardIndex}`});
   let now=new Date(card.dueAt);
   const horizon=START.getTime()+horizonDays*DAY_MS;
-  let reviews=0,retentionSum=0,minRetention=1,intervalSum=0,sub20h=0,againCount=0;
-  let reviewStateReviews=0,reviewStateRetentionSum=0,minReviewStateRetention=1;
-  while(now.getTime()<=horizon&&reviews<300){
+  let memoryAttempts=0,correctiveSessions=0,fsrsReviews=0;
+  let retentionSum=0,minRetention=1,intervalSum=0,sub20h=0,againCount=0;
+  let reviewStateAttempts=0,reviewStateRetentionSum=0,minReviewStateRetention=1;
+  while(now.getTime()<=horizon&&memoryAttempts<300){
     const retention=predictedRetrievability(scheduler,card,now);
     retentionSum+=retention;
     minRetention=Math.min(minRetention,retention);
     if(card.state===F.State.Review){
-      reviewStateReviews++;
+      reviewStateAttempts++;
       reviewStateRetentionSum+=retention;
       minReviewStateRetention=Math.min(minReviewStateRetention,retention);
     }
-    const rating=pattern[reviews%pattern.length];
+
+    const rating=pattern[memoryAttempts%pattern.length];
+    memoryAttempts++;
     if(rating===F.Rating.Again) againCount++;
-    const result=scheduler.review({card,grade:rating,now});
-    const next=result.card;
-    const intervalDays=daysBetween(next.dueAt,now);
+    const direct=scheduler.review({card,grade:rating,now});
+    fsrsReviews++;
+
+    let completedAt=now;
+    if(rating===F.Rating.Again){
+      // Revision Director suspends failed memory and owns a separate corrective
+      // relearning obligation due one day later. A successful closed-book
+      // verification records a Good return transition through FSRS.
+      const correctiveAt=new Date(now.getTime()+DAY_MS);
+      if(correctiveAt.getTime()>horizon) break;
+      correctiveSessions++;
+      const returned=scheduler.review({card:direct.card,grade:F.Rating.Good,now:correctiveAt});
+      fsrsReviews++;
+      card=returned.card;
+      completedAt=correctiveAt;
+    }else{
+      card=direct.card;
+    }
+
+    const intervalDays=daysBetween(card.dueAt,completedAt);
     intervalSum+=intervalDays;
     if(intervalDays<20/24) sub20h++;
-    card=next;
     now=new Date(card.dueAt);
-    reviews++;
   }
+  const workloadSessions=memoryAttempts+correctiveSessions;
   return {
-    reviews,retentionSum,minRetention,intervalSum,sub20h,againCount,
-    reviewStateReviews,reviewStateRetentionSum,minReviewStateRetention,
+    workloadSessions,memoryAttempts,correctiveSessions,fsrsReviews,
+    retentionSum,minRetention,intervalSum,sub20h,againCount,
+    reviewStateAttempts,reviewStateRetentionSum,minReviewStateRetention,
   };
 }
 
 function aggregateWorkload(rows){
   const total=rows.reduce((acc,row)=>{
-    for(const key of ['reviews','retentionSum','intervalSum','sub20h','againCount','reviewStateReviews','reviewStateRetentionSum']) acc[key]+=row[key];
+    for(const key of ['workloadSessions','memoryAttempts','correctiveSessions','fsrsReviews','retentionSum','intervalSum','sub20h','againCount','reviewStateAttempts','reviewStateRetentionSum']) acc[key]+=row[key];
     acc.minRetention=Math.min(acc.minRetention,row.minRetention);
     acc.minReviewStateRetention=Math.min(acc.minReviewStateRetention,row.minReviewStateRetention);
     return acc;
-  },{reviews:0,retentionSum:0,minRetention:1,intervalSum:0,sub20h:0,againCount:0,reviewStateReviews:0,reviewStateRetentionSum:0,minReviewStateRetention:1});
+  },{workloadSessions:0,memoryAttempts:0,correctiveSessions:0,fsrsReviews:0,retentionSum:0,minRetention:1,intervalSum:0,sub20h:0,againCount:0,reviewStateAttempts:0,reviewStateRetentionSum:0,minReviewStateRetention:1});
   return {
     cards:rows.length,
-    reviews:total.reviews,
-    workloadMinutes:total.reviews*SESSION_MINUTES,
-    meanDueRetrievability:total.retentionSum/Math.max(1,total.reviews),
+    workloadSessions:total.workloadSessions,
+    memoryAttempts:total.memoryAttempts,
+    correctiveSessions:total.correctiveSessions,
+    fsrsReviews:total.fsrsReviews,
+    workloadMinutes:total.workloadSessions*SESSION_MINUTES,
+    meanDueRetrievability:total.retentionSum/Math.max(1,total.memoryAttempts),
     minDueRetrievability:total.minRetention,
-    meanReviewStateRetrievability:total.reviewStateRetentionSum/Math.max(1,total.reviewStateReviews),
+    meanReviewStateRetrievability:total.reviewStateRetentionSum/Math.max(1,total.reviewStateAttempts),
     minReviewStateRetrievability:total.minReviewStateRetention,
-    reviewStateReviews:total.reviewStateReviews,
-    meanIntervalDays:total.intervalSum/Math.max(1,total.reviews),
+    reviewStateAttempts:total.reviewStateAttempts,
+    meanIntervalDays:total.intervalSum/Math.max(1,total.memoryAttempts-total.againCount+total.correctiveSessions),
     sub20hReviews:total.sub20h,
     againCount:total.againCount,
   };
@@ -222,13 +245,13 @@ async function productionPolicyExperiment(){
     assert.ok(baseline,'Production fixed-retention baseline missing');
     const fixedRows=results.filter(row=>row.kind==='fixed');
     for(const row of results){
-      row.reviewDelta=(row.reviews-baseline.reviews)/baseline.reviews;
+      row.reviewDelta=(row.workloadSessions-baseline.workloadSessions)/baseline.workloadSessions;
       row.retentionDelta=row.meanReviewStateRetrievability-baseline.meanReviewStateRetrievability;
       if(row.kind==='cost-adr'){
         const dominator=fixedRows.find(fixedRow=>
-          fixedRow.reviews<=row.reviews
+          fixedRow.workloadSessions<=row.workloadSessions
           && fixedRow.meanReviewStateRetrievability>=row.meanReviewStateRetrievability-.001
-          && (fixedRow.reviews<row.reviews||fixedRow.meanReviewStateRetrievability>row.meanReviewStateRetrievability+.001)
+          && (fixedRow.workloadSessions<row.workloadSessions||fixedRow.meanReviewStateRetrievability>row.meanReviewStateRetrievability+.001)
         );
         row.paretoDominatedBy=dominator?.name??null;
         row.meaningfulBenefit=(
@@ -285,13 +308,13 @@ async function policyWorkloadExperiment(){
     assert.ok(baseline&&currentStep,'Required fixed-retention baselines missing');
     const fixedRows=results.filter(row=>row.kind==='fixed');
     for(const row of results){
-      row.reviewDelta=(row.reviews-baseline.reviews)/baseline.reviews;
+      row.reviewDelta=(row.workloadSessions-baseline.workloadSessions)/baseline.workloadSessions;
       row.retentionDelta=row.meanReviewStateRetrievability-baseline.meanReviewStateRetrievability;
       if(row.kind==='cost-adr'){
         const dominator=fixedRows.find(fixedRow=>
-          fixedRow.reviews<=row.reviews
+          fixedRow.workloadSessions<=row.workloadSessions
           && fixedRow.meanReviewStateRetrievability>=row.meanReviewStateRetrievability-.001
-          && (fixedRow.reviews<row.reviews||fixedRow.meanReviewStateRetrievability>row.meanReviewStateRetrievability+.001)
+          && (fixedRow.workloadSessions<row.workloadSessions||fixedRow.meanReviewStateRetrievability>row.meanReviewStateRetrievability+.001)
         );
         row.paretoDominatedBy=dominator?.name??null;
         const initialBenefit=(
@@ -302,11 +325,11 @@ async function policyWorkloadExperiment(){
         row.meaningfulBenefit=initialBenefit&&!dominator;
       }
     }
-    const stepReviewDelta=(baseline.reviews-currentStep.reviews)/currentStep.reviews;
+    const stepReviewDelta=(baseline.workloadSessions-currentStep.workloadSessions)/currentStep.workloadSessions;
     const stepRetentionDelta=baseline.meanReviewStateRetrievability-currentStep.meanReviewStateRetrievability;
     experiments.push({
       horizonDays,
-      stepComparison:{reviewDelta:stepReviewDelta,retentionDelta:stepRetentionDelta,currentReviews:currentStep.reviews,nearDailyReviews:baseline.reviews,currentSub20h:currentStep.sub20hReviews,nearDailySub20h:baseline.sub20hReviews},
+      stepComparison:{reviewDelta:stepReviewDelta,retentionDelta:stepRetentionDelta,currentReviews:currentStep.workloadSessions,nearDailyReviews:baseline.workloadSessions,currentSub20h:currentStep.sub20hReviews,nearDailySub20h:baseline.sub20hReviews},
       results,
     });
   }
