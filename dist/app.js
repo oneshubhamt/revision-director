@@ -948,6 +948,13 @@
           return Rating.Good;
       return Rating.Easy;
   }
+  function correctiveMemoryRating(confirmedRating, evidence) {
+      const confirmed = validateRating(confirmedRating);
+      const verificationPassed = confirmed >= Rating.Good && objectiveScore("relearn", evidence) >= 2.7;
+      if (verificationPassed)
+          return confirmed;
+      return confirmed === Rating.Again ? Rating.Again : Rating.Hard;
+  }
   function validateEvidence(evidence) {
       for (const value of [evidence.completeness, evidence.independence, evidence.application]) {
           assert(Number.isInteger(value) && value >= 0 && value <= 4, "Evidence rubric values must be from 0 to 4.");
@@ -1144,17 +1151,18 @@
           event.followUpObligationId = canonicalId(event.followUpObligationId, "Evidence follow-up obligation ID");
       else
           delete event.followUpObligationId;
-      if (event.returnedMemoryTransition) {
-          const transition = event.returnedMemoryTransition;
-          transition.obligationId = canonicalId(transition.obligationId, "Returned memory obligation ID");
-          transition.beforeDueAt = canonicalIso(transition.beforeDueAt, "Returned memory prior due date");
-          transition.afterDueAt = canonicalIso(transition.afterDueAt, "Returned memory next due date");
+      if (event.correctiveMemoryTransition) {
+          const transition = event.correctiveMemoryTransition;
+          transition.obligationId = canonicalId(transition.obligationId, "Corrective memory obligation ID");
+          transition.rating = validateRating(transition.rating);
+          transition.beforeDueAt = canonicalIso(transition.beforeDueAt, "Corrective memory prior due date");
+          transition.afterDueAt = canonicalIso(transition.afterDueAt, "Corrective memory next due date");
           transition.beforePolicyState = canonicalPolicyState(transition.beforePolicyState);
           transition.afterPolicyState = canonicalPolicyState(transition.afterPolicyState);
-          transition.policyId = canonicalId(transition.policyId, "Returned memory policy ID");
+          transition.policyId = canonicalId(transition.policyId, "Corrective memory policy ID");
       }
       else
-          delete event.returnedMemoryTransition;
+          delete event.correctiveMemoryTransition;
       event.createdAt = canonicalIso(event.createdAt, "Evidence-event creation date");
       return event;
   }
@@ -1832,18 +1840,18 @@
                   source: "direct-memory",
               });
           }
-          const returned = event.returnedMemoryTransition;
-          if (returned) {
-              const before = returned.beforePolicyState.fsrsCard;
-              assert(before, "Returned-memory optimizer evidence is missing its before-card projection.");
+          const corrective = event.correctiveMemoryTransition;
+          if (corrective) {
+              const before = corrective.beforePolicyState.fsrsCard;
+              assert(before, "Corrective-memory optimizer evidence is missing its before-card projection.");
               rows.push({
                   reviewTimeMs: new Date(event.reviewedAt).getTime(),
-                  cardId: returned.obligationId,
-                  rating: Rating.Good,
-                  ...fsrsOptimizerReviewDuration(event, "relearning-return"),
+                  cardId: corrective.obligationId,
+                  rating: validateRating(corrective.rating),
+                  ...fsrsOptimizerReviewDuration(event, "relearning-verification"),
                   state: before.state,
                   evidenceEventId: event.id,
-                  source: "relearning-return",
+                  source: "relearning-verification",
               });
           }
       }
@@ -2215,7 +2223,7 @@
           const review = reviews[index];
           assert(review.evidenceEventId.length > 0, "Memory review lacks evidence identity.");
           validateRating(review.rating);
-          assert(review.source === "direct-memory" || review.source === "relearning-return", "Memory review source is invalid.");
+          assert(review.source === "direct-memory" || review.source === "relearning-verification", "Memory review source is invalid.");
           assert(Number.isFinite(new Date(review.reviewedAt).getTime()), "Memory review timestamp is invalid.");
           assert(/^fnv1a64:[0-9a-f]{16}$/.test(review.configFingerprint), "Memory review configuration fingerprint is invalid.");
           validateStoredFsrsCard(review.beforeCard, cardId);
@@ -2260,15 +2268,15 @@
           configFingerprint: validateFsrsConfigSnapshot(config).fingerprint,
       };
   }
-  function returnedMemoryReviewObservation(event, returned) {
+  function correctiveMemoryReviewObservation(event, returned) {
       const beforeCard = returned.beforePolicyState.fsrsCard;
       const afterCard = returned.afterPolicyState.fsrsCard;
-      assert(beforeCard && afterCard, "Returned-memory evidence is missing FSRS replay state.");
+      assert(beforeCard && afterCard, "Corrective-memory evidence is missing FSRS replay state.");
       return {
           evidenceEventId: event.id,
           reviewedAt: event.reviewedAt,
           rating: validateRating(returned.rating),
-          source: "relearning-return",
+          source: "relearning-verification",
           beforeCard: clone(beforeCard),
           afterCard: clone(afterCard),
           configFingerprint: validateFsrsConfigSnapshot(returned.schedulerConfig).fingerprint,
@@ -2294,9 +2302,9 @@
           if (event.obligationId === obligationId && event.obligationType === "memory-recall") {
               reviews.push(directMemoryReviewObservation(event));
           }
-          const returned = event.returnedMemoryTransition;
+          const returned = event.correctiveMemoryTransition;
           if (returned?.obligationId === obligationId) {
-              reviews.push(returnedMemoryReviewObservation(event, returned));
+              reviews.push(correctiveMemoryReviewObservation(event, returned));
           }
       }
       return finalizeMemoryReviewObservations(obligationId, reviews);
@@ -2314,9 +2322,9 @@
           if (event.obligationType === "memory-recall") {
               append(event.obligationId, directMemoryReviewObservation(event));
           }
-          const returned = event.returnedMemoryTransition;
+          const returned = event.correctiveMemoryTransition;
           if (returned)
-              append(returned.obligationId, returnedMemoryReviewObservation(event, returned));
+              append(returned.obligationId, correctiveMemoryReviewObservation(event, returned));
       }
       const index = new Map();
       for (const [obligationId, reviews] of mutable) {
@@ -2622,12 +2630,35 @@
       const canonicalPolicy = canonicalMemoryDifficultyPolicy(policy);
       const card = obligation.policyState.fsrsCard;
       assert(card, "Memory obligation has no FSRS card for difficulty assessment.");
-      const establishedLapses = card.lapses;
-      const earlyLearningFailures = memoryReviews.filter((review) => review.rating === Rating.Again && (review.beforeCard.state === 0 || review.beforeCard.state === 1)).length;
-      const stillLearning = card.state === 0 || card.state === 1;
+      // Revision Director's one-day learning step can move an unsuccessful new card
+      // into FSRS Review state before the learner has ever demonstrated successful
+      // retrieval. Host difficulty semantics therefore follow canonical review
+      // outcomes: failures before the first Good/Easy observation are learning
+      // failures; only failures after establishment count as established lapses.
+      let established = false;
+      let earlyLearningFailures = 0;
+      let establishedLapses = 0;
+      if (memoryReviews.length === 0) {
+          // Integrity/recovery callers may not have history in hand. The materialized
+          // FSRS lapse counter remains a conservative fallback in that narrow case.
+          establishedLapses = card.lapses;
+      }
+      else {
+          for (const review of memoryReviews) {
+              if (review.rating === Rating.Again) {
+                  if (established)
+                      establishedLapses += 1;
+                  else
+                      earlyLearningFailures += 1;
+              }
+              else if (review.rating >= Rating.Good) {
+                  established = true;
+              }
+          }
+      }
       const level = establishedLapses >= canonicalPolicy.persistentDifficultyLapses ? "persistent-difficulty"
           : establishedLapses >= canonicalPolicy.remediationLapses ? "remediation"
-              : stillLearning && earlyLearningFailures >= MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD ? "learning-difficulty"
+              : !established && earlyLearningFailures >= MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD ? "learning-difficulty"
                   : "normal";
       const recommendedActions = [];
       if (level === "learning-difficulty" || level === "remediation") {
@@ -4747,8 +4778,8 @@
           }
           await prepareFsrsScheduler(canonical.fsrsScheduling.policy, activeFsrsOptimizerProfile(canonical));
           if (difficultyChanged) {
-              const [obligations, units] = await Promise.all([this.obligations(), this.units()]);
-              const released = this.releaseStalePersistentDifficultyHolds(obligations, units, canonical.memoryDifficultyPolicy, nowIso());
+              const [obligations, units, evidenceEvents] = await Promise.all([this.obligations(), this.units(), this.evidenceEvents()]);
+              const released = this.releaseStalePersistentDifficultyHolds(obligations, units, canonical.memoryDifficultyPolicy, this.memoryReviewIndexFor(evidenceEvents), nowIso());
               await this.repo.replaceSettingsAndObligations(canonical, released);
               this.settings = canonical;
               return;
@@ -4756,13 +4787,13 @@
           await this.repo.put(Store.Settings, canonical);
           this.settings = canonical;
       }
-      releaseStalePersistentDifficultyHolds(obligations, units, policy, at) {
+      releaseStalePersistentDifficultyHolds(obligations, units, policy, reviewIndex, at) {
           const unitById = new Map(units.map((unit) => [unit.id, unit]));
           const released = [];
           for (const current of obligations) {
               if (current.type !== "memory-recall" || current.status !== "suspended" || current.suspensionReason !== "persistent-difficulty")
                   continue;
-              if (memoryDifficultyAssessment(current, policy).automaticHoldEligible)
+              if (memoryDifficultyAssessment(current, policy, reviewIndex.get(current.id) ?? []).automaticHoldEligible)
                   continue;
               const unit = unitById.get(current.unitId);
               assert(unit, "Persistent-difficulty memory references a missing knowledge unit.");
@@ -4874,7 +4905,7 @@
               };
           });
           assert(currentConfiguration.fingerprint !== scheduler.configuration.fingerprint, "FSRS scheduler rebase must change scheduler identity.");
-          const released = this.releaseStalePersistentDifficultyHolds(updatedMemory, units, settings.memoryDifficultyPolicy, at);
+          const released = this.releaseStalePersistentDifficultyHolds(updatedMemory, units, settings.memoryDifficultyPolicy, reviewIndex, at);
           if (released.length > 0) {
               const releasedById = new Map(released.map((obligation) => [obligation.id, obligation]));
               for (let index = 0; index < updatedMemory.length; index += 1) {
@@ -5503,6 +5534,12 @@
           const persisted = await this.persistDailyPlan(base, regenerate);
           return { ...base, planRecordId: persisted.id, versionNumber: persisted.version };
       }
+      async memoryReviewHistory(obligationId) {
+          const obligation = await this.obligation(obligationId);
+          assert(obligation.type === "memory-recall", "Memory-review history is only available for memory obligations.");
+          const evidence = await this.evidenceEvents();
+          return (this.memoryReviewIndexFor(evidence).get(obligationId) ?? []).map((review) => clone(review));
+      }
       async preview(obligationId, now = new Date()) {
           const obligation = await this.obligation(obligationId);
           const policy = this.router.get(obligation.type);
@@ -5531,16 +5568,19 @@
           const beforePolicyState = clone(obligation.policyState);
           const beforeDueAt = obligation.dueAt;
           const suggested = suggestRating(obligation.type, normalizedDraft);
+          const schedulingRating = obligation.type === "relearn"
+              ? correctiveMemoryRating(confirmed, normalizedDraft)
+              : confirmed;
           const policy = this.router.get(obligation.type);
           const memoryReviewIndex = this.memoryReviewIndexFor(priorEvidence);
           const priorMemoryReviews = obligation.type === "memory-recall"
               ? memoryReviewIndex.get(obligation.id) ?? []
               : [];
           const completion = obligation.type === "memory-recall"
-              ? policy.complete(obligation, confirmed, normalizedDraft, reviewedAt, {
+              ? policy.complete(obligation, schedulingRating, normalizedDraft, reviewedAt, {
                   memoryReviews: priorMemoryReviews,
               })
-              : policy.complete(obligation, confirmed, normalizedDraft, reviewedAt);
+              : policy.complete(obligation, schedulingRating, normalizedDraft, reviewedAt);
           obligation.dueAt = completion.dueAt;
           obligation.policyState = completion.policyState;
           const memoryDifficulty = obligation.type === "memory-recall"
@@ -5587,7 +5627,7 @@
           unit.updatedAt = reviewedAt.toISOString();
           let followUp;
           let relatedObligation;
-          let returnedMemoryTransition;
+          let correctiveMemoryTransition;
           if (completion.followUpType === "relearn" && obligation.type !== "relearn") {
               obligation.status = "suspended";
               obligation.suspensionReason = "relearning";
@@ -5630,42 +5670,51 @@
                   };
               }
           }
+          const verificationRating = schedulingRating;
           const relearningMastered = obligation.type === "relearn" &&
-              confirmed >= Rating.Good &&
-              objectiveScore(obligation.type, normalizedDraft) >= 2.7 &&
-              beforePolicyState.successStreak >= 1;
-          if (relearningMastered) {
-              obligation.status = "completed";
-              if (obligation.returnObligationId) {
-                  const original = await this.repo.get(Store.Obligations, obligation.returnObligationId);
-                  if (original) {
-                      if (original.type === "memory-recall") {
-                          const returnedBeforeDueAt = original.dueAt;
-                          const returnedBeforePolicyState = clone(original.policyState);
-                          const resumed = this.router.get("memory-recall").complete(original, Rating.Good, normalizedDraft, reviewedAt, { memoryReviews: memoryReviewIndex.get(original.id) ?? [] });
-                          assert(resumed.schedulerConfig && resumed.reviewLog, "Returned memory review lacks FSRS-7 provenance.");
-                          original.dueAt = resumed.dueAt;
-                          original.policyState = resumed.policyState;
-                          original.lastCompletedAt = reviewedAt.toISOString();
-                          returnedMemoryTransition = {
-                              obligationId: original.id,
-                              rating: Rating.Good,
-                              beforeDueAt: returnedBeforeDueAt,
-                              afterDueAt: resumed.dueAt,
-                              beforePolicyState: returnedBeforePolicyState,
-                              afterPolicyState: clone(resumed.policyState),
-                              policyId: resumed.policyId,
-                              schedulerPackage: "ts-fsrs",
-                              schedulerVersion: FSRS_PACKAGE_VERSION,
-                              schedulerModel: FSRS_MODEL,
-                              schedulerConfig: clone(resumed.schedulerConfig),
-                              reviewLog: clone(resumed.reviewLog),
-                          };
-                      }
-                      else {
-                          original.dueAt = addDays(reviewedAt, 3).toISOString();
-                      }
-                      if (original.type === "memory-recall" && memoryDifficultyAssessment(original, this.settings.memoryDifficultyPolicy).automaticHoldEligible) {
+              verificationRating >= Rating.Good;
+          if (obligation.type === "relearn" && obligation.returnObligationId) {
+              const original = await this.repo.get(Store.Obligations, obligation.returnObligationId);
+              assert(original, "Relearning return target is missing.");
+              if (original.type === "memory-recall") {
+                  const verificationBeforeDueAt = original.dueAt;
+                  const verificationBeforePolicyState = clone(original.policyState);
+                  const priorOriginalReviews = memoryReviewIndex.get(original.id) ?? [];
+                  const verification = this.router.get("memory-recall").complete(original, verificationRating, normalizedDraft, reviewedAt, { memoryReviews: priorOriginalReviews });
+                  assert(verification.schedulerConfig && verification.reviewLog, "Corrective memory verification lacks FSRS-7 provenance.");
+                  original.dueAt = verification.dueAt;
+                  original.policyState = verification.policyState;
+                  original.lastCompletedAt = reviewedAt.toISOString();
+                  correctiveMemoryTransition = {
+                      obligationId: original.id,
+                      rating: verificationRating,
+                      beforeDueAt: verificationBeforeDueAt,
+                      afterDueAt: verification.dueAt,
+                      beforePolicyState: verificationBeforePolicyState,
+                      afterPolicyState: clone(verification.policyState),
+                      policyId: verification.policyId,
+                      schedulerPackage: "ts-fsrs",
+                      schedulerVersion: FSRS_PACKAGE_VERSION,
+                      schedulerModel: FSRS_MODEL,
+                      schedulerConfig: clone(verification.schedulerConfig),
+                      reviewLog: clone(verification.reviewLog),
+                  };
+                  const beforeCard = verificationBeforePolicyState.fsrsCard;
+                  const afterCard = verification.policyState.fsrsCard;
+                  assert(beforeCard && afterCard, "Corrective memory verification lacks FSRS-7 card state.");
+                  const currentVerification = {
+                      evidenceEventId: "pending",
+                      reviewedAt: reviewedAt.toISOString(),
+                      rating: verificationRating,
+                      source: "relearning-verification",
+                      beforeCard: clone(beforeCard),
+                      afterCard: clone(afterCard),
+                      configFingerprint: verification.schedulerConfig.fingerprint,
+                  };
+                  const difficulty = memoryDifficultyAssessment(original, this.settings.memoryDifficultyPolicy, [...priorOriginalReviews, currentVerification]);
+                  if (relearningMastered) {
+                      obligation.status = "completed";
+                      if (difficulty.automaticHoldEligible) {
                           original.status = "suspended";
                           original.suspensionReason = "persistent-difficulty";
                       }
@@ -5673,9 +5722,23 @@
                           original.status = "active";
                           delete original.suspensionReason;
                       }
-                      original.updatedAt = reviewedAt.toISOString();
-                      relatedObligation = original;
                   }
+                  else {
+                      original.status = "suspended";
+                      original.suspensionReason = "relearning";
+                      const remediation = memoryDifficultyRemediationPlan(difficulty);
+                      obligation.priority = Math.max(obligation.priority, original.priority + remediation.priorityBoost);
+                  }
+                  original.updatedAt = reviewedAt.toISOString();
+                  relatedObligation = original;
+              }
+              else if (relearningMastered) {
+                  obligation.status = "completed";
+                  original.dueAt = addDays(reviewedAt, 3).toISOString();
+                  original.status = "active";
+                  delete original.suspensionReason;
+                  original.updatedAt = reviewedAt.toISOString();
+                  relatedObligation = original;
               }
           }
           const evidence = {
@@ -5723,8 +5786,8 @@
           }
           if (followUp)
               event.followUpObligationId = followUp.id;
-          if (returnedMemoryTransition)
-              event.returnedMemoryTransition = returnedMemoryTransition;
+          if (correctiveMemoryTransition)
+              event.correctiveMemoryTransition = correctiveMemoryTransition;
           const dailyPlan = await this.completedPlanRecord(obligation.id, undefined, roundTo(timing.totalActiveMs / 60_000, 1), reviewedAt, event.id);
           await this.repo.recordReview(unit, obligation, event, followUp, relatedObligation, chunkUpdates, dailyPlan, commitGuard, postCommitSession);
           this.invalidateMemoryReviewAnalysis();
@@ -6032,32 +6095,30 @@
               }
               else
                   assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined, "Non-memory evidence cannot claim FSRS provenance.");
-              const returned = event.returnedMemoryTransition;
+              const corrective = event.correctiveMemoryTransition;
               const relearnReturnId = obligation.type === "relearn" ? obligation.returnObligationId : undefined;
-              const returnedTarget = relearnReturnId ? obligationMap.get(relearnReturnId) : undefined;
-              const shouldReturnMemory = obligation.type === "relearn" &&
-                  returnedTarget?.type === "memory-recall" &&
-                  event.confirmedRating >= Rating.Good &&
-                  objectiveScore("relearn", event.evidence) >= 2.7 &&
-                  event.beforePolicyState.successStreak >= 1;
-              assert(Boolean(returned) === shouldReturnMemory, "Returned-memory scheduler transition presence is inconsistent with relearning completion.");
-              if (returned) {
-                  assert(returnedTarget?.type === "memory-recall", "Returned-memory transition lacks a valid memory target.");
-                  assert(returned.obligationId === returnedTarget.id, "Returned-memory transition targets the wrong obligation.");
-                  assert(returned.rating === Rating.Good, "Returned-memory transition must record a Good closed-book repair.");
-                  validDate(returned.beforeDueAt, "Returned-memory prior due date");
-                  validDate(returned.afterDueAt, "Returned-memory next due date");
-                  assert(returned.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Returned-memory policy provenance is invalid.");
-                  assert(returned.schedulerPackage === "ts-fsrs" && returned.schedulerVersion === FSRS_PACKAGE_VERSION && returned.schedulerModel === FSRS_MODEL, "Returned-memory scheduler provenance is invalid.");
-                  validateFsrsConfigSnapshot(returned.schedulerConfig);
-                  for (const state of [returned.beforePolicyState, returned.afterPolicyState]) {
-                      assert(state.engine === "ts-fsrs" && state.version === FSRS_PACKAGE_VERSION && state.fsrsCard?.model === FSRS_MODEL, "Returned-memory policy state is invalid.");
-                      assert(state.fsrsCard.cardId === returned.obligationId, "Returned-memory card identity is invalid.");
+              const correctiveTarget = relearnReturnId ? obligationMap.get(relearnReturnId) : undefined;
+              const shouldRecordMemoryVerification = obligation.type === "relearn" &&
+                  correctiveTarget?.type === "memory-recall";
+              assert(Boolean(corrective) === shouldRecordMemoryVerification, "Corrective-memory scheduler transition presence is inconsistent with a closed-book memory verification.");
+              if (corrective) {
+                  assert(correctiveTarget?.type === "memory-recall", "Corrective-memory transition lacks a valid memory target.");
+                  assert(corrective.obligationId === correctiveTarget.id, "Corrective-memory transition targets the wrong obligation.");
+                  assert(corrective.rating === correctiveMemoryRating(event.confirmedRating, event.evidence), "Corrective-memory transition rating does not match the closed-book verification outcome.");
+                  validDate(corrective.beforeDueAt, "Corrective-memory prior due date");
+                  validDate(corrective.afterDueAt, "Corrective-memory next due date");
+                  assert(corrective.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Corrective-memory policy provenance is invalid.");
+                  assert(corrective.schedulerPackage === "ts-fsrs" && corrective.schedulerVersion === FSRS_PACKAGE_VERSION && corrective.schedulerModel === FSRS_MODEL, "Corrective-memory scheduler provenance is invalid.");
+                  validateFsrsConfigSnapshot(corrective.schedulerConfig);
+                  for (const state of [corrective.beforePolicyState, corrective.afterPolicyState]) {
+                      assert(state.engine === "ts-fsrs" && state.version === FSRS_PACKAGE_VERSION && state.fsrsCard?.model === FSRS_MODEL, "Corrective-memory policy state is invalid.");
+                      assert(state.fsrsCard.cardId === corrective.obligationId, "Corrective-memory card identity is invalid.");
                       requiredFsrs7StabilityFast(state.fsrsCard.stabilityFast);
                   }
               }
           }
-          validateMemoryDatasetProjectionChain(obligations, memoryReviewObservationIndex(evidenceEvents));
+          const canonicalMemoryReviews = memoryReviewObservationIndex(evidenceEvents);
+          validateMemoryDatasetProjectionChain(obligations, canonicalMemoryReviews);
           const chunksByObligation = new Map();
           for (const chunk of chunks) {
               const obligation = obligationMap.get(chunk.obligationId);
@@ -6205,7 +6266,7 @@
           for (const obligation of obligations) {
               if (obligation.suspensionReason !== "persistent-difficulty")
                   continue;
-              assert(memoryDifficultyAssessment(obligation, memoryDifficultyPolicy).automaticHoldEligible, "Persistent-difficulty hold is not justified by the active automatic-hold policy.");
+              assert(memoryDifficultyAssessment(obligation, memoryDifficultyPolicy, canonicalMemoryReviews.get(obligation.id) ?? []).automaticHoldEligible, "Persistent-difficulty hold is not justified by the active automatic-hold policy.");
           }
           assert(Number.isFinite(settings.dailyCapacityMinutes) && settings.dailyCapacityMinutes >= 5 && settings.dailyCapacityMinutes <= 600, "Daily revision capacity is invalid.");
           assert(Number.isInteger(settings.studyDayBoundaryHour) && settings.studyDayBoundaryHour >= 0 && settings.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
@@ -8531,6 +8592,9 @@
           const path = await this.service.hierarchyPath(unit.topicNodeId);
           const profile = await this.service.profile(unit.profileId);
           this.reviewPreviews = await this.service.preview(obligation.id);
+          const memoryReviews = obligation.type === "memory-recall"
+              ? await this.service.memoryReviewHistory(obligation.id)
+              : [];
           const progress = `${this.activeReviewIndex + 1} / ${this.activeReviewIds.length}`;
           const checkpoints = obligation.workflow.checkpoints.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
           const sourcePanel = `<div class="source-panel"><strong>Source and scope</strong><p>${escapeHtml(unit.source || "No source recorded.")}</p><p>${escapeHtml(unit.scope)}</p><strong>Success criteria</strong><p>${escapeHtml(obligation.successCriteria)}</p><strong>Observable checkpoints</strong><ol class="checkpoint-reference">${checkpoints}</ol></div>`;
@@ -8568,7 +8632,7 @@
 
             <section data-review-phase="compare" hidden>
               <div class="comparison-grid">${this.attemptComparisonPanel(obligation)}${sourcePanel}</div>
-              ${this.workflowAssessmentPanel(obligation)}
+              ${this.workflowAssessmentPanel(obligation, memoryReviews)}
             </section>
 
             ${this.reviewTimerMarkup()}
@@ -8671,7 +8735,7 @@
           }
           return "";
       }
-      workflowAssessmentPanel(obligation) {
+      workflowAssessmentPanel(obligation, memoryReviews = []) {
           const spec = obligation.workflow;
           const checkpoints = this.checkpointAssessment(spec.checkpoints);
           let specific = "";
@@ -8699,7 +8763,7 @@
               : "";
           const difficultyGuidance = obligation.type === "memory-recall"
               ? (() => {
-                  const assessment = memoryDifficultyAssessment(obligation, this.service.getSettings().memoryDifficultyPolicy);
+                  const assessment = memoryDifficultyAssessment(obligation, this.service.getSettings().memoryDifficultyPolicy, memoryReviews);
                   if (assessment.level === "normal")
                       return "";
                   const label = assessment.level === "persistent-difficulty" ? "Persistent difficulty" : assessment.level === "remediation" ? "Remediation" : "Early learning difficulty";
