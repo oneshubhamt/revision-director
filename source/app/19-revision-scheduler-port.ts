@@ -31,6 +31,9 @@
       reviews: readonly MemoryReviewObservation[],
       at: Date,
     ): number | undefined;
+    replayVerifiedHistory(
+      reviews: readonly MemoryReviewObservation[],
+    ): MemoryMaterializedProjection;
     reschedule(
       initialCard: MemoryMaterializedProjection,
       reviews: readonly MemoryReviewObservation[],
@@ -568,6 +571,14 @@
       return clamp(Number(retrievability), 0, 1);
     }
 
+    replayVerifiedHistory(
+      reviews: readonly MemoryReviewObservation[],
+    ): MemoryMaterializedProjection {
+      assert(reviews.length > 0, "FSRS verified replay requires review history.");
+      validateMemoryObservationChain(reviews[0]!.beforeCard.cardId, reviews);
+      return this.materializeValidated(reviews[0]!.beforeCard, reviews);
+    }
+
     reschedule(
       initialCard: MemoryMaterializedProjection,
       reviews: readonly MemoryReviewObservation[],
@@ -702,6 +713,7 @@
   function verifyHistoricalMemorySchedulerConfigurations(
     reviews: readonly MemoryReviewObservation[],
     profileCatalog: readonly FsrsOptimizerProfile[],
+    currentConfigFingerprint?: string,
   ): void {
     if (reviews.length === 0) return;
     const configurations = new Map<string, FsrsConfigSnapshot>();
@@ -714,13 +726,12 @@
         configurations.set(config.fingerprint, clone(config));
       }
     }
-    const initialCard = reviews[0]!.beforeCard;
     for (const config of configurations.values()) {
+      if (config.fingerprint === currentConfigFingerprint) continue;
       const historicalProfile = profileForHistoricalFsrsConfiguration(config, profileCatalog);
       const historicalScheduler = revisionSchedulerPort(config.schedulingPolicy, historicalProfile);
       assert(historicalScheduler.configuration.fingerprint === config.fingerprint, "Historical FSRS configuration cannot be reconstructed exactly.");
-      const historicalProjection = historicalScheduler.reschedule(initialCard, reviews);
-      historicalScheduler.verifyProjection(historicalProjection, reviews, true);
+      historicalScheduler.replayVerifiedHistory(reviews);
     }
   }
 
@@ -737,7 +748,7 @@
       const projection = obligation.policyState.fsrsCard;
       assert(projection, "Memory obligation has no FSRS materialized projection.");
       const reviews = reviewIndex.get(obligation.id) ?? [];
-      verifyHistoricalMemorySchedulerConfigurations(reviews, profileCatalog);
+      verifyHistoricalMemorySchedulerConfigurations(reviews, profileCatalog, scheduler.configuration.fingerprint);
       scheduler.verifyProjection(projection, reviews, true);
     }
   }
