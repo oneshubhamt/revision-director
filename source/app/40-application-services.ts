@@ -1,6 +1,10 @@
   class RevisionService {
     private settings = defaultSettings();
     private readonly router: SchedulerPolicyRouter;
+    private memoryReviewAnalysis?: {
+      evidenceKey: string;
+      reviewIndex: MemoryReviewObservationIndex;
+    };
 
     constructor(private readonly repo: RevisionData) {
       this.router = new SchedulerPolicyRouter(
@@ -9,7 +13,27 @@
       );
     }
 
+    private evidenceAnalysisKey(evidenceEvents: readonly EvidenceEvent[]): string {
+      if (evidenceEvents.length === 0) return "0";
+      const newest = evidenceEvents[0]!;
+      const oldest = evidenceEvents.at(-1)!;
+      return [evidenceEvents.length, newest.id, newest.reviewedAt, oldest.id, oldest.reviewedAt].join("|");
+    }
+
+    private memoryReviewIndexFor(evidenceEvents: readonly EvidenceEvent[]): MemoryReviewObservationIndex {
+      const evidenceKey = this.evidenceAnalysisKey(evidenceEvents);
+      if (this.memoryReviewAnalysis?.evidenceKey === evidenceKey) return this.memoryReviewAnalysis.reviewIndex;
+      const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
+      this.memoryReviewAnalysis = { evidenceKey, reviewIndex };
+      return reviewIndex;
+    }
+
+    private invalidateMemoryReviewAnalysis(): void {
+      this.memoryReviewAnalysis = undefined;
+    }
+
     async initialize(): Promise<void> {
+      this.invalidateMemoryReviewAnalysis();
       const stored = await this.repo.get(Store.Settings, "app");
       this.settings = stored ? canonicalAppSettings(stored) : defaultSettings();
       await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings));
@@ -30,11 +54,11 @@
     private async verifyMemoryProjectionIntegrity(): Promise<void> {
       const [obligations, evidenceEvents] = await Promise.all([
         this.repo.getAll(Store.Obligations),
-        this.repo.getAll(Store.EvidenceEvents),
+        this.evidenceEvents(),
       ]);
-      verifyMemoryDatasetIntegrity(
+      verifyMemoryDatasetIntegrityWithIndex(
         obligations,
-        evidenceEvents,
+        this.memoryReviewIndexFor(evidenceEvents),
         this.settings.fsrsScheduling.policy,
         activeFsrsOptimizerProfile(this.settings),
       );
@@ -205,13 +229,13 @@
       const currentConfiguration = fsrsConfigSnapshot(this.settings.fsrsScheduling.policy, currentProfile);
       await prepareFsrsScheduler(settings.fsrsScheduling.policy, profile);
       const [obligations, evidenceEvents, units] = await Promise.all([this.obligations(), this.evidenceEvents(), this.units()]);
-      verifyMemoryDatasetIntegrity(
+      const reviewIndex = this.memoryReviewIndexFor(evidenceEvents);
+      verifyMemoryDatasetIntegrityWithIndex(
         obligations,
-        evidenceEvents,
+        reviewIndex,
         this.settings.fsrsScheduling.policy,
         currentProfile,
       );
-      const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
       const scheduler = revisionSchedulerPort(settings.fsrsScheduling.policy, profile);
       const at = nowIso();
       let rescheduledObligations = 0;
@@ -266,7 +290,7 @@
           active: Boolean(profile),
         },
       });
-      verifyMemoryDatasetIntegrity(updatedMemory, evidenceEvents, finalized.fsrsScheduling.policy, profile);
+      validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex);
       await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);
       this.settings = finalized;
     }
@@ -525,7 +549,9 @@
         if (byPriority !== 0) return byPriority;
         const byImportance = b.unit.importance - a.unit.importance;
         if (byImportance !== 0) return byImportance;
-        return a.obligation.createdAt.localeCompare(b.obligation.createdAt);
+        const byCreated = a.obligation.createdAt.localeCompare(b.obligation.createdAt);
+        if (byCreated !== 0) return byCreated;
+        return a.obligation.id.localeCompare(b.obligation.id);
       });
     }
 
@@ -817,7 +843,7 @@
       const planningReference = studyDayStart(now, this.settings.studyDayBoundaryHour);
       const joined = await this.joinedObligations("active");
       const evidence = await this.evidenceEvents();
-      const memoryReviews = memoryReviewObservationIndex(evidence);
+      const memoryReviews = this.memoryReviewIndexFor(evidence);
       const planHistory = await this.dailyPlanHistory();
       const balance = weeklySubjectBalanceScores(joined, planHistory, planningReference, this.settings.studyDayBoundaryHour);
       const pendingChunks = persist
@@ -862,7 +888,8 @@
       const obligation = await this.obligation(obligationId);
       const policy = this.router.get(obligation.type);
       if (obligation.type !== "memory-recall") return policy.preview(obligation, now);
-      const memoryReviews = memoryReviewObservationsFor(obligation.id, await this.evidenceEvents());
+      const evidence = await this.evidenceEvents();
+      const memoryReviews = this.memoryReviewIndexFor(evidence).get(obligation.id) ?? [];
       return policy.preview(obligation, now, { memoryReviews });
     }
 
@@ -886,8 +913,9 @@
       const beforeDueAt = obligation.dueAt;
       const suggested = suggestRating(obligation.type, normalizedDraft);
       const policy = this.router.get(obligation.type);
+      const memoryReviewIndex = this.memoryReviewIndexFor(priorEvidence);
       const priorMemoryReviews = obligation.type === "memory-recall"
-        ? memoryReviewObservationsFor(obligation.id, priorEvidence)
+        ? memoryReviewIndex.get(obligation.id) ?? []
         : [];
       const completion = obligation.type === "memory-recall"
         ? policy.complete(obligation, confirmed, normalizedDraft, reviewedAt, {
@@ -1008,7 +1036,7 @@
                 Rating.Good,
                 normalizedDraft,
                 reviewedAt,
-                { memoryReviews: memoryReviewObservationsFor(original.id, priorEvidence) },
+                { memoryReviews: memoryReviewIndex.get(original.id) ?? [] },
               );
               assert(resumed.schedulerConfig && resumed.reviewLog, "Returned memory review lacks FSRS-7 provenance.");
               original.dueAt = resumed.dueAt;
@@ -1090,6 +1118,7 @@
 
       const dailyPlan = await this.completedPlanRecord(obligation.id, undefined, roundTo(timing.totalActiveMs / 60_000, 1), reviewedAt, event.id);
       await this.repo.recordReview(unit, obligation, event, followUp, relatedObligation, chunkUpdates, dailyPlan, commitGuard, postCommitSession);
+      this.invalidateMemoryReviewAnalysis();
       return event;
     }
 
@@ -1214,6 +1243,7 @@
       );
       await this.repo.replaceFromBackup(validated, activeTreatment);
       this.settings = clone(validated.settings);
+      this.invalidateMemoryReviewAnalysis();
     }
 
     async rawStateForRescue(): Promise<Record<string, unknown[]>> {
@@ -1580,6 +1610,7 @@
       const payload = this.validateBackup(input);
       await this.repo.replaceFromBackup(payload, "discard");
       this.settings = clone(payload.settings);
+      this.invalidateMemoryReviewAnalysis();
     }
 
 

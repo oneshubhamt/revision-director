@@ -41,6 +41,10 @@ When scheduler identity changes, historical Evidence Events retain the configura
 
 Retrievability is calculated from the replay-verified current dual-trace state and scheduler chronology. There is no separate model-forward replay implementation.
 
+Replay verification is deliberately optimized without changing that trust model. A scheduler instance keeps only a transient fingerprint of projections it has already replay-verified under that exact scheduler configuration; unchanged preview, review and retrievability calls can therefore reuse the verification result while still validating the canonical chain. Dataset-integrity boundaries such as startup, restore and scheduler rebase explicitly force replay and cannot be satisfied from this cache. Target-scheduler rescheduling itself is also a real replay.
+
+The application likewise keeps a transient normalized memory-review index for the current append-only Evidence Event snapshot. Ordinary planning and preview calls reuse it while the evidence endpoints/count are unchanged. Successful evidence writes, restore/import and service reinitialization invalidate that analysis cache. Neither cache is persisted, exported or treated as canonical state.
+
 ## Personalization and scheduler rebases
 
 Revision Director has two implementations of the same personalization boundary:
@@ -145,7 +149,7 @@ The daily planner combines transparent signals such as:
 
 Weekly balance is profile-qualified so identically named subjects from different exams cannot collide. Interleaving only reorders candidates sufficiently close in score; severe overdue work and active relearning are not displaced for variety.
 
-The planner weights are operational heuristics, not calibrated predictors of examination marks.
+The planner weights are operational heuristics, not calibrated predictors of examination marks. Equal-score/equal-due candidates use stable obligation/chunk identifiers as the final tie-breaker so equivalent stored data produces the same plan ordering regardless of IndexedDB or backup record order.
 
 ## Duration learning
 

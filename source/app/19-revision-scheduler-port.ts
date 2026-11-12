@@ -13,6 +13,7 @@
     verifyProjection(
       currentProjection: MemoryMaterializedProjection,
       reviews: readonly MemoryReviewObservation[],
+      forceReplay?: boolean,
     ): void;
     preview(
       currentProjection: MemoryMaterializedProjection,
@@ -382,9 +383,28 @@
     return index;
   }
 
+  function memoryProjectionVerificationFingerprint(
+    currentProjection: MemoryMaterializedProjection,
+    reviews: readonly MemoryReviewObservation[],
+  ): string {
+    return fingerprintText64(JSON.stringify({
+      projection: currentProjection,
+      reviews: reviews.map((review) => ({
+        evidenceEventId: review.evidenceEventId,
+        reviewedAt: review.reviewedAt,
+        rating: review.rating,
+        source: review.source,
+        configFingerprint: review.configFingerprint,
+        beforeCard: review.beforeCard,
+        afterCard: review.afterCard,
+      })),
+    }));
+  }
+
   class TsFsrsSchedulerPort implements RevisionSchedulerPort {
     readonly configuration: FsrsConfigSnapshot;
     private readonly history: Reschedule;
+    private readonly verifiedProjectionFingerprints = new Map<string, string>();
 
     constructor(
       private readonly scheduler: FsrsSchedulerRuntime,
@@ -422,15 +442,11 @@
       return serializeFsrsCard(this.scheduler.newCard({ now, cardId }));
     }
 
-    private materialize(
+    private materializeValidated(
       currentProjection: MemoryMaterializedProjection,
       reviews: readonly MemoryReviewObservation[],
     ): MemoryMaterializedProjection {
-      validateMemoryObservationChain(currentProjection.cardId, reviews);
-      if (reviews.length === 0) {
-        validateMemoryObservationChain(currentProjection.cardId, reviews, currentProjection);
-        return clone(currentProjection);
-      }
+      if (reviews.length === 0) return clone(currentProjection);
       const result = this.replayCards(reviews[0]!.beforeCard, reviews);
       assert(result.results.length === reviews.length, "FSRS reschedule produced an incomplete projection sequence.");
       for (let index = 0; index < reviews.length; index += 1) {
@@ -451,9 +467,14 @@
     verifyProjection(
       currentProjection: MemoryMaterializedProjection,
       reviews: readonly MemoryReviewObservation[],
+      forceReplay = false,
     ): void {
-      const materialized = this.materialize(currentProjection, reviews);
+      validateMemoryObservationChain(currentProjection.cardId, reviews, currentProjection);
+      const fingerprint = memoryProjectionVerificationFingerprint(currentProjection, reviews);
+      if (!forceReplay && this.verifiedProjectionFingerprints.get(currentProjection.cardId) === fingerprint) return;
+      const materialized = this.materializeValidated(currentProjection, reviews);
       assert(storedFsrsCardsEqual(currentProjection, materialized), "Stored FSRS materialized projection failed replay integrity.");
+      this.verifiedProjectionFingerprints.set(currentProjection.cardId, fingerprint);
     }
 
     preview(
@@ -531,10 +552,16 @@
       reviews: readonly MemoryReviewObservation[],
     ): MemoryMaterializedProjection {
       assert(reviews.length > 0, "FSRS reschedule requires review history.");
+      validateMemoryObservationChain(initialCard.cardId, reviews);
       validateStoredFsrsCard(initialCard, initialCard.cardId);
       assert(storedFsrsCardsEqual(initialCard, reviews[0]!.beforeCard), "FSRS reschedule initial card does not match canonical history.");
       const result = this.replayCards(initialCard, reviews);
-      return serializeFsrsCard(result.card);
+      const projection = serializeFsrsCard(result.card);
+      this.verifiedProjectionFingerprints.set(
+        projection.cardId,
+        memoryProjectionVerificationFingerprint(projection, reviews),
+      );
+      return projection;
     }
   }
 
@@ -584,20 +611,29 @@
     }
   }
 
+  function verifyMemoryDatasetIntegrityWithIndex(
+    obligations: readonly RevisionObligation[],
+    reviewIndex: MemoryReviewObservationIndex,
+    schedulingPolicy: FsrsSchedulingPolicy,
+    profile: FsrsOptimizerProfile | null = null,
+  ): void {
+    const scheduler = revisionSchedulerPort(schedulingPolicy, profile);
+    for (const obligation of obligations) {
+      if (obligation.type !== "memory-recall") continue;
+      const projection = obligation.policyState.fsrsCard;
+      assert(projection, "Memory obligation has no FSRS materialized projection.");
+      scheduler.verifyProjection(projection, reviewIndex.get(obligation.id) ?? [], true);
+    }
+  }
+
   function verifyMemoryDatasetIntegrity(
     obligations: readonly RevisionObligation[],
     evidenceEvents: readonly EvidenceEvent[],
     schedulingPolicy: FsrsSchedulingPolicy,
     profile: FsrsOptimizerProfile | null = null,
-  ): void {
-    const scheduler = revisionSchedulerPort(schedulingPolicy, profile);
+  ): MemoryReviewObservationIndex {
     const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
-    validateMemoryDatasetProjectionChain(obligations, reviewIndex);
-    for (const obligation of obligations) {
-      if (obligation.type !== "memory-recall") continue;
-      const projection = obligation.policyState.fsrsCard;
-      assert(projection, "Memory obligation has no FSRS materialized projection.");
-      scheduler.verifyProjection(projection, reviewIndex.get(obligation.id) ?? []);
-    }
+    verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile);
+    return reviewIndex;
   }
 

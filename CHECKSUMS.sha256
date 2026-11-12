@@ -49,6 +49,7 @@ bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/s
 ca2f42822f71ee00d2dff9b1846806545634c79e2ef75c3cfae46feae5f1cdfb  ./tests/fixtures/browser-baseline.rdbackup
 5355215792de9cec48fd7ccec199d636d946f8d87248d3ea57e54beff5d50ce1  ./tests/fsrs-browser-optimizer.spec.py
 273b4e670def3fe0bc6bf164bb9436a1387fd233d908e2f54abe3a01b5e20a4b  ./tests/fsrs-integration.spec.js
+0000000000000000000000000000000000000000000000000000000000000000  ./tests/fsrs-scale-benchmark.spec.js
 7b8cf1a2b8eeb399886b86e851489ea6beebac28ea45c17184e124090a2492ec  ./tests/fsrs-optimizer-core.spec.js
 721372a79e498e2f904cfdd7f2cf9c41fe18fdcd95e1b9cfc072d6bae98a0b1c  ./tests/fsrs-optimizer-policy.spec.js
 d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-qa-supplement.spec.py

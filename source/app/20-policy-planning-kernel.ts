@@ -365,8 +365,12 @@
     return result;
   }
 
+  function plannedQueueStableKey(item: PlannedQueueItem): string {
+    return planItemKey(item.joined.obligation.id, item.chunk?.id);
+  }
+
   function interleaveSelected(items: PlannedQueueItem[]): PlannedQueueItem[] {
-    const remaining = [...items].sort((a, b) => b.score - a.score);
+    const remaining = [...items].sort((a, b) => b.score - a.score || plannedQueueStableKey(a).localeCompare(plannedQueueStableKey(b)));
     const ordered: PlannedQueueItem[] = [];
     while (remaining.length) {
       const top = remaining[0]!;
@@ -379,7 +383,7 @@
         const sameSubject = (left: PlannedQueueItem, right: PlannedQueueItem): boolean => left.joined.profile.id === right.joined.profile.id && normalizeName(left.joined.subject) === normalizeName(right.joined.subject);
         const aPenalty = (last && sameSubject(last, a) ? 2 : 0) + (last?.joined.obligation.workflow?.kind === a.joined.obligation.workflow?.kind ? 1 : 0);
         const bPenalty = (last && sameSubject(last, b) ? 2 : 0) + (last?.joined.obligation.workflow?.kind === b.joined.obligation.workflow?.kind ? 1 : 0);
-        return aPenalty - bPenalty || b.score - a.score;
+        return aPenalty - bPenalty || b.score - a.score || plannedQueueStableKey(a).localeCompare(plannedQueueStableKey(b));
       })[0] ?? top;
       ordered.push(best);
       remaining.splice(remaining.indexOf(best), 1);
@@ -581,7 +585,11 @@
   }
 
   function choosePlanItems(candidates: PlannedQueueItem[], capacityMinutes: number): { selected: PlannedQueueItem[]; requiredOverrun: PlannedQueueItem[]; mustSplit: PlannedQueueItem[]; deferred: PlannedQueueItem[] } {
-    const ordered = [...candidates].sort((a, b) => b.score - a.score || a.joined.obligation.dueAt.localeCompare(b.joined.obligation.dueAt) || a.joined.obligation.expectedMinutes - b.joined.obligation.expectedMinutes);
+    const ordered = [...candidates].sort((a, b) =>
+      b.score - a.score
+      || a.joined.obligation.dueAt.localeCompare(b.joined.obligation.dueAt)
+      || a.joined.obligation.expectedMinutes - b.joined.obligation.expectedMinutes
+      || plannedQueueStableKey(a).localeCompare(plannedQueueStableKey(b)));
     if (ordered.length === 0) return { selected: [], requiredOverrun: [], mustSplit: [], deferred: [] };
     const durationOf = (item: PlannedQueueItem): number => Math.max(1, Math.ceil(item.executionMinutes ?? item.joined.obligation.expectedMinutes));
     const solve = (items: PlannedQueueItem[], capacity: number): PlannedQueueItem[] => {

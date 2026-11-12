@@ -64,6 +64,8 @@ For a material change:
 
 Generated output must be rebuilt from source before release/merge.
 
+The permanent Node regression matrix includes a multi-year FSRS scale/determinism benchmark. Its fixture spans 96 memory cards with 48 reviews each (4,608 review events, about 5.8 years per card), verifies order-independent evidence normalization, forces one independent replay per reviewed card, then proves repeated retrievability reuses replay verification by instrumenting the single reschedule primitive. It also checks deterministic materialization and planner tie resolution. Timing assertions are intentionally generous regression envelopes rather than microbenchmark claims.
+
 ## FSRS optimizer runtimes
 
 Personalized training remains isolated under `tools/fsrs-optimizer/`. The native reference runtime pins `@open-spaced-repetition/binding@0.6.1`; the optional browser path pins `@open-spaced-repetition/binding-wasm32-wasip1@0.6.1` and the emnapi runtime versions required by that release.
