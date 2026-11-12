@@ -370,7 +370,7 @@
     const active = record["active"];
     assert(typeof active === "boolean", "FSRS personalization active flag is invalid.");
     assert(!active || profile !== null, "Active FSRS personalization requires an optimizer profile.");
-    const replayInput = record["replayProfiles"] === undefined ? [] : requiredArray(record["replayProfiles"], "FSRS replay profiles");
+    const replayInput = requiredArray(record["replayProfiles"], "FSRS replay profiles");
     assert(replayInput.length <= 256, "FSRS replay-profile archive is unreasonably large.");
     const replayProfiles = replayInput.map((item) => validateFsrsOptimizerProfile(item));
     const seen = new Set<string>();
