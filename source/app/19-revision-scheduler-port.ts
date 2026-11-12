@@ -404,7 +404,11 @@
   class TsFsrsSchedulerPort implements RevisionSchedulerPort {
     readonly configuration: FsrsConfigSnapshot;
     private readonly history: Reschedule;
-    private readonly verifiedProjectionFingerprints = new Map<string, string>();
+    private readonly verifiedProjectionFingerprints = new Map<string, {
+      fingerprint: string;
+      projection: MemoryMaterializedProjection;
+      reviews: readonly MemoryReviewObservation[];
+    }>();
 
     constructor(
       private readonly scheduler: FsrsSchedulerRuntime,
@@ -469,12 +473,25 @@
       reviews: readonly MemoryReviewObservation[],
       forceReplay = false,
     ): void {
+      const cached = this.verifiedProjectionFingerprints.get(currentProjection.cardId);
+      if (!forceReplay && cached?.reviews === reviews && storedFsrsCardsEqual(cached.projection, currentProjection)) return;
       validateMemoryObservationChain(currentProjection.cardId, reviews, currentProjection);
       const fingerprint = memoryProjectionVerificationFingerprint(currentProjection, reviews);
-      if (!forceReplay && this.verifiedProjectionFingerprints.get(currentProjection.cardId) === fingerprint) return;
+      if (!forceReplay && cached?.fingerprint === fingerprint) {
+        this.verifiedProjectionFingerprints.set(currentProjection.cardId, {
+          fingerprint,
+          projection: clone(currentProjection),
+          reviews,
+        });
+        return;
+      }
       const materialized = this.materializeValidated(currentProjection, reviews);
       assert(storedFsrsCardsEqual(currentProjection, materialized), "Stored FSRS materialized projection failed replay integrity.");
-      this.verifiedProjectionFingerprints.set(currentProjection.cardId, fingerprint);
+      this.verifiedProjectionFingerprints.set(currentProjection.cardId, {
+        fingerprint,
+        projection: clone(currentProjection),
+        reviews,
+      });
     }
 
     preview(
@@ -557,10 +574,11 @@
       assert(storedFsrsCardsEqual(initialCard, reviews[0]!.beforeCard), "FSRS reschedule initial card does not match canonical history.");
       const result = this.replayCards(initialCard, reviews);
       const projection = serializeFsrsCard(result.card);
-      this.verifiedProjectionFingerprints.set(
-        projection.cardId,
-        memoryProjectionVerificationFingerprint(projection, reviews),
-      );
+      this.verifiedProjectionFingerprints.set(projection.cardId, {
+        fingerprint: memoryProjectionVerificationFingerprint(projection, reviews),
+        projection: clone(projection),
+        reviews,
+      });
       return projection;
     }
   }
