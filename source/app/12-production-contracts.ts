@@ -348,6 +348,9 @@
     chunk.cycleId = canonicalId(chunk.cycleId, "Obligation-chunk cycle ID");
     chunk.label = canonicalName(chunk.label, "Obligation-chunk label", 500);
     chunk.scope = canonicalText(chunk.scope, "Obligation-chunk scope");
+    assert(Number.isSafeInteger(chunk.ordinal) && Number.isSafeInteger(chunk.total) && chunk.ordinal >= 1 && chunk.ordinal <= chunk.total, "Obligation-chunk order is invalid.");
+    assert(typeof chunk.expectedMinutes === "number" && Number.isFinite(chunk.expectedMinutes) && chunk.expectedMinutes >= 1 && chunk.expectedMinutes <= 240, "Obligation-chunk expected duration is invalid.");
+    assert(chunk.status === "pending" || chunk.status === "completed" || chunk.status === "archived", "Obligation-chunk status is invalid.");
     chunk.createdAt = canonicalIso(chunk.createdAt, "Obligation-chunk creation date");
     chunk.updatedAt = canonicalIso(chunk.updatedAt, "Obligation-chunk update date");
     if (chunk.completedAt !== undefined) chunk.completedAt = canonicalIso(chunk.completedAt, "Obligation-chunk completion date");
@@ -355,7 +358,9 @@
     if (chunk.note !== undefined) chunk.note = canonicalText(chunk.note, "Obligation-chunk note");
     else delete chunk.note;
     if (chunk.actualMinutes === undefined) delete chunk.actualMinutes;
-    if (chunk.status === "completed") assert(chunk.timing !== undefined, "Completed chunk timing is required.");
+    else assert(typeof chunk.actualMinutes === "number" && Number.isFinite(chunk.actualMinutes) && chunk.actualMinutes > 0 && chunk.actualMinutes <= 10_080, "Obligation-chunk actual duration is invalid.");
+    if (chunk.status === "completed") assert(chunk.completedAt !== undefined && chunk.actualMinutes !== undefined && chunk.timing !== undefined, "Completed chunk evidence is incomplete.");
+    if (chunk.status === "pending") assert(chunk.completedAt === undefined && chunk.actualMinutes === undefined && chunk.timing === undefined, "Pending chunk cannot contain completion evidence.");
     if (chunk.timing !== undefined) chunk.timing = canonicalTimingEvidenceSummary(chunk.timing);
     else delete chunk.timing;
     return chunk;
@@ -365,36 +370,77 @@
     assertDocumentSchema(value, "Daily plan");
     assertExactKeys(value, "Daily plan", ["schemaVersion", "id", "studyDayKey", "createdAt", "updatedAt", "plannerVersion", "versions", "outcomes"]);
     validateCalendarDate(value.studyDayKey, "Daily plan study day");
-    const plan = clone(value);
-    plan.schemaVersion = DOCUMENT_SCHEMA_VERSION;
-    plan.id = canonicalId(plan.id, "Daily-plan ID");
-    plan.createdAt = canonicalIso(plan.createdAt, "Daily-plan creation date");
-    plan.updatedAt = canonicalIso(plan.updatedAt, "Daily-plan update date");
-    plan.plannerVersion = canonicalId(plan.plannerVersion, "Daily-plan planner version");
-    plan.versions = plan.versions.map((version) => ({
-      ...version,
-      generatedAt: canonicalIso(version.generatedAt, "Daily-plan version date"),
-      items: version.items.map((item) => ({
-        ...item,
-        key: canonicalId(item.key, "Daily-plan item key"),
-        obligationId: canonicalId(item.obligationId, "Daily-plan obligation ID"),
-        ...(item.chunkId !== undefined ? { chunkId: canonicalId(item.chunkId, "Daily-plan chunk ID") } : {}),
-        profileId: canonicalId(item.profileId, "Daily-plan profile ID"),
-        unitId: canonicalId(item.unitId, "Daily-plan unit ID"),
-        subject: canonicalName(item.subject, "Daily-plan subject", 500),
-        title: canonicalName(item.title, "Daily-plan title", 500),
-        reasons: item.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500)),
-      })),
-    }));
-    plan.outcomes = plan.outcomes.map((outcome) => ({
-      ...outcome,
-      itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
-      ...(outcome.startedAt !== undefined ? { startedAt: canonicalIso(outcome.startedAt, "Daily-plan start date") } : {}),
-      ...(outcome.completedAt !== undefined ? { completedAt: canonicalIso(outcome.completedAt, "Daily-plan completion date") } : {}),
-      ...(outcome.evidenceEventId !== undefined ? { evidenceEventId: canonicalId(outcome.evidenceEventId, "Daily-plan evidence ID") } : {}),
-      ...(outcome.note !== undefined ? { note: canonicalText(outcome.note, "Daily-plan outcome note") } : {}),
-    }));
-    return plan;
+    assert(Array.isArray(value.versions) && value.versions.length > 0, "Daily plan requires at least one version.");
+    assert(Array.isArray(value.outcomes), "Daily plan outcomes must be an array.");
+    const versions = value.versions.map((version) => {
+      assertExactKeys(version, "Daily-plan version", ["version", "generatedAt", "capacityMinutes", "items", "reason"]);
+      assert(Number.isSafeInteger(version.version) && version.version >= 1, "Daily-plan version number is invalid.");
+      assert(Number.isSafeInteger(version.capacityMinutes) && version.capacityMinutes >= 5 && version.capacityMinutes <= 600, "Daily-plan version capacity is invalid.");
+      assert(version.reason === "initial" || version.reason === "manual-regeneration" || version.reason === "data-change" || version.reason === "manual-addition", "Daily-plan version reason is invalid.");
+      assert(Array.isArray(version.items), "Daily-plan version items must be an array.");
+      const items = version.items.map((item) => {
+        assertExactKeys(item, "Daily-plan item", ["key", "obligationId", "chunkId", "profileId", "unitId", "subject", "workflow", "title", "estimatedMinutes", "score", "disposition", "reasons"]);
+        assert(RETRIEVAL_WORKFLOWS.includes(item.workflow), "Daily-plan item workflow is invalid.");
+        assert(typeof item.estimatedMinutes === "number" && Number.isFinite(item.estimatedMinutes) && item.estimatedMinutes >= 1 && item.estimatedMinutes <= 240, "Daily-plan item duration is invalid.");
+        assert(typeof item.score === "number" && Number.isFinite(item.score) && item.score >= 0 && item.score <= 100, "Daily-plan item score is invalid.");
+        assert(item.disposition === "selected" || item.disposition === "required-overrun" || item.disposition === "must-split" || item.disposition === "deferred", "Daily-plan item disposition is invalid.");
+        assert(Array.isArray(item.reasons), "Daily-plan item reasons must be an array.");
+        return {
+          key: canonicalId(item.key, "Daily-plan item key"),
+          obligationId: canonicalId(item.obligationId, "Daily-plan obligation ID"),
+          ...(item.chunkId !== undefined ? { chunkId: canonicalId(item.chunkId, "Daily-plan chunk ID") } : {}),
+          profileId: canonicalId(item.profileId, "Daily-plan profile ID"),
+          unitId: canonicalId(item.unitId, "Daily-plan unit ID"),
+          subject: canonicalName(item.subject, "Daily-plan subject", 500),
+          workflow: item.workflow,
+          title: canonicalName(item.title, "Daily-plan title", 500),
+          estimatedMinutes: item.estimatedMinutes,
+          score: item.score,
+          disposition: item.disposition,
+          reasons: item.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500)),
+        } satisfies DailyPlanItemSnapshot;
+      });
+      assert(new Set(items.map((item) => item.key)).size === items.length, "Daily-plan version contains duplicate item keys.");
+      return {
+        version: version.version,
+        generatedAt: canonicalIso(version.generatedAt, "Daily-plan version date"),
+        capacityMinutes: version.capacityMinutes,
+        items,
+        reason: version.reason,
+      } satisfies DailyPlanVersion;
+    });
+    assert(versions.every((version, index) => version.version === index + 1), "Daily-plan versions must be sequential.");
+    const outcomes = value.outcomes.map((outcome) => {
+      assertExactKeys(outcome, "Daily-plan outcome", ["itemKey", "status", "startedAt", "completedAt", "actualMinutes", "evidenceEventId", "note"]);
+      assert(outcome.status === "planned" || outcome.status === "started" || outcome.status === "completed" || outcome.status === "skipped", "Daily-plan outcome status is invalid.");
+      if (outcome.actualMinutes !== undefined) assert(typeof outcome.actualMinutes === "number" && Number.isFinite(outcome.actualMinutes) && outcome.actualMinutes > 0 && outcome.actualMinutes <= 10_080, "Daily-plan actual duration is invalid.");
+      const canonical: DailyPlanOutcome = {
+        itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
+        status: outcome.status,
+        ...(outcome.startedAt !== undefined ? { startedAt: canonicalIso(outcome.startedAt, "Daily-plan start date") } : {}),
+        ...(outcome.completedAt !== undefined ? { completedAt: canonicalIso(outcome.completedAt, "Daily-plan completion date") } : {}),
+        ...(outcome.actualMinutes !== undefined ? { actualMinutes: outcome.actualMinutes } : {}),
+        ...(outcome.evidenceEventId !== undefined ? { evidenceEventId: canonicalId(outcome.evidenceEventId, "Daily-plan evidence ID") } : {}),
+        ...(outcome.note !== undefined ? { note: canonicalText(outcome.note, "Daily-plan outcome note") } : {}),
+      };
+      if (canonical.status === "started") assert(canonical.startedAt !== undefined, "Started daily-plan outcome requires a start time.");
+      if (canonical.status === "completed") assert(canonical.completedAt !== undefined && canonical.actualMinutes !== undefined, "Completed daily-plan outcome is incomplete.");
+      return canonical;
+    });
+    assert(new Set(outcomes.map((outcome) => outcome.itemKey)).size === outcomes.length, "Daily plan contains duplicate outcome keys.");
+    const createdAt = canonicalIso(value.createdAt, "Daily-plan creation date");
+    const updatedAt = canonicalIso(value.updatedAt, "Daily-plan update date");
+    assert(Date.parse(updatedAt) >= Date.parse(createdAt), "Daily-plan timestamps are inconsistent.");
+    return {
+      schemaVersion: DOCUMENT_SCHEMA_VERSION,
+      id: canonicalId(value.id, "Daily-plan ID"),
+      studyDayKey: value.studyDayKey,
+      createdAt,
+      updatedAt,
+      plannerVersion: canonicalId(value.plannerVersion, "Daily-plan planner version"),
+      versions,
+      outcomes,
+    };
   }
 
   function canonicalAppSettings(value: AppSettings): AppSettings {
