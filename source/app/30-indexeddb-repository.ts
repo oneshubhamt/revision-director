@@ -281,8 +281,12 @@
 
     async rawDump(): Promise<Record<StoreName, unknown[]>> {
       const stores = Object.values(Store) as StoreName[];
+      const tx = this.db.transaction(stores, "readonly");
+      const requests = stores.map((store) => requestResult(tx.objectStore(store).getAll()));
+      const values = await Promise.all(requests);
+      await transactionDone(tx);
       const dump = {} as Record<StoreName, unknown[]>;
-      for (const store of stores) dump[store] = await this.getAll(store);
+      stores.forEach((store, index) => { dump[store] = values[index] ?? []; });
       return dump;
     }
 
