@@ -91,6 +91,7 @@ PERSISTENT_BROWSER_SHIM = r"""
     index(name){ const cfg=this.data.indices.get(name); if(!cfg) throw new Error('Missing index: '+name); return new Index(this.tx,this.data,cfg); }
     get(key){ return asyncReq(this.tx,()=>{ const value=this.data.records.get(JSON.stringify(key)); return clone(value); }); }
     getAll(){ return asyncReq(this.tx,()=>[...this.data.records.values()].map(clone)); }
+    count(){ return asyncReq(this.tx,()=>this.data.records.size); }
     put(value){ return asyncReq(this.tx,()=>{ const key=keyFrom(value,this.data.keyPath); if(key===undefined) throw new Error('Missing key'); this.data.records.set(JSON.stringify(key),clone(value)); return clone(key); }); }
     add(value){ return asyncReq(this.tx,()=>{
       const key=keyFrom(value,this.data.keyPath); const encoded=JSON.stringify(key);
