@@ -43,6 +43,8 @@
     private ownershipSnapshot: ReviewOwnershipSnapshot;
     private restoreCandidateId = "";
     private restoreSafetyProofId = "";
+    private fsrsOptimizerRun: BrowserFsrsOptimizerRun | undefined;
+    private fsrsOptimizerProgress: BrowserFsrsOptimizerProgress | undefined;
 
     private readonly todayContent = requiredElement("#today-content", HTMLDivElement);
     private readonly reviewContent = requiredElement("#review-content", HTMLDivElement);
@@ -316,6 +318,7 @@
       if (wasPrimary && !snapshot.canMutate) {
         this.stopTimer();
         this.hideGapOverlay();
+        this.fsrsOptimizerRun?.cancel();
       }
       const primary = snapshot.canMutate;
       this.ownershipBanner.hidden = primary;
@@ -372,6 +375,7 @@
     }
 
     private async handlePageExit(): Promise<void> {
+      this.fsrsOptimizerRun?.cancel();
       if (this.ownership.canMutate()) {
         this.reconcilePhaseTime("snapshot");
         this.forceActiveRetrievalSave();
@@ -814,6 +818,17 @@
       const profile = personalization.profile;
       const status = personalization.active ? "ACTIVE" : profile ? "STAGED" : "STOCK";
       const statusClass = personalization.active ? "ok" : "";
+      const optimizer = browserFsrsOptimizerAvailability();
+      const running = this.fsrsOptimizerRun !== undefined;
+      const progress = this.fsrsOptimizerProgress;
+      const progressText = progress
+        ? `${progress.stage} · ${progress.total > 0 ? `${progress.current}/${progress.total}` : "working"}`
+        : running ? "Preparing local optimizer…" : optimizer.reason;
+      const progressValue = progress && progress.total > 0
+        ? Math.max(0, Math.min(progress.total, progress.current))
+        : 0;
+      const progressMax = progress && progress.total > 0 ? progress.total : 1;
+      const canOptimize = optimizer.available && !personalization.active && !running && summary.reviews > 0;
       const profileDetail = profile
         ? `<div class="dependency-status"><span>Profile</span><strong>${escapeHtml(profile.sourceSha256.slice(0, 12))}…</strong></div>
            <div class="dependency-status"><span>Held-out log loss</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)}</strong></div>
@@ -825,13 +840,41 @@
         : profile
           ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
           : "";
-      return `<section class="panel settings-card wide"><h3>FSRS-7 personalization</h3>
+      const localAction = personalization.active
+        ? `<button class="mini-btn" type="button" disabled>RETURN TO STOCK BEFORE RE-OPTIMIZING</button>`
+        : running
+          ? `<button class="mini-btn" type="button" data-action="cancel-fsrs-optimization">CANCEL OPTIMIZATION</button>`
+          : `<button class="mini-btn" type="button" data-action="optimize-fsrs-locally" ${canOptimize ? "" : "disabled"}>${profile ? "RE-OPTIMIZE LOCALLY" : "OPTIMIZE LOCALLY"}</button>`;
+      return `<section class="panel settings-card wide" id="fsrs-personalization-card"><h3>FSRS-7 personalization</h3>
         <div class="dependency-status"><span>Weights</span><strong class="${statusClass}">${status}</strong></div>
         <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards</strong></div>
+        <div class="dependency-status"><span>Local optimizer</span><strong class="${optimizer.available ? "ok" : ""}">${optimizer.available ? "AVAILABLE" : "OPTIONAL BUILD REQUIRED"}</strong></div>
+        <div class="optimizer-progress" data-fsrs-optimizer-progress ${running ? "" : "hidden"}><div><span data-fsrs-optimizer-progress-label>${escapeHtml(progressText)}</span></div><progress data-fsrs-optimizer-progress-bar max="${progressMax}" value="${progressValue}"></progress></div>
         ${profileDetail}
-        <div class="settings-actions"><button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json"></label>${profileActions}</div>
-        <p class="helper">Training is deliberately outside Revision Director. Import only a profile produced by the pinned optimizer tool. Import stages it; activation is separate and atomically rebuilds reviewed memory schedules from immutable Evidence Events. Historical scheduler provenance is never rewritten.</p>
+        <div class="settings-actions">${localAction}<button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json"></label>${profileActions}</div>
+        <p class="helper">${escapeHtml(progressText)} Local optimization uses a dedicated Worker and the pinned FSRS-7 WASM binding; review evidence does not leave the browser. The exact gate remains 64 historical training items, 64 later holdout items and 16 distinct holdout cards after conversion. A successful run is <strong>staged only</strong>; activation and atomic reprojection remain explicit.</p>
       </section>`;
+    }
+
+    private async refreshFsrsPersonalizationCard(): Promise<void> {
+      const card = this.settingsContent.querySelector<HTMLElement>("#fsrs-personalization-card");
+      if (!card) return;
+      const summary = await this.service.optimizerEvidenceSummary();
+      card.outerHTML = this.fsrsPersonalizationCard(this.service.getSettings(), summary);
+      this.applyReadOnlyState();
+    }
+
+    private updateFsrsOptimizerProgress(progress: BrowserFsrsOptimizerProgress): void {
+      this.fsrsOptimizerProgress = progress;
+      const region = this.settingsContent.querySelector<HTMLElement>("[data-fsrs-optimizer-progress]");
+      const label = this.settingsContent.querySelector<HTMLElement>("[data-fsrs-optimizer-progress-label]");
+      const bar = this.settingsContent.querySelector<HTMLProgressElement>("[data-fsrs-optimizer-progress-bar]");
+      if (region) region.hidden = false;
+      if (label) label.textContent = `${progress.stage} · ${progress.total > 0 ? `${progress.current}/${progress.total}` : "working"}`;
+      if (bar) {
+        bar.max = progress.total > 0 ? progress.total : 1;
+        bar.value = progress.total > 0 ? Math.max(0, Math.min(progress.total, progress.current)) : 0;
+      }
     }
     private async renderSettings(): Promise<void> {
       const settings = this.service.getSettings();
@@ -1374,6 +1417,8 @@
         else if (action === "toggle-pause") this.togglePause();
         else if (action === "refresh-storage") { await this.service.refreshStorageHealth(true); await this.renderCoordinator.invalidateAndWait("settings", "storage", "ownership"); this.toast("Storage capability refreshed."); }
         else if (action === "export-fsrs-evidence") await this.exportFsrsOptimizerEvidence();
+        else if (action === "optimize-fsrs-locally") await this.optimizeFsrsLocally();
+        else if (action === "cancel-fsrs-optimization") this.fsrsOptimizerRun?.cancel();
         else if (action === "activate-fsrs-profile") { await this.service.activateFsrsOptimizerProfile(); await this.renderAll(); this.toast("Personalized FSRS-7 activated and memory schedules reprojected."); }
         else if (action === "deactivate-fsrs-profile") { await this.service.deactivateFsrsOptimizerProfile(); await this.renderAll(); this.toast("Returned to stock FSRS-7 and memory schedules reprojected."); }
         else if (action === "clear-fsrs-profile") { await this.service.clearFsrsOptimizerProfile(); await this.renderAll(); this.toast("Staged FSRS optimizer profile removed."); }
@@ -1803,6 +1848,47 @@
       } finally {
         input.value = "";
         await this.renderCoordinator.invalidateAndWait("settings", "ownership");
+      }
+    }
+
+    private async optimizeFsrsLocally(): Promise<void> {
+      assert(this.requireMutable("optimize and stage personalized FSRS-7 weights"), "This tab is read-only.");
+      assert(!this.fsrsOptimizerRun, "FSRS optimization is already running.");
+      const personalization = effectiveFsrsPersonalization(this.service.getSettings());
+      assert(!personalization.active, "Return to stock FSRS-7 before optimizing a replacement profile.");
+      const availability = browserFsrsOptimizerAvailability();
+      assert(availability.available, availability.reason);
+
+      const [csv, summary] = await Promise.all([
+        this.service.optimizerEvidenceCsv(),
+        this.service.optimizerEvidenceSummary(),
+      ]);
+      assert(summary.reviews > 0, "No memory-review evidence is available for optimization.");
+
+      this.fsrsOptimizerProgress = { stage: "Preparing local evidence", current: 0, total: 0 };
+      const run = startBrowserFsrsOptimizer(csv, {
+        onProgress: (progress) => this.updateFsrsOptimizerProgress(progress),
+      });
+      this.fsrsOptimizerRun = run;
+      await this.refreshFsrsPersonalizationCard();
+
+      try {
+        const profile = await run.promise;
+        assert(this.requireMutable("stage the locally optimized FSRS-7 profile"), "Review control changed before optimizer staging.");
+        const staged = await this.service.stageFsrsOptimizerProfile(profile);
+        this.toast(`Local FSRS-7 optimization passed the holdout gate · ${staged.evidenceItems} optimizer items. Profile staged; activation remains explicit.`);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          if (this.ownership.canMutate()) this.toast("FSRS optimization cancelled.");
+        } else if (error instanceof FsrsOptimizerRejectedError) {
+          this.toast(`Personalized FSRS-7 was not staged · ${error.reasons.join("; ")}`, true);
+        } else {
+          this.toast(error instanceof Error ? error.message : "Local FSRS optimization failed.", true);
+        }
+      } finally {
+        if (this.fsrsOptimizerRun === run) this.fsrsOptimizerRun = undefined;
+        this.fsrsOptimizerProgress = undefined;
+        await this.refreshFsrsPersonalizationCard();
       }
     }
 

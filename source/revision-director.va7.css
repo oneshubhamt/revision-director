@@ -378,6 +378,10 @@ html[data-review-ownership="secondary"] .review-timer,html[data-review-ownership
 .dependency-status{display:flex;justify-content:space-between;gap:15px;align-items:center;padding:10px;border:1px solid var(--rd-color-border-soft)}
 .dependency-status .ok{color:var(--rd-color-success)}
 .dependency-status .bad{color:var(--rd-color-danger)}
+.optimizer-progress{display:grid;gap:8px;padding:10px;border:1px solid var(--rd-color-border-soft);background:var(--rd-color-progress-track)}
+.optimizer-progress[hidden]{display:none}
+.optimizer-progress div{display:flex;justify-content:space-between;gap:12px;font-size:.78rem;color:var(--text-muted)}
+.optimizer-progress progress{width:100%;height:8px;accent-color:var(--rd-color-accent-primary)}
 .form-grid select[multiple]{min-height:130px}
 
 @media(max-width:1100px){
