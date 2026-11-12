@@ -2655,6 +2655,27 @@
       assert(matches.length === 1, "Historical personalized FSRS configuration cannot resolve its exact optimizer profile.");
       return matches[0];
   }
+  async function prepareMemoryDatasetReplaySchedulers(reviewIndex, profileCatalog) {
+      const configurations = new Map();
+      for (const reviews of reviewIndex.values()) {
+          for (const review of reviews) {
+              const config = validateFsrsConfigSnapshot(review.schedulerConfig);
+              const existing = configurations.get(config.fingerprint);
+              if (existing) {
+                  assert(JSON.stringify(existing) === JSON.stringify(config), "A single FSRS configuration fingerprint maps to conflicting scheduler snapshots.");
+              }
+              else {
+                  configurations.set(config.fingerprint, clone(config));
+              }
+          }
+      }
+      for (const config of configurations.values()) {
+          const historicalProfile = profileForHistoricalFsrsConfiguration(config, profileCatalog);
+          await prepareFsrsScheduler(config.schedulingPolicy, historicalProfile);
+          const prepared = revisionSchedulerPort(config.schedulingPolicy, historicalProfile);
+          assert(prepared.configuration.fingerprint === config.fingerprint, "Historical FSRS configuration cannot be reconstructed exactly.");
+      }
+  }
   function verifyHistoricalMemorySchedulerConfigurations(reviews, profileCatalog, currentConfigFingerprint) {
       if (reviews.length === 0)
           return;
@@ -2678,7 +2699,9 @@
           historicalScheduler.replayVerifiedHistory(reviews);
       }
   }
-  function verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile = null, profileCatalog = profile ? [profile] : []) {
+  async function verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile = null, profileCatalog = profile ? [profile] : []) {
+      await prepareFsrsScheduler(schedulingPolicy, profile);
+      await prepareMemoryDatasetReplaySchedulers(reviewIndex, profileCatalog);
       const scheduler = revisionSchedulerPort(schedulingPolicy, profile);
       for (const obligation of obligations) {
           if (obligation.type !== "memory-recall")
@@ -2690,9 +2713,9 @@
           scheduler.verifyProjection(projection, reviews, true);
       }
   }
-  function verifyMemoryDatasetIntegrity(obligations, evidenceEvents, schedulingPolicy, profile = null, profileCatalog = profile ? [profile] : []) {
+  async function verifyMemoryDatasetIntegrity(obligations, evidenceEvents, schedulingPolicy, profile = null, profileCatalog = profile ? [profile] : []) {
       const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
-      verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile, profileCatalog);
+      await verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile, profileCatalog);
       return reviewIndex;
   }
 
@@ -4835,7 +4858,6 @@
           this.invalidateMemoryReviewAnalysis();
           const stored = await this.repo.get(Store.Settings, "app");
           this.settings = stored ? canonicalAppSettings(stored) : defaultSettings();
-          await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings));
           if (!stored)
               await this.repo.put(Store.Settings, this.settings);
           const profiles = await this.profiles();
@@ -4855,7 +4877,7 @@
               this.repo.getAll(Store.Obligations),
               this.evidenceEvents(),
           ]);
-          verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings), fsrsPersonalizationProfileCatalog(this.settings));
+          await verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings), fsrsPersonalizationProfileCatalog(this.settings));
       }
       storageHealth() {
           return this.repo.storageHealth();
@@ -5025,7 +5047,7 @@
           await prepareFsrsScheduler(settings.fsrsScheduling.policy, profile);
           const [obligations, evidenceEvents, units] = await Promise.all([this.obligations(), this.evidenceEvents(), this.units()]);
           const reviewIndex = this.memoryReviewIndexFor(evidenceEvents);
-          verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, this.settings.fsrsScheduling.policy, currentProfile, fsrsPersonalizationProfileCatalog(this.settings));
+          await verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, this.settings.fsrsScheduling.policy, currentProfile, fsrsPersonalizationProfileCatalog(this.settings));
           const scheduler = revisionSchedulerPort(settings.fsrsScheduling.policy, profile);
           const at = nowIso();
           let rescheduledObligations = 0;
@@ -5078,7 +5100,7 @@
               },
           });
           validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex);
-          verifyMemoryDatasetIntegrityWithIndex(updatedMemory, reviewIndex, finalized.fsrsScheduling.policy, activeFsrsOptimizerProfile(finalized), fsrsPersonalizationProfileCatalog(finalized));
+          await verifyMemoryDatasetIntegrityWithIndex(updatedMemory, reviewIndex, finalized.fsrsScheduling.policy, activeFsrsOptimizerProfile(finalized), fsrsPersonalizationProfileCatalog(finalized));
           await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);
           this.settings = finalized;
       }
@@ -6026,7 +6048,7 @@
       }
       async createBackupArchive(preferCompression = true) {
           const payload = this.validateBackup(await this.exportBackup());
-          verifyMemoryDatasetIntegrity(payload.obligations, payload.evidenceEvents, payload.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(payload.settings), fsrsPersonalizationProfileCatalog(payload.settings));
+          await verifyMemoryDatasetIntegrity(payload.obligations, payload.evidenceEvents, payload.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(payload.settings), fsrsPersonalizationProfileCatalog(payload.settings));
           return BackupCodec.create(payload, preferCompression);
       }
       async inspectBackupArchive(bytes) {
@@ -6037,8 +6059,7 @@
       }
       async restoreBackupPayload(payload, activeTreatment) {
           const validated = this.validateBackup(payload);
-          await prepareFsrsScheduler(validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings));
-          verifyMemoryDatasetIntegrity(validated.obligations, validated.evidenceEvents, validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings), fsrsPersonalizationProfileCatalog(validated.settings));
+          await verifyMemoryDatasetIntegrity(validated.obligations, validated.evidenceEvents, validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings), fsrsPersonalizationProfileCatalog(validated.settings));
           await this.repo.replaceFromBackup(validated, activeTreatment);
           this.settings = clone(validated.settings);
           this.invalidateMemoryReviewAnalysis();
