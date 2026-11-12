@@ -21,17 +21,17 @@
     const record = requireRecord(value, "Memory difficulty policy");
     const allowed = new Set(["remediationLapses", "persistentDifficultyLapses", "automaticHold"]);
     assert(Object.keys(record).every((key) => allowed.has(key)), "Memory difficulty policy contains unexpected fields.");
-    const remediationLapses = Number(record["remediationLapses"]);
-    const persistentDifficultyLapses = Number(record["persistentDifficultyLapses"]);
-    assert(Number.isSafeInteger(remediationLapses) && remediationLapses >= 2 && remediationLapses <= 99, "Memory remediation lapse threshold is invalid.");
-    assert(Number.isSafeInteger(persistentDifficultyLapses) && persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
+    const remediationLapses = requiredSafeInteger(record["remediationLapses"], "Memory remediation lapse threshold");
+    const persistentDifficultyLapses = requiredSafeInteger(record["persistentDifficultyLapses"], "Persistent-difficulty lapse threshold");
+    assert(remediationLapses >= 2 && remediationLapses <= 99, "Memory remediation lapse threshold is invalid.");
+    assert(persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
     const automaticHoldRecord = requireRecord(record["automaticHold"], "Memory automatic-hold policy");
     const holdAllowed = new Set(["enabled", "lapseThreshold"]);
     assert(Object.keys(automaticHoldRecord).every((key) => holdAllowed.has(key)), "Memory automatic-hold policy contains unexpected fields.");
     const enabled = automaticHoldRecord["enabled"];
-    const lapseThreshold = Number(automaticHoldRecord["lapseThreshold"]);
+    const lapseThreshold = requiredSafeInteger(automaticHoldRecord["lapseThreshold"], "Memory automatic-hold lapse threshold");
     assert(typeof enabled === "boolean", "Memory automatic-hold flag is invalid.");
-    assert(Number.isSafeInteger(lapseThreshold) && lapseThreshold > persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold must be later than persistent difficulty.");
+    assert(lapseThreshold > persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold must be later than persistent difficulty.");
     return {
       remediationLapses,
       persistentDifficultyLapses,
