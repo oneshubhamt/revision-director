@@ -60,22 +60,36 @@
 
   function canonicalWorkflowSpec(value: WorkflowSpec): WorkflowSpec {
     assertExactKeys(value, "Workflow", ["kind", "prompt", "checkpoints", "responseMedium", "targetCount", "questionSetRef", "timeLimitMinutes", "wordLimit", "reconstructionShape", "answerMode", "diagramSurface"]);
+    assert(Array.isArray(value.checkpoints), "Workflow checkpoints must be an array.");
     const workflow = clone(value);
     workflow.prompt = canonicalText(workflow.prompt, "Workflow prompt", 8_000);
-    workflow.checkpoints = [...new Set(workflow.checkpoints.map((checkpoint) => canonicalName(checkpoint, "Workflow checkpoint", 500)))];
-    workflow.responseMedium = workflow.responseMedium;
+    workflow.checkpoints = workflow.checkpoints.map((checkpoint) => canonicalName(checkpoint, "Workflow checkpoint", 500));
+    assert(new Set(workflow.checkpoints).size === workflow.checkpoints.length, "Workflow checkpoints cannot contain duplicates.");
     if (workflow.questionSetRef !== undefined) workflow.questionSetRef = canonicalText(workflow.questionSetRef, "Question-set reference", 2_000);
     return workflow;
   }
 
   function canonicalPolicyState(value: PolicyState): PolicyState {
     assertExactKeys(value, "Policy state", ["engine", "version", "stage", "successStreak", "failureCount", "lastIntervalDays", "fsrsCard"]);
+    assert(["ts-fsrs", "mastery", "application", "performance", "relearn", "freshness"].includes(value.engine), "Policy engine is invalid.");
+    assert(typeof value.version === "string" && value.version.length > 0 && value.version.length <= 80, "Policy version is invalid.");
+    assert(Number.isSafeInteger(value.stage) && value.stage >= 0, "Policy stage is invalid.");
+    assert(Number.isSafeInteger(value.successStreak) && value.successStreak >= 0, "Policy success streak is invalid.");
+    assert(Number.isSafeInteger(value.failureCount) && value.failureCount >= 0, "Policy failure count is invalid.");
+    assert(typeof value.lastIntervalDays === "number" && Number.isFinite(value.lastIntervalDays) && value.lastIntervalDays >= 0 && value.lastIntervalDays <= FSRS_MAXIMUM_INTERVAL_DAYS, "Policy interval is invalid.");
     const state = clone(value);
-    if (state.fsrsCard) {
+    if (state.engine === "ts-fsrs") {
+      assert(state.version === FSRS_PACKAGE_VERSION && state.fsrsCard, "FSRS policy state is incomplete.");
       assertExactKeys(state.fsrsCard, "FSRS card", ["model", "cardId", "dueAt", "stability", "stabilityFast", "difficulty", "scheduledDays", "learningStep", "reps", "lapses", "state", "scheduleStatus", "lastReviewAt"]);
+      validateStoredFsrsCard(state.fsrsCard);
       state.fsrsCard.dueAt = canonicalIso(state.fsrsCard.dueAt, "FSRS due date");
       if (state.fsrsCard.lastReviewAt !== undefined) state.fsrsCard.lastReviewAt = canonicalIso(state.fsrsCard.lastReviewAt, "FSRS last review date");
       else delete state.fsrsCard.lastReviewAt;
+      assert(state.stage === state.fsrsCard.state, "FSRS policy stage does not match its card state.");
+    } else {
+      assert(state.version === "1", "Interval policy state uses an unsupported version.");
+      assert(state.fsrsCard === undefined, "Only FSRS policy state may contain an FSRS card.");
+      delete state.fsrsCard;
     }
     return state;
   }
@@ -84,6 +98,7 @@
     assertDocumentSchema(value, "Exam profile");
     assertExactKeys(value, "Exam profile", ["schemaVersion", "id", "name", "examDate", "status", "createdAt", "updatedAt"]);
     if (value.examDate) validateCalendarDate(value.examDate, "Exam date");
+    assert(ENTITY_STATUSES.includes(value.status), "Exam profile status is invalid.");
     return {
       ...clone(value),
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -98,15 +113,20 @@
   function canonicalKnowledgeNode(value: KnowledgeNode): KnowledgeNode {
     assertDocumentSchema(value, "Knowledge node");
     assertExactKeys(value, "Knowledge node", ["schemaVersion", "id", "profileId", "parentId", "kind", "name", "normalizedName", "createdAt", "updatedAt"]);
+    assert(["subject", "section", "topic"].includes(value.kind), "Knowledge-node kind is invalid.");
     const name = canonicalName(value.name, "Knowledge-node name");
+    const normalizedName = normalizeName(name);
+    assert(value.normalizedName === normalizedName, "Knowledge-node normalized name is not canonical.");
+    const parentId = value.parentId === null ? null : canonicalId(value.parentId, "Knowledge-node parent ID");
+    assert((value.kind === "subject") === (parentId === null), "Knowledge-node parent shape is invalid.");
     return {
       ...clone(value),
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
       id: canonicalId(value.id, "Knowledge-node ID"),
       profileId: canonicalId(value.profileId, "Knowledge-node profile ID"),
-      parentId: value.parentId === null ? null : canonicalId(value.parentId, "Knowledge-node parent ID"),
+      parentId,
       name,
-      normalizedName: normalizeName(name),
+      normalizedName,
       createdAt: canonicalIso(value.createdAt, "Knowledge-node creation date"),
       updatedAt: canonicalIso(value.updatedAt, "Knowledge-node update date"),
     };
@@ -123,17 +143,33 @@
     unit.title = canonicalName(unit.title, "Knowledge-unit title", 500);
     unit.scope = canonicalText(unit.scope, "Knowledge-unit scope");
     unit.source = canonicalText(unit.source, "Knowledge-unit source", 4_000);
+    assert(unit.importance === 1 || unit.importance === 2 || unit.importance === 3, "Knowledge-unit importance is invalid.");
+    assert(ENTITY_STATUSES.includes(unit.status), "Knowledge-unit status is invalid.");
+    assert(Number.isSafeInteger(unit.evidenceCount) && unit.evidenceCount >= 0, "Knowledge-unit evidence count is invalid.");
+    assert(Number.isSafeInteger(unit.lapseCount) && unit.lapseCount >= 0 && unit.lapseCount <= unit.evidenceCount, "Knowledge-unit lapse count is invalid.");
     unit.createdAt = canonicalIso(unit.createdAt, "Knowledge-unit creation date");
     unit.updatedAt = canonicalIso(unit.updatedAt, "Knowledge-unit update date");
     if (unit.latestEvidenceAt !== undefined) unit.latestEvidenceAt = canonicalIso(unit.latestEvidenceAt, "Knowledge-unit evidence date");
     else delete unit.latestEvidenceAt;
     if (unit.latestEvidenceRating === undefined) delete unit.latestEvidenceRating;
+    else unit.latestEvidenceRating = validateRating(unit.latestEvidenceRating);
+    assert((unit.evidenceCount === 0) === (unit.latestEvidenceAt === undefined && unit.latestEvidenceRating === undefined), "Knowledge-unit latest-evidence state is inconsistent.");
+    if (unit.evidenceCount > 0) assert(unit.latestEvidenceAt !== undefined && unit.latestEvidenceRating !== undefined, "Knowledge-unit latest evidence is incomplete.");
     return unit;
   }
 
   function canonicalStudyEvent(value: StudyEvent): StudyEvent {
     assertDocumentSchema(value, "Study event");
     assertExactKeys(value, "Study event", ["schemaVersion", "id", "profileId", "occurredAt", "activityMode", "area", "task", "measure", "source", "durationMinutes", "understanding", "linkedUnitIds", "notes", "origin", "createdAt"]);
+    assert(ACTIVITY_MODES.includes(value.activityMode), "Study-event activity mode is invalid.");
+    assert(STUDY_ORIGINS.includes(value.origin), "Study-event origin is invalid.");
+    assert(typeof value.durationMinutes === "number" && Number.isFinite(value.durationMinutes) && value.durationMinutes >= 1 && value.durationMinutes <= 1440, "Study-event duration is invalid.");
+    assert(UNDERSTANDING_LEVELS.includes(value.understanding), "Study-event understanding is invalid.");
+    assert(Array.isArray(value.linkedUnitIds), "Study-event unit links must be an array.");
+    const linkedUnitIds = value.linkedUnitIds.map((id) => canonicalId(id, "Study-event unit ID"));
+    assert(new Set(linkedUnitIds).size === linkedUnitIds.length, "Study-event unit links cannot contain duplicates.");
+    const measure = canonicalText(value.measure, "Study-event measure", 4_000);
+    assert(measure.length > 0, "Study-event measure is required.");
     return {
       ...clone(value),
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -142,9 +178,9 @@
       occurredAt: canonicalIso(value.occurredAt, "Study-event occurrence date"),
       area: canonicalName(value.area, "Study-event area", 500),
       task: canonicalName(value.task, "Study-event task", 1_000),
-      measure: canonicalText(value.measure, "Study-event measure", 4_000),
+      measure,
       source: canonicalText(value.source, "Study-event source", 4_000),
-      linkedUnitIds: [...new Set(value.linkedUnitIds.map((id) => canonicalId(id, "Study-event unit ID")))],
+      linkedUnitIds,
       notes: canonicalText(value.notes, "Study-event notes"),
       createdAt: canonicalIso(value.createdAt, "Study-event creation date"),
     };
