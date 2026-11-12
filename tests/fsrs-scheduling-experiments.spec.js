@@ -232,6 +232,8 @@ async function productionPolicyExperiment(){
     {name:'cost-adr-832',kind:'cost-adr',scheduler:await costAdrScheduler(832,{learningSteps:['1d'],relearningSteps:['1d']})},
     {name:'cost-adr-896',kind:'cost-adr',scheduler:await costAdrScheduler(896,{learningSteps:['1d'],relearningSteps:['1d']})},
     {name:'cost-adr-960',kind:'cost-adr',scheduler:await costAdrScheduler(960,{learningSteps:['1d'],relearningSteps:['1d']})},
+    {name:'cost-adr-992',kind:'cost-adr',scheduler:await costAdrScheduler(992,{learningSteps:['1d'],relearningSteps:['1d']})},
+    {name:'cost-adr-1024',kind:'cost-adr',scheduler:await costAdrScheduler(1024,{learningSteps:['1d'],relearningSteps:['1d']})},
   ];
   const experiments=[];
   for(const horizonDays of horizons){
