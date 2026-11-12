@@ -1,13 +1,13 @@
 96af52d2ab0375669b3bb2e42163a2af0c72bc845eb7f521196076c6e1eaab6d  ./build/build-optimizer-static.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 764e820752d3c12b0fbd2caefabc82a8f5375bde97a06dbbb194bfb1edd116fd  ./CHANGELOG.md
-9d7138eff58546f5a50ec222096ea76d6351e8319f289435e8a5f214871e3db7  ./dist/app.js
+2ef51741ecf2f193ca42c429e4051e8497ed2836f308d4d7dbe46a340f8f4b51  ./dist/app.js
 4502865f4c9a00bb4b7bc37cd739eda0fe33f7dc0fc922126eed3b2397c1ba93  ./docs/ARCHITECTURE.md
 6f8073eacfda552b92aa5abf682651ddbda6c6bcea45da64945ef74d21db08e0  ./docs/DATA_AND_STORAGE.md
 3aba81e6050d6d36d29a5129c8dd489821af708ca1591036d5bd6284c59d47aa  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 637d23ef27f14db3520aa3abbdebb4072c3de56246c72a15d9f12c6db40286a9  ./docs/SCHEDULING_AND_PLANNING.md
-b38c810c32f7b9da2b712773c6bae7da79e5053904c1ee150e456fb33538e651  ./index.html
+28e00d457c60d8cf59656efbdbf998fc583edc38e78bdb44341efd459e8a87d5  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -21,7 +21,7 @@ c6348b9950c6070cb661439ec281a72220c452bd27f039aef667374ed0d429bd  ./source/app/1
 62a72da480775b1b78e1b380ac3dabe93b0b3d74e0e2c3dd163beae59238104a  ./source/app/12-production-contracts.ts
 9f0081c6fbb0d92fcae5ae5c843825f4128b3a48ee91d9ef4a66f4b20fc5b2dc  ./source/app/18-fsrs-personalization.ts
 c076c189ea47de8902cdc3e40bdc57138dcdc3594b54b6546a5016628e1b5c45  ./source/app/18a-fsrs-browser-optimizer.ts
-1a94d3ff565743bb2bc471af0855e81b296e5d46aba1819bb439837d5920eefa  ./source/app/19-revision-scheduler-port.ts
+029900fb213dfbad0e22feab112e2dbc3bdae685bbc3f3e6332e3d867425de37  ./source/app/19-revision-scheduler-port.ts
 a580c6ef027dfe0dfa091d41830871d4f5d768aa92a7e822f204306bfa64e57d  ./source/app/20-policy-planning-kernel.ts
 7d6de3dcba9f7f27b47156e75f02525c64998736ced555e93eb41751d69f4eb8  ./source/app/21-policy-implementations.ts
 79944235140f18d6e1dd22968072426ee66c91372d9e62b38760f3a0630f2673  ./source/app/30-indexeddb-repository.ts
