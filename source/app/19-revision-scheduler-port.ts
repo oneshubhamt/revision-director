@@ -585,15 +585,15 @@
 
   const FSRS_SCHEDULER_CACHE = new Map<string, RevisionSchedulerPort>();
 
-  async function prepareFsrsScheduler(schedulingPolicy: FsrsSchedulingPolicy, profile: FsrsOptimizerProfile | null = null): Promise<void> {
-    const policy = canonicalFsrsSchedulingPolicy(schedulingPolicy);
-    const desiredRetention = fixedRetentionForPolicy(policy);
-    const validatedProfile = profile ? validateFsrsOptimizerProfile(profile) : null;
-    const configuration = fsrsConfigSnapshot(policy, validatedProfile);
-    if (FSRS_SCHEDULER_CACHE.has(configuration.fingerprint)) return;
-    const scheduler = await runtimeFsrs().DefaultScheduler({
+  async function createCostAdrFsrsScheduler(
+    runtime: FsrsUmdRuntime,
+    policy: Extract<FsrsSchedulingPolicy, { kind: "cost-adr" }>,
+    profile: FsrsOptimizerProfile | null,
+  ): Promise<FsrsSchedulerRuntime> {
+    const weights = profile ? profile.weights : [...FSRS7_DEFAULT_WEIGHTS];
+    const reference = await runtime.DefaultScheduler({
       version: FSRS_MODEL,
-      desiredRetention,
+      desiredRetention: 0.9,
       enableShortTerm: true,
       learningSteps: FSRS_LEARNING_STEPS,
       relearningSteps: FSRS_RELEARNING_STEPS,
@@ -602,8 +602,58 @@
       enableFuzz: false,
       maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
       clearStatsOnForget: false,
-      ...(validatedProfile ? { weights: validatedProfile.weights } : {}),
+      weights,
     });
+    assert(typeof runtime.defineScheduler === "function", "Embedded ts-fsrs runtime does not expose scheduler composition.");
+    return runtime.defineScheduler(reference.definition)
+      .use(
+        runtime.schedulerCostAdrMiddleware,
+        runtime.schedulerFuzzingMiddleware,
+        runtime.schedulerStatsMiddleware,
+        runtime.schedulerScheduledDaysMiddleware,
+        runtime.schedulerLearningStepsMiddleware,
+        runtime.schedulerMaximumIntervalMiddleware,
+        runtime.schedulerMonotonicIntervalMiddleware,
+      )
+      .create({
+        config: {
+          weights: [...weights],
+          fractionalDays: true,
+          costAdrPolicy: clone(policy.costAdrPolicy),
+          goalCostWeight: policy.goalCostWeight,
+          enableFuzz: false,
+          clearStatsOnForget: false,
+          enableShortTerm: true,
+          learningSteps: [...FSRS_LEARNING_STEPS],
+          relearningSteps: [...FSRS_RELEARNING_STEPS],
+          graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
+          allowModelOverride: true,
+          maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
+        },
+      });
+  }
+
+  async function prepareFsrsScheduler(schedulingPolicy: FsrsSchedulingPolicy, profile: FsrsOptimizerProfile | null = null): Promise<void> {
+    const policy = canonicalFsrsSchedulingPolicy(schedulingPolicy);
+    const validatedProfile = profile ? validateFsrsOptimizerProfile(profile) : null;
+    const configuration = fsrsConfigSnapshot(policy, validatedProfile);
+    if (FSRS_SCHEDULER_CACHE.has(configuration.fingerprint)) return;
+    const runtime = runtimeFsrs();
+    const scheduler = policy.kind === "fixed-retention"
+      ? await runtime.DefaultScheduler({
+          version: FSRS_MODEL,
+          desiredRetention: fixedRetentionForPolicy(policy),
+          enableShortTerm: true,
+          learningSteps: FSRS_LEARNING_STEPS,
+          relearningSteps: FSRS_RELEARNING_STEPS,
+          graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
+          allowModelOverride: true,
+          enableFuzz: false,
+          maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
+          clearStatsOnForget: false,
+          ...(validatedProfile ? { weights: validatedProfile.weights } : {}),
+        })
+      : await createCostAdrFsrsScheduler(runtime, policy, validatedProfile);
     const port = new TsFsrsSchedulerPort(scheduler, configuration);
     const probe = port.newCard("2000-01-01T00:00:00.000Z", "revision-director-fsrs7-probe");
     requiredFsrs7StabilityFast(probe.stabilityFast);
@@ -613,7 +663,7 @@
   function revisionSchedulerPort(schedulingPolicy: FsrsSchedulingPolicy, profile: FsrsOptimizerProfile | null = null): RevisionSchedulerPort {
     const configuration = fsrsConfigSnapshot(canonicalFsrsSchedulingPolicy(schedulingPolicy), profile ? validateFsrsOptimizerProfile(profile) : null);
     const scheduler = FSRS_SCHEDULER_CACHE.get(configuration.fingerprint);
-    assert(scheduler, "FSRS-7 scheduler has not been initialized for the current retention setting.");
+    assert(scheduler, "FSRS-7 scheduler has not been initialized for the current scheduling policy.");
     return scheduler;
   }
 

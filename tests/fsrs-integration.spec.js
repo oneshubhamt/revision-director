@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics };';
+const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, measuredCostAdrSchedulingPolicy, FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -21,7 +21,7 @@ if (!api) throw new Error('FSRS verification API unavailable');
 let checks=0;
 const clone=value=>structuredClone(value);
 const fixed=desiredRetention=>({kind:'fixed-retention',desiredRetention});
-const costAdr=()=>({kind:'cost-adr',goalCostWeight:64,costAdrPolicy:{coefficients:[-0.202,9.14,-0.0978,0.226,-5.31,-7.44,24.1,-0.375,1.81,-22.9,-5.82,22.3,1.72,-1.99,-19.4],costWeightMin:0,costWeightMax:1024,retentionMin:.3,retentionMax:.995,bounds:{sMin:.0001,sMax:36500,dMin:1,dMax:10}}});
+const costAdr=()=>api.measuredCostAdrSchedulingPolicy();
 function check(value,message){ checks++; if(!value) throw new Error(message); }
 function mustFail(fn,message){ let failed=false; try{fn();}catch{failed=true;} check(failed,message); }
 async function mustReject(fn,message){ let failed=false; try{await fn();}catch{failed=true;} check(failed,message); }
@@ -168,13 +168,19 @@ async function testSchedulingPolicyBoundary(){
   const adaptive=api.canonicalFsrsSchedulingPolicy(costAdr());
   const adaptiveConfig=api.fsrsConfigSnapshot(adaptive,null);
   check(fixedConfig.schedulingPolicy.kind==='fixed-retention'&&fixedConfig.schedulingPolicy.desiredRetention===.9,'Fixed-retention policy must be explicit in scheduler provenance');
-  check(adaptiveConfig.schedulingPolicy.kind==='cost-adr'&&adaptiveConfig.fingerprint!==fixedConfig.fingerprint,'Policy kind and Cost-ADR parameters must participate in scheduler identity');
-  const changedGoal=clone(adaptiveConfig); changedGoal.schedulingPolicy.goalCostWeight=65;
-  mustFail(()=>api.validateFsrsConfigSnapshot(changedGoal),'Changing Cost-ADR goal weight without recomputing provenance must fail');
-  const changedCoefficient=clone(adaptiveConfig); changedCoefficient.schedulingPolicy.costAdrPolicy.coefficients[0]-=.001;
-  mustFail(()=>api.validateFsrsConfigSnapshot(changedCoefficient),'Changing a Cost-ADR coefficient without recomputing provenance must fail');
+  check(adaptiveConfig.schedulingPolicy.kind==='cost-adr'&&adaptiveConfig.schedulingPolicy.goalCostWeight===1024&&adaptiveConfig.fingerprint!==fixedConfig.fingerprint,'Measured Cost-ADR must participate in scheduler identity');
+  check(api.FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT===1024,'Measured Cost-ADR goal cost weight must remain pinned to the evaluated preset');
+  const changedGoal=costAdr(); changedGoal.goalCostWeight=992;
+  mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedGoal),'Unmeasured Cost-ADR goal weights must remain unavailable');
+  const changedCoefficient=costAdr(); changedCoefficient.costAdrPolicy.coefficients[0]-=.001;
+  mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedCoefficient),'Unmeasured Cost-ADR coefficient variants must remain unavailable');
   const overflowingDifficulty=costAdr(); overflowingDifficulty.costAdrPolicy.bounds={sMin:.0001,sMax:36500,dMin:-1e308,dMax:1e308};
-  mustFail(()=>api.canonicalFsrsSchedulingPolicy(overflowingDifficulty),'Cost-ADR validation must reject a non-finite difficulty span exactly as upstream does');
+  mustFail(()=>api.canonicalFsrsSchedulingPolicy(overflowingDifficulty),'Cost-ADR validation must reject invalid state bounds');
+  await api.prepareFsrsScheduler(adaptive);
+  const adaptivePort=api.revisionSchedulerPort(adaptive);
+  const adaptiveCard=adaptivePort.newCard('2026-01-01T08:00:00.000Z','adaptive-probe');
+  const adaptivePreviews=adaptivePort.preview(adaptiveCard,[],new Date('2026-01-01T08:00:00.000Z'));
+  check(adaptivePreviews.length===4&&adaptivePort.configuration.schedulingPolicy.kind==='cost-adr','Measured Cost-ADR runtime must expose the normal FSRS preview surface');
   mustFail(
     ()=>optimizerProfile('b'.repeat(64),.4195,.079),
     'Application profile validation must reject a microscopic holdout log-loss win even when calibration improves'
@@ -188,7 +194,11 @@ async function testSchedulingPolicyBoundary(){
   check(diagnostics.logLossImprovement.absolute>=diagnostics.logLossImprovement.required&&diagnostics.calibration.status==='unchanged','Application holdout diagnostics must expose practical discrimination gain and calibration status');
   const personalized=api.fsrsConfigSnapshot(fixed(.9),profile);
   check(JSON.stringify(personalized.schedulingPolicy)===JSON.stringify(fixedConfig.schedulingPolicy)&&personalized.fingerprint!==fixedConfig.fingerprint,'Weight personalization must be orthogonal to scheduling policy while still changing scheduler identity');
-  await mustReject(()=>api.prepareFsrsScheduler(adaptive),'Cost-ADR policy must fail closed until its runtime is deliberately enabled');
+  await api.prepareFsrsScheduler(adaptive,profile);
+  const adaptivePersonalized=api.fsrsConfigSnapshot(adaptive,profile);
+  const adaptivePersonalizedPort=api.revisionSchedulerPort(adaptive,profile);
+  const adaptivePersonalizedCard=adaptivePersonalizedPort.newCard('2026-01-02T08:00:00.000Z','adaptive-personalized-probe');
+  check(adaptivePersonalized.weightsSource==='optimizer-profile'&&adaptivePersonalized.fingerprint!==adaptiveConfig.fingerprint&&adaptivePersonalizedCard.cardId==='adaptive-personalized-probe','Cost-ADR and personalized FSRS-7 weights must remain independent runtime axes');
 }
 
 async function realisticHistory(){
@@ -218,6 +228,43 @@ async function realisticHistory(){
   check(obligation.policyState.fsrsCard.reps===events.length,'Realistic replay must preserve every review');
   check(obligation.policyState.fsrsCard.lastReviewAt===events.at(-1).reviewedAt,'Realistic replay must preserve final review time');
   return {payload,obligation,unit,events};
+}
+
+async function testCostAdrRebase(){
+  const built=await realisticHistory();
+  const repo=new MemoryRepo(built.payload);
+  const service=new api.RevisionService(repo);
+  await service.initialize();
+  const evidenceBefore=JSON.stringify(repo.evidenceEvents);
+  const before=service.getSettings();
+  const adaptive=costAdr();
+  await service.saveSettings({...before,fsrsScheduling:{...before.fsrsScheduling,policy:adaptive}});
+  const adaptiveSettings=service.getSettings();
+  check(adaptiveSettings.fsrsScheduling.policy.kind==='cost-adr'&&adaptiveSettings.fsrsScheduling.lastRebase.reason==='scheduler-policy-change','Cost-ADR activation must use the explicit scheduler-policy rebase path');
+  check(repo.replaceSettingsAndObligationsCalls===1,'Cost-ADR activation must atomically replace settings and materialized projections once');
+  check(JSON.stringify(repo.evidenceEvents)===evidenceBefore,'Cost-ADR rebase must preserve immutable review evidence');
+  const adaptiveObligation=memoryObligation(repo);
+  api.revisionSchedulerPort(adaptive).verifyProjection(adaptiveObligation.policyState.fsrsCard,api.memoryReviewObservationsFor(adaptiveObligation.id,repo.evidenceEvents)); checks++;
+  const adaptiveUnit=memoryUnit(repo,adaptiveObligation);
+  const adaptiveJoined={obligation:clone(adaptiveObligation),unit:clone(adaptiveUnit),profile:clone(memoryProfile(repo,adaptiveUnit)),subject:'Microbiology',section:'Bacteriology',topic:'Staphylococcus aureus'};
+  const adaptiveDueBefore=adaptiveJoined.obligation.dueAt;
+  const adaptiveCandidate=api.buildPlanningCandidate(adaptiveJoined,clone(repo.evidenceEvents),adaptiveSettings,new Date(adaptiveDueBefore));
+  check(Boolean(adaptiveCandidate),'Planner must accept Cost-ADR memory without inventing a fixed retention target');
+  check(adaptiveJoined.obligation.dueAt===adaptiveDueBefore,'Cost-ADR planning must preserve scheduler-owned dueAt');
+  const archive=await service.createBackupArchive(false);
+  const decoded=await service.decodeBackupArchive(archive.bytes);
+  check(decoded.payload.settings.fsrsScheduling.policy.kind==='cost-adr','Backup must preserve the measured Cost-ADR scheduler identity');
+
+  const restoreRepo=new MemoryRepo(buildRepositoryPayload());
+  const restored=new api.RevisionService(restoreRepo);
+  await restored.restoreBackupPayload(decoded.payload,'discard');
+  await restored.initialize();
+  check(restored.getSettings().fsrsScheduling.policy.kind==='cost-adr','Restore must prepare and verify the measured Cost-ADR runtime');
+
+  const current=restored.getSettings();
+  await restored.saveSettings({...current,fsrsScheduling:{...current.fsrsScheduling,policy:fixed(.9)}});
+  check(restored.getSettings().fsrsScheduling.policy.kind==='fixed-retention','Explicit return from Cost-ADR to fixed retention must succeed through rebase');
+  check(restoreRepo.evidenceEvents.length===built.events.length,'Cost-ADR round-trip must not synthesize or drop memory evidence');
 }
 
 async function testReturnedMemoryReplay(){
@@ -455,6 +502,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
 
 (async()=>{
   await testSchedulingPolicyBoundary();
+  await testCostAdrRebase();
   await testReturnedMemoryReplay();
   await testCanonicalOptimizerEvidence();
   await testTransactionalSettingsPublication();

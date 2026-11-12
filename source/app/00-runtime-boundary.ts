@@ -56,7 +56,18 @@
     reviewTime: Date;
   }
 
+  interface FsrsSchedulerDefinitionRuntime {
+    readonly model: unknown;
+    readonly chrono: unknown;
+  }
+
+  interface FsrsSchedulerFactoryRuntime {
+    use(...middlewares: unknown[]): FsrsSchedulerFactoryRuntime;
+    create(input: { config: Record<string, unknown> }): FsrsSchedulerRuntime;
+  }
+
   interface FsrsSchedulerRuntime {
+    readonly definition: FsrsSchedulerDefinitionRuntime;
     readonly model: {
       forgettingCurve(state: FsrsMemoryStateRuntime, elapsedDays: number): number;
     };
@@ -91,6 +102,14 @@
     Rating: Readonly<{ Again: number; Hard: number; Good: number; Easy: number }>;
     State: Readonly<{ New: number; Learning: number; Review: number; Relearning: number }>;
     DefaultScheduler(options: FsrsDefaultSchedulerOptions): Promise<FsrsSchedulerRuntime>;
+    defineScheduler(definition: FsrsSchedulerDefinitionRuntime): FsrsSchedulerFactoryRuntime;
+    schedulerCostAdrMiddleware: unknown;
+    schedulerFuzzingMiddleware: unknown;
+    schedulerStatsMiddleware: unknown;
+    schedulerScheduledDaysMiddleware: unknown;
+    schedulerLearningStepsMiddleware: unknown;
+    schedulerMaximumIntervalMiddleware: unknown;
+    schedulerMonotonicIntervalMiddleware: unknown;
   }
 
   const FSRS = (window as Window & { FSRS?: FsrsUmdRuntime }).FSRS;

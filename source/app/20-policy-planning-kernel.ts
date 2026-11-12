@@ -541,8 +541,12 @@
       memoryHistory,
       activeFsrsOptimizerProfile(settings),
     );
-    const desiredRetention = fixedRetentionForPolicy(settings.fsrsScheduling.policy);
-    const memoryRisk = retrievability === undefined ? 0 : clamp((desiredRetention - retrievability) / Math.max(desiredRetention - 0.5, 0.1), 0, 1);
+    const schedulingPolicy = settings.fsrsScheduling.policy;
+    const memoryRisk = retrievability === undefined || schedulingPolicy.kind === "cost-adr"
+      ? 0
+      : clamp((schedulingPolicy.desiredRetention - retrievability) / Math.max(schedulingPolicy.desiredRetention - 0.5, 0.1), 0, 1);
+    // Cost-ADR has a state-dependent retention target. Its dueAt already encodes
+    // that adaptive target, so the planner must not invent a second approximation.
     const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
     const difficulty = item.obligation.type === "memory-recall"
       ? memoryDifficultyAssessment(item.obligation, settings.memoryDifficultyPolicy, memoryHistory)

@@ -156,7 +156,10 @@ check("no deprecated FSRS scheduler API", all(token not in ts for token in ["api
 check("FSRS-7 only", 'type FsrsModelVersion = "FSRS-7"' in ts and 'const FSRS_MODEL: FsrsModelVersion = "FSRS-7"' in ts)
 check("FSRS-7 dual trace", "stabilityFast: number" in ts and "requiredFsrs7StabilityFast" in ts)
 check("FSRS-7 long-form interval policy", "fractionalDays: true" in ts and "enableShortTerm: true" in ts and 'learningSteps: ["1d"]' in ts and 'relearningSteps: ["1d"]' in ts and "graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS" in ts and "allowModelOverride: true" in ts)
-check("FSRS scheduler policy boundary", 'type FsrsSchedulingPolicy =' in ts and '"fixed-retention"' in ts and '"cost-adr"' in ts and "fsrsSchedulingPolicyIdentity(config.schedulingPolicy)" in ts and "Cost-ADR scheduling is defined but not enabled in this build." in ts and "settings.desiredRetention" not in ts)
+check("FSRS scheduler policy boundary", 'type FsrsSchedulingPolicy =' in ts and '"fixed-retention"' in ts and '"cost-adr"' in ts and "fsrsSchedulingPolicyIdentity(config.schedulingPolicy)" in ts and "FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT = 1024" in ts and "Only the measured Revision Director Cost-ADR preset is enabled." in ts and "settings.desiredRetention" not in ts)
+check("measured Cost-ADR runtime composition", "function createCostAdrFsrsScheduler" in ts and "runtime.schedulerCostAdrMiddleware" in ts and "runtime.schedulerFuzzingMiddleware" in ts and "runtime.schedulerLearningStepsMiddleware" in ts and "runtime.schedulerMonotonicIntervalMiddleware" in ts and "schedulerDesiredRetentionMiddleware" not in ts and "measuredCostAdrSchedulingPolicy()" in ts)
+check("Cost-ADR UI exposes preset not tuning knobs", "Adaptive workload · measured Cost-ADR" in ts and 'name="memorySchedulingPolicy"' in ts and 'name="goalCostWeight"' not in ts)
+check("Cost-ADR planner does not invent fixed retention", 'schedulingPolicy.kind === "cost-adr"' in ts and "Cost-ADR has a state-dependent retention target." in ts and "fixedRetentionForPolicy(settings.fsrsScheduling.policy)" not in ts)
 check("Again routes to corrective relearning", 'if (rating === Rating.Again) completion.followUpType = "relearn"' in ts)
 check("host-owned persistent difficulty", 'type MemoryDifficultyLevel = "normal" | "learning-difficulty" | "remediation" | "persistent-difficulty"' in ts and "memoryDifficultyAssessment" in ts and "memoryDifficultyRemediationPlan" in ts and 'suspensionReason = "persistent-difficulty"' in ts and "resumePersistentDifficulty" in ts)
 check("canonical persistent-difficulty settings", "memoryDifficultyPolicy: MemoryDifficultyPolicy" in ts and "defaultMemoryDifficultyPolicy" in ts and "canonicalMemoryDifficultyPolicy" in ts and "automaticHoldEligible" in ts and "replaceSettingsAndObligations" in ts)
@@ -217,6 +220,7 @@ check("optimizer checksum coverage", all(path in checksum_targets for path in [
     "tests/fsrs-browser-optimizer.spec.py",
     "tests/fsrs-integration.spec.js",
     "tests/fsrs-scale-benchmark.spec.js",
+    "tests/fsrs-scheduling-experiments.spec.js",
     "tests/fsrs-optimizer-core.spec.js",
     "tests/fsrs-optimizer-policy.spec.js",
     "tools/fsrs-optimizer/browser-worker.mjs",

@@ -15,7 +15,7 @@ Memory recall uses the vendored `ts-fsrs@6.0.0` runtime with **FSRS-7 only**.
 
 Current runtime policy:
 
-- scheduling policy: an application-owned discriminated policy; the currently enabled policy is `fixed-retention`, with user target default `0.90`;
+- scheduling policy: an application-owned discriminated policy; `fixed-retention` remains the default at user target `0.90`, with one optional measured `cost-adr` preset;
 - dual-trace state: `stability`, `stabilityFast`, `difficulty`;
 - fractional elapsed days;
 - short-term middleware enabled;
@@ -27,9 +27,19 @@ Current runtime policy:
 - maximum interval: 36,500 days;
 - stock FSRS-7 weights by default, with an explicitly activated validated optimizer profile as the only alternative.
 
-Scheduler policy and model weights are independent configuration axes. Scheduler identity contains the complete policy plus complete weight provenance. The policy contract is discriminated as `fixed-retention` or `cost-adr`; the Cost-ADR variant already validates the exact upstream policy shape (15 coefficients, cost-weight bounds, retention bounds, state bounds and goal cost weight), but **Cost-ADR execution is intentionally fail-closed in this build** until its runtime middleware is implemented and evaluated.
+Scheduler policy and model weights are independent configuration axes. Scheduler identity contains the complete policy plus complete weight provenance. The policy contract is discriminated as `fixed-retention` or `cost-adr`. Cost-ADR is enabled only as Revision Director's measured preset: the upstream default 15-coefficient policy and state/retention bounds with goal cost weight **1024**. Arbitrary cost weights or coefficient editing are intentionally unavailable. The runtime composes the same vendored FSRS-7 model and chronology while replacing fixed desired-retention middleware with upstream Cost-ADR middleware; all later scheduling middleware remains in the upstream order.
 
-The one-day step is a product adaptation for long-form revision sessions: it prevents seconds/minutes-scale flashcard behaviour while still allowing the FSRS model to choose longer intervals when appropriate.
+The one-day step is a product adaptation for long-form revision sessions: it prevents seconds/minutes-scale flashcard behaviour while still allowing the FSRS model to choose longer intervals when appropriate. It is intentionally retained even though a one-day learning step equals the one-day graduation interval: Revision Director intercepts `Again` with a separate host-owned corrective workflow rather than allowing a failed memory to continue through an ordinary flashcard learning-step loop.
+
+### Advanced scheduling experiment gate
+
+The permanent scheduling experiment uses the pinned vendored runtime directly. Its representative workload models 72 memory items, six deterministic recall-quality archetypes, 15-minute long-form sessions, and the actual Revision Director failure lifecycle: direct `Again` → suspended memory → next-day corrective relearning → successful FSRS return. It evaluates 90-, 365- and 730-day horizons and compares Cost-ADR against fixed-retention targets 0.84, 0.86, 0.88, 0.90 and 0.92.
+
+Under the production `1d` learning/relearning configuration, the selected Cost-ADR goal weight 1024 reduced modeled total long-form sessions versus fixed 0.90 by **21.3% at 90 days, 21.3% at 365 days and 24.7% at 730 days**. Mean retrievability at established-memory review opportunities changed by approximately **−0.13, +0.11 and −0.07 percentage points**, respectively; none of the tested fixed-retention alternatives Pareto-dominated the preset. The activation gate requires at least a 10% workload reduction with no more than a one-percentage-point mean established-memory retrievability loss, or a one-percentage-point retention gain with no more than 5% extra workload.
+
+This is a deterministic product benchmark, not a clinical efficacy claim, a statistical confidence interval or proof that Cost-ADR is superior for every learner. Fixed 0.90 therefore remains the default and Cost-ADR remains explicit opt-in. Changing either scheduling policy still performs a complete atomic scheduler rebase.
+
+Learning-step alternatives were tested separately. A 23-hour step preserves FSRS Learning/Relearning state after `Again`, whereas the current one-day step reaches Review immediately; however, after Revision Director's real next-day corrective return, the 23-hour variant scheduled the next review at **2.4375 days** versus **3 days** for the current one-day adaptation and did not establish a compensating application-level benefit. Twelve-hour, no-step and upstream minute-scale defaults were still more aggressive. The production learning and relearning steps therefore remain `1d`.
 
 ## Replay truth and materialized state
 
@@ -147,7 +157,7 @@ The daily planner combines transparent signals such as:
 - capacity;
 - bounded interleaving penalties.
 
-Weekly balance is profile-qualified so identically named subjects from different exams cannot collide. Interleaving only reorders candidates sufficiently close in score; severe overdue work and active relearning are not displaced for variety.
+Weekly balance is profile-qualified so identically named subjects from different exams cannot collide. Interleaving only reorders candidates sufficiently close in score; severe overdue work and active relearning are not displaced for variety. Under fixed retention, retrievability can contribute additional risk relative to the fixed target. Under Cost-ADR there is no single target retention, so the planner trusts scheduler-owned `dueAt` for adaptive memory timing rather than reimplementing the Cost-ADR policy.
 
 The planner weights are operational heuristics, not calibrated predictors of examination marks. Equal-score/equal-due candidates use stable obligation/chunk identifiers as the final tie-breaker so equivalent stored data produces the same plan ordering regardless of IndexedDB or backup record order.
 

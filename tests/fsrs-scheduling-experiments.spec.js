@@ -350,7 +350,22 @@ async function policyWorkloadExperiment(){
   const learning=await learningStepExperiment();
   const workload=await policyWorkloadExperiment();
   const production=await productionPolicyExperiment();
+
+  const currentStep=learning.find(row=>row.name==='current-1d');
+  const nearDaily=learning.find(row=>row.name==='near-daily-23h');
+  assert.ok(currentStep&&nearDaily,'Learning-step decision rows are missing');
+  assert.equal(currentStep.initialCorrectiveReturnState,F.State.Review,'Current one-day policy must return to Review after successful host corrective work');
+  assert.equal(nearDaily.initialCorrectiveReturnState,F.State.Review,'Near-daily alternative must also return to Review after successful host corrective work');
+  assert.ok(currentStep.initialCorrectiveNextDays>nearDaily.initialCorrectiveNextDays+.5,'Near-daily learning step must not replace the current one-day adaptation without a workload benefit');
+
+  const robust=production.robustCostAdr.filter(row=>row.allHorizonsMeaningful&&!row.paretoDominatedAnywhere);
+  assert.ok(robust.length>0,'No Cost-ADR preset demonstrated a robust production-configuration benefit');
+  const selected=robust.reduce((best,row)=>row.worstReviewDelta<best.worstReviewDelta?row:best);
+  assert.equal(selected.name,'cost-adr-1024','The enabled Cost-ADR preset must remain the strongest measured robust production candidate');
+  assert.ok(selected.worstRetentionLoss<.01,'Enabled Cost-ADR preset exceeded the one-percentage-point established-memory retention guard');
+
   console.log('PASS Pass 5 learning-step experiment: '+JSON.stringify(learning));
   console.log('PASS Pass 5 scheduling-policy workload experiment: '+JSON.stringify(workload));
   console.log('PASS Pass 5 production-policy workload experiment: '+JSON.stringify(production));
+  console.log('PASS Pass 5 activation decision: '+JSON.stringify({learningSteps:'retain-1d',costAdrGoalCostWeight:1024,worstReviewDelta:selected.worstReviewDelta,worstRetentionLoss:selected.worstRetentionLoss}));
 })().catch(error=>{console.error(error);process.exitCode=1;});

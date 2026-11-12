@@ -188,6 +188,27 @@
     };
   }
 
+  const FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT = 1024 as const;
+
+  function upstreamDefaultFsrsCostAdrPolicy(): FsrsCostAdrPolicy {
+    return {
+      coefficients: [-0.202, 9.14, -0.0978, 0.226, -5.31, -7.44, 24.1, -0.375, 1.81, -22.9, -5.82, 22.3, 1.72, -1.99, -19.4],
+      costWeightMin: 0,
+      costWeightMax: 1024,
+      retentionMin: 0.3,
+      retentionMax: 0.995,
+      bounds: { sMin: 0.0001, sMax: 36500, dMin: 1, dMax: 10 },
+    };
+  }
+
+  function measuredCostAdrSchedulingPolicy(): FsrsSchedulingPolicy {
+    return {
+      kind: "cost-adr",
+      goalCostWeight: FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT,
+      costAdrPolicy: upstreamDefaultFsrsCostAdrPolicy(),
+    };
+  }
+
   function canonicalFsrsCostAdrPolicy(value: unknown): FsrsCostAdrPolicy {
     const record = requireRecord(value, "FSRS Cost-ADR policy");
     const allowed = new Set(["coefficients", "costWeightMin", "costWeightMax", "retentionMin", "retentionMax", "bounds"]);
@@ -236,8 +257,13 @@
       const allowed = new Set(["kind", "goalCostWeight", "costAdrPolicy"]);
       assert(Object.keys(record).every((key) => allowed.has(key)), "Cost-ADR scheduling policy contains unexpected fields.");
       const goalCostWeight = Number(record["goalCostWeight"]);
-      assert(Number.isFinite(goalCostWeight) && goalCostWeight >= 0 && goalCostWeight <= 1024, "FSRS Cost-ADR goal cost weight is invalid.");
-      return { kind, goalCostWeight, costAdrPolicy: canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]) };
+      const costAdrPolicy = canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]);
+      assert(
+        goalCostWeight === FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT
+          && JSON.stringify(costAdrPolicy) === JSON.stringify(upstreamDefaultFsrsCostAdrPolicy()),
+        "Only the measured Revision Director Cost-ADR preset is enabled.",
+      );
+      return { kind, goalCostWeight, costAdrPolicy };
     }
     assert(false, "FSRS scheduling policy kind is invalid.");
   }
@@ -269,7 +295,7 @@
 
   function fixedRetentionForPolicy(value: FsrsSchedulingPolicy): number {
     const policy = canonicalFsrsSchedulingPolicy(value);
-    assert(policy.kind === "fixed-retention", "Cost-ADR scheduling is defined but not enabled in this build.");
+    assert(policy.kind === "fixed-retention", "Fixed retention is not available from an adaptive Cost-ADR policy.");
     return policy.desiredRetention;
   }
 
