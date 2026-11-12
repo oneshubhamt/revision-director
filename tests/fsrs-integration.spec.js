@@ -403,6 +403,27 @@ async function testTransactionalSettingsPublication(){
   check(JSON.stringify(restoreReload.getSettings())===JSON.stringify(serviceBeforeRestore),'Reload after failed restore did not recover pre-restore settings');
 }
 
+async function testUnusedActiveProfileReplacementDoesNotAccumulateReplayState(){
+  const built=await realisticHistory();
+  const repo=new MemoryRepo(built.payload);
+  const service=new api.RevisionService(repo);
+  await service.initialize();
+
+  const snapshot=await service.optimizerEvidenceSnapshot();
+  const first=optimizerProfile(snapshot.sourceSha256,.40,.08,null,4.2);
+  await service.stageFsrsOptimizerProfile(first);
+  await service.activateFsrsOptimizerProfile();
+  const active=api.activeFsrsOptimizerProfile(service.getSettings());
+  check(Boolean(active),'Initial personalized profile must be active before replacement');
+
+  const candidate=optimizerProfile(snapshot.sourceSha256,.38,.07,active,4.25);
+  await service.replaceActiveFsrsOptimizerProfile(candidate);
+  const personalization=service.getSettings().fsrsPersonalization;
+  check(personalization.active===true,'Unused-profile replacement must keep personalization active');
+  check(personalization.replayProfiles.length===0,'An active profile with no historical review evidence must not be retained in replay state');
+  check(api.fsrsPersonalizationProfileCatalog(service.getSettings()).length===1,'Replay catalog must remain lean when the displaced profile was never used');
+}
+
 async function testRebasesBackupRestorePlannerAndCorruption(){
   const built=await realisticHistory();
   const repo=new MemoryRepo(built.payload);
@@ -552,6 +573,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   await testCorrectiveMemoryVerificationReplay();
   await testCanonicalOptimizerEvidence();
   await testTransactionalSettingsPublication();
+  await testUnusedActiveProfileReplacementDoesNotAccumulateReplayState();
   await testRebasesBackupRestorePlannerAndCorruption();
   console.log(`PASS ${checks} independent FSRS replay/personalization/restore/planner checks`);
 })().catch(error=>{ console.error(error); process.exitCode=1; });

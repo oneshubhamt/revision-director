@@ -49,7 +49,7 @@ async function probe(binding,request){
 }
 
 async function optimize(binding,request){
- const {requestId,csv}=request;
+ const {requestId,csv,incumbentProfile=null}=request;
  if(typeof requestId!=="string"||!requestId)throw Error("Optimizer request ID is invalid");
  if(typeof csv!=="string"||!csv.trim())throw Error("Optimizer evidence is empty");
  const result=await optimizeFsrsProfile({
