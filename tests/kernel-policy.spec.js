@@ -435,6 +435,10 @@ async function testAutomaticPersistentDifficultyHold() {
   svc.unit=async()=>unit;
   svc.obligationsForUnit=async()=>[relearn];
   svc.evidenceEvents=async()=>[];
+  svc.memoryReviewIndexFor=()=>new Map([['persistent-original',[
+    {rating:api.Rating.Good},
+    ...Array.from({length:8},()=>({rating:api.Rating.Again}))
+  ]]]);
   svc.chunksForObligation=async()=>[];
   svc.markPlanItemCompleted=async()=>{};
   const realGet=svc.router.get.bind(svc.router);
@@ -450,7 +454,7 @@ async function testAutomaticPersistentDifficultyHold() {
   }:realGet(type);
   await svc.recordEvidence('persistent-relearn',{...evidence(4,4,3),workflowResult:relearnResult,elapsedMs:1000,timing:{totalActiveMs:1000,activeByPhase:{attempt:1000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]},confirmedRating:3},new Date(due));
   const heldAgain=calls[0]?.[4];
-  check(calls[0]?.[2]?.returnedMemoryTransition?.obligationId==='persistent-original','Persistent difficulty must still complete the verified return transition to the original FSRS card');
+  check(calls[0]?.[2]?.correctiveMemoryTransition?.obligationId==='persistent-original','Persistent difficulty must still record the successful closed-book verification on the original FSRS card');
   check(heldAgain?.status==='suspended'&&heldAgain?.suspensionReason==='persistent-difficulty','Enabled final policy may hold a persistently difficult memory obligation only after successful remediation');
   check(heldAgain?.policyState.fsrsCard.scheduleStatus==='review','Host queue hold must not mutate FSRS scheduleStatus');
 }
