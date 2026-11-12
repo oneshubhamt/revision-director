@@ -13,10 +13,11 @@ const context = { crypto: webcrypto, structuredClone, console, Date, Intl, URL, 
 context.window = context; context.self = context; context.globalThis = context;
 vm.createContext(context); vm.runInContext(vendor, context); vm.runInContext(source, context);
 const api = context.__RD_PLAN_TEST__;
-let checks = 0;
+let checks=0;
+const fixed=desiredRetention=>({kind:'fixed-retention',desiredRetention});
 function check(condition, message) { checks++; if (!condition) throw new Error(message); }
 const ref = new Date('2026-07-25T04:00:00Z');
-const settings = { schemaVersion:1,key:'app',activeProfileId:'p',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} };
+const settings = { schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:fixed(.9)},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} };
 const profile = (id, days, status='active') => ({id,name:id,examDate:new Date(ref.getTime()+days*86400000).toISOString().slice(0,10),status,createdAt:ref.toISOString(),updatedAt:ref.toISOString()});
 const unit = (id, importance=3, lapseCount=0) => ({id,profileId:'p',topicNodeId:'t',title:id,scope:'scope',source:'',importance,status:'active',createdAt:ref.toISOString(),updatedAt:ref.toISOString(),evidenceCount:0,lapseCount});
 const policyState = {engine:'mastery',version:'1',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0};
@@ -68,8 +69,8 @@ check(synthesisCandidate && synthesisCandidate.executionMinutes === 5, 'Synthesi
 check(synthesisReady.obligation.dueAt === new Date(ref.getTime()+3*86400000).toISOString(), 'Planning synthesis readiness must not mutate the policy due date');
 
 async function testMemoryExamHorizon() {
-  await api.prepareFsrsScheduler(.9);
-  const memoryPolicy = new api.FsrsMemoryPolicy(() => .9);
+  await api.prepareFsrsScheduler(fixed(.9));
+  const memoryPolicy = new api.FsrsMemoryPolicy(() => fixed(.9));
   const memoryState = memoryPolicy.createInitialState(ref.toISOString(), 'memory');
   const memoryObligation = { ...obligation('memory',0,12,'memory-recall'), type:'memory-recall', workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'}, policyState:memoryState };
 

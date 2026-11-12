@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile };';
+const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -20,6 +20,8 @@ if (!api) throw new Error('FSRS verification API unavailable');
 
 let checks=0;
 const clone=value=>structuredClone(value);
+const fixed=desiredRetention=>({kind:'fixed-retention',desiredRetention});
+const costAdr=()=>({kind:'cost-adr',goalCostWeight:64,costAdrPolicy:{coefficients:[-0.202,9.14,-0.0978,0.226,-5.31,-7.44,24.1,-0.375,1.81,-22.9,-5.82,22.3,1.72,-1.99,-19.4],costWeightMin:0,costWeightMax:1024,retentionMin:.3,retentionMax:.995,bounds:{sMin:.0001,sMax:36500,dMin:1,dMax:10}}});
 function check(value,message){ checks++; if(!value) throw new Error(message); }
 function mustFail(fn,message){ let failed=false; try{fn();}catch{failed=true;} check(failed,message); }
 async function mustReject(fn,message){ let failed=false; try{await fn();}catch{failed=true;} check(failed,message); }
@@ -146,13 +148,29 @@ function memoryProfile(payload,unit){
   return item;
 }
 
+async function testSchedulingPolicyBoundary(){
+  const fixedConfig=api.fsrsConfigSnapshot(fixed(.9),null);
+  const adaptive=api.canonicalFsrsSchedulingPolicy(costAdr());
+  const adaptiveConfig=api.fsrsConfigSnapshot(adaptive,null);
+  check(fixedConfig.schedulingPolicy.kind==='fixed-retention'&&fixedConfig.schedulingPolicy.desiredRetention===.9,'Fixed-retention policy must be explicit in scheduler provenance');
+  check(adaptiveConfig.schedulingPolicy.kind==='cost-adr'&&adaptiveConfig.fingerprint!==fixedConfig.fingerprint,'Policy kind and Cost-ADR parameters must participate in scheduler identity');
+  const changedGoal=clone(adaptiveConfig); changedGoal.schedulingPolicy.goalCostWeight=65;
+  mustFail(()=>api.validateFsrsConfigSnapshot(changedGoal),'Changing Cost-ADR goal weight without recomputing provenance must fail');
+  const changedCoefficient=clone(adaptiveConfig); changedCoefficient.schedulingPolicy.costAdrPolicy.coefficients[0]-=.001;
+  mustFail(()=>api.validateFsrsConfigSnapshot(changedCoefficient),'Changing a Cost-ADR coefficient without recomputing provenance must fail');
+  const profile=optimizerProfile();
+  const personalized=api.fsrsConfigSnapshot(fixed(.9),profile);
+  check(JSON.stringify(personalized.schedulingPolicy)===JSON.stringify(fixedConfig.schedulingPolicy)&&personalized.fingerprint!==fixedConfig.fingerprint,'Weight personalization must be orthogonal to scheduling policy while still changing scheduler identity');
+  await mustReject(()=>api.prepareFsrsScheduler(adaptive),'Cost-ADR policy must fail closed until its runtime is deliberately enabled');
+}
+
 async function realisticHistory(){
   const payload=buildRepositoryPayload();
   const obligation=memoryObligation(payload);
   const unit=memoryUnit(payload,obligation);
   const events=[];
-  await api.prepareFsrsScheduler(.9);
-  const policy=new api.FsrsMemoryPolicy(()=>.9);
+  await api.prepareFsrsScheduler(fixed(.9));
+  const policy=new api.FsrsMemoryPolicy(()=>fixed(.9));
   const start=new Date(obligation.dueAt).getTime();
   const schedule=[
     [api.Rating.Good,0],
@@ -169,15 +187,15 @@ async function realisticHistory(){
   unit.evidenceCount=events.length;
   unit.lapseCount=0;
   obligation.durationSampleCount=events.length;
-  api.revisionSchedulerPort(.9).verifyProjection(obligation.policyState.fsrsCard,api.memoryReviewObservationsFor(obligation.id,events));
+  api.revisionSchedulerPort(fixed(.9)).verifyProjection(obligation.policyState.fsrsCard,api.memoryReviewObservationsFor(obligation.id,events));
   check(obligation.policyState.fsrsCard.reps===events.length,'Realistic replay must preserve every review');
   check(obligation.policyState.fsrsCard.lastReviewAt===events.at(-1).reviewedAt,'Realistic replay must preserve final review time');
   return {payload,obligation,unit,events};
 }
 
 async function testReturnedMemoryReplay(){
-  await api.prepareFsrsScheduler(.9);
-  const policy=new api.FsrsMemoryPolicy(()=>.9);
+  await api.prepareFsrsScheduler(fixed(.9));
+  const policy=new api.FsrsMemoryPolicy(()=>fixed(.9));
   const id='returned-memory';
   const start='2026-09-01T08:00:00.000Z';
   let obligation={id,unitId:'u',type:'memory-recall',status:'active',dueAt:start,expectedMinutes:15,baselineMinutes:15,durationSampleCount:0,
@@ -196,7 +214,7 @@ async function testReturnedMemoryReplay(){
       schedulerPackage:'ts-fsrs',schedulerVersion:'6.0.0',schedulerModel:'FSRS-7',schedulerConfig:clone(repaired.schedulerConfig),reviewLog:clone(repaired.reviewLog)}};
   const canonical=api.memoryReviewObservationsFor(id,[failedEvent,returnEvent]);
   check(canonical.length===2&&canonical[0].source==='direct-memory'&&canonical[1].source==='relearning-return','Returned memory must be canonical replay evidence');
-  api.revisionSchedulerPort(.9).verifyProjection(repaired.policyState.fsrsCard,canonical); checks++;
+  api.revisionSchedulerPort(fixed(.9)).verifyProjection(repaired.policyState.fsrsCard,canonical); checks++;
   const corrupted=clone(returnEvent);
   corrupted.returnedMemoryTransition.beforePolicyState.fsrsCard.reps+=1;
   mustFail(()=>api.memoryReviewObservationsFor(id,[failedEvent,corrupted]),'Returned-memory corruption must fail chain validation');
@@ -211,12 +229,14 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
 
   const stockObligation=memoryObligation(repo);
   const stockDue=stockObligation.dueAt;
-  await service.saveSettings({...service.getSettings(),desiredRetention:.95});
-  check(service.getSettings().fsrsPersonalization.lastRebase.reason==='retention-change','Retention change must record an explicit rebase');
-  check(service.getSettings().fsrsPersonalization.lastRebase.target==='stock','Stock retention change must stay on stock weights');
+  const beforePolicyChange=service.getSettings();
+  await service.saveSettings({...beforePolicyChange,fsrsScheduling:{...beforePolicyChange.fsrsScheduling,policy:fixed(.95)}});
+  check(service.getSettings().fsrsScheduling.lastRebase.reason==='scheduler-policy-change','Scheduling-policy change must record an explicit rebase');
+  check(service.getSettings().fsrsPersonalization.active===false,'Fixed-retention change must remain orthogonal to stock/personalized weights');
+  check(service.getSettings().fsrsScheduling.lastRebase.fromConfigFingerprint!==service.getSettings().fsrsScheduling.lastRebase.toConfigFingerprint,'Scheduling-policy rebase must record distinct scheduler identities');
   check(JSON.stringify(repo.evidenceEvents)===evidenceBefore,'Retention rebase must not rewrite historical evidence');
   const retentionObligation=memoryObligation(repo);
-  api.revisionSchedulerPort(.95).verifyProjection(retentionObligation.policyState.fsrsCard,api.memoryReviewObservationsFor(retentionObligation.id,repo.evidenceEvents)); checks++;
+  api.revisionSchedulerPort(fixed(.95)).verifyProjection(retentionObligation.policyState.fsrsCard,api.memoryReviewObservationsFor(retentionObligation.id,repo.evidenceEvents)); checks++;
   check(retentionObligation.policyState.fsrsCard.reps===built.events.length,'Retention rebase must preserve review count');
 
   const profile=optimizerProfile();
@@ -224,12 +244,12 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   check(service.getSettings().fsrsPersonalization.active===false,'Profile import must remain staging-only');
   await service.activateFsrsOptimizerProfile();
   check(service.getSettings().fsrsPersonalization.active===true,'Profile activation must be explicit');
-  check(service.getSettings().fsrsPersonalization.lastRebase.target==='personalized','Profile activation must record personalized target');
+  check(service.getSettings().fsrsScheduling.lastRebase.reason==='activate-profile','Profile activation must record an explicit scheduler rebase');
   check(repo.replaceMemorySchedulingCalls===2,'Retention and profile changes must each use atomic projection replacement');
 
   let activeObligation=memoryObligation(repo);
   const activeProfile=api.activeFsrsOptimizerProfile(service.getSettings());
-  const activePolicy=new api.FsrsMemoryPolicy(()=>service.getSettings().desiredRetention,()=>activeProfile);
+  const activePolicy=new api.FsrsMemoryPolicy(()=>service.getSettings().fsrsScheduling.policy,()=>activeProfile);
   const boundaryReviewAt=new Date(activeObligation.dueAt).toISOString();
   const boundaryEvent=await appendDirectReview(repo,activeObligation,repo.evidenceEvents,activePolicy,api.Rating.Good,boundaryReviewAt);
   await repo.put('obligations',activeObligation);
@@ -240,7 +260,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   await repo.put('obligations',activeObligation);
   const mixed=api.memoryReviewObservationsFor(activeObligation.id,repo.evidenceEvents);
   check(new Set(mixed.map(item=>item.configFingerprint)).size===2,'Realistic history must preserve stock-to-personalized configuration boundary');
-  api.revisionSchedulerPort(.95,profile).verifyProjection(activeObligation.policyState.fsrsCard,mixed); checks++;
+  api.revisionSchedulerPort(fixed(.95),profile).verifyProjection(activeObligation.policyState.fsrsCard,mixed); checks++;
 
   const profileDue=activeObligation.dueAt;
   const joined={obligation:clone(activeObligation),unit:clone(activeUnit),profile:clone(memoryProfile(repo,activeUnit)),subject:'Microbiology',section:'Bacteriology',topic:'Staphylococcus aureus'};
@@ -264,7 +284,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   await restored.initialize();
   const restoredObligation=memoryObligation(restoreRepo);
   const restoredHistory=api.memoryReviewObservationsFor(restoredObligation.id,restoreRepo.evidenceEvents);
-  api.revisionSchedulerPort(.95,profile).verifyProjection(restoredObligation.policyState.fsrsCard,restoredHistory); checks++;
+  api.revisionSchedulerPort(fixed(.95),profile).verifyProjection(restoredObligation.policyState.fsrsCard,restoredHistory); checks++;
   check(restored.getSettings().fsrsPersonalization.active===true,'Restore must rehydrate active personalization');
   check(restoreRepo.replaceFromBackupCalls===1,'Valid personalized backup must restore exactly once');
 
@@ -294,7 +314,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   const immutableCount=restoreRepo.evidenceEvents.length;
   await restored.deactivateFsrsOptimizerProfile();
   const stockRestored=memoryObligation(restoreRepo);
-  api.revisionSchedulerPort(.95).verifyProjection(stockRestored.policyState.fsrsCard,api.memoryReviewObservationsFor(stockRestored.id,restoreRepo.evidenceEvents)); checks++;
+  api.revisionSchedulerPort(fixed(.95)).verifyProjection(stockRestored.policyState.fsrsCard,api.memoryReviewObservationsFor(stockRestored.id,restoreRepo.evidenceEvents)); checks++;
   check(restored.getSettings().fsrsPersonalization.active===false,'Deactivation after restore must return explicitly to stock');
   check(restoreRepo.evidenceEvents.length===immutableCount,'Deactivation must not rewrite or synthesize review evidence');
   check(stockRestored.policyState.fsrsCard.reps===restoredHistory.length,'Return to stock must preserve the complete realistic review history');
@@ -303,10 +323,11 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   const boundaryCorruption=clone(boundaryEvent);
   boundaryCorruption.beforePolicyState.fsrsCard.difficulty+=.1;
   const corruptHistory=api.memoryReviewObservationsFor(activeObligation.id,[...repo.evidenceEvents.filter(event=>event.id!==boundaryEvent.id),boundaryCorruption]);
-  mustFail(()=>api.revisionSchedulerPort(.95,profile).verifyProjection(activeObligation.policyState.fsrsCard,corruptHistory),'Active-config replay must reject a tampered reprojected before-state');
+  mustFail(()=>api.revisionSchedulerPort(fixed(.95),profile).verifyProjection(activeObligation.policyState.fsrsCard,corruptHistory),'Active-config replay must reject a tampered reprojected before-state');
 }
 
 (async()=>{
+  await testSchedulingPolicyBoundary();
   await testReturnedMemoryReplay();
   await testRebasesBackupRestorePlannerAndCorruption();
   console.log(`PASS ${checks} independent FSRS replay/personalization/restore/planner checks`);

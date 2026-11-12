@@ -21,7 +21,8 @@ vm.runInContext(source, context, { filename: 'app.js' });
 
 const api = context.__RD_TEST_API__;
 if (!api) throw new Error('Test API was not exposed');
-let checks = 0;
+let checks=0;
+const fixed=desiredRetention=>({kind:'fixed-retention',desiredRetention});
 function check(condition, message) { checks++; if (!condition) throw new Error(message); }
 function mustFail(fn, message) { let failed = false; try { fn(); } catch { failed = true; } check(failed, message); }
 const errors = [];
@@ -116,8 +117,8 @@ for (const Policy of [api.MasteryPolicy, api.ApplicationPolicy, api.PerformanceP
   const completed = policy.complete(o, 3, evidence(3,3,3,80), new Date(due));
   check(new Date(completed.dueAt) > new Date(due), `${policy.id} must schedule forward`);
 }
-async function testFsrs7Integration() {  await api.prepareFsrsScheduler(.9);
-  const memory = new api.FsrsMemoryPolicy(() => .9);
+async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9));
+  const memory = new api.FsrsMemoryPolicy(() => fixed(.9));
   const memoryObligation = obligation('memory-recall', memory, 'recall');
   check(memoryObligation.policyState.fsrsCard.model === 'FSRS-7', 'New memory obligations must use FSRS-7');
   check(Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'FSRS-7 must persist the fast-memory trace');
@@ -135,7 +136,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(.9);
   check(again.schedulerConfig.enableShortTerm === true && again.schedulerConfig.learningSteps.join(',') === '1d' && again.schedulerConfig.relearningSteps.join(',') === '1d', 'Revision Director must use one-day FSRS learning/relearning middleware');
   check(again.schedulerConfig.graduatingInterval === 1 && again.schedulerConfig.allowModelOverride === true, 'FSRS-7 graduation and model override must be explicit');
   check(/^fnv1a64:[0-9a-f]{16}$/.test(again.schedulerConfig.fingerprint), 'FSRS configuration must carry a deterministic fingerprint');
-  mustFail(() => api.validateFsrsConfigSnapshot({...again.schedulerConfig, desiredRetention:.91}), 'Tampered FSRS configuration must fail its fingerprint');
+  mustFail(() => api.validateFsrsConfigSnapshot({...again.schedulerConfig, schedulingPolicy:fixed(.91)}), 'Tampered FSRS scheduling policy must fail its fingerprint');
 
   const againObservation = {
     evidenceEventId:'again-event', reviewedAt:due, rating:api.Rating.Again, source:'direct-memory',
@@ -152,7 +153,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(.9);
   const good = memory.complete(memoryObligation, api.Rating.Good, evidence(3,3,1), new Date(due));
   check(good.policyId === 'memory/ts-fsrs@6.0.0/fsrs-7', 'FSRS-7 policy provenance must be explicit');
   check(good.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(good.policyState.fsrsCard.stabilityFast), 'Reviewed FSRS-7 state must preserve both traces');
-  check(good.schedulerConfig.model === 'FSRS-7' && good.schedulerConfig.desiredRetention === .9 && good.schedulerConfig.fractionalDays === true, 'FSRS-7 configuration provenance must be complete');
+  check(good.schedulerConfig.model === 'FSRS-7' && good.schedulerConfig.schedulingPolicy.kind === 'fixed-retention' && good.schedulerConfig.schedulingPolicy.desiredRetention === .9 && good.schedulerConfig.fractionalDays === true, 'FSRS-7 configuration provenance must include the scheduling-policy discriminant');
 
   const goodObservation = {
     evidenceEventId:'good-event', reviewedAt:due, rating:api.Rating.Good, source:'direct-memory',
@@ -160,7 +161,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(.9);
     afterCard:structuredClone(good.policyState.fsrsCard),
     configFingerprint:good.schedulerConfig.fingerprint
   };
-  const port = api.revisionSchedulerPort(.9);
+  const port = api.revisionSchedulerPort(fixed(.9));
   port.verifyProjection(good.policyState.fsrsCard, [goodObservation]); checks++;
   const rescheduled = port.reschedule(memoryObligation.policyState.fsrsCard, [goodObservation]);
   check(rescheduled.dueAt === good.policyState.fsrsCard.dueAt && rescheduled.stabilityFast === good.policyState.fsrsCard.stabilityFast, 'Reschedule must reproduce a same-policy review transition');
@@ -184,9 +185,9 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(.9);
   mustFail(() => port.verifyProjection(good.policyState.fsrsCard, corruptedHistory), 'Replay integrity must reject history that no longer produces the immutable transition');
   check(context.FSRS === undefined, 'Temporary FSRS global must be removed after private capture');
 
-  await Promise.all([api.prepareFsrsScheduler(.85), api.prepareFsrsScheduler(.95)]);
-  const lowerRetention = new api.FsrsMemoryPolicy(() => .85);
-  const higherRetention = new api.FsrsMemoryPolicy(() => .95);
+  await Promise.all([api.prepareFsrsScheduler(fixed(.85)), api.prepareFsrsScheduler(fixed(.95))]);
+  const lowerRetention = new api.FsrsMemoryPolicy(() => fixed(.85));
+  const higherRetention = new api.FsrsMemoryPolicy(() => fixed(.95));
   check(lowerRetention.preview(obligation('memory-recall', lowerRetention), new Date(due))[3].intervalDays > higherRetention.preview(obligation('memory-recall', higherRetention), new Date(due))[3].intervalDays, 'Higher desired retention must shorten the Easy interval');
 
   const invalid = structuredClone(memoryObligation);
@@ -217,7 +218,7 @@ check(packed.selected.some(item=>item.joined.obligation.id==='a'), 'Highest-valu
 packed = api.choosePlanItems([planItem('r',95,90,'relearn','overdue'),planItem('n',70,20)],60);
 check(packed.selected.length === 1 && packed.selected[0].joined.obligation.id === 'r', 'Oversized critical relearning must remain visible as a necessary overrun');
 
-const router = new api.SchedulerPolicyRouter(() => .9);
+const router = new api.SchedulerPolicyRouter(() => fixed(.9));
 for (const type of ['memory-recall','concept-reconstruction','application-practice','performance-practice','relearn','freshness-review']) check(router.get(type).type === type, `Router missing ${type}`);
 
 // Workflow UI surfaces are distinct rather than one generic rubric.
@@ -254,7 +255,7 @@ check(ui.relearningTriggerPanel(failedEventForPanel).includes('WHY THIS RELEARNI
 
 const dummyRepo = {};
 const service = new api.RevisionService(dummyRepo);
-const validBackup = {format:'revision-director-backup',schemaVersion:2,exportedAt:due,appVersion:'va7.1-pass-f1',profiles:[{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}],nodes:[{schemaVersion:1,id:'s',profileId:'p',parentId:null,kind:'subject',name:'S',normalizedName:'s',createdAt:due,updatedAt:due},{schemaVersion:1,id:'c',profileId:'p',parentId:'s',kind:'section',name:'C',normalizedName:'c',createdAt:due,updatedAt:due},{schemaVersion:1,id:'t',profileId:'p',parentId:'c',kind:'topic',name:'T',normalizedName:'t',createdAt:due,updatedAt:due}],units:[{schemaVersion:1,id:'u',profileId:'p',topicNodeId:'t',title:'U',scope:'scope',source:'',importance:3,status:'active',createdAt:due,updatedAt:due,evidenceCount:0,lapseCount:0}],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'p',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}},activeRetrieval:null};
+const validBackup = {format:'revision-director-backup',schemaVersion:2,exportedAt:due,appVersion:'va7.1-pass-f1',profiles:[{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}],nodes:[{schemaVersion:1,id:'s',profileId:'p',parentId:null,kind:'subject',name:'S',normalizedName:'s',createdAt:due,updatedAt:due},{schemaVersion:1,id:'c',profileId:'p',parentId:'s',kind:'section',name:'C',normalizedName:'c',createdAt:due,updatedAt:due},{schemaVersion:1,id:'t',profileId:'p',parentId:'c',kind:'topic',name:'T',normalizedName:'t',createdAt:due,updatedAt:due}],units:[{schemaVersion:1,id:'u',profileId:'p',topicNodeId:'t',title:'U',scope:'scope',source:'',importance:3,status:'active',createdAt:due,updatedAt:due,evidenceCount:0,lapseCount:0}],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:fixed(.9)},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}},activeRetrieval:null};
 check(service.validateBackup(validBackup).format === 'revision-director-backup', 'Valid backup should pass');
 const conceptPolicy = new api.MasteryPolicy();
 const conceptObligation = { schemaVersion:1, ...obligation('concept-reconstruction', conceptPolicy, 'reconstruction'), id:'o' };
@@ -272,7 +273,7 @@ for (const mutation of [
   {...validBackup,obligations:[{...conceptObligation,policyState:{...conceptObligation.policyState,engine:'application'}}]},
   {...validBackup,obligations:[conceptObligation],evidenceEvents:[{...conceptEvidence,workflow:'questions'}]},
   {...validBackup,settings:{...validBackup.settings,activeProfileId:'missing'}},
-  {...validBackup,settings:{...validBackup.settings,desiredRetention:1.2}},
+  {...validBackup,settings:{...validBackup.settings,fsrsScheduling:{policy:fixed(1.2)}}},
 ]) mustFail(() => service.validateBackup(mutation), 'Hostile backup should fail');
 check(service.validateBackup({...validBackup,units:[{...validBackup.units[0],evidenceCount:1}],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[conceptEvidence]}).evidenceEvents.length === 1, 'Relational workflow evidence backup should pass');
 mustFail(()=>service.validateBackup({...validBackup,units:[{...validBackup.units[0],evidenceCount:1}],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[(({timing,...rest})=>rest)(conceptEvidence)]}),'Current evidence without timing must be rejected');
@@ -299,8 +300,8 @@ async function testTriggerEvidenceLookup() {
 }
 
 async function testRelearningLifecycle() {
-  await api.prepareFsrsScheduler(.9);
-  const memory = new api.FsrsMemoryPolicy(() => .9);
+  await api.prepareFsrsScheduler(fixed(.9));
+  const memory = new api.FsrsMemoryPolicy(() => fixed(.9));
   const unit = { id:'u', profileId:'p', topicNodeId:'t', title:'U', scope:'scope', source:'', importance:3, status:'active', createdAt:due, updatedAt:due, evidenceCount:0, lapseCount:0 };
   const original = { ...obligation('memory-recall', memory, 'recall'), id:'original', unitId:'u', priority:1 };
   original.policyState.fsrsCard.cardId = 'original';
@@ -346,7 +347,7 @@ async function testRelearningLifecycle() {
   check(resumedDays >= 2.9 && resumedDays <= 3.1, 'Successful relearning must advance the original through FSRS-7 rather than a fixed app interval');
   const canonicalHistory = api.memoryReviewObservationsFor('original', [failedMemoryEvent, calls[0][2]]);
   check(canonicalHistory.length === 2 && canonicalHistory[0].source === 'direct-memory' && canonicalHistory[1].source === 'relearning-return', 'Canonical memory history must include the corrective return transition');
-  api.revisionSchedulerPort(.9).verifyProjection(resumed.policyState.fsrsCard, canonicalHistory); checks++;
+  api.revisionSchedulerPort(fixed(.9)).verifyProjection(resumed.policyState.fsrsCard, canonicalHistory); checks++;
 }
 
 
@@ -373,7 +374,7 @@ async function testStudyEventRuntimeBoundary() {
 
 async function testDueSummaryScope() {
   const svc = new api.RevisionService({});
-  svc.settings = { schemaVersion:1, key:'app', activeProfileId:'active', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4, fsrsPersonalization:{profile:null,active:false} };
+  svc.settings = { schemaVersion:1, key:'app', activeProfileId:'active', fsrsScheduling:{policy:fixed(.9)}, dailyCapacityMinutes:60, studyDayBoundaryHour:4, fsrsPersonalization:{profile:null,active:false} };
   const obligation = { id:'o', unitId:'u', type:'concept-reconstruction', status:'active', dueAt:'2026-07-25T05:00:00Z', expectedMinutes:10, baselineMinutes:10, durationSampleCount:0, protocol:'x', successCriteria:'x', workflow:{kind:'reconstruction',prompt:'x',checkpoints:['x'],responseMedium:'in-app',reconstructionShape:'outline'}, freshnessDays:30, priority:0, policyState:{engine:'mastery',version:'1',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0}, createdAt:due, updatedAt:due };
   const unit = { id:'u', profileId:'p', topicNodeId:'t', title:'U', scope:'x', source:'', importance:3, status:'active', createdAt:due, updatedAt:due, evidenceCount:0, lapseCount:0 };
   const join = (id,status,examDate) => ({ obligation:{...obligation,id}, unit:{...unit,id:'u'+id,profileId:id}, profile:{id,name:id,examDate,status,createdAt:due,updatedAt:due}, subject:'S',section:'C',topic:'T' });
@@ -385,7 +386,7 @@ async function testDueSummaryScope() {
 async function testSettingsBoundary() {
   const repo = { getAll: async () => [{schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due}], get: async (_store,key) => key==='p' ? {schemaVersion:1,id:'p',status:'active'} : undefined, put: async()=>{} };
   const svc = new api.RevisionService(repo);
-  const base = { schemaVersion:1, key:'app', activeProfileId:'p', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4, fsrsPersonalization:{profile:null,active:false} };
+  const base = { schemaVersion:1, key:'app', activeProfileId:'p', fsrsScheduling:{policy:fixed(.9)}, dailyCapacityMinutes:60, studyDayBoundaryHour:4, fsrsPersonalization:{profile:null,active:false} };
   await svc.saveSettings(base); check(true, 'Valid settings should save');
   for (const mutation of [{...base,activeProfileId:'missing'},{...base,dailyCapacityMinutes:60.5},{...base,studyDayBoundaryHour:4.5}]) {
     let failed=false; try { await svc.saveSettings(mutation); } catch { failed=true; }
