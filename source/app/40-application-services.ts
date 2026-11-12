@@ -1522,6 +1522,30 @@
         validRatingValue(event.suggestedRating, "Evidence event"); validRatingValue(event.confirmedRating, "Evidence event");
         assert(event.beforePolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType] && event.afterPolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType], "Evidence policy states do not match the obligation type.");
         if (event.followUpObligationId) assert(obligationMap.has(event.followUpObligationId), "Evidence event references a missing follow-up obligation.");
+        if (event.obligationType !== "memory-recall") {
+          const policy = this.router.get(event.obligationType);
+          const transitionInput = {
+            ...obligation,
+            dueAt: event.beforeDueAt,
+            policyState: clone(event.beforePolicyState),
+          };
+          const expected = policy.complete(transitionInput, event.confirmedRating, event.evidence, new Date(event.reviewedAt));
+          assert(expected.policyId === event.policyId, "Evidence policy ID does not match the current policy implementation.");
+          assert(expected.dueAt === event.afterDueAt, "Evidence next due date does not match the current policy transition.");
+          const expectedState = expected.policyState;
+          const actualState = event.afterPolicyState;
+          assert(
+            expectedState.engine === actualState.engine &&
+            expectedState.version === actualState.version &&
+            expectedState.stage === actualState.stage &&
+            expectedState.successStreak === actualState.successStreak &&
+            expectedState.failureCount === actualState.failureCount &&
+            expectedState.lastIntervalDays === actualState.lastIntervalDays &&
+            expectedState.fsrsCard === undefined &&
+            actualState.fsrsCard === undefined,
+            "Evidence after-policy state does not match the current policy transition.",
+          );
+        }
         if (event.obligationType === "memory-recall") {
           assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION && event.schedulerModel === FSRS_MODEL, "Memory evidence lacks exact FSRS-7 provenance.");
           const config = event.schedulerConfig;
