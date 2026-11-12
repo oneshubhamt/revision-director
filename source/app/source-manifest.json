@@ -33,76 +33,81 @@
     },
     {
       "order": 6,
+      "path": "app/18a-fsrs-browser-optimizer.ts",
+      "layer": "Optional local FSRS-7 optimizer Worker/WASM client boundary, cancellation and progress reporting."
+    },
+    {
+      "order": 7,
       "path": "app/19-revision-scheduler-port.ts",
       "layer": "Application-owned FSRS-7 scheduler port, Reschedule replay truth, materialized projection integrity and configuration identity."
     },
     {
-      "order": 7,
+      "order": 8,
       "path": "app/20-policy-planning-kernel.ts",
       "layer": "Scheduler-policy context, persistent-difficulty host policy and adaptive daily-planning kernel."
     },
     {
-      "order": 8,
+      "order": 9,
       "path": "app/21-policy-implementations.ts",
       "layer": "FSRS and deterministic policy implementations plus scheduler router."
     },
     {
-      "order": 9,
+      "order": 10,
       "path": "app/30-indexeddb-repository.ts",
       "layer": "IndexedDB schema, repository transactions and backup replacement."
     },
     {
-      "order": 10,
+      "order": 11,
       "path": "app/31-storage-facade.ts",
       "layer": "Application-wide storage facade, bounded diagnostics and browser storage-health reporting."
     },
     {
-      "order": 11,
+      "order": 12,
       "path": "app/32-active-retrieval-persistence.ts",
       "layer": "Durable active retrieval persistence, emergency recovery, serialised writes and newest-copy reconciliation."
     },
     {
-      "order": 12,
+      "order": 13,
       "path": "app/33-phase-time-runtime.ts",
       "layer": "Phase-aware active-time accounting, pause history, inactive-gap classification and timing reliability."
     },
     {
-      "order": 13,
+      "order": 14,
       "path": "app/34-cross-tab-ownership.ts",
       "layer": "Cross-tab review ownership lease, takeover handshake, canonical hydration and read-only secondary state."
     },
     {
-      "order": 14,
+      "order": 15,
       "path": "app/40-application-services.ts",
       "layer": "Revision-domain use cases and atomic service operations."
     },
     {
-      "order": 15,
+      "order": 16,
       "path": "app/41-backup-codec.ts",
       "layer": "Versioned bounded backup archive codec, compression detection, integrity hashes, inspection metadata and relational decode."
     },
     {
-      "order": 16,
+      "order": 17,
       "path": "app/42-backup-controller.ts",
       "layer": "Verified backup creation, non-mutating inspection, safety-copy proofs, explicit restore orchestration and active-session treatment."
     },
     {
-      "order": 17,
+      "order": 18,
       "path": "app/55-extension-runtime.ts",
       "layer": "Frozen public capability API, plugin registration, failure isolation and trusted local plugin-file loader."
     },
     {
-      "order": 18,
+      "order": 19,
       "path": "app/45-ui-runtime.ts",
       "layer": "Delegated UI events, deterministic render coordination, ARIA tab registry and focus-management primitives."
     },
     {
-      "order": 19,
+      "order": 20,
       "path": "app/50-ui-controller.ts",
       "layer": "DOM helpers and the current UI controller."
     },
     {
-      "order": 20,
+      "order": 21,
       "path": "app/60-public-bridge-bootstrap.ts",
       "layer": "Validated public bridge and boot sequence; the build owns the outer sealed IIFE."
     }
