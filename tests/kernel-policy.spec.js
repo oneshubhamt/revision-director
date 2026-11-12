@@ -348,6 +348,7 @@ async function testRelearningLifecycle() {
   const calls = [];
   const repo = { get: async (_store, key) => key === 'original' ? original : undefined, dailyPlanByStudyDay: async()=>undefined, recordReview: async (...args) => { calls.push(args); } };
   const lifecycle = new api.RevisionService(repo);
+  lifecycle.settings = { ...lifecycle.getSettings(), fsrsScheduling:{ policy:fixed(.9) } };
   lifecycle.obligation = async () => original;
   lifecycle.unit = async () => unit;
   lifecycle.profile = async () => ({schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due});
