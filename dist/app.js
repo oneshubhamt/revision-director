@@ -1826,20 +1826,48 @@
       return { policy, ...(lastRebase ? { lastRebase } : {}) };
   }
   function defaultFsrsPersonalizationSettings() {
-      return { profile: null, active: false };
+      return { profile: null, active: false, replayProfiles: [] };
   }
   function canonicalFsrsPersonalizationSettings(value) {
       const record = requireRecord(value, "FSRS personalization settings");
-      const allowed = new Set(["profile", "active"]);
+      const allowed = new Set(["profile", "active", "replayProfiles"]);
       assert(Object.keys(record).every((key) => allowed.has(key)), "FSRS personalization settings contain unexpected fields.");
       const profile = record["profile"] === null ? null : validateFsrsOptimizerProfile(record["profile"]);
       const active = record["active"];
       assert(typeof active === "boolean", "FSRS personalization active flag is invalid.");
       assert(!active || profile !== null, "Active FSRS personalization requires an optimizer profile.");
-      return { profile, active };
+      const replayInput = record["replayProfiles"] === undefined ? [] : requiredArray(record["replayProfiles"], "FSRS replay profiles");
+      assert(replayInput.length <= 256, "FSRS replay-profile archive is unreasonably large.");
+      const replayProfiles = replayInput.map((item) => validateFsrsOptimizerProfile(item));
+      const seen = new Set();
+      for (const replayProfile of replayProfiles) {
+          const identity = `${replayProfile.sourceSha256}|${fsrsWeightsFingerprint(replayProfile.weights)}`;
+          assert(!seen.has(identity), "FSRS replay-profile archive contains duplicate profiles.");
+          seen.add(identity);
+      }
+      return { profile, active, replayProfiles };
   }
   function effectiveFsrsPersonalization(settings) {
       return canonicalFsrsPersonalizationSettings(settings.fsrsPersonalization);
+  }
+  function fsrsPersonalizationProfileCatalog(settings) {
+      const personalization = effectiveFsrsPersonalization(settings);
+      const profiles = [...personalization.replayProfiles];
+      if (personalization.profile) {
+          const identity = `${personalization.profile.sourceSha256}|${fsrsWeightsFingerprint(personalization.profile.weights)}`;
+          if (!profiles.some((profile) => `${profile.sourceSha256}|${fsrsWeightsFingerprint(profile.weights)}` === identity)) {
+              profiles.push(personalization.profile);
+          }
+      }
+      return profiles.map((profile) => clone(profile));
+  }
+  function appendFsrsReplayProfile(replayProfiles, profile) {
+      const validated = validateFsrsOptimizerProfile(profile);
+      const identity = `${validated.sourceSha256}|${fsrsWeightsFingerprint(validated.weights)}`;
+      if (replayProfiles.some((item) => `${item.sourceSha256}|${fsrsWeightsFingerprint(item.weights)}` === identity)) {
+          return replayProfiles.map((item) => clone(item));
+      }
+      return [...replayProfiles.map((item) => clone(item)), clone(validated)];
   }
   function activeFsrsOptimizerProfile(settings) {
       const personalization = effectiveFsrsPersonalization(settings);
@@ -1932,7 +1960,7 @@
   }
 
   /* ==========================================================================
-     FSRS-7 BROWSER OPTIMIZER — OPTIONAL LOCAL WORKER/WASM BOUNDARY
+     FSRS-7 BROWSER OPTIMIZER — HOSTED LOCAL WORKER/WASM BOUNDARY
      ========================================================================== */
   class FsrsOptimizerRejectedError extends Error {
       reasons;
@@ -2264,6 +2292,8 @@
           assert(review.source === "direct-memory" || review.source === "relearning-verification", "Memory review source is invalid.");
           assert(Number.isFinite(new Date(review.reviewedAt).getTime()), "Memory review timestamp is invalid.");
           assert(/^fnv1a64:[0-9a-f]{16}$/.test(review.configFingerprint), "Memory review configuration fingerprint is invalid.");
+          const schedulerConfig = validateFsrsConfigSnapshot(review.schedulerConfig);
+          assert(review.configFingerprint === schedulerConfig.fingerprint, "Memory review configuration fingerprint does not match its scheduler snapshot.");
           validateStoredFsrsCard(review.beforeCard, cardId);
           validateStoredFsrsCard(review.afterCard, cardId);
           assert(review.afterCard.lastReviewAt === review.reviewedAt, "Memory review timestamp does not match its resulting FSRS card.");
@@ -2303,6 +2333,7 @@
           source: "direct-memory",
           beforeCard: clone(beforeCard),
           afterCard: clone(afterCard),
+          schedulerConfig: clone(validateFsrsConfigSnapshot(config)),
           configFingerprint: validateFsrsConfigSnapshot(config).fingerprint,
       };
   }
@@ -2317,6 +2348,7 @@
           source: "relearning-verification",
           beforeCard: clone(beforeCard),
           afterCard: clone(afterCard),
+          schedulerConfig: clone(validateFsrsConfigSnapshot(returned.schedulerConfig)),
           configFingerprint: validateFsrsConfigSnapshot(returned.schedulerConfig).fingerprint,
       };
   }
@@ -2514,6 +2546,11 @@
           }, elapsedDays);
           return clamp(Number(retrievability), 0, 1);
       }
+      replayVerifiedHistory(reviews) {
+          assert(reviews.length > 0, "FSRS verified replay requires review history.");
+          validateMemoryObservationChain(reviews[0].beforeCard.cardId, reviews);
+          return this.materializeValidated(reviews[0].beforeCard, reviews);
+      }
       reschedule(initialCard, reviews) {
           assert(reviews.length > 0, "FSRS reschedule requires review history.");
           validateMemoryObservationChain(initialCard.cardId, reviews);
@@ -2607,19 +2644,55 @@
           validateMemoryObservationChain(obligation.id, reviewIndex.get(obligation.id) ?? [], projection);
       }
   }
-  function verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile = null) {
+  function profileForHistoricalFsrsConfiguration(config, profileCatalog) {
+      const validated = validateFsrsConfigSnapshot(config);
+      if (validated.weightsSource === "ts-fsrs-package-default")
+          return null;
+      const sourceSha256 = validated.optimizerProfileSourceSha256;
+      assert(sourceSha256, "Historical personalized FSRS configuration lacks profile provenance.");
+      const matches = profileCatalog.filter((profile) => profile.sourceSha256 === sourceSha256
+          && fsrsWeightsFingerprint(profile.weights) === validated.weightsFingerprint);
+      assert(matches.length === 1, "Historical personalized FSRS configuration cannot resolve its exact optimizer profile.");
+      return matches[0];
+  }
+  function verifyHistoricalMemorySchedulerConfigurations(reviews, profileCatalog, currentConfigFingerprint) {
+      if (reviews.length === 0)
+          return;
+      const configurations = new Map();
+      for (const review of reviews) {
+          const config = validateFsrsConfigSnapshot(review.schedulerConfig);
+          const existing = configurations.get(config.fingerprint);
+          if (existing) {
+              assert(JSON.stringify(existing) === JSON.stringify(config), "A single FSRS configuration fingerprint maps to conflicting scheduler snapshots.");
+          }
+          else {
+              configurations.set(config.fingerprint, clone(config));
+          }
+      }
+      for (const config of configurations.values()) {
+          if (config.fingerprint === currentConfigFingerprint)
+              continue;
+          const historicalProfile = profileForHistoricalFsrsConfiguration(config, profileCatalog);
+          const historicalScheduler = revisionSchedulerPort(config.schedulingPolicy, historicalProfile);
+          assert(historicalScheduler.configuration.fingerprint === config.fingerprint, "Historical FSRS configuration cannot be reconstructed exactly.");
+          historicalScheduler.replayVerifiedHistory(reviews);
+      }
+  }
+  function verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile = null, profileCatalog = profile ? [profile] : []) {
       const scheduler = revisionSchedulerPort(schedulingPolicy, profile);
       for (const obligation of obligations) {
           if (obligation.type !== "memory-recall")
               continue;
           const projection = obligation.policyState.fsrsCard;
           assert(projection, "Memory obligation has no FSRS materialized projection.");
-          scheduler.verifyProjection(projection, reviewIndex.get(obligation.id) ?? [], true);
+          const reviews = reviewIndex.get(obligation.id) ?? [];
+          verifyHistoricalMemorySchedulerConfigurations(reviews, profileCatalog, scheduler.configuration.fingerprint);
+          scheduler.verifyProjection(projection, reviews, true);
       }
   }
-  function verifyMemoryDatasetIntegrity(obligations, evidenceEvents, schedulingPolicy, profile = null) {
+  function verifyMemoryDatasetIntegrity(obligations, evidenceEvents, schedulingPolicy, profile = null, profileCatalog = profile ? [profile] : []) {
       const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
-      verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile);
+      verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile, profileCatalog);
       return reviewIndex;
   }
 
@@ -4782,7 +4855,7 @@
               this.repo.getAll(Store.Obligations),
               this.evidenceEvents(),
           ]);
-          verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings));
+          verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings), fsrsPersonalizationProfileCatalog(this.settings));
       }
       storageHealth() {
           return this.repo.storageHealth();
@@ -4867,15 +4940,31 @@
           assert(snapshot.summary.reviews > 0, "No memory-review evidence is available for FSRS personalization.");
           assert(profile.sourceSha256 === snapshot.sourceSha256, "FSRS optimizer profile was trained on different or stale review evidence. Re-optimize or import a profile generated from the current canonical evidence export.");
       }
+      async replayProfilesBeforeDiscardingCurrent(personalization) {
+          const current = personalization.profile;
+          if (!current)
+              return personalization.replayProfiles.map((profile) => clone(profile));
+          const fingerprint = fsrsWeightsFingerprint(current.weights);
+          const referenced = (await this.evidenceEvents()).some((event) => {
+              const configs = [event.schedulerConfig, event.correctiveMemoryTransition?.schedulerConfig];
+              return configs.some((config) => config?.weightsSource === "optimizer-profile"
+                  && config.weightsFingerprint === fingerprint
+                  && config.optimizerProfileSourceSha256 === current.sourceSha256);
+          });
+          return referenced
+              ? appendFsrsReplayProfile(personalization.replayProfiles, current)
+              : personalization.replayProfiles.map((profile) => clone(profile));
+      }
       async stageFsrsOptimizerProfile(input) {
           const personalization = effectiveFsrsPersonalization(this.settings);
           assert(!personalization.active, "Return to stock FSRS-7 before staging a different optimizer profile.");
           const profile = validateFsrsOptimizerProfile(input);
           await this.assertOptimizerProfileMatchesCurrentEvidence(profile);
           await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, profile);
+          const replayProfiles = await this.replayProfilesBeforeDiscardingCurrent(personalization);
           const next = canonicalAppSettings({
               ...this.settings,
-              fsrsPersonalization: { ...personalization, profile, active: false },
+              fsrsPersonalization: { profile, active: false, replayProfiles },
           });
           await this.repo.put(Store.Settings, next);
           this.settings = next;
@@ -4884,9 +4973,10 @@
       async clearFsrsOptimizerProfile() {
           const personalization = effectiveFsrsPersonalization(this.settings);
           assert(!personalization.active, "Return to stock FSRS-7 before removing the optimizer profile.");
+          const replayProfiles = await this.replayProfilesBeforeDiscardingCurrent(personalization);
           const next = canonicalAppSettings({
               ...this.settings,
-              fsrsPersonalization: { profile: null, active: false },
+              fsrsPersonalization: { profile: null, active: false, replayProfiles },
           });
           await this.repo.put(Store.Settings, next);
           this.settings = next;
@@ -4919,9 +5009,10 @@
           assert(incumbent, "Replacement FSRS optimizer profile lacks an incumbent holdout comparison.");
           assert(incumbent.sourceSha256 === personalization.profile.sourceSha256
               && incumbent.weightsFingerprint === fsrsWeightsFingerprint(personalization.profile.weights), "Replacement FSRS optimizer profile was not evaluated against the currently active personalized weights.");
+          const replayProfiles = appendFsrsReplayProfile(personalization.replayProfiles, personalization.profile);
           const next = canonicalAppSettings({
               ...this.settings,
-              fsrsPersonalization: { profile: candidate, active: true },
+              fsrsPersonalization: { profile: candidate, active: true, replayProfiles },
           });
           await this.rebaseMemoryScheduler(next, candidate, "replace-profile");
           return clone(candidate);
@@ -4934,7 +5025,7 @@
           await prepareFsrsScheduler(settings.fsrsScheduling.policy, profile);
           const [obligations, evidenceEvents, units] = await Promise.all([this.obligations(), this.evidenceEvents(), this.units()]);
           const reviewIndex = this.memoryReviewIndexFor(evidenceEvents);
-          verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, this.settings.fsrsScheduling.policy, currentProfile);
+          verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, this.settings.fsrsScheduling.policy, currentProfile, fsrsPersonalizationProfileCatalog(this.settings));
           const scheduler = revisionSchedulerPort(settings.fsrsScheduling.policy, profile);
           const at = nowIso();
           let rescheduledObligations = 0;
@@ -4987,6 +5078,7 @@
               },
           });
           validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex);
+          verifyMemoryDatasetIntegrityWithIndex(updatedMemory, reviewIndex, finalized.fsrsScheduling.policy, activeFsrsOptimizerProfile(finalized), fsrsPersonalizationProfileCatalog(finalized));
           await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);
           this.settings = finalized;
       }
@@ -5650,6 +5742,7 @@
                       source: "direct-memory",
                       beforeCard: clone(beforeCard),
                       afterCard: clone(afterCard),
+                      schedulerConfig: clone(schedulerConfig),
                       configFingerprint: schedulerConfig.fingerprint,
                   };
                   return memoryDifficultyAssessment(obligation, this.settings.memoryDifficultyPolicy, [...priorMemoryReviews, currentReview]);
@@ -5763,6 +5856,7 @@
                       source: "relearning-verification",
                       beforeCard: clone(beforeCard),
                       afterCard: clone(afterCard),
+                      schedulerConfig: clone(verification.schedulerConfig),
                       configFingerprint: verification.schedulerConfig.fingerprint,
                   };
                   const difficulty = memoryDifficultyAssessment(original, this.settings.memoryDifficultyPolicy, [...priorOriginalReviews, currentVerification]);
@@ -5932,7 +6026,7 @@
       }
       async createBackupArchive(preferCompression = true) {
           const payload = this.validateBackup(await this.exportBackup());
-          verifyMemoryDatasetIntegrity(payload.obligations, payload.evidenceEvents, payload.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(payload.settings));
+          verifyMemoryDatasetIntegrity(payload.obligations, payload.evidenceEvents, payload.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(payload.settings), fsrsPersonalizationProfileCatalog(payload.settings));
           return BackupCodec.create(payload, preferCompression);
       }
       async inspectBackupArchive(bytes) {
@@ -5944,7 +6038,7 @@
       async restoreBackupPayload(payload, activeTreatment) {
           const validated = this.validateBackup(payload);
           await prepareFsrsScheduler(validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings));
-          verifyMemoryDatasetIntegrity(validated.obligations, validated.evidenceEvents, validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings));
+          verifyMemoryDatasetIntegrity(validated.obligations, validated.evidenceEvents, validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings), fsrsPersonalizationProfileCatalog(validated.settings));
           await this.repo.replaceFromBackup(validated, activeTreatment);
           this.settings = clone(validated.settings);
           this.invalidateMemoryReviewAnalysis();
