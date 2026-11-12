@@ -123,6 +123,18 @@
       return values as StoreValue<S>[];
     }
 
+    async hasAnyStoredData(excluded: readonly StoreName[] = []): Promise<boolean> {
+      const excludedStores = new Set<StoreName>(excluded);
+      for (const store of Object.values(Store) as StoreName[]) {
+        if (excludedStores.has(store)) continue;
+        const tx = this.db.transaction(store, "readonly");
+        const count = await requestResult(tx.objectStore(store).count());
+        await transactionDone(tx);
+        if (count > 0) return true;
+      }
+      return false;
+    }
+
     async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
       const tx = this.db.transaction(store, "readwrite");
       tx.objectStore(store).put(value);
@@ -133,6 +145,13 @@
       const tx = this.db.transaction(store, "readwrite");
       const target = tx.objectStore(store);
       for (const value of values) target.put(value);
+      await transactionDone(tx);
+    }
+
+    async putProfileAndSettings(profile: ExamProfile, settings: AppSettings): Promise<void> {
+      const tx = this.db.transaction([Store.Profiles, Store.Settings], "readwrite");
+      tx.objectStore(Store.Profiles).put(profile);
+      tx.objectStore(Store.Settings).put(settings);
       await transactionDone(tx);
     }
 
