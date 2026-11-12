@@ -35,7 +35,7 @@ The current database contains:
 
 The database creation path creates stores only for a fresh database (`oldVersion === 0`). Existing databases open normally when their IndexedDB layout version and metadata database identity match the current schema. An attempted unsupported layout upgrade is aborted before schema mutation; a database created by a newer layout also fails closed. Both cases direct the user toward a compatible-build backup path rather than destructive clearing.
 
-Metadata and settings are initialization records, not reconstruction hints. A genuinely empty fresh database may create them. If metadata or settings are missing while other durable state already exists, startup fails closed without synthesizing replacements or mutating the surviving records.
+Metadata and settings are initialization records, not reconstruction hints. A fresh database creates both inside the same `oldVersion === 0` versionchange transaction that creates the object stores. Once database creation completes, either record being absent is corruption: startup fails closed without synthesizing replacements or mutating the surviving records.
 
 ## Durable documents
 
