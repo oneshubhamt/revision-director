@@ -171,7 +171,8 @@
     const costWeightMax = Number(record["costWeightMax"]);
     const retentionMin = Number(record["retentionMin"]);
     const retentionMax = Number(record["retentionMax"]);
-    assert(Number.isFinite(costWeightMin) && Number.isFinite(costWeightMax) && costWeightMin >= 0 && costWeightMax > costWeightMin, "FSRS Cost-ADR cost-weight bounds are invalid.");
+    assert(Number.isFinite(costWeightMin) && Number.isFinite(costWeightMax) && costWeightMin >= 0 && costWeightMax > costWeightMin
+      && Math.log1p(costWeightMax) > Math.log1p(costWeightMin), "FSRS Cost-ADR cost-weight bounds are invalid.");
     assert(Number.isFinite(retentionMin) && Number.isFinite(retentionMax) && retentionMin > 0 && retentionMax > retentionMin && retentionMax < 1, "FSRS Cost-ADR retention bounds are invalid.");
     const boundsRecord = requireRecord(record["bounds"], "FSRS Cost-ADR state bounds");
     const boundsAllowed = new Set(["sMin", "sMax", "dMin", "dMax"]);
@@ -182,8 +183,10 @@
       dMin: Number(boundsRecord["dMin"]),
       dMax: Number(boundsRecord["dMax"]),
     };
-    assert(Number.isFinite(bounds.sMin) && Number.isFinite(bounds.sMax) && bounds.sMin > 0 && bounds.sMax > bounds.sMin, "FSRS Cost-ADR stability bounds are invalid.");
-    assert(Number.isFinite(bounds.dMin) && Number.isFinite(bounds.dMax) && bounds.dMax > bounds.dMin, "FSRS Cost-ADR difficulty bounds are invalid.");
+    assert(Number.isFinite(bounds.sMin) && Number.isFinite(bounds.sMax) && bounds.sMin > 0 && bounds.sMax > bounds.sMin
+      && Math.log(bounds.sMax) > Math.log(bounds.sMin), "FSRS Cost-ADR stability bounds are invalid.");
+    assert(Number.isFinite(bounds.dMin) && Number.isFinite(bounds.dMax) && bounds.dMax > bounds.dMin
+      && Number.isFinite(bounds.dMax - bounds.dMin), "FSRS Cost-ADR difficulty bounds are invalid.");
     return { coefficients, costWeightMin, costWeightMax, retentionMin, retentionMax, bounds };
   }
 

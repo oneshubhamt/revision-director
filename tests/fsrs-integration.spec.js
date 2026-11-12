@@ -158,6 +158,8 @@ async function testSchedulingPolicyBoundary(){
   mustFail(()=>api.validateFsrsConfigSnapshot(changedGoal),'Changing Cost-ADR goal weight without recomputing provenance must fail');
   const changedCoefficient=clone(adaptiveConfig); changedCoefficient.schedulingPolicy.costAdrPolicy.coefficients[0]-=.001;
   mustFail(()=>api.validateFsrsConfigSnapshot(changedCoefficient),'Changing a Cost-ADR coefficient without recomputing provenance must fail');
+  const overflowingDifficulty=costAdr(); overflowingDifficulty.costAdrPolicy.bounds={sMin:.0001,sMax:36500,dMin:-1e308,dMax:1e308};
+  mustFail(()=>api.canonicalFsrsSchedulingPolicy(overflowingDifficulty),'Cost-ADR validation must reject a non-finite difficulty span exactly as upstream does');
   const profile=optimizerProfile();
   const personalized=api.fsrsConfigSnapshot(fixed(.9),profile);
   check(JSON.stringify(personalized.schedulingPolicy)===JSON.stringify(fixedConfig.schedulingPolicy)&&personalized.fingerprint!==fixedConfig.fingerprint,'Weight personalization must be orthogonal to scheduling policy while still changing scheduler identity');
