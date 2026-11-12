@@ -485,6 +485,7 @@
     }
   ],
   "settings": {
+    "schemaVersion": 1,
     "key": "app",
     "activeProfileId": "profile_ms320pmc_1ok138i1vvaaga",
     "fsrsScheduling": {
@@ -503,7 +504,6 @@
     },
     "dailyCapacityMinutes": 60,
     "studyDayBoundaryHour": 4,
-    "schemaVersion": 1,
     "fsrsPersonalization": {
       "profile": null,
       "active": false
