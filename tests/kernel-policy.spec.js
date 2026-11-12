@@ -459,6 +459,7 @@ async function testAutomaticPersistentDifficultyHold() {
   svc.settings={...svc.getSettings(),memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:true,lapseThreshold:8}}};
   svc.obligation=async()=>relearn;
   svc.unit=async()=>unit;
+  svc.profile=async()=>({schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due});
   svc.obligationsForUnit=async()=>[relearn];
   svc.evidenceEvents=async()=>[];
   svc.memoryReviewIndexFor=()=>new Map([['persistent-original',[
