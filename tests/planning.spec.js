@@ -51,6 +51,15 @@ const sharedEvidence = [evidence('shared','shared-recall',1,1),evidence('shared'
 const weakSpecific = api.buildPlanningCandidate({obligation:weakObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},sharedEvidence,settings,ref);
 const strongSpecific = api.buildPlanningCandidate({obligation:strongObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},sharedEvidence,settings,ref);
 check(weakSpecific.factors.weakness > strongSpecific.factors.weakness + .25, 'Weakness must be obligation-specific rather than shared across all workflows in a unit');
+const persistentObligation=structuredClone(weakObligation);
+persistentObligation.expectedMinutes=60;
+persistentObligation.policyState=structuredClone(weakObligation.policyState);
+persistentObligation.policyState.fsrsCard.lapses=4;
+persistentObligation.policyState.fsrsCard.reps=8;
+persistentObligation.policyState.fsrsCard.state=2;
+persistentObligation.policyState.fsrsCard.scheduleStatus='review';
+const persistentCandidate=api.buildPlanningCandidate({obligation:persistentObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},[],settings,ref);
+check(persistentCandidate&&persistentCandidate.factors.weakness>=.9&&persistentCandidate.reasons.some(reason=>reason.includes('persistent difficulty')),'Persistent FSRS lapse burden must surface as a strong planner weakness signal without changing the scheduler due date');
 const short = api.buildPlanningCandidate(joined('short',0,10,3,60),[],settings,ref);
 const long = api.buildPlanningCandidate(joined('long',0,60,3,60),[],settings,ref);
 check(short.score > long.score, 'Duration fit must affect rank without dominating it');

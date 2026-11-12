@@ -5,7 +5,7 @@ const { webcrypto } = require('crypto');
 const path = require('path');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsConfigSnapshot, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsConfigSnapshot, validateStoredFsrsCard, defaultMemoryDifficultyPolicy, canonicalMemoryDifficultyPolicy, memoryDifficultyAssessment, memoryDifficultyRemediationPlan, memoryDifficultyActionLabel, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 
@@ -122,6 +122,25 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   const memoryObligation = obligation('memory-recall', memory, 'recall');
   check(memoryObligation.policyState.fsrsCard.model === 'FSRS-7', 'New memory obligations must use FSRS-7');
   check(Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'FSRS-7 must persist the fast-memory trace');
+  const defaultDifficulty=api.defaultMemoryDifficultyPolicy();
+  check(defaultDifficulty.remediationLapses===2&&defaultDifficulty.persistentDifficultyLapses===4&&defaultDifficulty.automaticHold.enabled===false&&defaultDifficulty.automaticHold.lapseThreshold===8,'Persistent-difficulty defaults must preserve ordinary early relearning and keep automatic hold opt-in');
+  const difficultyProbe=structuredClone(memoryObligation); difficultyProbe.expectedMinutes=60;
+  difficultyProbe.policyState.fsrsCard.lapses=1;
+  check(api.memoryDifficultyAssessment(difficultyProbe,defaultDifficulty).level==='normal','A first FSRS review lapse must remain ordinary relearning');
+  difficultyProbe.policyState.fsrsCard.lapses=2;
+  const remediation=api.memoryDifficultyAssessment(difficultyProbe,defaultDifficulty);
+  check(remediation.level==='remediation'&&remediation.recommendedActions.includes('source-revisit')&&remediation.recommendedActions.includes('representation-change'),'Repeated FSRS lapses must escalate the kind of remediation');
+  difficultyProbe.policyState.fsrsCard.lapses=4;
+  const persistent=api.memoryDifficultyAssessment(difficultyProbe,defaultDifficulty);
+  check(persistent.level==='persistent-difficulty'&&persistent.recommendedActions.includes('scope-review')&&persistent.recommendedActions.includes('split-scope')&&persistent.recommendedActions.includes('prerequisite-review')&&persistent.recommendedActions.includes('deliberate-intervention'),'Persistent difficulty must surface structural interventions for oversized memory work');
+  const persistentPlan=api.memoryDifficultyRemediationPlan(persistent);
+  check(persistentPlan.priorityBoost===4&&persistentPlan.guidance.includes('Persistent difficulty (4 FSRS lapses)'),'Persistent difficulty must strengthen remediation without replacing the relearning workflow');
+  const holdPolicy={...defaultDifficulty,automaticHold:{enabled:true,lapseThreshold:8}};
+  difficultyProbe.policyState.fsrsCard.lapses=8;
+  check(api.memoryDifficultyAssessment(difficultyProbe,holdPolicy).automaticHoldEligible===true,'Automatic removal from the normal queue must require an explicit enabled final policy and threshold');
+  mustFail(()=>api.canonicalMemoryDifficultyPolicy({...defaultDifficulty,remediationLapses:1}),'Difficulty policy must reject a threshold that escalates the first FSRS lapse');
+  mustFail(()=>api.canonicalMemoryDifficultyPolicy({...defaultDifficulty,persistentDifficultyLapses:2}),'Persistent difficulty must occur strictly after remediation');
+  mustFail(()=>api.validateStoredFsrsCard({...difficultyProbe.policyState.fsrsCard,scheduleStatus:'suspended'}),'FSRS scheduleStatus must not become a second suspension truth');
   check(memoryObligation.policyState.fsrsCard.cardId === 'o', 'FSRS cards must retain stable obligation identity');
 
   const previews = memory.preview(memoryObligation, new Date(due));
@@ -154,6 +173,11 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   check(good.policyId === 'memory/ts-fsrs@6.0.0/fsrs-7', 'FSRS-7 policy provenance must be explicit');
   check(good.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(good.policyState.fsrsCard.stabilityFast), 'Reviewed FSRS-7 state must preserve both traces');
   check(good.schedulerConfig.model === 'FSRS-7' && good.schedulerConfig.schedulingPolicy.kind === 'fixed-retention' && good.schedulerConfig.schedulingPolicy.desiredRetention === .9 && good.schedulerConfig.fractionalDays === true, 'FSRS-7 configuration provenance must include the scheduling-policy discriminant');
+
+  const reviewedObligation={...memoryObligation,dueAt:good.dueAt,policyState:structuredClone(good.policyState)};
+  const reviewLapseAt=new Date(good.dueAt);
+  const reviewLapse=memory.complete(reviewedObligation,api.Rating.Again,evidence(1,1,1),reviewLapseAt,{memoryReviews:[]});
+  check(reviewLapse.policyState.fsrsCard.lapses===1&&reviewLapse.followUpType==='relearn','The difficulty signal must use the FSRS Review-state lapse counter, while Again still routes to relearning');
 
   const goodObservation = {
     evidenceEventId:'good-event', reviewedAt:due, rating:api.Rating.Good, source:'direct-memory',
@@ -351,6 +375,58 @@ async function testRelearningLifecycle() {
 }
 
 
+async function testPersistentDifficultyResume() {
+  const held={id:'held',unitId:'u',type:'memory-recall',status:'suspended',suspensionReason:'persistent-difficulty',updatedAt:due};
+  const unit={id:'u',status:'active'};
+  let persisted;
+  const svc=new api.RevisionService({put:async(_store,value)=>{persisted=structuredClone(value);}});
+  svc.obligation=async()=>held;
+  svc.unit=async()=>unit;
+  svc.obligationsForUnit=async()=>[];
+  await svc.resumePersistentDifficulty('held');
+  check(persisted?.status==='active'&&persisted?.suspensionReason===undefined,'A deliberate manual resume must clear only the host-owned persistent-difficulty hold');
+}
+
+async function testAutomaticPersistentDifficultyHold() {
+  await api.prepareFsrsScheduler(fixed(.9));
+  const memory=new api.FsrsMemoryPolicy(()=>fixed(.9));
+  const unit={id:'u',profileId:'p',topicNodeId:'t',title:'U',scope:'scope',source:'',importance:3,status:'active',createdAt:due,updatedAt:due,evidenceCount:0,lapseCount:8};
+  const original={...obligation('memory-recall',memory,'recall'),id:'persistent-original',unitId:'u',status:'suspended',suspensionReason:'relearning'};
+  original.policyState.fsrsCard.cardId='persistent-original';
+  original.policyState.fsrsCard.lapses=8;
+  original.policyState.fsrsCard.reps=12;
+  original.policyState.fsrsCard.state=2;
+  original.policyState.fsrsCard.scheduleStatus='review';
+  const relearnPolicy=new api.RelearnPolicy();
+  const relearn={...obligation('relearn',relearnPolicy,'relearning'),id:'persistent-relearn',unitId:'u',returnObligationId:'persistent-original',policyState:{...relearnPolicy.createInitialState(due),successStreak:1}};
+  const calls=[];
+  const repo={get:async(_store,key)=>key==='persistent-original'?original:undefined,dailyPlanByStudyDay:async()=>undefined,recordReview:async(...args)=>{calls.push(args);}};
+  const svc=new api.RevisionService(repo);
+  svc.settings={...svc.getSettings(),memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:true,lapseThreshold:8}}};
+  svc.obligation=async()=>relearn;
+  svc.unit=async()=>unit;
+  svc.obligationsForUnit=async()=>[relearn];
+  svc.evidenceEvents=async()=>[];
+  svc.chunksForObligation=async()=>[];
+  svc.markPlanItemCompleted=async()=>{};
+  const realGet=svc.router.get.bind(svc.router);
+  const returnedDue=new Date(Date.parse(due)+3*86400000).toISOString();
+  svc.router.get=(type)=>type==='memory-recall'?{
+    complete:()=>({
+      dueAt:returnedDue,
+      policyState:{...structuredClone(original.policyState),successStreak:1,lastIntervalDays:3,fsrsCard:{...structuredClone(original.policyState.fsrsCard),dueAt:returnedDue,lastReviewAt:due}},
+      policyId:'memory/ts-fsrs@6.0.0/fsrs-7',
+      reviewLog:{},
+      schedulerConfig:{model:'FSRS-7',schedulingPolicy:fixed(.9),fractionalDays:true,enableFuzz:false,enableShortTerm:true,learningSteps:['1d'],relearningSteps:['1d'],graduatingInterval:1,allowModelOverride:true,maximumInterval:36500,clearStatsOnForget:false,weightsSource:'ts-fsrs-package-default',weightsFingerprint:'fnv1a64:0000000000000001',fingerprint:'fnv1a64:0000000000000002'}
+    })
+  }:realGet(type);
+  await svc.recordEvidence('persistent-relearn',{...evidence(4,4,3),workflowResult:relearnResult,elapsedMs:1000,timing:{totalActiveMs:1000,activeByPhase:{attempt:1000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]},confirmedRating:3},new Date(due));
+  const heldAgain=calls[0]?.[4];
+  check(calls[0]?.[2]?.returnedMemoryTransition?.obligationId==='persistent-original','Persistent difficulty must still complete the verified return transition to the original FSRS card');
+  check(heldAgain?.status==='suspended'&&heldAgain?.suspensionReason==='persistent-difficulty','Enabled final policy may hold a persistently difficult memory obligation only after successful remediation');
+  check(heldAgain?.policyState.fsrsCard.scheduleStatus==='review','Host queue hold must not mutate FSRS scheduleStatus');
+}
+
 async function testStudyEventRuntimeBoundary() {
   const stored = [];
   const repo = {
@@ -388,10 +464,10 @@ async function testSettingsBoundary() {
   const svc = new api.RevisionService(repo);
   const base = { schemaVersion:1, key:'app', activeProfileId:'p', fsrsScheduling:{policy:fixed(.9)}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4, fsrsPersonalization:{profile:null,active:false} };
   await svc.saveSettings(base); check(true, 'Valid settings should save');
-  for (const mutation of [{...base,activeProfileId:'missing'},{...base,dailyCapacityMinutes:60.5},{...base,studyDayBoundaryHour:4.5}]) {
+  for (const mutation of [{...base,activeProfileId:'missing'},{...base,dailyCapacityMinutes:60.5},{...base,studyDayBoundaryHour:4.5},{...base,memoryDifficultyPolicy:{...base.memoryDifficultyPolicy,remediationLapses:1}},{...base,memoryDifficultyPolicy:{...base.memoryDifficultyPolicy,persistentDifficultyLapses:2}}]) {
     let failed=false; try { await svc.saveSettings(mutation); } catch { failed=true; }
     check(failed, 'Invalid settings boundary must fail');
   }
 }
 
-Promise.all([testFsrs7Integration(), testTriggerEvidenceLookup(), testRelearningLifecycle(), testStudyEventRuntimeBoundary(), testDueSummaryScope(), testSettingsBoundary()]).then(() => console.log(`PASS ${checks} kernel, workflow, policy and backup checks`)).catch((error) => { console.error(error); process.exitCode = 1; });
+Promise.all([testFsrs7Integration(), testTriggerEvidenceLookup(), testRelearningLifecycle(), testPersistentDifficultyResume(), testAutomaticPersistentDifficultyHold(), testStudyEventRuntimeBoundary(), testDueSummaryScope(), testSettingsBoundary()]).then(() => console.log(`PASS ${checks} kernel, workflow, policy and backup checks`)).catch((error) => { console.error(error); process.exitCode = 1; });
