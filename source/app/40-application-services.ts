@@ -1,10 +1,10 @@
   class RevisionService {
     private settings = defaultSettings();
     private readonly router: SchedulerPolicyRouter;
-    private memoryReviewAnalysis?: {
+    private memoryReviewAnalysis: {
       evidenceKey: string;
       reviewIndex: MemoryReviewObservationIndex;
-    };
+    } | undefined;
 
     constructor(private readonly repo: RevisionData) {
       this.router = new SchedulerPolicyRouter(
