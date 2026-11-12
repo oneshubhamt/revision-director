@@ -63,6 +63,16 @@
     return value;
   }
 
+  function requiredFiniteNumber(value: unknown, label: string): number {
+    assert(typeof value === "number" && Number.isFinite(value), `${label} must be a finite number.`);
+    return value;
+  }
+
+  function requiredSafeInteger(value: unknown, label: string): number {
+    assert(typeof value === "number" && Number.isSafeInteger(value), `${label} must be a safe integer.`);
+    return value;
+  }
+
   function requiredArray(value: unknown, label: string): unknown[] {
     assert(Array.isArray(value), `${label} must be an array.`);
     return value;
