@@ -50,6 +50,14 @@ Revision Director has two implementations of the same personalization boundary:
 
 Both runtimes call the same optimizer core for chronological conversion, validation-candidate training, later holdout comparison, final retraining and profile assembly. The browser path differs only in Worker/WASM initialization, Web Crypto hashing, progress delivery and cancellation. No review evidence is uploaded to an optimizer service.
 
+### Canonical optimizer evidence
+
+Optimizer history preserves the memory outcome independently of workflow-cost measurement. Direct memory reviews export the closed-book `attempt` phase as `review_duration`; successful returns from corrective relearning export only the closed-book `relearn-verify` phase. Comparison, source-assisted repair and other workflow time remain available to Revision Director's capacity/duration model but are not represented as memory-review cost.
+
+If timing is unreliable, the review remains in chronological recall history with its rating/state, while `review_duration` is exported as `0` (unavailable cost for the pinned converter) rather than substituting full-workflow time. The pinned FSRS converter currently requires a non-negative integer duration field but constructs parameter-training items from card/rating/time/state chronology rather than that duration.
+
+The exact canonical CSV is SHA-256 fingerprinted. Every imported or locally optimized profile must match the current evidence checksum before it can be staged, and the checksum is checked again immediately before activation. Thus reviews added or changed while a profile is being optimized or waiting staged force re-optimization rather than allowing stale weights to become active.
+
 A profile is eligible only when it contains exactly 34 valid FSRS-7 weights and records the required evaluation provenance. The external tool:
 
 1. trains a candidate on the historical first five-sixths;

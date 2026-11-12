@@ -303,15 +303,48 @@
     cardId: string;
     rating: Rating;
     durationMs: number;
+    durationReliable: boolean;
+    durationPhase: "attempt" | "relearn-verify";
     state: number;
     evidenceEventId: string;
     source: MemoryReviewSource;
   }
 
+  interface FsrsOptimizerEvidenceSummary {
+    cards: number;
+    reviews: number;
+    reliableDurations: number;
+    unavailableDurations: number;
+  }
+
+  interface FsrsOptimizerEvidenceDataset {
+    rows: FsrsOptimizerEvidenceRow[];
+    csv: string;
+    summary: FsrsOptimizerEvidenceSummary;
+  }
+
+  interface FsrsOptimizerEvidenceSnapshot extends FsrsOptimizerEvidenceDataset {
+    sourceSha256: string;
+  }
+
+  function fsrsOptimizerReviewDuration(
+    event: EvidenceEvent,
+    source: MemoryReviewSource,
+  ): Pick<FsrsOptimizerEvidenceRow, "durationMs" | "durationReliable" | "durationPhase"> {
+    const timing = canonicalTimingEvidenceSummary(event.timing);
+    const durationPhase = source === "direct-memory" ? "attempt" : "relearn-verify";
+    const phaseMs = timing.activeByPhase[durationPhase];
+    const durationReliable = timing.durationReliable && timing.reliabilityFlags.length === 0;
+    return {
+      durationMs: durationReliable ? Math.round(phaseMs) : 0,
+      durationReliable,
+      durationPhase,
+    };
+  }
+
   function fsrsOptimizerEvidenceRows(events: readonly EvidenceEvent[]): FsrsOptimizerEvidenceRow[] {
     const rows: FsrsOptimizerEvidenceRow[] = [];
     for (const event of events) {
-      assert(Number.isFinite(event.elapsedMs) && event.elapsedMs >= 0, "Optimizer evidence contains an invalid duration.");
       if (event.obligationType === "memory-recall") {
         const before = event.beforePolicyState.fsrsCard;
         assert(before, "Memory optimizer evidence is missing its before-card projection.");
@@ -319,7 +352,7 @@
           reviewTimeMs: new Date(event.reviewedAt).getTime(),
           cardId: event.obligationId,
           rating: validateRating(event.confirmedRating),
-          durationMs: Math.round(event.elapsedMs),
+          ...fsrsOptimizerReviewDuration(event, "direct-memory"),
           state: before.state,
           evidenceEventId: event.id,
           source: "direct-memory",
@@ -333,7 +366,7 @@
           reviewTimeMs: new Date(event.reviewedAt).getTime(),
           cardId: returned.obligationId,
           rating: Rating.Good,
-          durationMs: Math.round(event.elapsedMs),
+          ...fsrsOptimizerReviewDuration(event, "relearning-return"),
           state: before.state,
           evidenceEventId: event.id,
           source: "relearning-return",
@@ -347,6 +380,7 @@
     let previous = Number.NEGATIVE_INFINITY;
     for (const row of rows) {
       assert(Number.isFinite(row.reviewTimeMs) && row.reviewTimeMs >= previous, "FSRS optimizer evidence is not chronological.");
+      assert(Number.isInteger(row.durationMs) && row.durationMs >= 0, "FSRS optimizer evidence contains an invalid retrieval duration.");
       assert(Number.isInteger(row.state) && row.state >= 0 && row.state <= 3, "FSRS optimizer evidence contains an invalid review state.");
       previous = row.reviewTimeMs;
     }
@@ -357,16 +391,34 @@
     return `"${value.replaceAll('"', '""')}"`;
   }
 
-  function fsrsOptimizerCsv(events: readonly EvidenceEvent[]): string {
+  function fsrsOptimizerEvidenceDataset(events: readonly EvidenceEvent[]): FsrsOptimizerEvidenceDataset {
+    const rows = fsrsOptimizerEvidenceRows(events);
     const lines = ["review_time,card_id,review_rating,review_duration,review_state"];
-    for (const row of fsrsOptimizerEvidenceRows(events)) {
+    for (const row of rows) {
       lines.push([row.reviewTimeMs, optimizerCsvCell(row.cardId), row.rating, row.durationMs, row.state].join(","));
     }
-    return lines.join("\n") + "\n";
+    const summary: FsrsOptimizerEvidenceSummary = {
+      cards: new Set(rows.map((row) => row.cardId)).size,
+      reviews: rows.length,
+      reliableDurations: rows.filter((row) => row.durationReliable).length,
+      unavailableDurations: rows.filter((row) => !row.durationReliable).length,
+    };
+    return { rows, csv: lines.join("\n") + "\n", summary };
   }
 
-  function fsrsOptimizerEvidenceSummary(events: readonly EvidenceEvent[]): { cards: number; reviews: number } {
-    const rows = fsrsOptimizerEvidenceRows(events);
-    return { cards: new Set(rows.map((row) => row.cardId)).size, reviews: rows.length };
+  function fsrsOptimizerCsv(events: readonly EvidenceEvent[]): string {
+    return fsrsOptimizerEvidenceDataset(events).csv;
+  }
+
+  function fsrsOptimizerEvidenceSummary(events: readonly EvidenceEvent[]): FsrsOptimizerEvidenceSummary {
+    return fsrsOptimizerEvidenceDataset(events).summary;
+  }
+
+  async function fsrsOptimizerEvidenceSnapshot(events: readonly EvidenceEvent[]): Promise<FsrsOptimizerEvidenceSnapshot> {
+    const dataset = fsrsOptimizerEvidenceDataset(events);
+    return {
+      ...dataset,
+      sourceSha256: await sha256Hex(utf8Bytes(dataset.csv)),
+    };
   }
 

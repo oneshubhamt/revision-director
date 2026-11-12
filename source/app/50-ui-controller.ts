@@ -812,7 +812,7 @@
 
     private fsrsPersonalizationCard(
       settings: AppSettings,
-      summary: { cards: number; reviews: number },
+      summary: FsrsOptimizerEvidenceSummary,
     ): string {
       const personalization = effectiveFsrsPersonalization(settings);
       const profile = personalization.profile;
@@ -849,12 +849,12 @@
           : `<button class="mini-btn" type="button" data-action="optimize-fsrs-locally" ${canOptimize ? "" : "disabled"}>${profile ? "RE-OPTIMIZE LOCALLY" : "OPTIMIZE LOCALLY"}</button>`;
       return `<section class="panel settings-card wide" id="fsrs-personalization-card"><h3>FSRS-7 personalization</h3>
         <div class="dependency-status"><span>Weights</span><strong class="${statusClass}">${status}</strong></div>
-        <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards</strong></div>
+        <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards · ${summary.reliableDurations} timed · ${summary.unavailableDurations} untimed</strong></div>
         <div class="dependency-status"><span>Local optimizer</span><strong class="${optimizer.available ? "ok" : ""}">${optimizer.available ? "AVAILABLE" : "OPTIONAL BUILD REQUIRED"}</strong></div>
         <div class="optimizer-progress" data-fsrs-optimizer-progress ${running ? "" : "hidden"}><div><span data-fsrs-optimizer-progress-label>${escapeHtml(progressText)}</span></div><progress data-fsrs-optimizer-progress-bar max="${progressMax}" value="${progressValue}"></progress></div>
         ${profileDetail}
         <div class="settings-actions">${localAction}<button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn ${running ? "disabled" : ""}">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json" ${running ? "disabled" : ""}></label>${profileActions}</div>
-        <p class="helper">${escapeHtml(progressText)} Local optimization uses a dedicated Worker and the pinned FSRS-7 WASM binding; review evidence does not leave the browser. The exact gate remains 64 historical training items, 64 later holdout items and 16 distinct holdout cards after conversion. A successful run is <strong>staged only</strong>; activation and atomic reprojection remain explicit.</p>
+        <p class="helper">${escapeHtml(progressText)} Local optimization uses a dedicated Worker and the pinned FSRS-7 WASM binding; review evidence does not leave the browser. Optimizer duration is closed-book recall/verification time only; unreliable timing remains in recall history with unavailable cost rather than full-session time. The exact gate remains 64 historical training items, 64 later holdout items and 16 distinct holdout cards after conversion. A successful run is <strong>staged only</strong>; activation and atomic reprojection remain explicit.</p>
       </section>`;
     }
 
@@ -1861,14 +1861,11 @@
       const availability = browserFsrsOptimizerAvailability();
       assert(availability.available, availability.reason);
 
-      const [csv, summary] = await Promise.all([
-        this.service.optimizerEvidenceCsv(),
-        this.service.optimizerEvidenceSummary(),
-      ]);
-      assert(summary.reviews > 0, "No memory-review evidence is available for optimization.");
+      const snapshot = await this.service.optimizerEvidenceSnapshot();
+      assert(snapshot.summary.reviews > 0, "No memory-review evidence is available for optimization.");
 
       this.fsrsOptimizerProgress = { stage: "Preparing local evidence", current: 0, total: 0 };
-      const run = startBrowserFsrsOptimizer(csv, {
+      const run = startBrowserFsrsOptimizer(snapshot.csv, {
         onProgress: (progress) => this.updateFsrsOptimizerProgress(progress),
       });
       this.fsrsOptimizerRun = run;
@@ -1895,14 +1892,11 @@
     }
 
     private async exportFsrsOptimizerEvidence(): Promise<void> {
-      const [csv, summary] = await Promise.all([
-        this.service.optimizerEvidenceCsv(),
-        this.service.optimizerEvidenceSummary(),
-      ]);
-      assert(summary.reviews > 0, "No memory-review evidence is available for optimizer export.");
+      const snapshot = await this.service.optimizerEvidenceSnapshot();
+      assert(snapshot.summary.reviews > 0, "No memory-review evidence is available for optimizer export.");
       const date = new Date().toISOString().slice(0, 10);
-      downloadBlob(`revision-director-fsrs-evidence-${date}.csv`, csv, "text/csv;charset=utf-8");
-      this.toast(`FSRS optimizer evidence exported · ${summary.reviews} reviews across ${summary.cards} cards.`);
+      downloadBlob(`revision-director-fsrs-evidence-${date}.csv`, snapshot.csv, "text/csv;charset=utf-8");
+      this.toast(`FSRS optimizer evidence exported · ${snapshot.summary.reviews} reviews across ${snapshot.summary.cards} cards · ${snapshot.summary.reliableDurations} reliable retrieval durations.`);
     }
 
     private async importFsrsOptimizerProfile(input: HTMLInputElement): Promise<void> {

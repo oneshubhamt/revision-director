@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile };';
+const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -40,12 +40,12 @@ const recallResult=rating=>({
   cueLevel:rating===api.Rating.Again?'major':rating===api.Rating.Hard?'minor':'none'
 });
 
-function optimizerProfile(){
+function optimizerProfile(sourceSha256='b'.repeat(64)){
   const weights=[...api.FSRS7_DEFAULT_WEIGHTS];
   weights[2]=4.2;
   return api.validateFsrsOptimizerProfile({
     schema:'revision-director-fsrs-profile/v1',model:'FSRS-7',bindingVersion:'0.6.1',
-    trainedAt:'2026-11-11T00:00:00.000Z',sourceSha256:'b'.repeat(64),evidenceItems:384,weights,
+    trainedAt:'2026-11-11T00:00:00.000Z',sourceSha256,evidenceItems:384,weights,
     evaluation:{
       crossValidation:{logLoss:.39,rmseBins:.07},
       holdout:{strategy:'final-sixth',trainItems:320,holdoutItems:64,holdoutCards:16,
@@ -231,6 +231,10 @@ async function testReturnedMemoryReplay(){
       schedulerPackage:'ts-fsrs',schedulerVersion:'6.0.0',schedulerModel:'FSRS-7',schedulerConfig:clone(repaired.schedulerConfig),reviewLog:clone(repaired.reviewLog)}};
   const canonical=api.memoryReviewObservationsFor(id,[failedEvent,returnEvent]);
   check(canonical.length===2&&canonical[0].source==='direct-memory'&&canonical[1].source==='relearning-return','Returned memory must be canonical replay evidence');
+  returnEvent.timing={...clone(timing),totalActiveMs:1140000,activeByPhase:{attempt:0,compare:300000,'relearn-repair':600000,'relearn-verify':240000}};
+  returnEvent.elapsedMs=1140000;
+  const returnedOptimizerRow=api.fsrsOptimizerEvidenceRows([returnEvent])[0];
+  check(returnedOptimizerRow.source==='relearning-return'&&returnedOptimizerRow.durationPhase==='relearn-verify'&&returnedOptimizerRow.durationMs===240000,'Returned-memory optimizer cost must use closed-book verification time only');
   api.revisionSchedulerPort(fixed(.9)).verifyProjection(repaired.policyState.fsrsCard,canonical); checks++;
   const corrupted=clone(returnEvent);
   corrupted.returnedMemoryTransition.beforePolicyState.fsrsCard.reps+=1;
@@ -238,8 +242,30 @@ async function testReturnedMemoryReplay(){
 }
 
 
+
+async function testCanonicalOptimizerEvidence(){
+  const built=await realisticHistory();
+  const events=clone(built.events.slice(0,3));
+  events[0].timing={...clone(timing),totalActiveMs:900000,activeByPhase:{attempt:300000,compare:600000,'relearn-repair':0,'relearn-verify':0}};
+  events[0].elapsedMs=900000;
+  events[1].timing={...clone(timing),totalActiveMs:720000,activeByPhase:{attempt:420000,compare:300000,'relearn-repair':0,'relearn-verify':0},ignoredGapMs:120000,durationReliable:false,reliabilityFlags:['ignored-gap']};
+  events[1].elapsedMs=720000;
+  events[2].timing={...clone(timing),totalActiveMs:480000,activeByPhase:{attempt:300000,compare:180000,'relearn-repair':0,'relearn-verify':0},backwardClockCount:1,durationReliable:true,reliabilityFlags:['backward-clock']};
+  events[2].elapsedMs=480000;
+  const rows=api.fsrsOptimizerEvidenceRows(events);
+  check(rows.length===3,'Canonical optimizer evidence lost recall outcomes');
+  check(rows[0].durationPhase==='attempt'&&rows[0].durationMs===300000&&rows[0].durationReliable===true,'Direct-memory optimizer cost must use closed-book attempt time rather than full workflow time');
+  check(rows[1].durationMs===0&&rows[1].durationReliable===false,'Ignored-gap optimizer timing must retain the review with unavailable duration');
+  check(rows[2].durationMs===0&&rows[2].durationReliable===false,'Backward-clock optimizer timing must retain the review with unavailable duration');
+  const snapshot=await api.fsrsOptimizerEvidenceSnapshot(events);
+  check(snapshot.summary.reviews===3&&snapshot.summary.reliableDurations===1&&snapshot.summary.unavailableDurations===2,'Optimizer evidence reliability summary is incorrect');
+  check(/^[a-f0-9]{64}$/.test(snapshot.sourceSha256),'Canonical optimizer evidence snapshot lacks SHA-256 identity');
+  check(snapshot.csv.includes(',300000,')&&snapshot.csv.split(',0,').length>=3,'Canonical optimizer CSV did not encode retrieval-only and unavailable durations');
+}
+
 async function testTransactionalSettingsPublication(){
-  const repo=new MemoryRepo(buildRepositoryPayload());
+  const built=await realisticHistory();
+  const repo=new MemoryRepo(built.payload);
   const service=new api.RevisionService(repo);
   await service.initialize();
   const baseline=service.getSettings();
@@ -255,7 +281,7 @@ async function testTransactionalSettingsPublication(){
   await ordinaryReload.initialize();
   check(JSON.stringify(ordinaryReload.getSettings())===JSON.stringify(baseline),'Reload after failed ordinary settings write did not recover durable settings');
 
-  const profile=optimizerProfile();
+  const profile=optimizerProfile((await service.optimizerEvidenceSnapshot()).sourceSha256);
   repo.failNextSettingsPut=true;
   await mustReject(()=>service.stageFsrsOptimizerProfile(profile),'Failed optimizer-profile staging write must reject');
   check(service.getSettings().fsrsPersonalization.profile===null,'Failed optimizer staging leaked into in-memory personalization');
@@ -318,9 +344,21 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   api.revisionSchedulerPort(fixed(.95)).verifyProjection(retentionObligation.policyState.fsrsCard,api.memoryReviewObservationsFor(retentionObligation.id,repo.evidenceEvents)); checks++;
   check(retentionObligation.policyState.fsrsCard.reps===built.events.length,'Retention rebase must preserve review count');
 
-  const profile=optimizerProfile();
+  const evidenceSnapshot=await service.optimizerEvidenceSnapshot();
+  const staleProfile=optimizerProfile('c'.repeat(64));
+  await mustReject(()=>service.stageFsrsOptimizerProfile(staleProfile),'Stale optimizer profile must be rejected before staging');
+  check(service.getSettings().fsrsPersonalization.profile===null,'Stale optimizer profile mutated personalization state');
+  const profile=optimizerProfile(evidenceSnapshot.sourceSha256);
   await service.stageFsrsOptimizerProfile(profile);
   check(service.getSettings().fsrsPersonalization.active===false,'Profile import must remain staging-only');
+  const originalTiming=clone(repo.evidenceEvents[0].timing);
+  const originalElapsed=repo.evidenceEvents[0].elapsedMs;
+  repo.evidenceEvents[0].timing.activeByPhase.attempt+=1000;
+  repo.evidenceEvents[0].timing.totalActiveMs+=1000;
+  repo.evidenceEvents[0].elapsedMs+=1000;
+  await mustReject(()=>service.activateFsrsOptimizerProfile(),'Staged optimizer profile must be rejected if review evidence changes before activation');
+  repo.evidenceEvents[0].timing=originalTiming;
+  repo.evidenceEvents[0].elapsedMs=originalElapsed;
   await service.activateFsrsOptimizerProfile();
   check(service.getSettings().fsrsPersonalization.active===true,'Profile activation must be explicit');
   check(service.getSettings().fsrsScheduling.lastRebase.reason==='activate-profile','Profile activation must record an explicit scheduler rebase');
@@ -408,6 +446,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
 (async()=>{
   await testSchedulingPolicyBoundary();
   await testReturnedMemoryReplay();
+  await testCanonicalOptimizerEvidence();
   await testTransactionalSettingsPublication();
   await testRebasesBackupRestorePlannerAndCorruption();
   console.log(`PASS ${checks} independent FSRS replay/personalization/restore/planner checks`);

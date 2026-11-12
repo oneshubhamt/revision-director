@@ -126,7 +126,7 @@
       return released;
     }
 
-    async optimizerEvidenceSummary(): Promise<{ cards: number; reviews: number }> {
+    async optimizerEvidenceSummary(): Promise<FsrsOptimizerEvidenceSummary> {
       return fsrsOptimizerEvidenceSummary(await this.evidenceEvents());
     }
 
@@ -134,10 +134,24 @@
       return fsrsOptimizerCsv(await this.evidenceEvents());
     }
 
+    async optimizerEvidenceSnapshot(): Promise<FsrsOptimizerEvidenceSnapshot> {
+      return fsrsOptimizerEvidenceSnapshot(await this.evidenceEvents());
+    }
+
+    private async assertOptimizerProfileMatchesCurrentEvidence(profile: FsrsOptimizerProfile): Promise<void> {
+      const snapshot = await this.optimizerEvidenceSnapshot();
+      assert(snapshot.summary.reviews > 0, "No memory-review evidence is available for FSRS personalization.");
+      assert(
+        profile.sourceSha256 === snapshot.sourceSha256,
+        "FSRS optimizer profile was trained on different or stale review evidence. Re-optimize or import a profile generated from the current canonical evidence export.",
+      );
+    }
+
     async stageFsrsOptimizerProfile(input: unknown): Promise<FsrsOptimizerProfile> {
       const personalization = effectiveFsrsPersonalization(this.settings);
       assert(!personalization.active, "Return to stock FSRS-7 before staging a different optimizer profile.");
       const profile = validateFsrsOptimizerProfile(input);
+      await this.assertOptimizerProfileMatchesCurrentEvidence(profile);
       await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, profile);
       const next = canonicalAppSettings({
         ...this.settings,
@@ -162,6 +176,7 @@
     async activateFsrsOptimizerProfile(): Promise<void> {
       const personalization = effectiveFsrsPersonalization(this.settings);
       assert(!personalization.active && personalization.profile, "No staged FSRS optimizer profile is available for activation.");
+      await this.assertOptimizerProfileMatchesCurrentEvidence(personalization.profile);
       const next = canonicalAppSettings({
         ...this.settings,
         fsrsPersonalization: { ...personalization, active: true },
