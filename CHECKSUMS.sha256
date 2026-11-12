@@ -1,13 +1,13 @@
 96af52d2ab0375669b3bb2e42163a2af0c72bc845eb7f521196076c6e1eaab6d  ./build/build-optimizer-static.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 55bf0f29d63d84aaf7159ae4692ceb6e95b28fb87f7cd190129721c0dab76162  ./CHANGELOG.md
-80f692e55cb45f8b4742f1610551ea7bfe9ccb12d3c77cf1a21408e00ee30a6e  ./dist/app.js
+63e51db91851e1ed6fb08b9a339bc6900d6d9e03be574492900d12f0918adbe6  ./dist/app.js
 4502865f4c9a00bb4b7bc37cd739eda0fe33f7dc0fc922126eed3b2397c1ba93  ./docs/ARCHITECTURE.md
 e9f95b5218834babf7c7bffc098428d9a2455aa97049a000d2356ca3938e976b  ./docs/DATA_AND_STORAGE.md
 4be673087fa64e201dd3366aa8048557b6250cec76f953648d74ea53aad4a714  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
-a84cecdb0772336477892cf96bc6039db3453fe25e15bd325d3f7c525cfd38ed  ./docs/SCHEDULING_AND_PLANNING.md
-b069d1bb97ee368ecffc05597af14212285124c80b7cd1b536c1cc8ff522236e  ./index.html
+7d3769b61794c0e9a27d74d17215aa04365560e1212a5ecb4762b62dcbeacac0  ./docs/SCHEDULING_AND_PLANNING.md
+368b1c9126047ce7afe5aff1de4a7d755b67938aa5ea83acf5da199f53ea254b  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -22,7 +22,7 @@ ddc9901245c0c47e34c3b42217f2cec9a125e4b1fd2f58f63fff2bd8cb70be18  ./source/app/1
 2562615681ad5850c0877ab2c3a439c0c298936586e8af3141d641f718fd4b60  ./source/app/18-fsrs-personalization.ts
 c076c189ea47de8902cdc3e40bdc57138dcdc3594b54b6546a5016628e1b5c45  ./source/app/18a-fsrs-browser-optimizer.ts
 76b12fd1e5e0bd7c89a144a75e0b387245f13618543633c476def1b005bbc2f1  ./source/app/19-revision-scheduler-port.ts
-231ecccb36829a693631dc8624624351a0cf9e74fd2ac9c2f7bb29705bee7c3b  ./source/app/20-policy-planning-kernel.ts
+97a0bb8e3a456c0205ae533e138c7ee9529e993f473ca33fff855551b44cd631  ./source/app/20-policy-planning-kernel.ts
 7d6de3dcba9f7f27b47156e75f02525c64998736ced555e93eb41751d69f4eb8  ./source/app/21-policy-implementations.ts
 79944235140f18d6e1dd22968072426ee66c91372d9e62b38760f3a0630f2673  ./source/app/30-indexeddb-repository.ts
 72636563c83f81dbcef9c576982e531fbb1a69d18cf1548439c56bcf47f27010  ./source/app/31-storage-facade.ts
@@ -33,7 +33,7 @@ ac494ddc8ae368b65427c0257e2fddd371ecd96a9f20466cccc3f412c6ed1f89  ./source/app/3
 87466297abb0744b2ebde8c80318ec8f1c9ee95a53f393e9744690cd4797e5ab  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 4e71aa41aaeeccad4345344f3cd1f66661ba1148267d91e55a52a6b44a7a4ca1  ./source/app/45-ui-runtime.ts
-238c70ed92fa718fee9b0c5d141f8eda5e3a1f030b5a6fa3824482c47829f24f  ./source/app/50-ui-controller.ts
+d3ddf20540a9ac92791b8c3059a52b23b30c4e4f4e39059e562b95325a9eb096  ./source/app/50-ui-controller.ts
 f9560c8de7e7926321bb71dd697090c98ab34d680b3a4b225d5832f848f51949  ./source/app/55-extension-runtime.ts
 77963fce015a51c7175b7b3b41faefd32600f5cae6c463f19a836e4333aef11b  ./source/app/60-public-bridge-bootstrap.ts
 bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/source-manifest.json
@@ -55,7 +55,7 @@ f99132e945b7d8d82da23c4874daaa18003952bff55885feb47faec601f462ed  ./tests/fsrs-s
 721372a79e498e2f904cfdd7f2cf9c41fe18fdcd95e1b9cfc072d6bae98a0b1c  ./tests/fsrs-optimizer-policy.spec.js
 d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-qa-supplement.spec.py
 4480f03a4ec4b8b79a3170d2a1a223f742fa539ee772401cb18b0118d7101e73  ./tests/html-sanity.spec.py
-f4cc23ea383915d59eaeadecd3b52a7ca4ba2b193a49da2faeaf45cbc23fb3ec  ./tests/kernel-policy.spec.js
+010048bf0a31fb603728471bee219ffb00d57f972fa1076868f161f33b8db3b6  ./tests/kernel-policy.spec.js
 08c2e7c96a2934111b773d4f1ebdc85a8e2f11f615cd5b849d026117f2b7e104  ./tests/pass-a2.spec.js
 2654ad1a179272f3a3892d17cf937142512940ea8c13c6e2b973a9d19762fd79  ./tests/pass-b1-browser.spec.py
 dd38b5383d968a41af915ac9ae74eff17ab816a8c8f32e73bc2530770bb6aef3  ./tests/pass-b1.spec.js
