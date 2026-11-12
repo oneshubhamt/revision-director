@@ -4,6 +4,8 @@ from pathlib import Path
 from threading import Thread
 import argparse
 import json
+import os
+import subprocess
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +14,19 @@ STATIC = ROOT / "Revision_Director_Optimizer_Static"
 def check(value: bool, message: str) -> None:
     if not value:
         raise AssertionError(message)
+
+def ensure_static() -> None:
+    if (STATIC / "index.html").is_file():
+        return
+    if os.environ.get("CI") != "true":
+        raise AssertionError("Build Revision_Director_Optimizer_Static first.")
+    subprocess.run(
+        ["npm", "ci", "--prefix", "tools/fsrs-optimizer", "--no-audit", "--no-fund"],
+        cwd=ROOT,
+        check=True,
+    )
+    subprocess.run(["npm", "run", "build:optimizer-static"], cwd=ROOT, check=True)
+    check((STATIC / "index.html").is_file(), "CI failed to build Revision_Director_Optimizer_Static.")
 
 def evidence_csv(full: bool) -> str:
     rows = ["review_time,card_id,review_rating,review_duration,review_state"]
@@ -30,7 +45,7 @@ def evidence_csv(full: bool) -> str:
     return "\n".join(rows) + "\n"
 
 def run(mode: str) -> None:
-    check((STATIC / "index.html").is_file(), "Build Revision_Director_Optimizer_Static first.")
+    ensure_static()
     handler = lambda *args, **kwargs: SimpleHTTPRequestHandler(*args, directory=str(STATIC), **kwargs)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = Thread(target=server.serve_forever, daemon=True)
