@@ -1043,7 +1043,6 @@
           })()
         : undefined;
       obligation.updatedAt = reviewedAt.toISOString();
-      obligation.lastCompletedAt = reviewedAt.toISOString();
       if (durationObservation.accepted) {
         obligation.expectedMinutes = durationObservation.estimateAfter;
         obligation.durationSampleCount = durationObservation.exactSamples;
@@ -1132,7 +1131,6 @@
           assert(verification.schedulerConfig && verification.reviewLog, "Corrective memory verification lacks FSRS-7 provenance.");
           original.dueAt = verification.dueAt;
           original.policyState = verification.policyState;
-          original.lastCompletedAt = reviewedAt.toISOString();
           correctiveMemoryTransition = {
             obligationId: original.id,
             rating: verificationRating,
