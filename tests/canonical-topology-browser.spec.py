@@ -81,6 +81,19 @@ def main() -> None:
         check(store_records(page, "metadata") == [], "Missing metadata was silently regenerated")
         check(store_records(page, "settings") == before_settings, "Metadata failure mutated surviving settings")
 
+        # Metadata store cardinality is itself canonical; rogue records cannot hide beside the database record.
+        fresh_host(page)
+        frame = boot(page); wait_ready(frame)
+        page.evaluate("""() => {
+          const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
+          const canonical=structuredClone(raw.stores.metadata.records[0][1]);
+          canonical.key='rogue';
+          raw.stores.metadata.records.push([JSON.stringify('rogue'),canonical]);
+        }""")
+        frame = boot(page)
+        wait_fatal(frame, "Canonical storage must contain exactly one database-metadata document")
+        check(len(store_records(page, "metadata")) == 2, "Metadata cardinality failure mutated stored records")
+
         # Missing settings in an existing database are never reconstructed.
         fresh_host(page)
         frame = boot(page); wait_ready(frame)
