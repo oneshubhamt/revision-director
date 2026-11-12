@@ -858,13 +858,11 @@
           const policy = this.router.get("relearn");
           const time = reviewedAt.toISOString();
           const followUpId = uid("obligation");
-          const actions = memoryDifficulty?.recommendedActions.map(memoryDifficultyActionLabel) ?? [];
-          const escalation = memoryDifficulty?.level === "persistent-difficulty"
-            ? `Persistent difficulty (${memoryDifficulty.fsrsLapses} FSRS lapses): ${actions.join("; ")}. `
-            : memoryDifficulty?.level === "remediation"
-              ? `Repeated lapse remediation (${memoryDifficulty.fsrsLapses} FSRS lapses): ${actions.join("; ")}. `
-              : "";
-          const priorityBoost = memoryDifficulty?.level === "persistent-difficulty" ? 4 : memoryDifficulty?.level === "remediation" ? 3 : 2;
+          const remediationPlan = memoryDifficulty
+            ? memoryDifficultyRemediationPlan(memoryDifficulty)
+            : { priorityBoost: 2, guidance: "" };
+          const escalation = remediationPlan.guidance;
+          const priorityBoost = remediationPlan.priorityBoost;
           followUp = {
             schemaVersion: DOCUMENT_SCHEMA_VERSION,
             id: followUpId,

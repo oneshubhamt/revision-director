@@ -21,7 +21,7 @@
     assert(Object.keys(record).every((key) => allowed.has(key)), "Memory difficulty policy contains unexpected fields.");
     const remediationLapses = Number(record["remediationLapses"]);
     const persistentDifficultyLapses = Number(record["persistentDifficultyLapses"]);
-    assert(Number.isSafeInteger(remediationLapses) && remediationLapses >= 2 && remediationLapses <= 100, "Memory remediation lapse threshold is invalid.");
+    assert(Number.isSafeInteger(remediationLapses) && remediationLapses >= 2 && remediationLapses <= 99, "Memory remediation lapse threshold is invalid.");
     assert(Number.isSafeInteger(persistentDifficultyLapses) && persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
     const automaticHoldRecord = requireRecord(record["automaticHold"], "Memory automatic-hold policy");
     const holdAllowed = new Set(["enabled", "lapseThreshold"]);
@@ -70,6 +70,23 @@
         level === "persistent-difficulty" &&
         canonicalPolicy.automaticHold.enabled &&
         fsrsLapses >= canonicalPolicy.automaticHold.lapseThreshold,
+    };
+  }
+
+  function memoryDifficultyRemediationPlan(
+    assessment: MemoryDifficultyAssessment,
+  ): { priorityBoost: number; guidance: string } {
+    if (assessment.level === "normal") return { priorityBoost: 2, guidance: "" };
+    const actions = assessment.recommendedActions.map(memoryDifficultyActionLabel).join("; ");
+    if (assessment.level === "remediation") {
+      return {
+        priorityBoost: 3,
+        guidance: `Repeated lapse remediation (${assessment.fsrsLapses} FSRS lapses): ${actions}. `,
+      };
+    }
+    return {
+      priorityBoost: 4,
+      guidance: `Persistent difficulty (${assessment.fsrsLapses} FSRS lapses): ${actions}. `,
     };
   }
 
