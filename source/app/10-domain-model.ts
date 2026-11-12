@@ -720,7 +720,7 @@
     dueAt: ISODateTime;
     policyState: PolicyState;
     policyId: string;
-    reviewLog?: Record<string, unknown>;
+    reviewLog?: FsrsReviewLog;
     schedulerConfig?: FsrsConfigSnapshot;
     followUpType?: "relearn";
   }
