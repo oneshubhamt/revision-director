@@ -17,7 +17,8 @@ vm.runInContext(vendor, context, { filename:'ts-fsrs-6.0.0.umd.js' });
 vm.runInContext(source, context, { filename:'app.js' });
 const api=context.__RD_FSRS_CLOSURE__;
 const F=context.FSRS;
-if (!api || !F) throw new Error('FSRS closure API unavailable');
+if (!api) throw new Error('FSRS closure API unavailable');
+if (!F) throw new Error('Vendor FSRS API unavailable');
 
 let checks=0;
 const clone=value=>structuredClone(value);
