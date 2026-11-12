@@ -280,6 +280,7 @@
         reviewIndex,
         this.settings.fsrsScheduling.policy,
         currentProfile,
+        fsrsPersonalizationProfileCatalog(this.settings),
       );
       const scheduler = revisionSchedulerPort(settings.fsrsScheduling.policy, profile);
       const at = nowIso();
@@ -1311,6 +1312,7 @@
         payload.evidenceEvents,
         payload.settings.fsrsScheduling.policy,
         activeFsrsOptimizerProfile(payload.settings),
+        fsrsPersonalizationProfileCatalog(payload.settings),
       );
       return BackupCodec.create(payload, preferCompression);
     }
@@ -1331,6 +1333,7 @@
         validated.evidenceEvents,
         validated.settings.fsrsScheduling.policy,
         activeFsrsOptimizerProfile(validated.settings),
+        fsrsPersonalizationProfileCatalog(validated.settings),
       );
       await this.repo.replaceFromBackup(validated, activeTreatment);
       this.settings = clone(validated.settings);
