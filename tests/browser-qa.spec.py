@@ -38,6 +38,7 @@ INDEXEDDB_SHIM = r"""
     index(name){const cfg=this.data.indices.get(name);if(!cfg)throw new Error('missing index '+name);return new Index(this.tx,this.data,cfg)}
     get(key){return asyncReq(this.tx,()=>{const v=this.data.records.get(JSON.stringify(key));return v===undefined?undefined:structuredClone(v)})}
     getAll(){return asyncReq(this.tx,()=>[...this.data.records.values()].map(v=>structuredClone(v)))}
+    count(){return asyncReq(this.tx,()=>this.data.records.size)}
     put(v){return asyncReq(this.tx,()=>{const key=keyFrom(v,this.data.keyPath);if(key===undefined)throw new Error('missing key');this.data.records.set(JSON.stringify(key),structuredClone(v));return key})}
     add(v){return asyncReq(this.tx,()=>{const key=keyFrom(v,this.data.keyPath);const sk=JSON.stringify(key);if(this.data.records.has(sk))throw new Error('ConstraintError');for(const cfg of this.data.indices.values()){if(cfg.unique){const nk=JSON.stringify(keyFrom(v,cfg.keyPath));for(const old of this.data.records.values())if(JSON.stringify(keyFrom(old,cfg.keyPath))===nk)throw new Error('ConstraintError')}}this.data.records.set(sk,structuredClone(v));return key})}
     delete(key){return asyncReq(this.tx,()=>{this.data.records.delete(JSON.stringify(key));return undefined})}
