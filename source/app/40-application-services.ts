@@ -922,16 +922,19 @@
       const beforePolicyState = clone(obligation.policyState);
       const beforeDueAt = obligation.dueAt;
       const suggested = suggestRating(obligation.type, normalizedDraft);
+      const schedulingRating = obligation.type === "relearn"
+        ? correctiveMemoryRating(confirmed, normalizedDraft)
+        : confirmed;
       const policy = this.router.get(obligation.type);
       const memoryReviewIndex = this.memoryReviewIndexFor(priorEvidence);
       const priorMemoryReviews = obligation.type === "memory-recall"
         ? memoryReviewIndex.get(obligation.id) ?? []
         : [];
       const completion = obligation.type === "memory-recall"
-        ? policy.complete(obligation, confirmed, normalizedDraft, reviewedAt, {
+        ? policy.complete(obligation, schedulingRating, normalizedDraft, reviewedAt, {
             memoryReviews: priorMemoryReviews,
           })
-        : policy.complete(obligation, confirmed, normalizedDraft, reviewedAt);
+        : policy.complete(obligation, schedulingRating, normalizedDraft, reviewedAt);
 
       obligation.dueAt = completion.dueAt;
       obligation.policyState = completion.policyState;
@@ -1028,9 +1031,7 @@
         }
       }
 
-      const verificationRating = obligation.type === "relearn"
-        ? correctiveMemoryRating(confirmed, normalizedDraft)
-        : confirmed;
+      const verificationRating = schedulingRating;
       const relearningMastered =
         obligation.type === "relearn" &&
         verificationRating >= Rating.Good;

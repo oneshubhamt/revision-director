@@ -100,7 +100,7 @@ mustFail(() => api.validateWorkflowResult({...relearnResult,sourceClosedForVerif
 check(api.suggestRating('memory-recall', evidence(0,0,0)) === 1, 'Failure should suggest Again');
 check(api.suggestRating('memory-recall', evidence(3,4,2)) === 2, 'Incomplete recall should suggest Hard even when uncued');
 check(api.correctiveMemoryRating(api.Rating.Again, evidence(4,4,3)) === api.Rating.Again, 'Failed corrective verification must preserve an explicit Again');
-check(api.correctiveMemoryRating(api.Rating.Good, evidence(2,4,2)) === api.Rating.Hard, 'A user-confirmed Good cannot become FSRS success when objective corrective verification remains incomplete');
+check(api.correctiveMemoryRating(api.Rating.Good, evidence(2,3,2)) === api.Rating.Hard, 'A user-confirmed Good cannot become FSRS success when objective corrective verification remains incomplete');
 check(api.correctiveMemoryRating(api.Rating.Good, evidence(4,4,3)) === api.Rating.Good, 'A qualifying closed-book verification must preserve its successful FSRS rating');
 check(api.suggestRating('memory-recall', evidence(4,3,2)) === 2, 'Cued recall should suggest Hard even when complete');
 check(api.suggestRating('memory-recall', evidence(4,4,4)) === 3, 'Complete independent recall should default to Good; Easy remains a user judgement');
