@@ -266,7 +266,7 @@
     return result;
   }
 
-  function canonicalFsrsReviewLog(value: unknown, label: string): Record<string, unknown> {
+  function canonicalFsrsReviewLog(value: unknown, label: string): FsrsReviewLog {
     const record = requireRecord(value, label);
     assertExactKeys(record, label, ["model", "rating", "state", "dueAt", "lastReviewAt", "reviewTime", "stability", "stabilityFast", "difficulty", "scheduledDays", "learningStep", "scheduleStatus"]);
     assert(record["model"] === FSRS_MODEL, `${label} model is invalid.`);
