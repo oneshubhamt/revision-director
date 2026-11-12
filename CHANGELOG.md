@@ -2,6 +2,16 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-12 — Persistent-difficulty memory management
+
+- Added a host-owned memory-difficulty policy derived from the canonical FSRS Review-state lapse counter rather than a parallel leech counter.
+- Kept the existing `Again → relearn → closed-book verification → FSRS return` lifecycle as the recovery foundation.
+- Escalated repeated lapses from ordinary relearning to remediation and then persistent difficulty, with source, representation, scope, prerequisite, splitting and deliberate-intervention guidance.
+- Added an optional automatic post-remediation hold at a configurable lapse threshold; it is disabled by default and never mutates FSRS `scheduleStatus`.
+- Added explicit manual resume for persistently difficult memory while preserving the scheduler due date and card state.
+- Strengthened storage/backup validation so Revision Director obligation status is the sole suspension truth and FSRS-owned suspended cards are rejected.
+- Fed persistent difficulty into planner weakness/reasoning without rewriting FSRS intervals.
+
 ## 2026-11-12 — FSRS scheduler-policy boundary
 
 - Replaced the free-standing retention setting with one canonical discriminated FSRS scheduling-policy object.

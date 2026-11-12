@@ -39,7 +39,7 @@ The permanent suite covers:
 
 - source/build ownership and generated-artifact integrity;
 - domain and hostile validation;
-- FSRS-7 scheduling-policy identity, replay, personalization profile and rating semantics;
+- FSRS-7 scheduling-policy identity, replay, personalization profile, rating semantics and persistent-difficulty lifecycle;
 - planning, duration learning, splitting and plan history;
 - active-session persistence and duplicate-commit protection;
 - phase timing and interruption classification;

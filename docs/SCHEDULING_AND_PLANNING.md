@@ -82,7 +82,22 @@ The user confirms the final rating.
 
 An `Again` review advances the FSRS-7 state and creates a separate corrective `relearn` obligation. The original memory obligation is suspended rather than independently rescheduled by application code.
 
-After successful closed-book relearning verification, the original memory obligation is advanced again through FSRS-7 with a successful rating and reactivated at the resulting scheduler due date. The application does not substitute a hard-coded post-relearning interval.
+After successful closed-book relearning verification, the original memory obligation is advanced again through FSRS-7 with a successful rating. The application does not substitute a hard-coded post-relearning interval.
+
+## Persistent difficulty
+
+Revision Director deliberately uses the **FSRS lapse counter as a signal**, not upstream leech suspension as an independent lifecycle. The vendored default scheduler already records a lapse only when an `Again` occurs from FSRS `Review` state. Revision Director does not install `schedulerLeechMiddleware`, and persisted FSRS cards may not use `scheduleStatus: suspended`.
+
+The host policy is:
+
+- fewer than 2 FSRS lapses: normal corrective relearning;
+- 2–3 lapses: **remediation**, adding source review and a changed retrieval representation;
+- 4+ lapses: **persistent difficulty**, escalating to scope review, prerequisite review, source review, representation change and deliberate intervention; oversized work is also flagged for splitting;
+- optional automatic hold: disabled by default; when explicitly enabled, the default threshold is 8 FSRS lapses.
+
+Persistent difficulty does not bypass the recovery mechanism. Even when automatic hold is enabled, successful closed-book relearning first advances the original memory card through FSRS with a successful return transition. Only then may the **Revision Director obligation** remain suspended with reason `persistent-difficulty`. The FSRS card itself remains schedulable and its `scheduleStatus` is not mutated.
+
+A held item can be deliberately resumed from the Library. Disabling or avoiding automatic hold leaves persistently difficult items in the normal queue but visibly flagged, with a strong weakness signal in planning. Difficulty level is derived from the authoritative FSRS lapse count; Revision Director does not persist a second mutable leech counter.
 
 ## Exam horizon
 
