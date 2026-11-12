@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import {access,copyFile,mkdir,readFile,rm,stat,writeFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import {build} from "esbuild";
@@ -5,13 +6,24 @@ import {build} from "esbuild";
 const root=resolve(import.meta.dirname,"..");
 const optimizerRoot=resolve(root,"tools/fsrs-optimizer");
 const out=resolve(root,"Revision_Director_Optimizer_Static");
-const wasmSource=resolve(
+const wasmPackageRoot=resolve(
  optimizerRoot,
- "node_modules/@open-spaced-repetition/binding-wasm32-wasip1/fsrs-binding.wasm32-wasip1.wasm"
+ "node_modules/@open-spaced-repetition/binding-wasm32-wasip1"
 );
+const wasmSource=resolve(wasmPackageRoot,"fsrs-binding.wasm32-wasip1.wasm");
+const EXPECTED_WASM_VERSION="0.6.1";
+const EXPECTED_WASM_BYTES=1_396_770;
+const EXPECTED_WASM_SHA256="498d916b2d92180d8547f4d41ad204d63a488e6e0a1fe8c2ab330cf4ff5b8c05";
 
 await access(resolve(root,"index.html"));
 await access(wasmSource);
+const wasmPackage=JSON.parse(await readFile(resolve(wasmPackageRoot,"package.json"),"utf8"));
+if(wasmPackage.version!==EXPECTED_WASM_VERSION)
+ throw Error("Unexpected FSRS optimizer WASM package version: "+wasmPackage.version);
+const wasmSourceBytes=await readFile(wasmSource);
+const wasmSourceSha256=createHash("sha256").update(wasmSourceBytes).digest("hex");
+if(wasmSourceBytes.byteLength!==EXPECTED_WASM_BYTES||wasmSourceSha256!==EXPECTED_WASM_SHA256)
+ throw Error("Pinned FSRS optimizer WASM binary identity does not match the official 0.6.1 release asset.");
 await rm(out,{recursive:true,force:true});
 await mkdir(out,{recursive:true});
 
@@ -90,8 +102,9 @@ const wasmBytes=(await stat(resolve(out,"fsrs-binding.wasm32-wasip1.wasm"))).siz
 const optimizerAssetBytes=workerBytes+wasmBytes;
 const hypotheticalBase64WasmBytes=Math.ceil(wasmBytes/3)*4;
 const footprint={
- baseHtmlBytes,staticHtmlBytes,workerBytes,wasmBytes,optimizerAssetBytes,
- hypotheticalBase64WasmBytes,
+ baseHtmlBytes,staticHtmlBytes,workerBytes,wasmBytes,
+ wasmVersion:EXPECTED_WASM_VERSION,wasmSha256:wasmSourceSha256,
+ optimizerAssetBytes,hypotheticalBase64WasmBytes,
  optimizerAssetsVsBaseHtmlRatio:Number((optimizerAssetBytes/baseHtmlBytes).toFixed(4))
 };
 await writeFile(resolve(out,"optimizer-footprint.json"),JSON.stringify(footprint,null,2)+"\n");
