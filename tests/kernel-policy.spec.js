@@ -350,6 +350,7 @@ async function testRelearningLifecycle() {
   const lifecycle = new api.RevisionService(repo);
   lifecycle.obligation = async () => original;
   lifecycle.unit = async () => unit;
+  lifecycle.profile = async () => ({schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:due,updatedAt:due});
   lifecycle.obligationsForUnit = async () => [];
   lifecycle.evidenceEvents = async () => [];
   lifecycle.chunksForObligation = async () => [];
