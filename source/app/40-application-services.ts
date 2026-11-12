@@ -35,15 +35,22 @@
     async initialize(): Promise<void> {
       this.invalidateMemoryReviewAnalysis();
       const stored = await this.repo.get(Store.Settings, "app");
-      if (stored) {
-        this.settings = canonicalAppSettings(stored);
-      } else {
+      if (!stored) {
         assert(!(await this.repo.hasStoredData([Store.Settings, Store.Metadata])), "Application settings are missing from a populated Revision Director database. Existing data was not modified.");
-        this.settings = defaultSettings();
-        await this.repo.put(Store.Settings, this.settings);
+        await this.repo.put(Store.Settings, defaultSettings());
       }
-      this.assertActiveProfileSelection(await this.profiles(), this.settings);
-      await this.verifyMemoryProjectionIntegrity();
+
+      const state = await this.repo.backupState();
+      const validated = this.validateBackup({
+        format: BACKUP_FORMAT,
+        schemaVersion: BACKUP_SCHEMA_VERSION,
+        exportedAt: nowIso(),
+        appVersion: APP_VERSION,
+        ...state,
+        activeRetrieval: null,
+      });
+      this.settings = clone(validated.settings);
+      await this.verifyMemoryProjectionIntegrity(validated.obligations, validated.evidenceEvents, validated.settings);
     }
 
     private assertActiveProfileSelection(profiles: readonly ExamProfile[], settings: AppSettings): void {
@@ -55,17 +62,17 @@
       assert(active.some((profile) => profile.id === settings.activeProfileId), "Default exam profile must reference an active exam profile.");
     }
 
-    private async verifyMemoryProjectionIntegrity(): Promise<void> {
-      const [obligations, evidenceEvents] = await Promise.all([
-        this.repo.getAll(Store.Obligations),
-        this.evidenceEvents(),
-      ]);
+    private async verifyMemoryProjectionIntegrity(
+      obligations: readonly RevisionObligation[],
+      evidenceEvents: readonly EvidenceEvent[],
+      settings: AppSettings,
+    ): Promise<void> {
       await verifyMemoryDatasetIntegrityWithIndex(
         obligations,
         this.memoryReviewIndexFor(evidenceEvents),
-        this.settings.fsrsScheduling.policy,
-        activeFsrsOptimizerProfile(this.settings),
-        fsrsPersonalizationProfileCatalog(this.settings),
+        settings.fsrsScheduling.policy,
+        activeFsrsOptimizerProfile(settings),
+        fsrsPersonalizationProfileCatalog(settings),
       );
     }
 
