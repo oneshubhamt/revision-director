@@ -1,13 +1,13 @@
 8c8b2ec2d49893ef333988bd18ee8d5e80b1bef40fed6bfae1a9f6b596a882b4  ./build/build-hosted.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
-eebaa1c7a33a408fe91ed9ccc8cc7525cedb817a2396c620e0b0aef41bd7071d  ./dist/app.js
+803f218b89d0e9a3ed0791814b1f9eed6d40a57e3ff370532e118d0e9c4c651a  ./dist/app.js
 4502865f4c9a00bb4b7bc37cd739eda0fe33f7dc0fc922126eed3b2397c1ba93  ./docs/ARCHITECTURE.md
 df7352e4275796c8cf2b571a4db9e6fe77e027a3041b71b6f39f8af51d059835  ./docs/DATA_AND_STORAGE.md
 e1fce6fd7391d4f04537001ab9cb3a77a75bae9c08fef6862ec056724f71b896  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ba443230bfdda805284486e5b36639034180a19c288be052d9e329ab4d001404  ./docs/SCHEDULING_AND_PLANNING.md
-526616340ab8ae689bb6f496079e0cfdee3af56ee287ac89271e26768bab1dde  ./index.html
+11ba4250f9caddb368ad9da8501af4e1f09fb1987e9aee5e2a6de51e2d2ae111  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -29,7 +29,7 @@ cca62a79f410a07bfc74219af87ae553c9c8d6008d085840da29e39f28ea84f6  ./source/app/1
 c835f78e652f1a6b67657e474f4b179fbb568dcc05e807977d516d674819e482  ./source/app/32-active-retrieval-persistence.ts
 ac494ddc8ae368b65427c0257e2fddd371ecd96a9f20466cccc3f412c6ed1f89  ./source/app/33-phase-time-runtime.ts
 35b1a74b9fa68f7e0815356936ef138a3d457301394581b838516181aeca4101  ./source/app/34-cross-tab-ownership.ts
-1748086d0dfe5c6a1da3f9b3172f908676d61b4e0dbd76428181a1daf4a846e8  ./source/app/40-application-services.ts
+3a58cf10f9ea45c4715a267c45820c7aeba7e400b8b41b8f8edfc360cb875559  ./source/app/40-application-services.ts
 87466297abb0744b2ebde8c80318ec8f1c9ee95a53f393e9744690cd4797e5ab  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 4e71aa41aaeeccad4345344f3cd1f66661ba1148267d91e55a52a6b44a7a4ca1  ./source/app/45-ui-runtime.ts
@@ -43,7 +43,7 @@ bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/s
 9e9a57d9ce399bc80affbf6bea69fdc911af114058932379967d36e2f31b7c12  ./source/revision-director.va7.css
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 b8acbd89a7a929b219e091e34a9723ab163d608bebec4a2739d6b62ce8a45acd  ./tests/backup_fixture_codec.py
-c7a711a947ef0fa3248423e8de839d784164285a0c41a9aa31e96985dd0386a2  ./tests/browser-qa.spec.py
+f56e423e6d32718522c26aefac13cebd150062aad46a7983f6ad352790281edb  ./tests/browser-qa.spec.py
 6d1c76be3b2e91edc99e4df9d39711d7ce8d5df25da4a7a5f7b6463ad79d7e51  ./tests/build-integrity.spec.py
 cb0c953c10f8a02eb28ccc4fe487eb5e045d364835540d5534bd9779d19f8274  ./tests/fixtures/browser-baseline.json
 909124745204ba2ad8536712f53588bcd3b91422854fa9191c161d13d0b7867b  ./tests/fixtures/browser-baseline.rdbackup
@@ -57,9 +57,9 @@ d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-q
 4480f03a4ec4b8b79a3170d2a1a223f742fa539ee772401cb18b0118d7101e73  ./tests/html-sanity.spec.py
 9ce21378b047c9b6815f9033f72f02efb7fc7a341f58b6d362a1277be0fb066d  ./tests/kernel-policy.spec.js
 08c2e7c96a2934111b773d4f1ebdc85a8e2f11f615cd5b849d026117f2b7e104  ./tests/pass-a2.spec.js
-2654ad1a179272f3a3892d17cf937142512940ea8c13c6e2b973a9d19762fd79  ./tests/pass-b1-browser.spec.py
+2ff0e066db667df7f5f7dfb8df6aefff24a444dffcc76379ce7b37f369f9c36e  ./tests/pass-b1-browser.spec.py
 dd38b5383d968a41af915ac9ae74eff17ab816a8c8f32e73bc2530770bb6aef3  ./tests/pass-b1.spec.js
-7ca06a8f54a49bf9373e17d382c27189eb60c3781d1807cc21301347586ee14c  ./tests/pass-b2-browser.spec.py
+cfb63d4ccea3eb4748cf45eacdaa7e2ea67bc3243636a067f67d18464c34ac8d  ./tests/pass-b2-browser.spec.py
 8b148bc0c1dd2d532231985090825f5e7d6142660bfc6a9142f427090074c632  ./tests/pass-b2.spec.js
 8073a927407d8bb8e366ff922dc0a83a52069db492f5d49f41f59261910f1214  ./tests/pass-b3-browser.spec.py
 d18e9322c3d0260ec5999ebfd42c91f632d1d497e1786e7b18481b44ecb271bf  ./tests/pass-b3.spec.js

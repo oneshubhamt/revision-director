@@ -5206,8 +5206,11 @@
           let activeProfileId = this.settings.activeProfileId;
           if (active.length === 0)
               activeProfileId = "";
-          else if (!active.some((candidate) => candidate.id === activeProfileId))
-              activeProfileId = active[0].id;
+          else if (!active.some((candidate) => candidate.id === activeProfileId)) {
+              const replacement = active[0];
+              assert(replacement, "Active profile selection could not be resolved.");
+              activeProfileId = replacement.id;
+          }
           const nextSettings = canonicalAppSettings({ ...this.settings, activeProfileId });
           this.assertActiveProfileSelection(nextProfiles, nextSettings);
           await this.repo.putProfileAndSettings(profile, nextSettings);
