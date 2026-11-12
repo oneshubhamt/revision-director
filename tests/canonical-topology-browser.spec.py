@@ -48,7 +48,7 @@ def wait_fatal(frame, fragment: str) -> str:
     frame.wait_for_function("""fragment => {
       const node=document.querySelector('#fatal-error');
       return node && node.hidden === false && node.textContent.includes(fragment);
-    }""", fragment, timeout=10000)
+    }""", arg=fragment, timeout=10000)
     return frame.locator("#fatal-error").inner_text()
 
 
