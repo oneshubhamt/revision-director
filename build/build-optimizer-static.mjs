@@ -56,7 +56,7 @@ html=html
  .replace("object-src 'none'","worker-src 'self'; object-src 'none'");
 if(!html.includes("'wasm-unsafe-eval'")||!html.includes("connect-src 'self'")||!html.includes("worker-src 'self'"))
  throw Error("Could not prepare optimizer-enabled Content Security Policy");
-if(html.includes('name="revision-director-browser-optimizer"'))
+if(/<meta\s+name=["']revision-director-browser-optimizer["']/i.test(html))
  throw Error("Base self-contained artifact unexpectedly advertises browser optimization");
 html=html.replace(
  "</head>",
