@@ -263,6 +263,25 @@
     assertExactKeys(value, "Workflow result", keys[expected]);
     const result = clone(value);
     validateWorkflowResult(result, expected);
+    const boundedText = (raw: unknown, field: string, maximum: number): void => {
+      assert(typeof raw === "string" && raw.length <= maximum, `${field} is invalid or too long.`);
+    };
+    if (result.kind === "recall") {
+      boundedText(result.attemptText, "Recall attempt", 20_000);
+    } else if (result.kind === "reconstruction") {
+      boundedText(result.attemptText, "Reconstruction attempt", 20_000);
+    } else if (result.kind === "questions") {
+      boundedText(result.questionSetRef, "Question-set reference", 500);
+      boundedText(result.attemptNotes, "Question attempt notes", 20_000);
+      boundedText(result.errorSummary, "Question error summary", 5_000);
+    } else if (result.kind === "diagram") {
+      boundedText(result.notes, "Diagram notes", 20_000);
+    } else if (result.kind === "answer-writing") {
+      boundedText(result.answerText, "Answer-writing response", 50_000);
+    } else {
+      boundedText(result.repairAction, "Relearning repair action", 20_000);
+      boundedText(result.verificationText, "Relearning verification", 20_000);
+    }
     return result;
   }
 
