@@ -323,6 +323,28 @@
       ));
     }
 
+    async backupState(): Promise<Pick<BackupPayload, "profiles" | "nodes" | "units" | "studyEvents" | "obligations" | "evidenceEvents" | "chunks" | "dailyPlans" | "settings" | "activeRetrieval">> {
+      return this.operation("backupState", async () => {
+        const raw = await this.repository.rawDump();
+        const settings = raw[Store.Settings];
+        const activeRetrieval = raw[Store.ActiveRetrieval];
+        assert(settings.length === 1, "Canonical storage must contain exactly one application-settings document.");
+        assert(activeRetrieval.length <= 1, "Canonical storage may contain at most one active retrieval session.");
+        return {
+          profiles: canonicalDocumentArray("profile", raw[Store.Profiles], "Stored exam profiles"),
+          nodes: canonicalDocumentArray("node", raw[Store.Nodes], "Stored knowledge nodes"),
+          units: canonicalDocumentArray("unit", raw[Store.Units], "Stored knowledge units"),
+          studyEvents: canonicalDocumentArray("study-event", raw[Store.StudyEvents], "Stored study events"),
+          obligations: canonicalDocumentArray("obligation", raw[Store.Obligations], "Stored revision obligations"),
+          evidenceEvents: canonicalDocumentArray("evidence-event", raw[Store.EvidenceEvents], "Stored evidence events"),
+          chunks: canonicalDocumentArray("chunk", raw[Store.Chunks], "Stored obligation chunks"),
+          dailyPlans: canonicalDocumentArray("daily-plan", raw[Store.DailyPlans], "Stored daily plans"),
+          settings: canonicalDocument("settings", settings[0]),
+          activeRetrieval: activeRetrieval.length === 1 ? canonicalDocument("active-retrieval", activeRetrieval[0]) : null,
+        };
+      });
+    }
+
     async rawDump(): Promise<Record<string, unknown[]>> {
       return this.operation("rawDump", () => this.repository.rawDump());
     }
