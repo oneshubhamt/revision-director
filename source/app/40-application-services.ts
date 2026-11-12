@@ -35,19 +35,24 @@
     async initialize(): Promise<void> {
       this.invalidateMemoryReviewAnalysis();
       const stored = await this.repo.get(Store.Settings, "app");
-      this.settings = stored ? canonicalAppSettings(stored) : defaultSettings();
-      if (!stored) await this.repo.put(Store.Settings, this.settings);
-      const profiles = await this.profiles();
-      const active = profiles.filter((profile) => profile.status === "active");
-      if (this.settings.activeProfileId && !active.some((profile) => profile.id === this.settings.activeProfileId)) {
-        const repaired = canonicalAppSettings({
-          ...this.settings,
-          activeProfileId: active[0]?.id ?? "",
-        });
-        await this.repo.put(Store.Settings, repaired);
-        this.settings = repaired;
+      if (stored) {
+        this.settings = canonicalAppSettings(stored);
+      } else {
+        assert(!(await this.repo.hasStoredData([Store.Settings, Store.Metadata])), "Application settings are missing from a populated Revision Director database. Existing data was not modified.");
+        this.settings = defaultSettings();
+        await this.repo.put(Store.Settings, this.settings);
       }
+      this.assertActiveProfileSelection(await this.profiles(), this.settings);
       await this.verifyMemoryProjectionIntegrity();
+    }
+
+    private assertActiveProfileSelection(profiles: readonly ExamProfile[], settings: AppSettings): void {
+      const active = profiles.filter((profile) => profile.status === "active");
+      if (active.length === 0) {
+        assert(settings.activeProfileId === "", "Default exam profile must be empty when no active exam profile exists.");
+        return;
+      }
+      assert(active.some((profile) => profile.id === settings.activeProfileId), "Default exam profile must reference an active exam profile.");
     }
 
     private async verifyMemoryProjectionIntegrity(): Promise<void> {
@@ -83,12 +88,8 @@
     async saveSettings(next: AppSettings): Promise<void> {
       assert(Number.isInteger(next.dailyCapacityMinutes) && next.dailyCapacityMinutes >= 5 && next.dailyCapacityMinutes <= 600, "Daily capacity is invalid.");
       assert(Number.isInteger(next.studyDayBoundaryHour) && next.studyDayBoundaryHour >= 0 && next.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
-      const activeProfiles = (await this.profiles()).filter((profile) => profile.status === "active");
-      if (activeProfiles.length > 0) {
-        const profile = await this.repo.get(Store.Profiles, next.activeProfileId);
-        assert(profile?.status === "active", "Default exam profile is invalid.");
-      } else assert(next.activeProfileId === "", "Create an active exam profile before selecting a default profile.");
       const canonical = canonicalAppSettings(next);
+      this.assertActiveProfileSelection(await this.profiles(), canonical);
       assert(
         JSON.stringify(effectiveFsrsPersonalization(canonical)) === JSON.stringify(effectiveFsrsPersonalization(this.settings)),
         "Use the explicit FSRS personalization controls to stage, activate, deactivate or remove an optimizer profile.",
@@ -361,6 +362,8 @@
     async createProfile(name: string, examDate: string): Promise<ExamProfile> {
       assert(name.trim().length >= 2, "Enter an exam-profile name.");
       if (examDate) validateCalendarDate(examDate);
+      const existingProfiles = await this.profiles();
+      this.assertActiveProfileSelection(existingProfiles, this.settings);
       const time = nowIso();
       const profile: ExamProfile = {
         schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -371,16 +374,19 @@
         createdAt: time,
         updatedAt: time,
       };
-      await this.repo.put(Store.Profiles, profile);
-      if (!this.settings.activeProfileId) {
-        this.settings.activeProfileId = profile.id;
-        await this.repo.put(Store.Settings, this.settings);
-      }
+      const nextSettings = existingProfiles.some((candidate) => candidate.status === "active")
+        ? this.settings
+        : canonicalAppSettings({ ...this.settings, activeProfileId: profile.id });
+      await this.repo.putProfileAndSettings(profile, nextSettings);
+      this.settings = clone(nextSettings);
       return profile;
     }
 
     async updateProfile(id: string, name: string, examDate: string, status: "active" | "suspended"): Promise<ExamProfile> {
-      const profile = await this.profile(id);
+      const existingProfiles = await this.profiles();
+      this.assertActiveProfileSelection(existingProfiles, this.settings);
+      const profile = existingProfiles.find((candidate) => candidate.id === id);
+      assert(profile, "Exam profile not found.");
       assert(name.trim().length >= 2, "Enter an exam-profile name.");
       if (examDate) validateCalendarDate(examDate);
       assert(status === "active" || status === "suspended", "Exam profile status is invalid.");
@@ -388,14 +394,16 @@
       profile.examDate = examDate;
       profile.status = status;
       profile.updatedAt = nowIso();
-      await this.repo.put(Store.Profiles, profile);
-      if (status !== "active" && this.settings.activeProfileId === profile.id) {
-        const replacement = (await this.profiles()).find((candidate) => candidate.status === "active" && candidate.id !== profile.id);
-        if (replacement) {
-          this.settings.activeProfileId = replacement.id;
-          await this.repo.put(Store.Settings, this.settings);
-        }
-      }
+
+      const nextProfiles = existingProfiles.map((candidate) => candidate.id === profile.id ? profile : candidate);
+      const active = nextProfiles.filter((candidate) => candidate.status === "active");
+      let activeProfileId = this.settings.activeProfileId;
+      if (active.length === 0) activeProfileId = "";
+      else if (!active.some((candidate) => candidate.id === activeProfileId)) activeProfileId = active[0]!.id;
+      const nextSettings = canonicalAppSettings({ ...this.settings, activeProfileId });
+      this.assertActiveProfileSelection(nextProfiles, nextSettings);
+      await this.repo.putProfileAndSettings(profile, nextSettings);
+      this.settings = clone(nextSettings);
       return profile;
     }
 
@@ -1344,6 +1352,7 @@
 
     validateBackup(input: unknown): BackupPayload {
       const candidate = requireRecord(input, "Backup");
+      assertExactKeys(candidate, "Backup", ["format", "schemaVersion", "exportedAt", "appVersion", "profiles", "nodes", "units", "studyEvents", "obligations", "evidenceEvents", "chunks", "dailyPlans", "settings", "activeRetrieval"]);
       assert(candidate["format"] === BACKUP_FORMAT && candidate["schemaVersion"] === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
       const appVersion = canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version");
 
@@ -1669,7 +1678,8 @@
         assert(canonicalActive.queueTargetIds.every(validTarget), "Backup active retrieval references an unknown target.");
       }
       assertDocumentSchema(settings, "Backup settings");
-      assert(settings.key === "app" && (profileMap.size === 0 ? settings.activeProfileId === "" : profileMap.has(settings.activeProfileId)), "Backup settings reference an invalid active profile.");
+      assert(settings.key === "app", "Backup settings key is invalid.");
+      this.assertActiveProfileSelection(profiles, settings);
       canonicalFsrsSchedulingSettings(settings.fsrsScheduling);
       const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(settings.memoryDifficultyPolicy);
       for (const obligation of obligations) {
