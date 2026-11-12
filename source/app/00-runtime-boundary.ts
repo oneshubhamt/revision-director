@@ -10,7 +10,8 @@
      ========================================================================== */
 
   type FsrsModelVersion = "FSRS-7";
-  type FsrsScheduleStatus = "new" | "learning" | "review" | "suspended";
+  type FsrsRuntimeScheduleStatus = "new" | "learning" | "review" | "suspended";
+  type StoredFsrsScheduleStatus = Exclude<FsrsRuntimeScheduleStatus, "suspended">;
 
   interface FsrsMemoryStateRuntime {
     stability: number;
@@ -27,7 +28,7 @@
     reps: number;
     lapses: number;
     state: number;
-    scheduleStatus: FsrsScheduleStatus;
+    scheduleStatus: FsrsRuntimeScheduleStatus;
   }
 
   interface FsrsReviewLogRuntime extends FsrsMemoryStateRuntime {
@@ -38,7 +39,7 @@
     reviewTime: Date;
     scheduledDays: number;
     learningStep: number;
-    scheduleStatus?: FsrsScheduleStatus;
+    scheduleStatus?: FsrsRuntimeScheduleStatus;
   }
 
   interface FsrsRecordRuntime {

@@ -104,7 +104,7 @@
     reps: number;
     lapses: number;
     state: number;
-    scheduleStatus: FsrsScheduleStatus;
+    scheduleStatus: StoredFsrsScheduleStatus;
     lastReviewAt?: ISODateTime;
   }
 

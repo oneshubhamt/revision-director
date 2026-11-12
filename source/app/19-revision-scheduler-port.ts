@@ -168,6 +168,11 @@
     return value;
   }
 
+  function storedFsrsScheduleStatus(value: FsrsRuntimeScheduleStatus): StoredFsrsScheduleStatus {
+    assert(value !== "suspended", "Revision Director does not persist FSRS-owned suspension state.");
+    return value;
+  }
+
   function validateStoredFsrsCard(card: StoredFsrsCard, expectedCardId?: string): void {
     assert(card.model === FSRS_MODEL, "Memory obligation does not use the current FSRS-7 model.");
     if (expectedCardId !== undefined) assert(card.cardId === expectedCardId, "FSRS card identity does not match its obligation.");
@@ -196,7 +201,7 @@
       reps: card.reps,
       lapses: card.lapses,
       state: card.state,
-      scheduleStatus: card.scheduleStatus,
+      scheduleStatus: storedFsrsScheduleStatus(card.scheduleStatus),
     };
     if (card.lastReviewAt) stored.lastReviewAt = card.lastReviewAt.toISOString();
     validateStoredFsrsCard(stored);
