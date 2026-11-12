@@ -188,7 +188,7 @@
     };
   }
 
-  const FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT = 1024 as const;
+  const FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT = 1024 as const;
 
   function upstreamDefaultFsrsCostAdrPolicy(): FsrsCostAdrPolicy {
     return {
@@ -201,10 +201,10 @@
     };
   }
 
-  function measuredCostAdrSchedulingPolicy(): FsrsSchedulingPolicy {
+  function costAdrPresetSchedulingPolicy(): FsrsSchedulingPolicy {
     return {
       kind: "cost-adr",
-      goalCostWeight: FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT,
+      goalCostWeight: FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT,
       costAdrPolicy: upstreamDefaultFsrsCostAdrPolicy(),
     };
   }
@@ -259,9 +259,9 @@
       const goalCostWeight = Number(record["goalCostWeight"]);
       const costAdrPolicy = canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]);
       assert(
-        goalCostWeight === FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT
+        goalCostWeight === FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT
           && JSON.stringify(costAdrPolicy) === JSON.stringify(upstreamDefaultFsrsCostAdrPolicy()),
-        "Only the measured Revision Director Cost-ADR preset is enabled.",
+        "Only the bounded Revision Director Cost-ADR preset is enabled.",
       );
       return { kind, goalCostWeight, costAdrPolicy };
     }
@@ -300,7 +300,7 @@
   }
 
   function defaultFsrsSchedulingSettings(): FsrsSchedulingSettings {
-    return { policy: measuredCostAdrSchedulingPolicy() };
+    return { policy: { kind: "fixed-retention", desiredRetention: 0.9 } };
   }
 
   function canonicalFsrsSchedulingSettings(value: unknown): FsrsSchedulingSettings {

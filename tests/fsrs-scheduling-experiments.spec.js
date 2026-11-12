@@ -444,6 +444,10 @@ async function lifecycleShapeExperiment(){
     policyImprovementVsFixed090:(policy.summaries.find(x=>x.name==='fixed-0.90').totalSessions-policy.selected.totalSessions)/policy.summaries.find(x=>x.name==='fixed-0.90').totalSessions,
     enableFuzz:fuzz.enable,
   };
+  assert.deepEqual(decision.learningSteps,['1d'],'Measured long-form learning step must remain one day');
+  assert.deepEqual(decision.relearningSteps,['1d'],'Measured long-form relearning step must remain one day');
+  assert.equal(decision.policy,'fixed-0.90','Outcome-sensitive scheduling benchmark must support fixed 90% as the production default');
+  assert.equal(decision.enableFuzz,false,'Fuzzing must remain disabled unless it improves due-day spreading without breaching memory/workload guardrails');
 
   console.log('PASS FSRS-R2 corrected lifecycle shape: '+JSON.stringify(lifecycle));
   console.log('PASS FSRS-R2 learning-step summary: '+JSON.stringify(steps.summaries));

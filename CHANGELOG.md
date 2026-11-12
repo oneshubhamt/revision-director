@@ -2,6 +2,16 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-12 — Outcome-sensitive FSRS scheduling calibration
+
+- Replaced fixed rating-pattern scheduling experiments with deterministic retrievability-dependent outcomes and the complete corrected relearning lifecycle, including failed closed-book verification.
+- Stress-tested 1d/23h/18h/12h/no-step/minute-step policies, fixed retention 0.84–0.92, Cost-ADR weights 64–1024 and deterministic fuzzing across 90/365/730-day horizons and three sensitivity scenarios.
+- Retained 1d learning/relearning steps: they produced the lowest workload among operational long-form candidates while host-owned canonical history preserves correct early-learning semantics.
+- Changed the new-install scheduling default from Cost-ADR 1024 to fixed retention 0.90 after outcome-sensitive simulation removed the earlier fixed-rating advantage.
+- Kept Cost-ADR 1024 as a bounded optional preset rather than presenting it as production-optimal.
+- Kept fuzz disabled: it did not improve p95 due-day spreading, worsened peak bunching and incurred small memory-metric losses in the selected workload.
+- Added permanent benchmark guardrails so future scheduler/runtime changes must re-earn any different production default.
+
 ## 2026-11-12 — Corrective memory verification topology
 
 - Made every closed-book verification inside a memory-linked corrective relearning workflow a canonical FSRS-7 observation; source-assisted repair itself remains host-owned pedagogy.

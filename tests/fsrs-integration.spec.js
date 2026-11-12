@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, measuredCostAdrSchedulingPolicy, defaultFsrsSchedulingSettings, FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics };';
+const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, costAdrPresetSchedulingPolicy, defaultFsrsSchedulingSettings, FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -21,7 +21,7 @@ if (!api) throw new Error('FSRS verification API unavailable');
 let checks=0;
 const clone=value=>structuredClone(value);
 const fixed=desiredRetention=>({kind:'fixed-retention',desiredRetention});
-const costAdr=()=>api.measuredCostAdrSchedulingPolicy();
+const costAdr=()=>api.costAdrPresetSchedulingPolicy();
 function check(value,message){ checks++; if(!value) throw new Error(message); }
 function mustFail(fn,message){ let failed=false; try{fn();}catch{failed=true;} check(failed,message); }
 async function mustReject(fn,message){ let failed=false; try{await fn();}catch{failed=true;} check(failed,message); }
@@ -165,24 +165,24 @@ function memoryProfile(payload,unit){
 
 async function testSchedulingPolicyBoundary(){
   const defaultScheduling=api.defaultFsrsSchedulingSettings();
-  check(defaultScheduling.policy.kind==='cost-adr'&&defaultScheduling.policy.goalCostWeight===1024,'New installations must default to the measured Cost-ADR preset');
+  check(defaultScheduling.policy.kind==='fixed-retention'&&defaultScheduling.policy.desiredRetention===.9,'New installations must default to the measured fixed 90% policy');
   const fixedConfig=api.fsrsConfigSnapshot(fixed(.9),null);
   const adaptive=api.canonicalFsrsSchedulingPolicy(costAdr());
   const adaptiveConfig=api.fsrsConfigSnapshot(adaptive,null);
   check(fixedConfig.schedulingPolicy.kind==='fixed-retention'&&fixedConfig.schedulingPolicy.desiredRetention===.9,'Fixed-retention policy must be explicit in scheduler provenance');
-  check(adaptiveConfig.schedulingPolicy.kind==='cost-adr'&&adaptiveConfig.schedulingPolicy.goalCostWeight===1024&&adaptiveConfig.fingerprint!==fixedConfig.fingerprint,'Measured Cost-ADR must participate in scheduler identity');
-  check(api.FSRS_COST_ADR_MEASURED_GOAL_COST_WEIGHT===1024,'Measured Cost-ADR goal cost weight must remain pinned to the evaluated preset');
+  check(adaptiveConfig.schedulingPolicy.kind==='cost-adr'&&adaptiveConfig.schedulingPolicy.goalCostWeight===1024&&adaptiveConfig.fingerprint!==fixedConfig.fingerprint,'Optional Cost-ADR preset must participate in scheduler identity');
+  check(api.FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT===1024,'Optional Cost-ADR goal cost weight must remain pinned to the bounded preset');
   const changedGoal=costAdr(); changedGoal.goalCostWeight=992;
-  mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedGoal),'Unmeasured Cost-ADR goal weights must remain unavailable');
+  mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedGoal),'Arbitrary Cost-ADR goal weights must remain unavailable');
   const changedCoefficient=costAdr(); changedCoefficient.costAdrPolicy.coefficients[0]-=.001;
-  mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedCoefficient),'Unmeasured Cost-ADR coefficient variants must remain unavailable');
+  mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedCoefficient),'Arbitrary Cost-ADR coefficient variants must remain unavailable');
   const overflowingDifficulty=costAdr(); overflowingDifficulty.costAdrPolicy.bounds={sMin:.0001,sMax:36500,dMin:-1e308,dMax:1e308};
   mustFail(()=>api.canonicalFsrsSchedulingPolicy(overflowingDifficulty),'Cost-ADR validation must reject invalid state bounds');
   await api.prepareFsrsScheduler(adaptive);
   const adaptivePort=api.revisionSchedulerPort(adaptive);
   const adaptiveCard=adaptivePort.newCard('2026-01-01T08:00:00.000Z','adaptive-probe');
   const adaptivePreviews=adaptivePort.preview(adaptiveCard,[],new Date('2026-01-01T08:00:00.000Z'));
-  check(adaptivePreviews.length===4&&adaptivePort.configuration.schedulingPolicy.kind==='cost-adr','Measured Cost-ADR runtime must expose the normal FSRS preview surface');
+  check(adaptivePreviews.length===4&&adaptivePort.configuration.schedulingPolicy.kind==='cost-adr','Cost-ADR preset runtime must expose the normal FSRS preview surface');
   mustFail(
     ()=>optimizerProfile('b'.repeat(64),.4195,.079),
     'Application profile validation must reject a microscopic holdout log-loss win even when calibration improves'
