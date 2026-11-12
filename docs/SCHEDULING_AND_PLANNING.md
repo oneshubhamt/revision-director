@@ -126,14 +126,14 @@ The raw FSRS lapse counter remains part of the canonical card projection, but ho
 
 The host policy is:
 
-- fewer than 2 FSRS lapses: normal corrective relearning;
-- 2–3 lapses: **remediation**, adding source review and a changed retrieval representation;
-- 4+ lapses: **persistent difficulty**, escalating to scope review, prerequisite review, source review, representation change and deliberate intervention; oversized work is also flagged for splitting;
-- optional automatic hold: disabled by default; when explicitly enabled, the default threshold is 8 FSRS lapses.
+- fewer than 2 established recall failures: normal corrective relearning;
+- 2–3 established recall failures: **remediation**, adding source review and a changed retrieval representation;
+- 4+ established recall failures: **persistent difficulty**, escalating to scope review, prerequisite review, source review, representation change and deliberate intervention; oversized work is also flagged for splitting;
+- optional automatic hold: disabled by default; when explicitly enabled, the default threshold is 8 established recall failures.
 
 Persistent difficulty does not bypass the recovery mechanism. Even when automatic hold is enabled, successful closed-book relearning first advances the original memory card through FSRS with a successful return transition. Only then may the **Revision Director obligation** remain suspended with reason `persistent-difficulty`. The FSRS card itself remains schedulable and its `scheduleStatus` is not mutated. Initial-learning difficulty can raise weakness and corrective priority, but it can never trigger this established-memory hold policy.
 
-A held item can be deliberately resumed from the Library. Disabling automatic hold, or changing thresholds so an existing policy-generated hold no longer qualifies, atomically releases that hold while preserving any independent unit-level pause. Avoiding automatic hold leaves persistently difficult items in the normal queue but visibly flagged, with a strong weakness signal in planning. Difficulty level is derived from the authoritative FSRS lapse count; Revision Director does not persist a second mutable leech counter.
+A held item can be deliberately resumed from the Library. Disabling automatic hold, or changing thresholds so an existing policy-generated hold no longer qualifies, atomically releases that hold while preserving any independent unit-level pause. Avoiding automatic hold leaves persistently difficult items in the normal queue but visibly flagged, with a strong weakness signal in planning. Difficulty level is derived from canonical memory-review history; Revision Director does not persist a second mutable leech counter. The raw FSRS lapse counter remains part of scheduler state and replay integrity, but it does not independently determine host difficulty under the one-day learning-step adaptation.
 
 ## Exam horizon
 

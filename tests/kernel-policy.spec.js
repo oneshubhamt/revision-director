@@ -144,16 +144,16 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   check(api.memoryDifficultyAssessment(difficultyProbe,defaultDifficulty).level==='normal','A first FSRS review lapse must remain ordinary relearning');
   difficultyProbe.policyState.fsrsCard.lapses=2;
   const remediation=api.memoryDifficultyAssessment(difficultyProbe,defaultDifficulty);
-  check(remediation.level==='remediation'&&remediation.recommendedActions.includes('source-revisit')&&remediation.recommendedActions.includes('representation-change'),'Repeated FSRS lapses must escalate the kind of remediation');
+  check(remediation.level==='remediation'&&remediation.recommendedActions.includes('source-revisit')&&remediation.recommendedActions.includes('representation-change'),'Repeated established recall failures must escalate the kind of remediation');
   difficultyProbe.policyState.fsrsCard.lapses=4;
   const persistent=api.memoryDifficultyAssessment(difficultyProbe,defaultDifficulty);
   check(persistent.level==='persistent-difficulty'&&persistent.recommendedActions.includes('scope-review')&&persistent.recommendedActions.includes('split-scope')&&persistent.recommendedActions.includes('prerequisite-review')&&persistent.recommendedActions.includes('deliberate-intervention'),'Persistent difficulty must surface structural interventions for oversized memory work');
   const persistentPlan=api.memoryDifficultyRemediationPlan(persistent);
-  check(persistentPlan.priorityBoost===4&&persistentPlan.guidance.includes('Persistent established-memory difficulty (4 FSRS lapses)'),'Persistent difficulty must strengthen remediation without replacing the relearning workflow');
+  check(persistentPlan.priorityBoost===4&&persistentPlan.guidance.includes('Persistent established-memory difficulty (4 established recall failures)'),'Persistent difficulty must strengthen remediation without replacing the relearning workflow');
   const holdPolicy={...defaultDifficulty,automaticHold:{enabled:true,lapseThreshold:8}};
   difficultyProbe.policyState.fsrsCard.lapses=8;
   check(api.memoryDifficultyAssessment(difficultyProbe,holdPolicy).automaticHoldEligible===true,'Automatic removal from the normal queue must require an explicit enabled final policy and threshold');
-  mustFail(()=>api.canonicalMemoryDifficultyPolicy({...defaultDifficulty,remediationLapses:1}),'Difficulty policy must reject a threshold that escalates the first FSRS lapse');
+  mustFail(()=>api.canonicalMemoryDifficultyPolicy({...defaultDifficulty,remediationLapses:1}),'Difficulty policy must reject a threshold that escalates the first established recall failure');
   mustFail(()=>api.canonicalMemoryDifficultyPolicy({...defaultDifficulty,persistentDifficultyLapses:2}),'Persistent difficulty must occur strictly after remediation');
   mustFail(()=>api.canonicalMemoryDifficultyPolicy({...defaultDifficulty,automaticHold:{enabled:true,lapseThreshold:4}}),'Automatic hold must remain a later final stage than persistent difficulty');
   mustFail(()=>api.validateStoredFsrsCard({...difficultyProbe.policyState.fsrsCard,scheduleStatus:'suspended'}),'FSRS scheduleStatus must not become a second suspension truth');
@@ -199,7 +199,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   const reviewedObligation={...memoryObligation,dueAt:good.dueAt,policyState:structuredClone(good.policyState)};
   const reviewLapseAt=new Date(good.dueAt);
   const reviewLapse=memory.complete(reviewedObligation,api.Rating.Again,evidence(1,1,1),reviewLapseAt,{memoryReviews:[goodObservation]});
-  check(reviewLapse.policyState.fsrsCard.lapses===1&&reviewLapse.followUpType==='relearn','The difficulty signal must use the FSRS Review-state lapse counter, while Again still routes to relearning');
+  check(reviewLapse.policyState.fsrsCard.lapses===1&&reviewLapse.followUpType==='relearn','FSRS must still record its raw Review-state lapse counter while Again routes to host-owned relearning');
   const port = api.revisionSchedulerPort(fixed(.9));
   port.verifyProjection(good.policyState.fsrsCard, [goodObservation]); checks++;
   const rescheduled = port.reschedule(memoryObligation.policyState.fsrsCard, [goodObservation]);

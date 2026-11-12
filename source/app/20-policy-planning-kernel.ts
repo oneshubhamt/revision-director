@@ -114,12 +114,12 @@
     if (assessment.level === "remediation") {
       return {
         priorityBoost: 3,
-        guidance: `Repeated established-memory lapse remediation (${assessment.establishedLapses} FSRS lapses): ${actions}. `,
+        guidance: `Repeated established-memory failure remediation (${assessment.establishedLapses} established recall failures): ${actions}. `,
       };
     }
     return {
       priorityBoost: 4,
-      guidance: `Persistent established-memory difficulty (${assessment.establishedLapses} FSRS lapses): ${actions}. `,
+      guidance: `Persistent established-memory difficulty (${assessment.establishedLapses} established recall failures): ${actions}. `,
     };
   }
 
@@ -593,9 +593,9 @@
         ...(chunk ? [`split scope: ${chunk.scope}`] : item.obligation.chunking?.status === "synthesis-ready" ? ["final synthesis after split work"] : []),
         ...(examBoundMemory ? ["final memory review before exam"] : []),
         ...(difficulty?.level === "persistent-difficulty"
-          ? [`persistent difficulty · ${difficulty.establishedLapses} established FSRS lapses`]
+          ? [`persistent difficulty · ${difficulty.establishedLapses} established recall failures`]
           : difficulty?.level === "remediation"
-            ? [`remediation · ${difficulty.establishedLapses} established FSRS lapses`]
+            ? [`remediation · ${difficulty.establishedLapses} established recall failures`]
             : difficulty?.level === "learning-difficulty"
               ? [`early learning difficulty · ${difficulty.earlyLearningFailures} failed learning recalls`]
               : []),
