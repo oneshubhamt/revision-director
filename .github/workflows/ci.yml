@@ -246,3 +246,6 @@ jobs:
             echo "==> $file"
             python3 "$file"
           done
+
+      - name: Full browser/WASM FSRS optimizer training
+        run: python3 tests/fsrs-browser-optimizer.spec.py full
