@@ -1095,6 +1095,8 @@
           } else {
             original.status = "suspended";
             original.suspensionReason = "relearning";
+            const remediation = memoryDifficultyRemediationPlan(difficulty);
+            obligation.priority = Math.max(obligation.priority, original.priority + remediation.priorityBoost);
           }
           original.updatedAt = reviewedAt.toISOString();
           relatedObligation = original;
