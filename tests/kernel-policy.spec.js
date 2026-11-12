@@ -125,14 +125,15 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   const defaultDifficulty=api.defaultMemoryDifficultyPolicy();
   check(defaultDifficulty.remediationLapses===2&&defaultDifficulty.persistentDifficultyLapses===4&&defaultDifficulty.automaticHold.enabled===false&&defaultDifficulty.automaticHold.lapseThreshold===8,'Persistent-difficulty defaults must preserve ordinary early relearning and keep automatic hold opt-in');
   const learningProbe=structuredClone(memoryObligation);
-  learningProbe.policyState.fsrsCard.state=1;
-  learningProbe.policyState.fsrsCard.scheduleStatus='learning';
+  learningProbe.policyState.fsrsCard.state=2;
+  learningProbe.policyState.fsrsCard.scheduleStatus='review';
+  learningProbe.policyState.fsrsCard.lapses=1;
   const learningReviews=[
-    {rating:api.Rating.Again,beforeCard:{state:0}},
-    {rating:api.Rating.Again,beforeCard:{state:1}}
+    {rating:api.Rating.Again},
+    {rating:api.Rating.Again}
   ];
   const learningDifficulty=api.memoryDifficultyAssessment(learningProbe,defaultDifficulty,learningReviews);
-  check(learningDifficulty.level==='learning-difficulty'&&learningDifficulty.establishedLapses===0&&learningDifficulty.earlyLearningFailures===2&&!learningDifficulty.automaticHoldEligible,'Initial-learning failures must be diagnosed without inventing established FSRS lapses or hold eligibility');
+  check(learningDifficulty.level==='learning-difficulty'&&learningDifficulty.establishedLapses===0&&learningDifficulty.earlyLearningFailures===2&&!learningDifficulty.automaticHoldEligible,'Pre-establishment failures must remain learning difficulty even when the one-day FSRS step has entered Review and incremented the raw lapse counter');
   const learningPlan=api.memoryDifficultyRemediationPlan(learningDifficulty);
   check(learningPlan.priorityBoost===3&&learningPlan.guidance.includes('Early learning difficulty (2 failed learning recalls)'),'Early-learning difficulty must strengthen corrective relearning with distinct guidance');
   const difficultyProbe=structuredClone(memoryObligation); difficultyProbe.expectedMinutes=60;
