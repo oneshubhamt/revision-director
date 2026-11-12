@@ -1,6 +1,8 @@
 from __future__ import annotations
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import os, runpy, shutil
+from backup_fixture_codec import canonical_fixture_copy
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -19,7 +21,8 @@ def wait(page,ms=250):page.wait_for_timeout(ms)
 
 def main():
  executable=os.environ.get('CHROMIUM_EXECUTABLE') or shutil.which('chromium') or '/usr/bin/chromium'
- with sync_playwright() as pw:
+ with sync_playwright() as pw, TemporaryDirectory() as td:
+  fixture=canonical_fixture_copy(BASELINE,Path(td)/'browser-baseline-current.rdbackup')
   browser=pw.chromium.launch(headless=True,executable_path=executable,args=['--no-sandbox','--disable-dev-shm-usage'])
   page=browser.new_page(viewport={'width':1365,'height':950})
   page.set_default_timeout(7000)
@@ -29,7 +32,7 @@ def main():
   page.on('dialog',lambda d:d.accept())
   page.set_content(HTML,wait_until='load');wait(page,1300)
   page.locator('[data-pane="settings"]').click();wait(page)
-  restore_selected_backup(page, BASELINE)
+  restore_selected_backup(page, fixture)
   check('restored' in page.locator('#toast').inner_text().lower(),'Fixture restore failed')
 
   # ARIA tab registry and keyboard activation.

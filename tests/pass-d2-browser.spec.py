@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import os, runpy, shutil, sys
+from backup_fixture_codec import canonical_fixture_copy
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -36,6 +37,7 @@ def main():
     exe=os.environ.get('CHROMIUM_EXECUTABLE') or shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
     with sync_playwright() as pw, TemporaryDirectory() as td:
         tmp=Path(td)
+        fixture=canonical_fixture_copy(FIXTURE,tmp/'browser-baseline-current.rdbackup')
         browser=pw.chromium.launch(headless=True,executable_path=exe if exe else None,args=['--no-sandbox','--disable-dev-shm-usage'])
         page=browser.new_page(viewport={'width':1440,'height':1000})
         errors=[]
@@ -46,7 +48,7 @@ def main():
         check(not page.locator('#fatal-error').is_visible(),'Fatal startup error')
         page.locator('[data-pane="settings"]').click();wait(page)
         before=page.locator('#sb-units').inner_text()
-        page.locator('#import-backup').set_input_files(str(FIXTURE));wait(page,900)
+        page.locator('#import-backup').set_input_files(str(fixture));wait(page,900)
         check(page.locator('#restore-preview').get_by_text('No application data has been changed').count()==1,'Non-mutating inspection message missing')
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated application state')
         check('Archive checksum:' in page.locator('#restore-preview').inner_text(),'Restore preview lacks checksum')
@@ -77,7 +79,7 @@ def main():
         restored=page.locator('#attempt-text')
         if restored.count(): check(restored.input_value()=='Durable active retrieval text','Restored active draft was lost')
         # Selecting a tampered file must not enter restore ceremony.
-        data=bytearray(FIXTURE.read_bytes()); data[-10]^=1
+        data=bytearray(fixture.read_bytes()); data[-10]^=1
         tampered=tmp/'tampered.rdbackup';tampered.write_bytes(data)
         page.locator('[data-pane="settings"]').click();wait(page)
         page.locator('#import-backup').set_input_files(str(tampered));wait(page,700)

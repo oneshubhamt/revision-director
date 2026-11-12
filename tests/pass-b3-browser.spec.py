@@ -5,6 +5,7 @@ import importlib.util
 import json
 import shutil
 import time
+from backup_fixture_codec import canonical_fixture_copy
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,11 +85,13 @@ def state_all(page, store: str):
 
 
 def restore_fixture_d2(page, frame, fixture) -> None:
-    frame.locator("#import-backup").set_input_files([])
-    frame.locator("#import-backup").set_input_files(str(fixture))
-    frame.wait_for_timeout(900)
-    if not frame.locator("#restore-dialog").is_visible():
-        raise AssertionError("Restore preview did not open")
+    with TemporaryDirectory() as fixture_tmpdir:
+        canonical_fixture = canonical_fixture_copy(Path(fixture), Path(fixture_tmpdir) / "canonical-fixture.rdbackup")
+        frame.locator("#import-backup").set_input_files([])
+        frame.locator("#import-backup").set_input_files(str(canonical_fixture))
+        frame.wait_for_timeout(900)
+        if not frame.locator("#restore-dialog").is_visible():
+            raise AssertionError("Restore preview did not open")
     with TemporaryDirectory() as tmpdir:
         with page.expect_download() as info:
             frame.locator('[data-action="create-restore-safety"]').click()

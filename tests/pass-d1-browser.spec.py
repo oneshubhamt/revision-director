@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import json, os, runpy, shutil
+from backup_fixture_codec import canonical_fixture_copy
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -41,7 +42,8 @@ def main():
         check('.rdbackup' in (page.locator('#import-backup').get_attribute('accept') or ''),'Backup picker does not advertise .rdbackup')
         with TemporaryDirectory() as tmpdir:
             tmp=Path(tmpdir)
-            page.locator('#import-backup').set_input_files(str(FIXTURE)); wait(page,900)
+            fixture=canonical_fixture_copy(FIXTURE,tmp/'browser-baseline-current.rdbackup')
+            page.locator('#import-backup').set_input_files(str(fixture)); wait(page,900)
             check(page.locator('#restore-dialog').is_visible(),'Verified archive did not inspect')
             complete_restore(page,tmp)
             check('verified backup restored' in page.locator('#toast').inner_text().lower(),'Verified archive did not restore')
@@ -55,7 +57,7 @@ def main():
             page.locator('#import-backup').set_input_files(str(exported)); wait(page,900)
             check(page.locator('#restore-dialog').is_visible(),'Exported archive did not round-trip inspect')
             page.get_by_role('button', name='CANCEL', exact=True).click(); wait(page,150)
-            lines=FIXTURE.read_text().strip().splitlines(); parsed=[json.loads(x) for x in lines]
+            lines=fixture.read_text().strip().splitlines(); parsed=[json.loads(x) for x in lines]
             first_chunk=next(x for x in parsed if x.get('kind')=='chunk'); first_chunk['items'][0]['name']='Tampered name'
             tampered=tmp/'tampered.rdbackup'; tampered.write_text('\n'.join(json.dumps(x,separators=(',',':')) for x in parsed)+'\n')
             page.locator('#import-backup').set_input_files(str(tampered)); wait(page,600)

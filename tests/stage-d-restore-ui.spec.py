@@ -1,6 +1,8 @@
 from __future__ import annotations
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import os, runpy, shutil, sys
+from backup_fixture_codec import canonical_fixture_copy
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -18,7 +20,8 @@ def main():
     global checks
     exe=os.environ.get('CHROMIUM_EXECUTABLE') or shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
     viewports=[(320,568),(390,844),(620,760),(820,1180),(821,900),(1440,1000)]
-    with sync_playwright() as pw:
+    with sync_playwright() as pw, TemporaryDirectory() as td:
+        fixture=canonical_fixture_copy(FIXTURE,Path(td)/'browser-baseline-current.rdbackup')
         browser=pw.chromium.launch(headless=True,executable_path=exe if exe else None,args=['--no-sandbox','--disable-dev-shm-usage'])
         for width,height in viewports:
             page=browser.new_page(viewport={'width':width,'height':height})
@@ -28,7 +31,7 @@ def main():
             page.on('dialog',lambda d:d.accept())
             page.set_content(HTML,wait_until='load');page.wait_for_timeout(1200)
             page.locator('[data-pane="settings"]').click();page.wait_for_timeout(180)
-            page.locator('#import-backup').set_input_files(str(FIXTURE))
+            page.locator('#import-backup').set_input_files(str(fixture))
             dialog=page.locator('#restore-dialog')
             dialog.wait_for(state='visible',timeout=8000)
             check(dialog.is_visible(),f'Restore dialog missing at {width}x{height}')
@@ -54,7 +57,7 @@ def main():
             page.keyboard.press('Escape');page.wait_for_timeout(180)
             check(not dialog.is_visible(),f'Escape did not cancel restore at {width}x{height}')
             # File input is reset, so reselecting the same file must reopen the preview.
-            page.locator('#import-backup').set_input_files(str(FIXTURE))
+            page.locator('#import-backup').set_input_files(str(fixture))
             dialog.wait_for(state='visible',timeout=8000)
             check(dialog.is_visible(),f'Same-file reselection failed at {width}x{height}')
             page.get_by_role('button',name='CANCEL',exact=True).click();page.wait_for_timeout(120)
