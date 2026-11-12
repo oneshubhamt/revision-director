@@ -30,20 +30,21 @@ def ensure_static() -> None:
     check((STATIC / "index.html").is_file(), "CI failed to build Revision_Director_Optimizer_Static.")
 
 def evidence_csv(full: bool) -> str:
-    rows = ["review_time,card_id,review_rating,review_duration,review_state"]
+    rows: list[tuple[int, str]] = []
     cards = 96 if full else 12
     for card in range(cards):
         start = 1704067200000 + card * 1000
-        rows.append(f"{start},card-{card},3,1000,0")
-        rows.append(f"{start + 10 * 60 * 1000},card-{card},3,900,1")
+        rows.append((start, f"{start},card-{card},3,1000,0"))
+        rows.append((start + 10 * 60 * 1000, f"{start + 10 * 60 * 1000},card-{card},3,900,1"))
         if full:
             pattern = card % 4
-            rows.append(f"{start + 12 * 60 * 60 * 1000},card-{card},{3 if pattern == 3 else 1},800,2")
-            rows.append(f"{start + 24 * 60 * 60 * 1000},card-{card},{3 if pattern >= 2 else 1},750,2")
-            rows.append(f"{start + 48 * 60 * 60 * 1000},card-{card},{3 if pattern == 3 else 1},700,2")
+            rows.append((start + 12 * 60 * 60 * 1000, f"{start + 12 * 60 * 60 * 1000},card-{card},{3 if pattern == 3 else 1},800,2"))
+            rows.append((start + 24 * 60 * 60 * 1000, f"{start + 24 * 60 * 60 * 1000},card-{card},{3 if pattern >= 2 else 1},750,2"))
+            rows.append((start + 48 * 60 * 60 * 1000, f"{start + 48 * 60 * 60 * 1000},card-{card},{3 if pattern == 3 else 1},700,2"))
         else:
-            rows.append(f"{start + 24 * 60 * 60 * 1000},card-{card},3,800,2")
-    return "\n".join(rows) + "\n"
+            rows.append((start + 24 * 60 * 60 * 1000, f"{start + 24 * 60 * 60 * 1000},card-{card},3,800,2"))
+    rows.sort(key=lambda item: (item[0], item[1]))
+    return "review_time,card_id,review_rating,review_duration,review_state\n" + "\n".join(row for _, row in rows) + "\n"
 
 def run(mode: str) -> None:
     ensure_static()
