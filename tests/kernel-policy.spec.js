@@ -308,6 +308,11 @@ const chunkRecords=[
 const dailyPlan={schemaVersion:1,id:'dp',studyDayKey:'2026-07-25',createdAt:due,updatedAt:due,plannerVersion:'pass-d-2',versions:[{version:1,generatedAt:due,capacityMinutes:60,reason:'initial',items:[{key:'o::ch1',obligationId:'o',chunkId:'ch1',profileId:'p',unitId:'u',subject:'S',workflow:'reconstruction',title:'U · Part 1 of 2',estimatedMinutes:5,score:70,disposition:'selected',reasons:[]}]}],outcomes:[{itemKey:'o::ch1',status:'completed',startedAt:due,completedAt:due,actualMinutes:6}]};
 const passDBackup={...validBackup,obligations:[chunkedObligation],chunks:chunkRecords,dailyPlans:[dailyPlan]};
 check(service.validateBackup(passDBackup).dailyPlans.length===1,'Chunk and persisted-plan records must survive relational backup validation');
+const relearnPolicyForPause=new api.RelearnPolicy();
+const pausedOriginal={...conceptObligation,status:'suspended',suspensionReason:'relearning'};
+const pausedRepair={schemaVersion:1,...obligation('relearn',relearnPolicyForPause,'relearning'),id:'repair',unitId:'u',status:'suspended',suspensionReason:'unit',parentObligationId:'o',returnObligationId:'o'};
+const unitPausedRepairBackup={...validBackup,units:[{...validBackup.units[0],status:'suspended'}],obligations:[pausedOriginal,pausedRepair]};
+check(service.validateBackup(unitPausedRepairBackup).obligations.length===2,'A unit-level pause must preserve an unresolved relearning chain rather than make the backup invalid');
 mustFail(()=>service.validateBackup({...passDBackup,chunks:[chunkRecords[1]]}),'Daily plans must reject missing chunk references');
 mustFail(()=>service.validateBackup({...passDBackup,dailyPlans:[{...dailyPlan,plannerVersion:'wrong'}]}),'Daily plans must reject unknown planner versions');
 mustFail(()=>service.validateBackup({...passDBackup,dailyPlans:[{...dailyPlan,versions:[{...dailyPlan.versions[0],reason:'wrong'}]}]}),'Daily plans must reject unknown amendment reasons');

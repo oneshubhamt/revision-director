@@ -52,7 +52,7 @@ The built-in `revision-current` profile owns independent typography, shape, mate
 
 ## Application services and commit integrity
 
-`RevisionService` owns domain use cases. Durable review completion is transaction-bound: evidence, scheduler state, obligation state, plan outcomes and active-session transitions are committed together.
+`RevisionService` owns domain use cases. Durable review completion is transaction-bound: evidence, scheduler state, obligation state, plan outcomes and active-session transitions are committed together. Settings changes that must reconcile domain obligation status use the same generic atomic settings+obligations persistence boundary as scheduler reprojection.
 
 Evidence Events are append-only audit records and the canonical review history for memory obligations. The stored FSRS card is a verified materialized projection, while the scheduler port owns replay, scheduler identity and explicit reprojection across scheduling-policy or weight changes.
 
