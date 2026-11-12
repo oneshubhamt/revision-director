@@ -94,6 +94,14 @@ async function learningStepExperiment(){
     const lapseAt=new Date(established.dueAt);
     const lapsed=scheduler.review({card:established,grade:F.Rating.Again,now:lapseAt}).card;
 
+    // Revision Director does not follow an Again card directly. It suspends the
+    // memory obligation, runs corrective relearning, then records one successful
+    // closed-book return roughly a day later. Measure the actual host lifecycle.
+    const initialReturnAt=new Date(START.getTime()+DAY_MS);
+    const initialReturned=scheduler.review({card:again1,grade:F.Rating.Good,now:initialReturnAt}).card;
+    const lapseReturnAt=new Date(lapseAt.getTime()+DAY_MS);
+    const lapseReturned=scheduler.review({card:lapsed,grade:F.Rating.Good,now:lapseReturnAt}).card;
+
     results.push({
       name:variant.name,
       firstAgainHours:hoursBetween(again1.dueAt,START),
@@ -107,6 +115,12 @@ async function learningStepExperiment(){
       lapseAgainState:lapsed.state,
       lapseAgainStatus:lapsed.scheduleStatus,
       lapseCount:lapsed.lapses,
+      initialCorrectiveReturnState:initialReturned.state,
+      initialCorrectiveNextDays:daysBetween(initialReturned.dueAt,initialReturnAt),
+      initialCorrectiveLapses:initialReturned.lapses,
+      lapseCorrectiveReturnState:lapseReturned.state,
+      lapseCorrectiveNextDays:daysBetween(lapseReturned.dueAt,lapseReturnAt),
+      lapseCorrectiveLapses:lapseReturned.lapses,
     });
   }
   const byName=new Map(results.map(row=>[row.name,row]));
@@ -193,9 +207,11 @@ async function policyWorkloadExperiment(){
     {name:'fixed-0.88',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.88})},
     {name:'fixed-0.90',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.9})},
     {name:'fixed-0.92',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.92})},
-    {name:'cost-adr-256',kind:'cost-adr',scheduler:await costAdrScheduler(256)},
     {name:'cost-adr-512',kind:'cost-adr',scheduler:await costAdrScheduler(512)},
     {name:'cost-adr-768',kind:'cost-adr',scheduler:await costAdrScheduler(768)},
+    {name:'cost-adr-832',kind:'cost-adr',scheduler:await costAdrScheduler(832)},
+    {name:'cost-adr-896',kind:'cost-adr',scheduler:await costAdrScheduler(896)},
+    {name:'cost-adr-960',kind:'cost-adr',scheduler:await costAdrScheduler(960)},
     {name:'cost-adr-1024',kind:'cost-adr',scheduler:await costAdrScheduler(1024)},
   ];
   const experiments=[];
@@ -236,7 +252,15 @@ async function policyWorkloadExperiment(){
       results,
     });
   }
-  return experiments;
+  const costNames=schedulers.filter(entry=>entry.kind==='cost-adr').map(entry=>entry.name);
+  const robustCostAdr=costNames.map(name=>({
+    name,
+    allHorizonsMeaningful:experiments.every(experiment=>experiment.results.find(row=>row.name===name)?.meaningfulBenefit===true),
+    worstReviewDelta:Math.max(...experiments.map(experiment=>experiment.results.find(row=>row.name===name).reviewDelta)),
+    worstRetentionLoss:Math.max(...experiments.map(experiment=>Math.max(0,-experiment.results.find(row=>row.name===name).retentionDelta))),
+    paretoDominatedAnywhere:experiments.some(experiment=>Boolean(experiment.results.find(row=>row.name===name).paretoDominatedBy)),
+  }));
+  return {experiments,robustCostAdr};
 }
 
 (async()=>{
