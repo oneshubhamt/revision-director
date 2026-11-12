@@ -183,6 +183,9 @@
         }
         return;
       }
+      if (await this.repository.hasAnyStoredData([Store.Metadata])) {
+        throw new Error("Database metadata is missing from a populated Revision Director database. Existing data was not modified.");
+      }
       const time = nowIso();
       const metadata: AppMetadata = {
         schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -227,6 +230,17 @@
 
     async putMany<S extends StoreName>(store: S, values: StoreValue<S>[]): Promise<void> {
       await this.operation(`putMany.${store}`, () => this.repository.putMany(store, values.map((value) => this.normalize(store, value))));
+    }
+
+    async hasStoredData(excluded: readonly StoreName[] = []): Promise<boolean> {
+      return this.operation("hasStoredData", () => this.repository.hasAnyStoredData(excluded));
+    }
+
+    async putProfileAndSettings(profile: ExamProfile, settings: AppSettings): Promise<void> {
+      await this.operation("putProfileAndSettings", () => this.repository.putProfileAndSettings(
+        canonicalExamProfile(profile),
+        canonicalAppSettings(settings),
+      ));
     }
 
     async createUnitWithObligation(unit: KnowledgeUnit, obligation: RevisionObligation): Promise<void> {
