@@ -318,7 +318,7 @@ for (const mutation of [
 ]) mustFail(() => service.validateBackup(mutation), 'Hostile backup should fail');
 const conceptUnitWithEvidence={...validBackup.units[0],evidenceCount:1,latestEvidenceAt:due,latestEvidenceRating:3};
 check(service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[conceptEvidence]}).evidenceEvents.length === 1, 'Relational workflow evidence backup should pass');
-mustFail(()=>service.validateBackup({...validBackup,units:[{...validBackup.units[0],evidenceCount:1}],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[(({timing,...rest})=>rest)(conceptEvidence)]}),'Current evidence without timing must be rejected');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[(({timing,...rest})=>rest)(conceptEvidence)]}),'Current evidence without timing must be rejected');
 const chunkedObligation={...conceptObligation,chunking:{cycleId:'cycle',status:'chunking',originalMinutes:15,synthesisMinutes:5,capacityMinutes:60,totalChunks:2,completedChunks:1,createdAt:due}};
 const chunkRecords=[
   {schemaVersion:1,id:'ch1',obligationId:'o',cycleId:'cycle',ordinal:1,total:2,label:'U · Part 1 of 2',scope:'Part 1 of 2',expectedMinutes:5,status:'completed',createdAt:due,updatedAt:due,completedAt:due,actualMinutes:6,note:'',timing:{totalActiveMs:360000,activeByPhase:{attempt:360000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}},
