@@ -266,6 +266,42 @@
     return result;
   }
 
+  function canonicalFsrsReviewLog(value: unknown, label: string): Record<string, unknown> {
+    const record = requireRecord(value, label);
+    assertExactKeys(record, label, ["model", "rating", "state", "dueAt", "lastReviewAt", "reviewTime", "stability", "stabilityFast", "difficulty", "scheduledDays", "learningStep", "scheduleStatus"]);
+    assert(record["model"] === FSRS_MODEL, `${label} model is invalid.`);
+    const rating = validateRating(record["rating"] as Rating);
+    const state = requiredSafeInteger(record["state"], `${label} state`);
+    assert(state >= 0 && state <= 3, `${label} state is invalid.`);
+    const dueAt = canonicalIso(requiredString(record["dueAt"], `${label} due date`), `${label} due date`);
+    const lastReviewRaw = record["lastReviewAt"];
+    assert(lastReviewRaw === null || typeof lastReviewRaw === "string", `${label} prior review date is invalid.`);
+    const lastReviewAt = lastReviewRaw === null ? null : canonicalIso(lastReviewRaw, `${label} prior review date`);
+    const reviewTime = canonicalIso(requiredString(record["reviewTime"], `${label} review date`), `${label} review date`);
+    const stability = requiredFiniteNumber(record["stability"], `${label} stability`);
+    const stabilityFast = requiredFsrs7StabilityFast(requiredFiniteNumber(record["stabilityFast"], `${label} fast stability`));
+    const difficulty = requiredFiniteNumber(record["difficulty"], `${label} difficulty`);
+    const scheduledDays = requiredFiniteNumber(record["scheduledDays"], `${label} scheduled days`);
+    const learningStep = requiredSafeInteger(record["learningStep"], `${label} learning step`);
+    assert(stability >= 0 && difficulty >= 0 && scheduledDays >= 0 && learningStep >= 0, `${label} numeric state is invalid.`);
+    const scheduleStatus = record["scheduleStatus"];
+    if (scheduleStatus !== undefined) assert(scheduleStatus === "new" || scheduleStatus === "learning" || scheduleStatus === "review", `${label} schedule status is invalid.`);
+    return {
+      model: FSRS_MODEL,
+      rating,
+      state,
+      dueAt,
+      lastReviewAt,
+      reviewTime,
+      stability,
+      stabilityFast,
+      difficulty,
+      scheduledDays,
+      learningStep,
+      ...(scheduleStatus !== undefined ? { scheduleStatus } : {}),
+    };
+  }
+
   function canonicalDurationObservation(value: DurationObservation): DurationObservation {
     assertExactKeys(value, "Duration observation", ["plannedMinutes", "actualMinutes", "accepted", "reason", "estimateBefore", "estimateAfter", "exactSamples", "unitWorkflowSamples", "globalWorkflowSamples"]);
     assert(typeof value.plannedMinutes === "number" && Number.isFinite(value.plannedMinutes) && value.plannedMinutes >= 1 && value.plannedMinutes <= 240, "Duration planned minutes are invalid.");
@@ -323,7 +359,9 @@
       assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION && event.schedulerModel === FSRS_MODEL, "Memory evidence lacks exact FSRS-7 provenance.");
       assert(event.schedulerConfig !== undefined && event.reviewLog !== undefined, "Memory evidence lacks scheduler configuration or review log.");
       event.schedulerConfig = clone(validateFsrsConfigSnapshot(event.schedulerConfig));
-      event.reviewLog = clone(requireRecord(event.reviewLog, "Evidence scheduler review log"));
+      event.reviewLog = canonicalFsrsReviewLog(event.reviewLog, "Evidence scheduler review log");
+      assert(event.reviewLog["rating"] === event.confirmedRating, "Evidence scheduler review rating does not match the confirmed rating.");
+      assert(event.reviewLog["reviewTime"] === event.reviewedAt, "Evidence scheduler review time does not match the Evidence Event.");
     } else {
       assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined && event.reviewLog === undefined, "Non-memory evidence cannot contain direct FSRS scheduler provenance.");
       delete event.schedulerPackage;
@@ -347,7 +385,9 @@
       transition.policyId = canonicalId(transition.policyId, "Corrective memory policy ID");
       assert(transition.schedulerPackage === "ts-fsrs" && transition.schedulerVersion === FSRS_PACKAGE_VERSION && transition.schedulerModel === FSRS_MODEL, "Corrective memory scheduler provenance is invalid.");
       transition.schedulerConfig = clone(validateFsrsConfigSnapshot(transition.schedulerConfig));
-      transition.reviewLog = clone(requireRecord(transition.reviewLog, "Corrective memory scheduler review log"));
+      transition.reviewLog = canonicalFsrsReviewLog(transition.reviewLog, "Corrective memory scheduler review log");
+      assert(transition.reviewLog["rating"] === transition.rating, "Corrective memory review rating does not match its scheduler log.");
+      assert(transition.reviewLog["reviewTime"] === event.reviewedAt, "Corrective memory review time does not match the Evidence Event.");
     } else delete event.correctiveMemoryTransition;
     event.createdAt = canonicalIso(event.createdAt, "Evidence-event creation date");
     return event;
