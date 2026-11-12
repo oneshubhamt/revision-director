@@ -361,37 +361,47 @@ async function testRelearningLifecycle() {
   check(calls[0][1].status === 'suspended' && calls[0][1].suspensionReason === 'relearning', 'Failed original must be paused for relearning');
   check(calls[0][3]?.type === 'relearn' && calls[0][3]?.workflow.kind === 'relearning', 'Failed review must create a proper relearning workflow');
   check(calls[0][3]?.returnObligationId === 'original', 'Relearning must return to its exact original');
-  check(Math.abs((new Date(calls[0][1].dueAt) - new Date(due)) / 86400000 - 1) < .001, 'Failed FSRS memory must retain the one-day scheduler due date while suspended');
   const failedMemoryEvent = structuredClone(calls[0][2]);
-
-  const failedState = structuredClone(calls[0][1].policyState);
-  original.policyState = failedState;
+  original.policyState = structuredClone(calls[0][1].policyState);
   original.dueAt = calls[0][1].dueAt;
+
   const relearnPolicy = new api.RelearnPolicy();
   const nextDay = new Date(new Date(due).getTime() + 86400000);
-  const relearn = { ...obligation('relearn', relearnPolicy, 'relearning'), id:'relearn', unitId:'u', returnObligationId:'original', policyState:{ ...relearnPolicy.createInitialState(nextDay.toISOString()), successStreak:1 } };
+  const relearn = { ...obligation('relearn', relearnPolicy, 'relearning'), id:'relearn', unitId:'u', returnObligationId:'original', policyState:relearnPolicy.createInitialState(nextDay.toISOString()) };
   original.status = 'suspended'; original.suspensionReason='relearning';
-  calls.length = 0;
   lifecycle.obligation = async () => relearn;
   lifecycle.obligationsForUnit = async () => [relearn];
+
+  calls.length = 0;
   lifecycle.evidenceEvents = async () => [failedMemoryEvent];
-  await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, timing:{totalActiveMs:1000,activeByPhase:{attempt:1000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}, confirmedRating:3 }, nextDay);
-  check(calls[0][1].status === 'completed', 'Relearning must complete after two successful cycles');
-  const returnedTransition = calls[0][2].returnedMemoryTransition;
-  check(returnedTransition?.obligationId === 'original' && returnedTransition?.rating === api.Rating.Good, 'Successful relearning must record the returned-memory FSRS transition');
-  check(returnedTransition?.schedulerModel === 'FSRS-7' && returnedTransition?.schedulerVersion === '6.0.0', 'Returned-memory transition must preserve exact FSRS-7 provenance');
+  await lifecycle.recordEvidence('relearn', { ...evidence(1,4,1), workflowResult:relearnResult, elapsedMs:1000, timing:{totalActiveMs:1000,activeByPhase:{attempt:0,compare:0,'relearn-repair':600,'relearn-verify':400},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}, confirmedRating:1 }, nextDay);
+  const failedVerificationEvent = structuredClone(calls[0][2]);
+  const failedVerification = failedVerificationEvent.correctiveMemoryTransition;
+  const stillSuspended = calls[0][4];
+  check(calls[0][1].status === 'active', 'Failed corrective verification must keep the repair obligation active');
+  check(failedVerification?.obligationId === 'original' && failedVerification?.rating === api.Rating.Again, 'Failed closed-book verification must be recorded as an FSRS Again observation');
+  check(stillSuspended?.status === 'suspended' && stillSuspended?.suspensionReason === 'relearning', 'Failed corrective verification must keep the original memory out of the normal queue');
+  const learningHistory = api.memoryReviewObservationsFor('original', [failedMemoryEvent, failedVerificationEvent]);
+  const learningDifficulty = api.memoryDifficultyAssessment(stillSuspended, api.defaultMemoryDifficultyPolicy(), learningHistory);
+  check(learningDifficulty.level === 'learning-difficulty' && learningDifficulty.earlyLearningFailures === 2 && learningDifficulty.establishedLapses === 0, 'Two pre-establishment failures must be learning difficulty even when the one-day FSRS step has entered Review state');
+
+  calls.length = 0;
+  const successfulAt = new Date(relearn.dueAt);
+  lifecycle.evidenceEvents = async () => [failedMemoryEvent, failedVerificationEvent];
+  await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, timing:{totalActiveMs:1000,activeByPhase:{attempt:0,compare:0,'relearn-repair':600,'relearn-verify':400},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}, confirmedRating:3 }, successfulAt);
+  check(calls[0][1].status === 'completed', 'One successful closed-book corrective verification must complete relearning without a duplicate success cycle');
+  const successfulVerification = calls[0][2].correctiveMemoryTransition;
+  check(successfulVerification?.obligationId === 'original' && successfulVerification?.rating === api.Rating.Good, 'Successful corrective verification must record the exact FSRS rating');
+  check(successfulVerification?.schedulerModel === 'FSRS-7' && successfulVerification?.schedulerVersion === '6.0.0', 'Corrective-memory transition must preserve exact FSRS-7 provenance');
   const resumed = calls[0][4];
-  check(resumed?.status === 'active', 'Original obligation must reactivate atomically');
+  check(resumed?.status === 'active', 'Original obligation must reactivate atomically after successful verification');
   check(resumed?.policyState.fsrsCard.dueAt === resumed?.dueAt, 'Reactivated FSRS due state must stay synchronized');
-  check(returnedTransition?.afterDueAt === resumed?.dueAt && returnedTransition?.afterPolicyState.fsrsCard.dueAt === resumed?.dueAt, 'Returned-memory transition must exactly describe the reactivated FSRS state');
-  check(resumed?.policyState.fsrsCard.model === 'FSRS-7', 'Reactivated memory must remain FSRS-7');
-  const resumedDays = (new Date(resumed.dueAt) - nextDay) / 86400000;
-  check(resumedDays >= 2.9 && resumedDays <= 3.1, 'Successful relearning must advance the original through FSRS-7 rather than a fixed app interval');
-  const canonicalHistory = api.memoryReviewObservationsFor('original', [failedMemoryEvent, calls[0][2]]);
-  check(canonicalHistory.length === 2 && canonicalHistory[0].source === 'direct-memory' && canonicalHistory[1].source === 'relearning-return', 'Canonical memory history must include the corrective return transition');
+  check(successfulVerification?.afterDueAt === resumed?.dueAt && successfulVerification?.afterPolicyState.fsrsCard.dueAt === resumed?.dueAt, 'Corrective-memory transition must exactly describe the reactivated FSRS state');
+  const canonicalHistory = api.memoryReviewObservationsFor('original', [failedMemoryEvent, failedVerificationEvent, calls[0][2]]);
+  check(canonicalHistory.length === 3 && canonicalHistory.map(item=>item.source).join(',') === 'direct-memory,relearning-verification,relearning-verification', 'Canonical memory history must include every closed-book corrective verification');
+  check(canonicalHistory.map(item=>item.rating).join(',') === '1,1,3', 'Canonical memory history must preserve failed and successful corrective ratings');
   api.revisionSchedulerPort(fixed(.9)).verifyProjection(resumed.policyState.fsrsCard, canonicalHistory); checks++;
 }
-
 
 async function testPersistentDifficultyResume() {
   const held={id:'held',unitId:'u',type:'memory-recall',status:'suspended',suspensionReason:'persistent-difficulty',updatedAt:due};
