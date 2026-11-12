@@ -68,8 +68,6 @@
     status: EntityStatus;
     createdAt: ISODateTime;
     updatedAt: ISODateTime;
-    latestEvidenceAt?: ISODateTime;
-    latestEvidenceRating?: Rating;
     evidenceCount: number;
     lapseCount: number;
   }
