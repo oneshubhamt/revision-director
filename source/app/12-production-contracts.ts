@@ -241,6 +241,47 @@
     return obligation;
   }
 
+  function canonicalObjectiveEvidence(value: ObjectiveEvidence): ObjectiveEvidence {
+    assertExactKeys(value, "Objective evidence", ["completeness", "independence", "application", "accuracyPercent", "errorTypes", "correctionNote"]);
+    assert(Array.isArray(value.errorTypes), "Evidence errors must be an array.");
+    const evidence = clone(value);
+    evidence.correctionNote = canonicalText(evidence.correctionNote, "Evidence correction note");
+    validateEvidence(evidence);
+    return evidence;
+  }
+
+  function canonicalWorkflowResult(value: WorkflowResult, expected: RetrievalWorkflow): WorkflowResult {
+    const keys: Record<RetrievalWorkflow, readonly string[]> = {
+      recall: ["kind", "responseMedium", "attemptText", "checkpointTotal", "checkpointsMet", "cueLevel"],
+      reconstruction: ["kind", "responseMedium", "attemptText", "shape", "checkpointTotal", "checkpointsMet", "structuralAccuracy", "relationshipAccuracy", "cueLevel"],
+      questions: ["kind", "targetCount", "attempted", "correct", "partial", "incorrect", "novelCount", "cueLevel", "questionSetRef", "attemptNotes", "errorSummary"],
+      diagram: ["kind", "surface", "checkpointTotal", "checkpointsMet", "labelAccuracy", "spatialAccuracy", "processAccuracy", "cueLevel", "attemptCompleted", "notes"],
+      "answer-writing": ["kind", "mode", "responseMedium", "answerText", "demandAddressed", "structure", "contentAccuracy", "examplesEvidence", "conclusion", "completedWithinTime", "attemptElapsedMs", "timeLimitMinutes", "wordCount", "wordLimit", "cueLevel"],
+      relearning: ["kind", "diagnosis", "repairAction", "verificationText", "checkpointTotal", "checkpointsMet", "sourceClosedForVerification", "repairCompleted"],
+    };
+    assertExactKeys(value, "Workflow result", keys[expected]);
+    const result = clone(value);
+    validateWorkflowResult(result, expected);
+    return result;
+  }
+
+  function canonicalDurationObservation(value: DurationObservation): DurationObservation {
+    assertExactKeys(value, "Duration observation", ["plannedMinutes", "actualMinutes", "accepted", "reason", "estimateBefore", "estimateAfter", "exactSamples", "unitWorkflowSamples", "globalWorkflowSamples"]);
+    assert(typeof value.plannedMinutes === "number" && Number.isFinite(value.plannedMinutes) && value.plannedMinutes >= 1 && value.plannedMinutes <= 240, "Duration planned minutes are invalid.");
+    assert(typeof value.actualMinutes === "number" && Number.isFinite(value.actualMinutes) && value.actualMinutes >= 0 && value.actualMinutes <= 10_080, "Duration actual minutes are invalid.");
+    assert(typeof value.estimateBefore === "number" && Number.isFinite(value.estimateBefore) && value.estimateBefore >= 1 && value.estimateBefore <= 240, "Duration prior estimate is invalid.");
+    assert(typeof value.estimateAfter === "number" && Number.isFinite(value.estimateAfter) && value.estimateAfter >= 1 && value.estimateAfter <= 240, "Duration next estimate is invalid.");
+    assert(typeof value.accepted === "boolean", "Duration acceptance is invalid.");
+    assert(["accepted", "too-short", "too-long", "invalid", "unreliable-interruption"].includes(value.reason), "Duration reason is invalid.");
+    assert(value.accepted === (value.reason === "accepted"), "Duration acceptance and reason disagree.");
+    assert(value.plannedMinutes === value.estimateBefore, "Duration planned minutes do not match the prior estimate.");
+    if (!value.accepted) assert(value.estimateAfter === value.estimateBefore, "Rejected duration evidence cannot change the estimate.");
+    for (const count of [value.exactSamples, value.unitWorkflowSamples, value.globalWorkflowSamples]) {
+      assert(Number.isSafeInteger(count) && count >= 0, "Duration sample count is invalid.");
+    }
+    return clone(value);
+  }
+
   function canonicalEvidenceEvent(value: EvidenceEvent): EvidenceEvent {
     assertDocumentSchema(value, "Evidence event");
     const allowed = new Set([
@@ -256,6 +297,8 @@
     const event = clone(value);
     event.schemaVersion = DOCUMENT_SCHEMA_VERSION;
     event.id = canonicalId(event.id, "Evidence-event ID");
+    assert(OBLIGATION_TYPES.includes(event.obligationType), "Evidence-event obligation type is invalid.");
+    assert(RETRIEVAL_WORKFLOWS.includes(event.workflow), "Evidence-event workflow is invalid.");
     event.profileId = canonicalId(event.profileId, "Evidence-event profile ID");
     event.unitId = canonicalId(event.unitId, "Evidence-event unit ID");
     event.obligationId = canonicalId(event.obligationId, "Evidence-event obligation ID");
@@ -266,13 +309,20 @@
     event.afterPolicyState = canonicalPolicyState(event.afterPolicyState);
     event.policyId = canonicalId(event.policyId, "Evidence-event policy ID");
     event.timing = canonicalTimingEvidenceSummary(event.timing);
+    assert(typeof value.elapsedMs === "number" && Number.isFinite(value.elapsedMs) && Math.round(value.elapsedMs) === event.timing.totalActiveMs, "Evidence elapsed time does not match timing evidence.");
     event.elapsedMs = event.timing.totalActiveMs;
-    event.evidence.errorTypes = [...new Set(event.evidence.errorTypes)];
-    event.evidence.correctionNote = canonicalText(event.evidence.correctionNote, "Evidence correction note");
+    event.evidence = canonicalObjectiveEvidence(event.evidence);
+    event.workflowResult = canonicalWorkflowResult(event.workflowResult, event.workflow);
+    event.suggestedRating = validateRating(event.suggestedRating);
+    event.confirmedRating = validateRating(event.confirmedRating);
+    event.durationObservation = canonicalDurationObservation(event.durationObservation);
+    if (event.schedulerConfig !== undefined) event.schedulerConfig = clone(validateFsrsConfigSnapshot(event.schedulerConfig));
+    if (event.reviewLog !== undefined) event.reviewLog = clone(requireRecord(event.reviewLog, "Evidence scheduler review log"));
     if (event.followUpObligationId !== undefined) event.followUpObligationId = canonicalId(event.followUpObligationId, "Evidence follow-up obligation ID");
     else delete event.followUpObligationId;
     if (event.correctiveMemoryTransition) {
       const transition = event.correctiveMemoryTransition;
+      assertExactKeys(transition, "Corrective memory transition", ["obligationId", "rating", "beforeDueAt", "afterDueAt", "beforePolicyState", "afterPolicyState", "policyId", "schedulerPackage", "schedulerVersion", "schedulerModel", "schedulerConfig", "reviewLog"]);
       transition.obligationId = canonicalId(transition.obligationId, "Corrective memory obligation ID");
       transition.rating = validateRating(transition.rating);
       transition.beforeDueAt = canonicalIso(transition.beforeDueAt, "Corrective memory prior due date");
@@ -280,6 +330,9 @@
       transition.beforePolicyState = canonicalPolicyState(transition.beforePolicyState);
       transition.afterPolicyState = canonicalPolicyState(transition.afterPolicyState);
       transition.policyId = canonicalId(transition.policyId, "Corrective memory policy ID");
+      assert(transition.schedulerPackage === "ts-fsrs" && transition.schedulerVersion === FSRS_PACKAGE_VERSION && transition.schedulerModel === FSRS_MODEL, "Corrective memory scheduler provenance is invalid.");
+      transition.schedulerConfig = clone(validateFsrsConfigSnapshot(transition.schedulerConfig));
+      transition.reviewLog = clone(requireRecord(transition.reviewLog, "Corrective memory scheduler review log"));
     } else delete event.correctiveMemoryTransition;
     event.createdAt = canonicalIso(event.createdAt, "Evidence-event creation date");
     return event;
