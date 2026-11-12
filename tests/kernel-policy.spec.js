@@ -566,6 +566,19 @@ async function testSettingsBoundary() {
   await svc.saveSettings(noActive); check(true,'No active profiles must permit the canonical empty default');
   let failed=false; try { await svc.saveSettings({...noActive,activeProfileId:'p'}); } catch { failed=true; }
   check(failed,'Suspended profiles cannot remain selected');
+
+  repo.getAll=async()=>[activeProfile];
+  repo.get=async(store,key)=>store==='activeRetrieval'&&key==='current'
+    ? {id:'current',status:'active'}
+    : key==='p' ? activeProfile : undefined;
+  svc.settings=structuredClone(base);
+  const changedDifficulty={...base,memoryDifficultyPolicy:{remediationLapses:3,persistentDifficultyLapses:5,automaticHold:{enabled:false,lapseThreshold:9}}};
+  failed=false; try { await svc.saveSettings(changedDifficulty); } catch(error) { failed=String(error.message).includes('active retrieval'); }
+  check(failed,'Review-affecting settings must not change during an active retrieval');
+  failed=false; try { await svc.updateProfile('p','Exam','', 'suspended'); } catch(error) { failed=String(error.message).includes('active retrieval'); }
+  check(failed,'Exam-profile lifecycle must not change during an active retrieval');
+  failed=false; try { await svc.updateUnitStatus('u','suspended'); } catch(error) { failed=String(error.message).includes('active retrieval'); }
+  check(failed,'Knowledge-unit lifecycle must not change during an active retrieval');
 }
 
 async function testCanonicalProfilePersistence() {
