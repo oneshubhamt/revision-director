@@ -1657,22 +1657,50 @@
         }
       }
       const evidenceCounts = new Map<string, { total: number; lapses: number }>();
-      const acceptedDurationCounts = new Map<string, number>();
+      const durationEventsByObligation = new Map<string, EvidenceEvent[]>();
       for (const event of evidenceEvents) {
         const count = evidenceCounts.get(event.unitId) ?? { total: 0, lapses: 0 };
         count.total += 1;
         if (event.confirmedRating === Rating.Again) count.lapses += 1;
         evidenceCounts.set(event.unitId, count);
-        if (event.durationObservation.accepted) {
-          acceptedDurationCounts.set(event.obligationId, (acceptedDurationCounts.get(event.obligationId) ?? 0) + 1);
-        }
+        const durationEvents = durationEventsByObligation.get(event.obligationId) ?? [];
+        durationEvents.push(event);
+        durationEventsByObligation.set(event.obligationId, durationEvents);
       }
       for (const unit of units) {
         const count = evidenceCounts.get(unit.id) ?? { total: 0, lapses: 0 };
         assert(unit.evidenceCount === count.total && unit.lapseCount === count.lapses, "Knowledge unit evidence counters do not match its history.");
       }
       for (const obligation of obligations) {
-        assert(obligation.durationSampleCount === (acceptedDurationCounts.get(obligation.id) ?? 0), "Obligation duration sample count does not match its accepted history.");
+        const durationEvents = durationEventsByObligation.get(obligation.id) ?? [];
+        const acceptedBySample = new Map<number, EvidenceEvent>();
+        for (const event of durationEvents) {
+          const observation = event.durationObservation;
+          if (!observation.accepted) continue;
+          assert(observation.exactSamples >= 1, "Accepted duration evidence has an invalid exact-sample sequence.");
+          assert(!acceptedBySample.has(observation.exactSamples), "Accepted duration evidence contains a duplicate exact-sample sequence.");
+          acceptedBySample.set(observation.exactSamples, event);
+        }
+        assert(obligation.durationSampleCount === acceptedBySample.size, "Obligation duration sample count does not match its accepted history.");
+
+        let estimate = obligation.baselineMinutes;
+        for (let sample = 1; sample <= obligation.durationSampleCount; sample += 1) {
+          const event = acceptedBySample.get(sample);
+          assert(event, "Accepted duration evidence sequence is incomplete.");
+          assert(event.durationObservation.estimateBefore === estimate, "Accepted duration evidence does not continue the prior estimate.");
+          estimate = event.durationObservation.estimateAfter;
+        }
+        assert(obligation.expectedMinutes === estimate, "Obligation duration estimate does not match its accepted evidence history.");
+
+        for (const event of durationEvents) {
+          const observation = event.durationObservation;
+          if (observation.accepted) continue;
+          assert(observation.exactSamples >= 0 && observation.exactSamples <= obligation.durationSampleCount, "Rejected duration evidence has an invalid exact-sample sequence.");
+          const priorEstimate = observation.exactSamples === 0
+            ? obligation.baselineMinutes
+            : acceptedBySample.get(observation.exactSamples)?.durationObservation.estimateAfter;
+          assert(priorEstimate !== undefined && observation.estimateBefore === priorEstimate && observation.estimateAfter === priorEstimate, "Rejected duration evidence does not preserve the contemporaneous estimate.");
+        }
       }
       let canonicalActive: ActiveRetrievalSession | null = null;
       if (activeRetrieval) {
