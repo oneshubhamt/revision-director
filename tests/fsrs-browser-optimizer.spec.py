@@ -10,24 +10,24 @@ import subprocess
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC = ROOT / "Revision_Director_Optimizer_Static"
+HOSTED = ROOT / "Revision_Director_Hosted"
 
 def check(value: bool, message: str) -> None:
     if not value:
         raise AssertionError(message)
 
-def ensure_static() -> None:
-    if (STATIC / "index.html").is_file():
+def ensure_hosted() -> None:
+    if (HOSTED / "index.html").is_file():
         return
     if os.environ.get("CI") != "true":
-        raise AssertionError("Build Revision_Director_Optimizer_Static first.")
+        raise AssertionError("Build Revision_Director_Hosted first.")
     subprocess.run(
         ["npm", "ci", "--prefix", "tools/fsrs-optimizer", "--no-audit", "--no-fund"],
         cwd=ROOT,
         check=True,
     )
-    subprocess.run(["npm", "run", "build:optimizer-static"], cwd=ROOT, check=True)
-    check((STATIC / "index.html").is_file(), "CI failed to build Revision_Director_Optimizer_Static.")
+    subprocess.run(["npm", "run", "build:hosted"], cwd=ROOT, check=True)
+    check((HOSTED / "index.html").is_file(), "CI failed to build Revision_Director_Hosted.")
 
 def evidence_csv(full: bool) -> str:
     rows: list[tuple[int, str]] = []
@@ -47,8 +47,8 @@ def evidence_csv(full: bool) -> str:
     return "review_time,card_id,review_rating,review_duration,review_state\n" + "\n".join(row for _, row in rows) + "\n"
 
 def run(mode: str) -> None:
-    ensure_static()
-    handler = lambda *args, **kwargs: SimpleHTTPRequestHandler(*args, directory=str(STATIC), **kwargs)
+    ensure_hosted()
+    handler = lambda *args, **kwargs: SimpleHTTPRequestHandler(*args, directory=str(HOSTED), **kwargs)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()

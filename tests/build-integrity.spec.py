@@ -16,7 +16,7 @@ optimizer_policy = (ROOT / "tools/fsrs-optimizer/optimizer-policy.mjs").read_tex
 optimizer_core = (ROOT / "tools/fsrs-optimizer/optimizer-core.mjs").read_text()
 optimizer_worker = (ROOT / "tools/fsrs-optimizer/browser-worker.mjs").read_text()
 optimizer_cli = (ROOT / "tools/fsrs-optimizer/optimize.mjs").read_text()
-optimizer_static_build = (ROOT / "build/build-optimizer-static.mjs").read_text()
+hosted_build = (ROOT / "build/build-hosted.mjs").read_text()
 root_package = json.loads((ROOT / "package.json").read_text())
 checksum_targets = {
     line.split("  ./", 1)[1]
@@ -209,11 +209,11 @@ check("single optimizer algorithm core", "optimizeFsrsProfile" in optimizer_core
 check("optimizer training policy", all(token in optimizer_core for token in ["computeParameters", "evaluateWithTimeSeriesSplits", "finalRetrainedOnAllEvidence", 'runtimeLearningSteps:["1d"]', 'runtimeRelearningSteps:["1d"]']) and all(token in optimizer_policy for token in ["MIN_TRAIN_ITEMS=64", "MIN_HOLDOUT_ITEMS=64", "MIN_HOLDOUT_CARDS=16", 'HOLDOUT_STRATEGY="final-sixth"']))
 check("local optimizer publication semantics", "stageFsrsOptimizerProfile(profile)" in ts and "replaceActiveFsrsOptimizerProfile(profile)" in ts and "activateFsrsOptimizerProfile()" in ts and "Profile staged; activation remains explicit." in ts and "Active weights switched with one atomic rebase." in ts and "stageFsrsOptimizerProfile(profile); await this.service.activate" not in ts)
 check("optimizer Worker cancellation/progress", 'new Worker(new URL("./fsrs-optimizer.worker.js", document.baseURI)' in ts and "worker.terminate()" in ts and 'type:"progress"' in optimizer_worker and "onProgress" in ts)
-check("optional optimizer static distribution", root_package.get("scripts", {}).get("build:optimizer-static") == "npm run build && node build/build-optimizer-static.mjs" and '<meta\\s+name=["\']revision-director-browser-optimizer' in optimizer_static_build and "optimizer-footprint.json" in optimizer_static_build and "Revision_Director_Optimizer_Static" in optimizer_static_build and "fsrs-binding.wasm32-wasip1.wasm" in optimizer_static_build and "wasm-unsafe-eval" in optimizer_static_build)
-check("optimizer runtime licence fallback", '@napi-rs/wasm-runtime@1.2.6' in optimizer_static_build and 'licences/napi-rs-wasm-runtime-MIT.txt' in optimizer_static_build and '3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215' in optimizer_static_build and (ROOT / "licences/napi-rs-wasm-runtime-MIT.txt").is_file())
-check("pinned optimizer WASM identity", 'EXPECTED_WASM_VERSION="0.6.1"' in optimizer_static_build and "EXPECTED_WASM_BYTES=1_396_770" in optimizer_static_build and 'EXPECTED_WASM_SHA256="498d916b2d92180d8547f4d41ad204d63a488e6e0a1fe8c2ab330cf4ff5b8c05"' in optimizer_static_build and "wasmSourceSha256" in optimizer_static_build)
+check("hosted distribution includes local optimizer", root_package.get("scripts", {}).get("build:hosted") == "npm run build && node build/build-hosted.mjs" and "build:optimizer-static" not in root_package.get("scripts", {}) and '<meta\\s+name=["\']revision-director-browser-optimizer' in hosted_build and "optimizer-footprint.json" in hosted_build and "Revision_Director_Hosted" in hosted_build and "fsrs-binding.wasm32-wasip1.wasm" in hosted_build and "wasm-unsafe-eval" in hosted_build)
+check("optimizer runtime licence fallback", '@napi-rs/wasm-runtime@1.2.6' in hosted_build and 'licences/napi-rs-wasm-runtime-MIT.txt' in hosted_build and '3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215' in hosted_build and (ROOT / "licences/napi-rs-wasm-runtime-MIT.txt").is_file())
+check("pinned optimizer WASM identity", 'EXPECTED_WASM_VERSION="0.6.1"' in hosted_build and "EXPECTED_WASM_BYTES=1_396_770" in hosted_build and 'EXPECTED_WASM_SHA256="498d916b2d92180d8547f4d41ad204d63a488e6e0a1fe8c2ab330cf4ff5b8c05"' in hosted_build and "wasmSourceSha256" in hosted_build)
 check("optimizer checksum coverage", all(path in checksum_targets for path in [
-    "build/build-optimizer-static.mjs",
+    "build/build-hosted.mjs",
     "licences/napi-rs-wasm-runtime-MIT.txt",
     "source/app/18-fsrs-personalization.ts",
     "source/app/18a-fsrs-browser-optimizer.ts",
@@ -234,7 +234,7 @@ check("optimizer checksum coverage", all(path in checksum_targets for path in [
     "tools/fsrs-optimizer/smoke.mjs",
 ]))
 check("standalone remains optimizer-asset-free", '<meta name="revision-director-browser-optimizer"' not in html and 'name="revision-director-browser-optimizer"' not in shell and "fsrs-binding.wasm32-wasip1.wasm" not in html and "connect-src 'none'" in html and 'location.protocol === "file:"' in ts)
-check("optimizer tooling syntax", all(subprocess.run(["node", "--check", str(ROOT / path)], capture_output=True).returncode == 0 for path in ["tools/fsrs-optimizer/optimizer-policy.mjs","tools/fsrs-optimizer/optimizer-core.mjs","tools/fsrs-optimizer/optimize.mjs","tools/fsrs-optimizer/browser-worker.mjs","tools/fsrs-optimizer/parity.mjs","build/build-optimizer-static.mjs"]))
+check("optimizer tooling syntax", all(subprocess.run(["node", "--check", str(ROOT / path)], capture_output=True).returncode == 0 for path in ["tools/fsrs-optimizer/optimizer-policy.mjs","tools/fsrs-optimizer/optimizer-core.mjs","tools/fsrs-optimizer/optimize.mjs","tools/fsrs-optimizer/browser-worker.mjs","tools/fsrs-optimizer/parity.mjs","build/build-hosted.mjs"]))
 check("safe suspension provenance", "type SuspensionReason" in ts and 'suspensionReason = "relearning"' in ts and 'suspensionReason === "unit"' in ts)
 check("automatic relearn follow-up", 'completion.followUpType = "relearn"' in ts)
 check("relearn pauses exact original", 'item.returnObligationId === obligation.id' in ts and 'obligation.status = "suspended"' in ts)

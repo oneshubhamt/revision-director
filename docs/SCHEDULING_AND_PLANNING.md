@@ -76,21 +76,23 @@ Optimizer history preserves the memory outcome independently of workflow-cost me
 
 If timing is unreliable, the review remains in chronological recall history with its rating/state, while `review_duration` is exported as `0` (unavailable cost for the pinned converter) rather than substituting full-workflow time. The pinned FSRS converter currently requires a non-negative integer duration field but constructs parameter-training items from card/rating/time/state chronology rather than that duration.
 
-The exact canonical CSV is SHA-256 fingerprinted. Every imported or locally optimized profile must match the current evidence checksum before it can be staged, and the checksum is checked again immediately before activation. Thus reviews added or changed while a profile is being optimized or waiting staged force re-optimization rather than allowing stale weights to become active.
+The exact canonical CSV is SHA-256 fingerprinted. Every imported or locally optimized profile must match the current evidence checksum before publication. A stock→personalized candidate is checked again immediately before activation. While personalized weights are already active, the incumbent remains authoritative throughout optimization; the candidate records the incumbent source checksum and weights fingerprint used for the same final-sixth holdout comparison. Publication fails if either the evidence snapshot or incumbent profile changed while training was running.
 
-A profile is eligible only when it contains exactly 34 valid FSRS-7 weights and records the required evaluation provenance. The external tool:
+A profile is eligible only when it contains exactly 34 valid FSRS-7 weights and records the required evaluation provenance. The shared optimizer core:
 
 1. trains a candidate on the historical first five-sixths;
 2. evaluates stock FSRS-7 and the candidate on the chronological final sixth;
-3. requires at least 64 training items, 64 holdout items and 16 holdout cards;
-4. requires a **practical** held-out log-loss improvement over stock: at least 0.001 absolute or 0.5% relative, whichever is larger;
-5. requires no held-out RMSE-bins calibration regression;
-6. retrains final weights on all eligible evidence after the gate passes;
-7. records upstream time-series evaluation separately.
+3. when a personalized profile is active, evaluates those incumbent weights on **the same holdout**;
+4. requires at least 64 training items, 64 holdout items and 16 holdout cards;
+5. requires a **practical** held-out log-loss improvement over stock: at least 0.001 absolute or 0.5% relative, whichever is larger;
+6. for replacement optimization, requires the same practical improvement over the incumbent profile as well;
+7. requires no held-out RMSE-bins calibration regression versus stock or, for replacement optimization, versus the incumbent;
+8. retrains final weights on all eligible evidence only after those gates pass;
+9. records upstream time-series evaluation separately.
 
 The practical-improvement threshold is an activation guard against epsilon-sized wins on one holdout, not a claim of statistical significance. Calibration remains separately inspectable through RMSE-bins: the UI reports stock → personalized calibration and whether it improved or remained unchanged. The gate never trades worse calibration for a tiny discrimination gain.
 
-Native import and successful browser optimization both **stage only**. Local optimization never activates weights automatically. Activation, deactivation and every scheduling-policy change are explicit scheduler rebases. A rebase:
+From stock FSRS-7, native import and successful browser optimization still **stage only**, and initial activation remains explicit. Once personalized weights are active, R3 permits re-optimization without returning to stock: the incumbent remains active while training runs, and a candidate that beats both stock and incumbent is published through one personalized→personalized atomic rebase. Imported replacement profiles must carry the same incumbent comparison provenance. Activation, replacement, deactivation and every scheduling-policy change use the same explicit scheduler-rebase mechanism. A rebase:
 
 - is rejected while an active retrieval exists;
 - first verifies the current dataset against the current scheduler;
@@ -101,7 +103,9 @@ Native import and successful browser optimization both **stage only**. Local opt
 
 Backup/restore preserves staged or active personalization state. Restore prepares the referenced scheduler configuration and independently verifies every materialized memory projection before replacing current data.
 
-The ordinary `index.html` remains the self-contained `file://` distribution and does not embed optimizer assets. This is a measured packaging decision: at the F3 audit the tracked self-contained HTML was 789,009 bytes, while the official pinned `0.6.1` release asset `fsrs-binding.wasm32-wasip1.wasm` is 1,396,770 bytes (about 1.77× the entire HTML before Worker/runtime code). Base64-inlining that binary alone would add about 1.86 MB. The optional optimizer-enabled static distribution therefore keeps the Worker and WASM as local sibling assets and instantiates them only when **Optimize locally** is pressed. Its build records actual installed Worker/WASM byte sizes in `optimizer-footprint.json`; this prevents convenience tooling from silently bloating the principal artifact.
+The root `index.html` remains the self-contained `file://` **portable fallback** and does not embed optimizer assets. This remains a measured packaging decision: at the F3 audit the tracked self-contained HTML was 789,009 bytes, while the official pinned `0.6.1` release asset `fsrs-binding.wasm32-wasip1.wasm` is 1,396,770 bytes (about 1.77× the entire HTML before Worker/runtime code). Base64-inlining that binary alone would add about 1.86 MB.
+
+For normal hosted/PWA-style deployment, `npm run build:hosted` now produces `Revision_Director_Hosted/` with the existing Worker and WASM shipped as local sibling assets by default. The optimizer is still lazy: the Worker/WASM runtime is instantiated only when optimization is requested, so normal application startup does not pay the optimizer execution cost. The hosted builder records exact HTML, Worker and WASM sizes in `optimizer-footprint.json`, preserves pinned binary identity and copies required licence texts. No network optimizer backend is introduced.
 
 ## Rating semantics
 

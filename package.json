@@ -9,7 +9,7 @@
   "scripts": {
     "build": "python3 build/build.py",
     "test:build": "python3 tests/build-integrity.spec.py",
-    "build:optimizer-static": "npm run build && node build/build-optimizer-static.mjs"
+    "build:hosted": "npm run build && node build/build-hosted.mjs"
   },
   "devDependencies": {
     "typescript": "7.0.2",

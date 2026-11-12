@@ -2,6 +2,16 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-12 — Profile-to-profile FSRS personalization and hosted optimizer
+
+- Permit local and native optimizer runs while personalized FSRS-7 weights remain active; the incumbent scheduler stays authoritative throughout training.
+- Evaluate every replacement candidate against both stock FSRS-7 and the active incumbent weights on the same chronological holdout, using the same practical log-loss and calibration non-regression gates.
+- Bind replacement profiles to the incumbent source checksum and exact weights fingerprint; stale evidence or a changed incumbent causes publication to fail closed.
+- Replace incumbent→candidate weights through one atomic scheduler rebase with explicit `replace-profile` provenance and no intermediate return to stock.
+- Preserve stock→personalized staging semantics for first activation.
+- Promote the Worker/WASM optimizer build to the normal hosted distribution while retaining the root single-file `file://` artifact as the lean portable fallback.
+- Keep Worker/WASM loading lazy, preserve pinned WASM identity/licence checks and add hosted-distribution browser coverage.
+
 ## 2026-11-12 — Outcome-sensitive FSRS scheduling calibration
 
 - Replaced fixed rating-pattern scheduling experiments with deterministic retrievability-dependent outcomes and the complete corrected relearning lifecycle, including failed closed-book verification.

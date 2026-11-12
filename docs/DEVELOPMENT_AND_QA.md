@@ -70,12 +70,14 @@ The matrix also includes the permanent FSRS-R2 scheduling experiment, which invo
 
 ## FSRS optimizer runtimes
 
-Personalized training remains isolated under `tools/fsrs-optimizer/`. The native reference runtime pins `@open-spaced-repetition/binding@0.6.1`; the optional browser path pins `@open-spaced-repetition/binding-wasm32-wasip1@0.6.1` and the emnapi runtime versions required by that release.
+Personalized training remains isolated under `tools/fsrs-optimizer/`. The native reference runtime pins `@open-spaced-repetition/binding@0.6.1`; the hosted browser path pins `@open-spaced-repetition/binding-wasm32-wasip1@0.6.1` and the emnapi runtime versions required by that release.
 
 ```sh
 cd tools/fsrs-optimizer
 npm ci
 npm run optimize -- path/to/revision-director-fsrs-evidence.csv profile.json
+# When replacing active personalized weights:
+npm run optimize -- path/to/revision-director-fsrs-evidence.csv candidate.json --incumbent-profile=active-profile.json
 npm run parity
 ```
 
@@ -86,17 +88,17 @@ npm ci
 npm run build
 ```
 
-For the optional local browser optimizer:
+For the normal hosted distribution:
 
 ```sh
 npm ci
 npm ci --prefix tools/fsrs-optimizer
-npm run build:optimizer-static
+npm run build:hosted
 ```
 
-Serve `Revision_Director_Optimizer_Static/` over localhost or HTTPS. The Worker and WASM are local sibling assets, are not present in the root `index.html`, and are fetched/instantiated only when optimization is requested. The static build writes `optimizer-footprint.json` with the exact HTML, Worker and WASM byte counts.
+Serve `Revision_Director_Hosted/` over localhost or HTTPS. It includes the local optimizer Worker/WASM by default while still loading them only on demand. The root `index.html` remains the lean single-file portable fallback and contains no optimizer assets. The hosted build writes `optimizer-footprint.json` with the exact HTML, Worker and WASM byte counts.
 
-Native and browser runtimes use one `optimizer-core.mjs` for conversion, chronological split, held-out gate, final retraining and profile construction. `parity.mjs` independently compares native and WASM conversion, trained weights and evaluation metrics. Browser cancellation is hard cancellation by Worker termination; progress is reported from the binding callback. `tests/fsrs-browser-optimizer.spec.py` provides a fast browser/WASM probe and an optional full optimization mode. Local/manual runs require the optimizer-static distribution to be built explicitly as shown above; in CI the probe self-prepares that fixture from the pinned optimizer lockfile when it is absent so the generic Chromium matrix actually exercises the WASM boundary. Application regressions additionally verify retrieval-phase-only optimizer duration, unreliable-duration handling, SHA-256 source-snapshot binding, stale-profile rejection at staging/activation, practical holdout-improvement and calibration gates, early-learning versus established-lapse semantics, exam-bounded corrective relearning and transactional settings behavior. Exact optimizer eligibility and rebase semantics are documented once in `SCHEDULING_AND_PLANNING.md`.
+Native and browser runtimes use one `optimizer-core.mjs` for conversion, chronological split, stock/incumbent held-out gates, final retraining and profile construction. `parity.mjs` independently compares native and WASM conversion, trained weights and evaluation metrics. Browser cancellation is hard cancellation by Worker termination; progress is reported from the binding callback. `tests/fsrs-browser-optimizer.spec.py` provides a fast hosted browser/WASM probe and an optional full optimization mode. In CI the probe self-prepares the hosted distribution from the pinned optimizer lockfile when it is absent so the generic Chromium matrix actually exercises the Worker/WASM boundary. Application regressions additionally verify retrieval-phase-only optimizer duration, unreliable-duration handling, SHA-256 source-snapshot binding, stale-profile rejection, candidate-vs-incumbent provenance, one-transaction personalized→personalized replacement, practical holdout-improvement/calibration gates, early-learning versus established-lapse semantics, exam-bounded corrective relearning and transactional settings behavior. Exact optimizer eligibility and rebase semantics are documented once in `SCHEDULING_AND_PLANNING.md`.
 
 ## TypeScript 7 checker parallelism
 

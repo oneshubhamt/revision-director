@@ -1,5 +1,5 @@
   /* ==========================================================================
-     FSRS-7 BROWSER OPTIMIZER — OPTIONAL LOCAL WORKER/WASM BOUNDARY
+     FSRS-7 BROWSER OPTIMIZER — HOSTED LOCAL WORKER/WASM BOUNDARY
      ========================================================================== */
 
   interface BrowserFsrsOptimizerAvailability {

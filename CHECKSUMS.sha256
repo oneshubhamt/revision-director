@@ -1,4 +1,4 @@
-96af52d2ab0375669b3bb2e42163a2af0c72bc845eb7f521196076c6e1eaab6d  ./build/build-optimizer-static.mjs
+96af52d2ab0375669b3bb2e42163a2af0c72bc845eb7f521196076c6e1eaab6d  ./build/build-hosted.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 db30769d2f2af8107275e4ca4ae2d29a69f0f1a9cdbb21534d427aecafa69918  ./CHANGELOG.md
 f355736048b792eb60a749474edc6e982c5a48bb7af6c90f4a106e004c6201eb  ./dist/app.js

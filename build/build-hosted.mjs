@@ -5,7 +5,7 @@ import {build} from "esbuild";
 
 const root=resolve(import.meta.dirname,"..");
 const optimizerRoot=resolve(root,"tools/fsrs-optimizer");
-const out=resolve(root,"Revision_Director_Optimizer_Static");
+const out=resolve(root,"Revision_Director_Hosted");
 const wasmPackageRoot=resolve(
  optimizerRoot,
  "node_modules/@open-spaced-repetition/binding-wasm32-wasip1"
@@ -112,8 +112,8 @@ for(const [packageName,targetName] of runtimePackages){
 
 await writeFile(
  resolve(out,"README.txt"),
- "Revision Director optimizer-enabled static distribution\n\n"+
- "Serve this directory over localhost or HTTPS. The application remains local-first: the dedicated FSRS optimizer Worker and WASM asset are local files and no optimizer backend is used. The normal root index.html remains the lean self-contained file:// distribution and intentionally does not train weights in-app.\n"
+ "Revision Director hosted distribution\n\n"+
+ "Serve this directory over localhost or HTTPS. This is the normal hosted/PWA-ready distribution: the dedicated FSRS optimizer Worker and WASM asset ship as local sibling files and no optimizer backend is used. The root index.html remains the lean self-contained file:// portable fallback and intentionally omits optimizer assets.\n"
 );
 
 const baseHtmlBytes=(await stat(resolve(root,"index.html"))).size;
@@ -129,5 +129,5 @@ const footprint={
  optimizerAssetsVsBaseHtmlRatio:Number((optimizerAssetBytes/baseHtmlBytes).toFixed(4))
 };
 await writeFile(resolve(out,"optimizer-footprint.json"),JSON.stringify(footprint,null,2)+"\n");
-console.log("Built optional optimizer-enabled static distribution:",out);
+console.log("Built hosted distribution with local FSRS optimizer assets:",out);
 console.log("FSRS optimizer footprint:",JSON.stringify(footprint));
