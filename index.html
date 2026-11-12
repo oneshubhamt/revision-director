@@ -424,6 +424,10 @@ html[data-review-ownership="secondary"] .review-timer,html[data-review-ownership
 .dependency-status{display:flex;justify-content:space-between;gap:15px;align-items:center;padding:10px;border:1px solid var(--rd-color-border-soft)}
 .dependency-status .ok{color:var(--rd-color-success)}
 .dependency-status .bad{color:var(--rd-color-danger)}
+.optimizer-progress{display:grid;gap:8px;padding:10px;border:1px solid var(--rd-color-border-soft);background:var(--rd-color-progress-track)}
+.optimizer-progress[hidden]{display:none}
+.optimizer-progress div{display:flex;justify-content:space-between;gap:12px;font-size:.78rem;color:var(--text-muted)}
+.optimizer-progress progress{width:100%;height:8px;accent-color:var(--rd-color-accent-primary)}
 .form-grid select[multiple]{min-height:130px}
 
 @media(max-width:1100px){
@@ -6542,6 +6546,90 @@ exports.withFuzzing = withFuzzing;
       copy.set(bytes);
       return copy.buffer;
   }
+  function utf8Bytes(value) {
+      if (typeof TextEncoder !== "undefined")
+          return new TextEncoder().encode(value);
+      const bytes = [];
+      for (const symbol of value) {
+          const point = symbol.codePointAt(0);
+          if (point <= 0x7f)
+              bytes.push(point);
+          else if (point <= 0x7ff)
+              bytes.push(0xc0 | (point >> 6), 0x80 | (point & 0x3f));
+          else if (point <= 0xffff)
+              bytes.push(0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f));
+          else
+              bytes.push(0xf0 | (point >> 18), 0x80 | ((point >> 12) & 0x3f), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f));
+      }
+      return new Uint8Array(bytes);
+  }
+  function sha256FallbackHex(input) {
+      const constants = new Uint32Array([
+          0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+          0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+          0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+          0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+          0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+          0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+          0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+          0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+      ]);
+      const bitLength = BigInt(input.byteLength) * 8n;
+      const paddedLength = Math.ceil((input.byteLength + 9) / 64) * 64;
+      const bytes = new Uint8Array(paddedLength);
+      bytes.set(input);
+      bytes[input.byteLength] = 0x80;
+      for (let index = 0; index < 8; index += 1)
+          bytes[paddedLength - 1 - index] = Number((bitLength >> BigInt(index * 8)) & 0xffn);
+      const state = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+      const words = new Uint32Array(64);
+      const rotate = (value, amount) => (value >>> amount) | (value << (32 - amount));
+      for (let offset = 0; offset < bytes.length; offset += 64) {
+          for (let index = 0; index < 16; index += 1) {
+              const base = offset + index * 4;
+              words[index] = ((bytes[base] << 24) | (bytes[base + 1] << 16) | (bytes[base + 2] << 8) | bytes[base + 3]) >>> 0;
+          }
+          for (let index = 16; index < 64; index += 1) {
+              const x = words[index - 15], y = words[index - 2];
+              const s0 = rotate(x, 7) ^ rotate(x, 18) ^ (x >>> 3);
+              const s1 = rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10);
+              words[index] = (words[index - 16] + s0 + words[index - 7] + s1) >>> 0;
+          }
+          let a = state[0], b = state[1], c = state[2], d = state[3], e = state[4], f = state[5], g = state[6], h = state[7];
+          for (let index = 0; index < 64; index += 1) {
+              const sum1 = rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25);
+              const choice = (e & f) ^ (~e & g);
+              const temp1 = (h + sum1 + choice + constants[index] + words[index]) >>> 0;
+              const sum0 = rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22);
+              const majority = (a & b) ^ (a & c) ^ (b & c);
+              const temp2 = (sum0 + majority) >>> 0;
+              h = g;
+              g = f;
+              f = e;
+              e = (d + temp1) >>> 0;
+              d = c;
+              c = b;
+              b = a;
+              a = (temp1 + temp2) >>> 0;
+          }
+          state[0] = (state[0] + a) >>> 0;
+          state[1] = (state[1] + b) >>> 0;
+          state[2] = (state[2] + c) >>> 0;
+          state[3] = (state[3] + d) >>> 0;
+          state[4] = (state[4] + e) >>> 0;
+          state[5] = (state[5] + f) >>> 0;
+          state[6] = (state[6] + g) >>> 0;
+          state[7] = (state[7] + h) >>> 0;
+      }
+      return [...state].map((value) => value.toString(16).padStart(8, "0")).join("");
+  }
+  async function sha256Hex(bytes) {
+      if (globalThis.crypto?.subtle) {
+          const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
+          return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+      }
+      return sha256FallbackHex(bytes);
+  }
   function clamp(value, min, max) {
       return Math.min(Math.max(value, min), max);
   }
@@ -6911,7 +6999,8 @@ exports.withFuzzing = withFuzzing;
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
           key: "app",
           activeProfileId: "",
-          desiredRetention: 0.9,
+          fsrsScheduling: defaultFsrsSchedulingSettings(),
+          memoryDifficultyPolicy: defaultMemoryDifficultyPolicy(),
           dailyCapacityMinutes: 60,
           studyDayBoundaryHour: 4,
           fsrsPersonalization: defaultFsrsPersonalizationSettings(),
@@ -7123,8 +7212,15 @@ exports.withFuzzing = withFuzzing;
           obligation.lastCompletedAt = canonicalIso(obligation.lastCompletedAt, "Revision-obligation completion date");
       else
           delete obligation.lastCompletedAt;
-      if (obligation.suspensionReason === undefined)
+      if (obligation.status === "suspended") {
+          assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning" || obligation.suspensionReason === "persistent-difficulty", "Suspended obligation lacks a valid reason.");
+      }
+      else {
+          assert(obligation.suspensionReason === undefined, "Only suspended obligations may retain a suspension reason.");
           delete obligation.suspensionReason;
+      }
+      if (obligation.suspensionReason === "persistent-difficulty")
+          assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
       if (obligation.chunking)
           obligation.chunking.createdAt = canonicalIso(obligation.chunking.createdAt, "Chunk-cycle creation date");
       else
@@ -7232,16 +7328,22 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalAppSettings(value) {
       assertDocumentSchema(value, "Application settings");
+      const allowed = new Set(["schemaVersion", "key", "activeProfileId", "fsrsScheduling", "memoryDifficultyPolicy", "dailyCapacityMinutes", "studyDayBoundaryHour", "fsrsPersonalization"]);
+      assert(Object.keys(value).every((key) => allowed.has(key)), "Application settings contain unexpected fields.");
       assert(value.key === "app", "Application settings key is invalid.");
       assert(typeof value.activeProfileId === "string", "Active profile ID must be a string.");
-      assert(Number.isFinite(value.desiredRetention) && value.desiredRetention >= 0.75 && value.desiredRetention <= 0.97, "Desired retention is invalid.");
+      const fsrsScheduling = canonicalFsrsSchedulingSettings(value.fsrsScheduling);
+      const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(value.memoryDifficultyPolicy);
       assert(Number.isInteger(value.dailyCapacityMinutes) && value.dailyCapacityMinutes >= 5 && value.dailyCapacityMinutes <= 600, "Daily capacity is invalid.");
       assert(Number.isInteger(value.studyDayBoundaryHour) && value.studyDayBoundaryHour >= 0 && value.studyDayBoundaryHour <= 12, "Study-day boundary hour is invalid.");
       return {
-          ...clone(value),
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
           key: "app",
           activeProfileId: value.activeProfileId ? canonicalId(value.activeProfileId, "Active profile ID") : "",
+          fsrsScheduling,
+          memoryDifficultyPolicy,
+          dailyCapacityMinutes: value.dailyCapacityMinutes,
+          studyDayBoundaryHour: value.studyDayBoundaryHour,
           fsrsPersonalization: canonicalFsrsPersonalizationSettings(value.fsrsPersonalization),
       };
   }
@@ -7508,6 +7610,9 @@ exports.withFuzzing = withFuzzing;
   const FSRS_OPTIMIZER_MIN_TRAIN_ITEMS = 64;
   const FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS = 64;
   const FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS = 16;
+  const FSRS_OPTIMIZER_MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT = 0.001;
+  const FSRS_OPTIMIZER_MIN_RELATIVE_LOG_LOSS_IMPROVEMENT = 0.005;
+  const FSRS_OPTIMIZER_CALIBRATION_EPSILON = 1e-9;
   const FSRS_OPTIMIZER_CHRONOLOGY = "elapsed-24h";
   const FSRS_OPTIMIZER_FIXED_UTC_OFFSET_MINUTES = 0;
   const FSRS_OPTIMIZER_ROLLOVER_HOUR = 0;
@@ -7564,6 +7669,20 @@ exports.withFuzzing = withFuzzing;
       assert(Number.isFinite(logLoss) && logLoss >= 0 && Number.isFinite(rmseBins) && rmseBins >= 0, `FSRS optimizer ${label} metrics are invalid.`);
       return { logLoss, rmseBins };
   }
+  function fsrsHoldoutDiagnostics(stock, personalized) {
+      const absolute = stock.logLoss - personalized.logLoss;
+      const relative = stock.logLoss > 0 ? absolute / stock.logLoss : 0;
+      const required = Math.max(FSRS_OPTIMIZER_MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT, stock.logLoss * FSRS_OPTIMIZER_MIN_RELATIVE_LOG_LOSS_IMPROVEMENT);
+      const delta = personalized.rmseBins - stock.rmseBins;
+      const relativeDelta = stock.rmseBins > 0 ? delta / stock.rmseBins : delta === 0 ? 0 : Number.POSITIVE_INFINITY;
+      const status = delta < -FSRS_OPTIMIZER_CALIBRATION_EPSILON ? "improved"
+          : Math.abs(delta) <= FSRS_OPTIMIZER_CALIBRATION_EPSILON ? "unchanged"
+              : "regressed";
+      return {
+          logLossImprovement: { absolute, relative, required },
+          calibration: { metric: "rmse-bins", delta, relativeDelta, status },
+      };
+  }
   function validateFsrsOptimizerProfile(value) {
       const profile = requireRecord(value, "FSRS optimizer profile");
       const allowed = new Set(["schema", "model", "bindingVersion", "trainedAt", "sourceSha256", "evidenceItems", "weights", "evaluation", "training"]);
@@ -7592,7 +7711,9 @@ exports.withFuzzing = withFuzzing;
           && holdout["minimumHoldoutCards"] === FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS, "FSRS optimizer activation thresholds are invalid.");
       const stock = optimizerMetrics(holdout["stock"], "stock holdout");
       const personalized = optimizerMetrics(holdout["personalized"], "personalized holdout");
-      assert(personalized.logLoss < stock.logLoss && personalized.rmseBins <= stock.rmseBins, "Personalized FSRS-7 profile did not beat stock FSRS-7 on the chronological holdout without RMSE regression.");
+      const diagnostics = fsrsHoldoutDiagnostics(stock, personalized);
+      assert(diagnostics.logLossImprovement.absolute + Number.EPSILON >= diagnostics.logLossImprovement.required, "Personalized FSRS-7 profile did not achieve the minimum practical held-out log-loss improvement over stock FSRS-7.");
+      assert(diagnostics.calibration.status !== "regressed", "Personalized FSRS-7 profile regressed held-out RMSE-bins calibration versus stock FSRS-7.");
       const training = requireRecord(profile["training"], "FSRS optimizer training metadata");
       assert(training["enableShortTerm"] === true && training["enableSchedPenalties"] === true && training["numRelearningSteps"] === 1, "FSRS optimizer training flags are invalid.");
       assert(training["chronology"] === FSRS_OPTIMIZER_CHRONOLOGY
@@ -7638,38 +7759,129 @@ exports.withFuzzing = withFuzzing;
           },
       };
   }
+  function canonicalFsrsCostAdrPolicy(value) {
+      const record = requireRecord(value, "FSRS Cost-ADR policy");
+      const allowed = new Set(["coefficients", "costWeightMin", "costWeightMax", "retentionMin", "retentionMax", "bounds"]);
+      assert(Object.keys(record).every((key) => allowed.has(key)), "FSRS Cost-ADR policy contains unexpected fields.");
+      const coefficientsRaw = record["coefficients"];
+      assert(Array.isArray(coefficientsRaw) && coefficientsRaw.length === 15, "FSRS Cost-ADR policy must contain exactly 15 coefficients.");
+      const coefficients = coefficientsRaw.map((value) => {
+          const coefficient = Number(value);
+          assert(Number.isFinite(coefficient) && coefficient >= -64 && coefficient <= 64, "FSRS Cost-ADR coefficient is invalid.");
+          return coefficient;
+      });
+      const costWeightMin = Number(record["costWeightMin"]);
+      const costWeightMax = Number(record["costWeightMax"]);
+      const retentionMin = Number(record["retentionMin"]);
+      const retentionMax = Number(record["retentionMax"]);
+      assert(Number.isFinite(costWeightMin) && Number.isFinite(costWeightMax) && costWeightMin >= 0 && costWeightMax > costWeightMin
+          && Math.log1p(costWeightMax) > Math.log1p(costWeightMin), "FSRS Cost-ADR cost-weight bounds are invalid.");
+      assert(Number.isFinite(retentionMin) && Number.isFinite(retentionMax) && retentionMin > 0 && retentionMax > retentionMin && retentionMax < 1, "FSRS Cost-ADR retention bounds are invalid.");
+      const boundsRecord = requireRecord(record["bounds"], "FSRS Cost-ADR state bounds");
+      const boundsAllowed = new Set(["sMin", "sMax", "dMin", "dMax"]);
+      assert(Object.keys(boundsRecord).every((key) => boundsAllowed.has(key)), "FSRS Cost-ADR state bounds contain unexpected fields.");
+      const bounds = {
+          sMin: Number(boundsRecord["sMin"]),
+          sMax: Number(boundsRecord["sMax"]),
+          dMin: Number(boundsRecord["dMin"]),
+          dMax: Number(boundsRecord["dMax"]),
+      };
+      assert(Number.isFinite(bounds.sMin) && Number.isFinite(bounds.sMax) && bounds.sMin > 0 && bounds.sMax > bounds.sMin
+          && Math.log(bounds.sMax) > Math.log(bounds.sMin), "FSRS Cost-ADR stability bounds are invalid.");
+      assert(Number.isFinite(bounds.dMin) && Number.isFinite(bounds.dMax) && bounds.dMax > bounds.dMin
+          && Number.isFinite(bounds.dMax - bounds.dMin), "FSRS Cost-ADR difficulty bounds are invalid.");
+      return { coefficients, costWeightMin, costWeightMax, retentionMin, retentionMax, bounds };
+  }
+  function canonicalFsrsSchedulingPolicy(value) {
+      const record = requireRecord(value, "FSRS scheduling policy");
+      const kind = record["kind"];
+      if (kind === "fixed-retention") {
+          const allowed = new Set(["kind", "desiredRetention"]);
+          assert(Object.keys(record).every((key) => allowed.has(key)), "Fixed-retention scheduling policy contains unexpected fields.");
+          const desiredRetention = Number(record["desiredRetention"]);
+          assert(Number.isFinite(desiredRetention) && desiredRetention >= 0.75 && desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
+          return { kind, desiredRetention };
+      }
+      if (kind === "cost-adr") {
+          const allowed = new Set(["kind", "goalCostWeight", "costAdrPolicy"]);
+          assert(Object.keys(record).every((key) => allowed.has(key)), "Cost-ADR scheduling policy contains unexpected fields.");
+          const goalCostWeight = Number(record["goalCostWeight"]);
+          assert(Number.isFinite(goalCostWeight) && goalCostWeight >= 0 && goalCostWeight <= 1024, "FSRS Cost-ADR goal cost weight is invalid.");
+          return { kind, goalCostWeight, costAdrPolicy: canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]) };
+      }
+      assert(false, "FSRS scheduling policy kind is invalid.");
+  }
+  function fsrsSchedulingPolicyIdentity(value) {
+      const policy = canonicalFsrsSchedulingPolicy(value);
+      if (policy.kind === "fixed-retention") {
+          return ["fixed-retention", policy.desiredRetention.toFixed(6)].join("|");
+      }
+      const cost = policy.costAdrPolicy;
+      return [
+          "cost-adr",
+          policy.goalCostWeight.toString(),
+          ...cost.coefficients.map((coefficient) => coefficient.toString()),
+          cost.costWeightMin.toString(),
+          cost.costWeightMax.toString(),
+          cost.retentionMin.toString(),
+          cost.retentionMax.toString(),
+          cost.bounds.sMin.toString(),
+          cost.bounds.sMax.toString(),
+          cost.bounds.dMin.toString(),
+          cost.bounds.dMax.toString(),
+      ].join("|");
+  }
+  function fsrsSchedulingPoliciesEqual(left, right) {
+      return fsrsSchedulingPolicyIdentity(left) === fsrsSchedulingPolicyIdentity(right);
+  }
+  function fixedRetentionForPolicy(value) {
+      const policy = canonicalFsrsSchedulingPolicy(value);
+      assert(policy.kind === "fixed-retention", "Cost-ADR scheduling is defined but not enabled in this build.");
+      return policy.desiredRetention;
+  }
+  function defaultFsrsSchedulingSettings() {
+      return { policy: { kind: "fixed-retention", desiredRetention: 0.9 } };
+  }
+  function canonicalFsrsSchedulingSettings(value) {
+      const record = requireRecord(value, "FSRS scheduling settings");
+      const allowed = new Set(["policy", "lastRebase"]);
+      assert(Object.keys(record).every((key) => allowed.has(key)), "FSRS scheduling settings contain unexpected fields.");
+      const policy = canonicalFsrsSchedulingPolicy(record["policy"]);
+      let lastRebase;
+      if (record["lastRebase"] !== undefined) {
+          const rebase = requireRecord(record["lastRebase"], "FSRS scheduler rebase");
+          const rebaseAllowed = new Set(["at", "reason", "fromConfigFingerprint", "toConfigFingerprint", "rescheduledObligations"]);
+          assert(Object.keys(rebase).every((key) => rebaseAllowed.has(key)), "FSRS scheduler rebase contains unexpected fields.");
+          const reason = rebase["reason"];
+          assert(reason === "scheduler-policy-change" || reason === "activate-profile" || reason === "deactivate-profile", "FSRS scheduler rebase reason is invalid.");
+          const fromConfigFingerprint = requiredString(rebase["fromConfigFingerprint"], "FSRS prior configuration fingerprint");
+          const toConfigFingerprint = requiredString(rebase["toConfigFingerprint"], "FSRS target configuration fingerprint");
+          assert(/^fnv1a64:[0-9a-f]{16}$/.test(fromConfigFingerprint) && /^fnv1a64:[0-9a-f]{16}$/.test(toConfigFingerprint), "FSRS scheduler rebase fingerprint is invalid.");
+          assert(fromConfigFingerprint !== toConfigFingerprint, "FSRS scheduler rebase must change scheduler identity.");
+          const rescheduledObligations = Number(rebase["rescheduledObligations"]);
+          assert(Number.isSafeInteger(rescheduledObligations) && rescheduledObligations >= 0, "FSRS scheduler rebase count is invalid.");
+          lastRebase = {
+              at: canonicalIso(requiredString(rebase["at"], "FSRS scheduler rebase date"), "FSRS scheduler rebase date"),
+              reason,
+              fromConfigFingerprint,
+              toConfigFingerprint,
+              rescheduledObligations,
+          };
+      }
+      return { policy, ...(lastRebase ? { lastRebase } : {}) };
+  }
   function defaultFsrsPersonalizationSettings() {
       return { profile: null, active: false };
   }
   function canonicalFsrsPersonalizationSettings(value) {
       const record = requireRecord(value, "FSRS personalization settings");
+      const allowed = new Set(["profile", "active"]);
+      assert(Object.keys(record).every((key) => allowed.has(key)), "FSRS personalization settings contain unexpected fields.");
       const profile = record["profile"] === null ? null : validateFsrsOptimizerProfile(record["profile"]);
       const active = record["active"];
       assert(typeof active === "boolean", "FSRS personalization active flag is invalid.");
       assert(!active || profile !== null, "Active FSRS personalization requires an optimizer profile.");
-      let lastRebase;
-      if (record["lastRebase"] !== undefined) {
-          const rebase = requireRecord(record["lastRebase"], "FSRS personalization rebase");
-          const reason = rebase["reason"];
-          const target = rebase["target"];
-          const rescheduledObligations = Number(rebase["rescheduledObligations"]);
-          assert(reason === "activate-profile" || reason === "deactivate-profile" || reason === "retention-change", "FSRS personalization rebase reason is invalid.");
-          assert(target === "stock" || target === "personalized", "FSRS personalization rebase target is invalid.");
-          assert(Number.isSafeInteger(rescheduledObligations) && rescheduledObligations >= 0, "FSRS personalization rebase count is invalid.");
-          const profileSourceSha256 = rebase["profileSourceSha256"];
-          if (target === "personalized")
-              assert(typeof profileSourceSha256 === "string" && /^[a-f0-9]{64}$/.test(profileSourceSha256), "Personalized rebase lacks optimizer provenance.");
-          if (target === "stock")
-              assert(profileSourceSha256 === undefined, "Stock rebase cannot claim optimizer provenance.");
-          lastRebase = {
-              at: canonicalIso(requiredString(rebase["at"], "FSRS personalization rebase date"), "FSRS personalization rebase date"),
-              reason,
-              target,
-              rescheduledObligations,
-              ...(typeof profileSourceSha256 === "string" ? { profileSourceSha256 } : {}),
-          };
-      }
-      return { profile, active, ...(lastRebase ? { lastRebase } : {}) };
+      return { profile, active };
   }
   function effectiveFsrsPersonalization(settings) {
       return canonicalFsrsPersonalizationSettings(settings.fsrsPersonalization);
@@ -7678,10 +7890,20 @@ exports.withFuzzing = withFuzzing;
       const personalization = effectiveFsrsPersonalization(settings);
       return personalization.active ? personalization.profile : null;
   }
+  function fsrsOptimizerReviewDuration(event, source) {
+      const timing = canonicalTimingEvidenceSummary(event.timing);
+      const durationPhase = source === "direct-memory" ? "attempt" : "relearn-verify";
+      const phaseMs = timing.activeByPhase[durationPhase];
+      const durationReliable = timing.durationReliable && timing.reliabilityFlags.length === 0;
+      return {
+          durationMs: durationReliable ? Math.round(phaseMs) : 0,
+          durationReliable,
+          durationPhase,
+      };
+  }
   function fsrsOptimizerEvidenceRows(events) {
       const rows = [];
       for (const event of events) {
-          assert(Number.isFinite(event.elapsedMs) && event.elapsedMs >= 0, "Optimizer evidence contains an invalid duration.");
           if (event.obligationType === "memory-recall") {
               const before = event.beforePolicyState.fsrsCard;
               assert(before, "Memory optimizer evidence is missing its before-card projection.");
@@ -7689,7 +7911,7 @@ exports.withFuzzing = withFuzzing;
                   reviewTimeMs: new Date(event.reviewedAt).getTime(),
                   cardId: event.obligationId,
                   rating: validateRating(event.confirmedRating),
-                  durationMs: Math.round(event.elapsedMs),
+                  ...fsrsOptimizerReviewDuration(event, "direct-memory"),
                   state: before.state,
                   evidenceEventId: event.id,
                   source: "direct-memory",
@@ -7703,7 +7925,7 @@ exports.withFuzzing = withFuzzing;
                   reviewTimeMs: new Date(event.reviewedAt).getTime(),
                   cardId: returned.obligationId,
                   rating: Rating.Good,
-                  durationMs: Math.round(event.elapsedMs),
+                  ...fsrsOptimizerReviewDuration(event, "relearning-return"),
                   state: before.state,
                   evidenceEventId: event.id,
                   source: "relearning-return",
@@ -7717,6 +7939,7 @@ exports.withFuzzing = withFuzzing;
       let previous = Number.NEGATIVE_INFINITY;
       for (const row of rows) {
           assert(Number.isFinite(row.reviewTimeMs) && row.reviewTimeMs >= previous, "FSRS optimizer evidence is not chronological.");
+          assert(Number.isInteger(row.durationMs) && row.durationMs >= 0, "FSRS optimizer evidence contains an invalid retrieval duration.");
           assert(Number.isInteger(row.state) && row.state >= 0 && row.state <= 3, "FSRS optimizer evidence contains an invalid review state.");
           previous = row.reviewTimeMs;
       }
@@ -7725,16 +7948,148 @@ exports.withFuzzing = withFuzzing;
   function optimizerCsvCell(value) {
       return `"${value.replaceAll('"', '""')}"`;
   }
-  function fsrsOptimizerCsv(events) {
+  function fsrsOptimizerEvidenceDataset(events) {
+      const rows = fsrsOptimizerEvidenceRows(events);
       const lines = ["review_time,card_id,review_rating,review_duration,review_state"];
-      for (const row of fsrsOptimizerEvidenceRows(events)) {
+      for (const row of rows) {
           lines.push([row.reviewTimeMs, optimizerCsvCell(row.cardId), row.rating, row.durationMs, row.state].join(","));
       }
-      return lines.join("\n") + "\n";
+      const summary = {
+          cards: new Set(rows.map((row) => row.cardId)).size,
+          reviews: rows.length,
+          reliableDurations: rows.filter((row) => row.durationReliable).length,
+          unavailableDurations: rows.filter((row) => !row.durationReliable).length,
+      };
+      return { rows, csv: lines.join("\n") + "\n", summary };
+  }
+  function fsrsOptimizerCsv(events) {
+      return fsrsOptimizerEvidenceDataset(events).csv;
   }
   function fsrsOptimizerEvidenceSummary(events) {
-      const rows = fsrsOptimizerEvidenceRows(events);
-      return { cards: new Set(rows.map((row) => row.cardId)).size, reviews: rows.length };
+      return fsrsOptimizerEvidenceDataset(events).summary;
+  }
+  async function fsrsOptimizerEvidenceSnapshot(events) {
+      const dataset = fsrsOptimizerEvidenceDataset(events);
+      return {
+          ...dataset,
+          sourceSha256: await sha256Hex(utf8Bytes(dataset.csv)),
+      };
+  }
+
+  /* ==========================================================================
+     FSRS-7 BROWSER OPTIMIZER — OPTIONAL LOCAL WORKER/WASM BOUNDARY
+     ========================================================================== */
+  class FsrsOptimizerRejectedError extends Error {
+      reasons;
+      constructor(reasons) {
+          super(reasons.join("; "));
+          this.name = "FsrsOptimizerRejectedError";
+          this.reasons = [...reasons];
+      }
+  }
+  const FSRS_BROWSER_OPTIMIZER_CAPABILITY = "wasm32-wasip1-0.6.1";
+  function browserFsrsOptimizerAvailability() {
+      if (typeof document === "undefined" || typeof Worker === "undefined" || typeof WebAssembly === "undefined") {
+          return { available: false, reason: "Browser Worker/WebAssembly support is unavailable." };
+      }
+      if (location.protocol === "file:") {
+          return { available: false, reason: "Use the optional optimizer-enabled static distribution over localhost or HTTPS for in-app optimization." };
+      }
+      const marker = document.querySelector('meta[name="revision-director-browser-optimizer"]')?.content;
+      if (marker !== FSRS_BROWSER_OPTIMIZER_CAPABILITY) {
+          return { available: false, reason: "This build does not include the local FSRS optimizer Worker/WASM assets." };
+      }
+      if (!globalThis.crypto?.subtle) {
+          return { available: false, reason: "Web Crypto is unavailable; serve the optimizer build from a secure context or localhost." };
+      }
+      return { available: true, reason: "FSRS-7 WebAssembly optimizer available locally in a dedicated Worker." };
+  }
+  function startBrowserFsrsOptimizer(csv, options = {}) {
+      const availability = browserFsrsOptimizerAvailability();
+      assert(availability.available, availability.reason);
+      assert(csv.trim().length > 0, "Optimizer evidence is empty.");
+      const requestId = typeof globalThis.crypto.randomUUID === "function"
+          ? globalThis.crypto.randomUUID()
+          : `fsrs-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const worker = new Worker(new URL("./fsrs-optimizer.worker.js", document.baseURI), {
+          type: "module",
+          name: "revision-director-fsrs-optimizer",
+      });
+      const timeoutMs = options.timeoutMs ?? 15 * 60 * 1000;
+      let settled = false;
+      let rejectPromise = () => undefined;
+      let timer;
+      const cleanup = () => {
+          worker.terminate();
+          if (timer !== undefined)
+              window.clearTimeout(timer);
+      };
+      const rejectOnce = (error) => {
+          if (settled)
+              return;
+          settled = true;
+          cleanup();
+          rejectPromise(error);
+      };
+      if (timeoutMs > 0) {
+          timer = window.setTimeout(() => rejectOnce(new Error("FSRS optimization timed out.")), timeoutMs);
+      }
+      const promise = new Promise((resolve, reject) => {
+          rejectPromise = reject;
+          worker.addEventListener("message", (event) => {
+              if (!isRecord(event.data))
+                  return;
+              const message = event.data;
+              if (message["requestId"] !== requestId || typeof message["type"] !== "string")
+                  return;
+              if (message["type"] === "progress") {
+                  const stage = message["stage"];
+                  const current = message["current"];
+                  const total = message["total"];
+                  if (typeof stage === "string" && typeof current === "number" && Number.isFinite(current) && current >= 0
+                      && typeof total === "number" && Number.isFinite(total) && total >= 0) {
+                      options.onProgress?.({ stage, current, total });
+                  }
+                  return;
+              }
+              if (message["type"] === "rejected") {
+                  const reasons = Array.isArray(message["reasons"])
+                      ? message["reasons"].filter((reason) => typeof reason === "string")
+                      : [];
+                  rejectOnce(new FsrsOptimizerRejectedError(reasons.length > 0 ? reasons : ["Personalized FSRS-7 did not clear the chronological activation gate."]));
+                  return;
+              }
+              if (message["type"] === "error") {
+                  rejectOnce(new Error(typeof message["message"] === "string"
+                      ? message["message"]
+                      : "FSRS optimizer Worker failed."));
+                  return;
+              }
+              if (message["type"] === "result") {
+                  try {
+                      const profile = validateFsrsOptimizerProfile(message["profile"]);
+                      if (settled)
+                          return;
+                      settled = true;
+                      cleanup();
+                      resolve(profile);
+                  }
+                  catch (error) {
+                      rejectOnce(error);
+                  }
+              }
+          });
+          worker.addEventListener("error", (event) => {
+              rejectOnce(new Error(event.message || "FSRS optimizer Worker crashed."));
+          });
+          worker.postMessage({ type: "optimize", requestId, csv });
+      });
+      return {
+          promise,
+          cancel() {
+              rejectOnce(new DOMException("FSRS optimization cancelled.", "AbortError"));
+          },
+      };
   }
 
   /* ==========================================================================
@@ -7743,8 +8098,7 @@ exports.withFuzzing = withFuzzing;
   /*
    * Application-local mirror of the public ts-fsrs@6.0.0
    * `ts-fsrs/reschedule` contract. It is intentionally implemented only in
-   * terms of the vendored scheduler's public model.forward/scheduler.forward
-   * surfaces, keeping the upstream UMD bytes checksum-identical and avoiding a
+   * terms of the vendored scheduler's public scheduler.forward surface, keeping the upstream UMD bytes checksum-identical and avoiding a
    * second copy of the FSRS runtime.
    *
    * Upstream source basis:
@@ -7777,21 +8131,6 @@ exports.withFuzzing = withFuzzing;
           }
           return reviews;
       }
-      replay(input, options = {}) {
-          const reviews = this.prepareReviews(input.history, options.sortHistory ?? true);
-          const modelHistory = reviews.map((review, index) => ({
-              rating: review.rating,
-              deltaT: index === 0
-                  ? 0
-                  : this.scheduler.chrono.difference(reviews[index - 1].reviewTime, review.reviewTime),
-          }));
-          const memoryStates = input.initialState
-              ? this.scheduler.model.forward({ history: modelHistory, initialState: input.initialState })
-              : this.scheduler.model.forward({ history: modelHistory });
-          const memoryState = memoryStates.at(-1);
-          assert(memoryState, "FSRS replay did not produce a memory state.");
-          return { memoryState, memoryStates };
-      }
       reschedule(input, options = {}) {
           const history = this.prepareReviews(input.history, options.sortHistory ?? true);
           const results = input.initialCard
@@ -7806,7 +8145,7 @@ exports.withFuzzing = withFuzzing;
       const canonical = [
           config.model,
           FSRS_PACKAGE_VERSION,
-          config.desiredRetention.toFixed(6),
+          fsrsSchedulingPolicyIdentity(config.schedulingPolicy),
           config.fractionalDays ? "fractional" : "whole",
           config.enableFuzz ? "fuzz" : "no-fuzz",
           config.enableShortTerm ? "short-term" : "long-term",
@@ -7822,11 +8161,12 @@ exports.withFuzzing = withFuzzing;
       ].join("|");
       return fingerprintText64(canonical);
   }
-  function fsrsConfigSnapshot(desiredRetention, profile = null) {
+  function fsrsConfigSnapshot(schedulingPolicy, profile = null) {
       const validatedProfile = profile ? validateFsrsOptimizerProfile(profile) : null;
+      const policy = canonicalFsrsSchedulingPolicy(schedulingPolicy);
       const identity = {
           model: FSRS_MODEL,
-          desiredRetention,
+          schedulingPolicy: policy,
           fractionalDays: true,
           enableFuzz: false,
           enableShortTerm: true,
@@ -7844,7 +8184,8 @@ exports.withFuzzing = withFuzzing;
   }
   function validateFsrsConfigSnapshot(config) {
       assert(config.model === FSRS_MODEL, "FSRS configuration model is invalid.");
-      assert(Number.isFinite(config.desiredRetention) && config.desiredRetention > 0 && config.desiredRetention < 1, "FSRS desired retention is invalid.");
+      const schedulingPolicy = canonicalFsrsSchedulingPolicy(config.schedulingPolicy);
+      assert(JSON.stringify(config.schedulingPolicy) === JSON.stringify(schedulingPolicy), "FSRS scheduling policy is not canonical.");
       assert(config.fractionalDays === true, "FSRS-7 requires fractional-day memory semantics.");
       assert(config.enableFuzz === false && config.enableShortTerm === true, "FSRS scheduler flags are invalid.");
       assert(config.learningSteps.length === 1 && config.learningSteps[0] === "1d", "FSRS learning-step policy is invalid.");
@@ -7867,6 +8208,10 @@ exports.withFuzzing = withFuzzing;
       assert(Number.isFinite(value), "FSRS-7 memory state is missing fast stability.");
       return value;
   }
+  function storedFsrsScheduleStatus(value) {
+      assert(value !== "suspended", "Revision Director does not persist FSRS-owned suspension state.");
+      return value;
+  }
   function validateStoredFsrsCard(card, expectedCardId) {
       assert(card.model === FSRS_MODEL, "Memory obligation does not use the current FSRS-7 model.");
       if (expectedCardId !== undefined)
@@ -7881,7 +8226,7 @@ exports.withFuzzing = withFuzzing;
       assert(Number.isInteger(card.learningStep) && card.learningStep >= 0, "FSRS learning step is invalid.");
       assert(Number.isInteger(card.reps) && card.reps >= 0 && Number.isInteger(card.lapses) && card.lapses >= 0, "FSRS review counters are invalid.");
       assert(Number.isInteger(card.state) && card.state >= 0 && card.state <= 3, "FSRS card state is invalid.");
-      assert(card.scheduleStatus === "new" || card.scheduleStatus === "learning" || card.scheduleStatus === "review" || card.scheduleStatus === "suspended", "FSRS schedule status is invalid.");
+      assert(card.scheduleStatus === "new" || card.scheduleStatus === "learning" || card.scheduleStatus === "review", "Revision Director does not persist FSRS-owned suspension state.");
   }
   function serializeFsrsCard(card) {
       const stored = {
@@ -7896,7 +8241,7 @@ exports.withFuzzing = withFuzzing;
           reps: card.reps,
           lapses: card.lapses,
           state: card.state,
-          scheduleStatus: card.scheduleStatus,
+          scheduleStatus: storedFsrsScheduleStatus(card.scheduleStatus),
       };
       if (card.lastReviewAt)
           stored.lastReviewAt = card.lastReviewAt.toISOString();
@@ -8073,17 +8418,15 @@ exports.withFuzzing = withFuzzing;
           this.configuration = clone(validateFsrsConfigSnapshot(configuration));
           this.history = new Reschedule(scheduler);
       }
-      replayMemoryStates(reviews) {
-          if (reviews.length === 0)
-              return [];
-          const result = this.history.replay({
+      replayCards(initialCard, reviews) {
+          assert(reviews.length > 0, "FSRS replay requires review history.");
+          return this.history.reschedule({
+              initialCard: hydrateFsrsCard(initialCard),
               history: reviews.map((review) => ({
                   rating: review.rating,
                   reviewTime: new Date(review.reviewedAt),
               })),
           }, { sortHistory: false });
-          assert(result.memoryStates.length === reviews.length, "FSRS replay produced an incomplete memory-state sequence.");
-          return result.memoryStates;
       }
       grade(rating) {
           const api = runtimeFsrs();
@@ -8106,10 +8449,7 @@ exports.withFuzzing = withFuzzing;
               validateMemoryObservationChain(currentProjection.cardId, reviews, currentProjection);
               return clone(currentProjection);
           }
-          const result = this.history.reschedule({
-              initialCard: hydrateFsrsCard(reviews[0].beforeCard),
-              history: reviews.map((review) => ({ rating: review.rating, reviewTime: new Date(review.reviewedAt) })),
-          }, { sortHistory: false });
+          const result = this.replayCards(reviews[0].beforeCard, reviews);
           assert(result.results.length === reviews.length, "FSRS reschedule produced an incomplete projection sequence.");
           for (let index = 0; index < reviews.length; index += 1) {
               const review = reviews[index];
@@ -8174,32 +8514,29 @@ exports.withFuzzing = withFuzzing;
           this.verifyProjection(currentProjection, reviews);
           if (reviews.length === 0 || currentProjection.reps === 0)
               return undefined;
-          const memoryState = this.replayMemoryStates(reviews).at(-1);
-          assert(memoryState, "FSRS retrievability requires replayed memory.");
           const lastReview = new Date(reviews.at(-1).reviewedAt);
           const elapsedDays = Math.max(0, this.scheduler.chrono.difference(lastReview, at));
-          const retrievability = this.scheduler.model.forgettingCurve(memoryState, elapsedDays);
+          const retrievability = this.scheduler.model.forgettingCurve({
+              stability: currentProjection.stability,
+              stabilityFast: requiredFsrs7StabilityFast(currentProjection.stabilityFast),
+              difficulty: currentProjection.difficulty,
+          }, elapsedDays);
           return clamp(Number(retrievability), 0, 1);
       }
       reschedule(initialCard, reviews) {
           assert(reviews.length > 0, "FSRS reschedule requires review history.");
           validateStoredFsrsCard(initialCard, initialCard.cardId);
           assert(storedFsrsCardsEqual(initialCard, reviews[0].beforeCard), "FSRS reschedule initial card does not match canonical history.");
-          const result = this.history.reschedule({
-              initialCard: hydrateFsrsCard(initialCard),
-              history: reviews.map((review) => ({
-                  rating: review.rating,
-                  reviewTime: new Date(review.reviewedAt),
-              })),
-          }, { sortHistory: false });
+          const result = this.replayCards(initialCard, reviews);
           return serializeFsrsCard(result.card);
       }
   }
   const FSRS_SCHEDULER_CACHE = new Map();
-  async function prepareFsrsScheduler(desiredRetention, profile = null) {
-      assert(Number.isFinite(desiredRetention) && desiredRetention > 0 && desiredRetention < 1, "Desired retention is invalid.");
+  async function prepareFsrsScheduler(schedulingPolicy, profile = null) {
+      const policy = canonicalFsrsSchedulingPolicy(schedulingPolicy);
+      const desiredRetention = fixedRetentionForPolicy(policy);
       const validatedProfile = profile ? validateFsrsOptimizerProfile(profile) : null;
-      const configuration = fsrsConfigSnapshot(desiredRetention, validatedProfile);
+      const configuration = fsrsConfigSnapshot(policy, validatedProfile);
       if (FSRS_SCHEDULER_CACHE.has(configuration.fingerprint))
           return;
       const scheduler = await runtimeFsrs().DefaultScheduler({
@@ -8220,13 +8557,13 @@ exports.withFuzzing = withFuzzing;
       requiredFsrs7StabilityFast(probe.stabilityFast);
       FSRS_SCHEDULER_CACHE.set(configuration.fingerprint, port);
   }
-  function revisionSchedulerPort(desiredRetention, profile = null) {
-      const configuration = fsrsConfigSnapshot(desiredRetention, profile ? validateFsrsOptimizerProfile(profile) : null);
+  function revisionSchedulerPort(schedulingPolicy, profile = null) {
+      const configuration = fsrsConfigSnapshot(canonicalFsrsSchedulingPolicy(schedulingPolicy), profile ? validateFsrsOptimizerProfile(profile) : null);
       const scheduler = FSRS_SCHEDULER_CACHE.get(configuration.fingerprint);
       assert(scheduler, "FSRS-7 scheduler has not been initialized for the current retention setting.");
       return scheduler;
   }
-  function validateMemoryDatasetProjectionChain(obligations, evidenceEvents, reviewIndex = memoryReviewObservationIndex(evidenceEvents)) {
+  function validateMemoryDatasetProjectionChain(obligations, reviewIndex) {
       for (const obligation of obligations) {
           if (obligation.type !== "memory-recall")
               continue;
@@ -8235,10 +8572,10 @@ exports.withFuzzing = withFuzzing;
           validateMemoryObservationChain(obligation.id, reviewIndex.get(obligation.id) ?? [], projection);
       }
   }
-  function verifyMemoryDatasetIntegrity(obligations, evidenceEvents, desiredRetention, profile = null) {
-      const scheduler = revisionSchedulerPort(desiredRetention, profile);
+  function verifyMemoryDatasetIntegrity(obligations, evidenceEvents, schedulingPolicy, profile = null) {
+      const scheduler = revisionSchedulerPort(schedulingPolicy, profile);
       const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
-      validateMemoryDatasetProjectionChain(obligations, evidenceEvents, reviewIndex);
+      validateMemoryDatasetProjectionChain(obligations, reviewIndex);
       for (const obligation of obligations) {
           if (obligation.type !== "memory-recall")
               continue;
@@ -8248,6 +8585,102 @@ exports.withFuzzing = withFuzzing;
       }
   }
 
+  const MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD = 2;
+  const MEMORY_DIFFICULTY_ACTION_LABELS = {
+      "scope-review": "reconsider the scope",
+      "split-scope": "split oversized material",
+      "prerequisite-review": "revisit prerequisites",
+      "source-revisit": "revisit source material",
+      "representation-change": "change retrieval representation",
+      "deliberate-intervention": "flag for deliberate intervention",
+  };
+  function defaultMemoryDifficultyPolicy() {
+      return {
+          remediationLapses: 2,
+          persistentDifficultyLapses: 4,
+          automaticHold: { enabled: false, lapseThreshold: 8 },
+      };
+  }
+  function canonicalMemoryDifficultyPolicy(value) {
+      const record = requireRecord(value, "Memory difficulty policy");
+      const allowed = new Set(["remediationLapses", "persistentDifficultyLapses", "automaticHold"]);
+      assert(Object.keys(record).every((key) => allowed.has(key)), "Memory difficulty policy contains unexpected fields.");
+      const remediationLapses = Number(record["remediationLapses"]);
+      const persistentDifficultyLapses = Number(record["persistentDifficultyLapses"]);
+      assert(Number.isSafeInteger(remediationLapses) && remediationLapses >= 2 && remediationLapses <= 99, "Memory remediation lapse threshold is invalid.");
+      assert(Number.isSafeInteger(persistentDifficultyLapses) && persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
+      const automaticHoldRecord = requireRecord(record["automaticHold"], "Memory automatic-hold policy");
+      const holdAllowed = new Set(["enabled", "lapseThreshold"]);
+      assert(Object.keys(automaticHoldRecord).every((key) => holdAllowed.has(key)), "Memory automatic-hold policy contains unexpected fields.");
+      const enabled = automaticHoldRecord["enabled"];
+      const lapseThreshold = Number(automaticHoldRecord["lapseThreshold"]);
+      assert(typeof enabled === "boolean", "Memory automatic-hold flag is invalid.");
+      assert(Number.isSafeInteger(lapseThreshold) && lapseThreshold > persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold must be later than persistent difficulty.");
+      return {
+          remediationLapses,
+          persistentDifficultyLapses,
+          automaticHold: { enabled, lapseThreshold },
+      };
+  }
+  function memoryDifficultyActionLabel(action) {
+      return MEMORY_DIFFICULTY_ACTION_LABELS[action];
+  }
+  function memoryDifficultyAssessment(obligation, policy, memoryReviews = []) {
+      assert(obligation.type === "memory-recall", "Persistent-difficulty assessment is only valid for memory recall.");
+      const canonicalPolicy = canonicalMemoryDifficultyPolicy(policy);
+      const card = obligation.policyState.fsrsCard;
+      assert(card, "Memory obligation has no FSRS card for difficulty assessment.");
+      const establishedLapses = card.lapses;
+      const earlyLearningFailures = memoryReviews.filter((review) => review.rating === Rating.Again && (review.beforeCard.state === 0 || review.beforeCard.state === 1)).length;
+      const stillLearning = card.state === 0 || card.state === 1;
+      const level = establishedLapses >= canonicalPolicy.persistentDifficultyLapses ? "persistent-difficulty"
+          : establishedLapses >= canonicalPolicy.remediationLapses ? "remediation"
+              : stillLearning && earlyLearningFailures >= MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD ? "learning-difficulty"
+                  : "normal";
+      const recommendedActions = [];
+      if (level === "learning-difficulty" || level === "remediation") {
+          recommendedActions.push("source-revisit", "representation-change");
+      }
+      else if (level === "persistent-difficulty") {
+          recommendedActions.push("scope-review");
+          if (obligation.expectedMinutes > 45 || obligation.chunking !== undefined)
+              recommendedActions.push("split-scope");
+          recommendedActions.push("prerequisite-review", "source-revisit", "representation-change", "deliberate-intervention");
+      }
+      return {
+          level,
+          establishedLapses,
+          earlyLearningFailures,
+          recommendedActions,
+          automaticHoldEligible: level === "persistent-difficulty" &&
+              canonicalPolicy.automaticHold.enabled &&
+              establishedLapses >= canonicalPolicy.automaticHold.lapseThreshold,
+      };
+  }
+  function memoryDifficultyRemediationPlan(assessment) {
+      if (assessment.level === "normal")
+          return { priorityBoost: 2, guidance: "" };
+      const actions = assessment.recommendedActions.map(memoryDifficultyActionLabel).join("; ");
+      if (assessment.level === "learning-difficulty") {
+          return {
+              priorityBoost: 3,
+              guidance: `Early learning difficulty (${assessment.earlyLearningFailures} failed learning recalls): ${actions}. `,
+          };
+      }
+      if (assessment.level === "remediation") {
+          return {
+              priorityBoost: 3,
+              guidance: `Repeated established-memory lapse remediation (${assessment.establishedLapses} FSRS lapses): ${actions}. `,
+          };
+      }
+      return {
+          priorityBoost: 4,
+          guidance: `Persistent established-memory difficulty (${assessment.establishedLapses} FSRS lapses): ${actions}. `,
+      };
+  }
+  function memoryDifficultyWeaknessFloor(level) {
+      return level === "persistent-difficulty" ? 0.9 : level === "remediation" ? 0.72 : level === "learning-difficulty" ? 0.68 : 0;
+  }
   const PLANNER_WEIGHTS = Object.freeze({
       dueRisk: 0.30,
       examImportance: 0.20,
@@ -8269,6 +8702,13 @@ exports.withFuzzing = withFuzzing;
       const examDay = Date.UTC(exam.getFullYear(), exam.getMonth(), exam.getDate());
       const referenceDay = Date.UTC(reference.getFullYear(), reference.getMonth(), reference.getDate());
       return Math.round((examDay - referenceDay) / DAY_MS);
+  }
+  function correctiveRelearnDueAt(profile, reviewedAt) {
+      const ordinaryDue = addDays(reviewedAt, 1);
+      const exam = examDateTime(profile);
+      if (!exam)
+          return ordinaryDue.toISOString();
+      return new Date(Math.max(reviewedAt.getTime(), Math.min(ordinaryDue.getTime(), exam.getTime()))).toISOString();
   }
   function examinationProximityScore(daysToExam) {
       if (daysToExam < 0)
@@ -8558,14 +8998,13 @@ exports.withFuzzing = withFuzzing;
           chunks,
       };
   }
-  function fsrsRetrievability(obligation, evidenceEvents, reference, desiredRetention, reviewIndex, profile = null) {
+  function fsrsRetrievability(obligation, reference, schedulingPolicy, reviews = [], profile = null) {
       if (obligation.type !== "memory-recall" || !obligation.policyState.fsrsCard)
           return undefined;
       const projection = obligation.policyState.fsrsCard;
       if (projection.reps === 0 || !projection.lastReviewAt)
           return undefined;
-      const reviews = reviewIndex?.get(obligation.id) ?? memoryReviewObservationsFor(obligation.id, evidenceEvents);
-      return revisionSchedulerPort(desiredRetention, profile).retrievability(projection, reviews, reference);
+      return revisionSchedulerPort(schedulingPolicy, profile).retrievability(projection, reviews, reference);
   }
   function finalMemoryExamDeadline(item) {
       if (item.obligation.type !== "memory-recall")
@@ -8643,13 +9082,20 @@ exports.withFuzzing = withFuzzing;
       if (!synthesisReady && planningDueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS)
           return undefined;
       const temporalRisk = temporalDueRisk(planningDueAt, dayStart, dayEnd, lookaheadDays);
-      const retrievability = fsrsRetrievability(item.obligation, evidenceEvents, reference, settings.desiredRetention, memoryReviews, activeFsrsOptimizerProfile(settings));
-      const memoryRisk = retrievability === undefined ? 0 : clamp((settings.desiredRetention - retrievability) / Math.max(settings.desiredRetention - 0.5, 0.1), 0, 1);
+      const memoryHistory = item.obligation.type === "memory-recall"
+          ? memoryReviews?.get(item.obligation.id) ?? memoryReviewObservationsFor(item.obligation.id, evidenceEvents)
+          : [];
+      const retrievability = fsrsRetrievability(item.obligation, reference, settings.fsrsScheduling.policy, memoryHistory, activeFsrsOptimizerProfile(settings));
+      const desiredRetention = fixedRetentionForPolicy(settings.fsrsScheduling.policy);
+      const memoryRisk = retrievability === undefined ? 0 : clamp((desiredRetention - retrievability) / Math.max(desiredRetention - 0.5, 0.1), 0, 1);
       const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
+      const difficulty = item.obligation.type === "memory-recall"
+          ? memoryDifficultyAssessment(item.obligation, settings.memoryDifficultyPolicy, memoryHistory)
+          : undefined;
       const factors = {
           dueRisk,
           examImportance: examImportanceScore(item.unit.importance),
-          weakness: obligationWeaknessScore(item, evidenceEvents),
+          weakness: Math.max(obligationWeaknessScore(item, evidenceEvents), memoryDifficultyWeaknessFloor(difficulty?.level ?? "normal")),
           reviewDuration: reviewDurationScore(chunk?.expectedMinutes ?? (item.obligation.chunking?.status === "synthesis-ready" ? item.obligation.chunking.synthesisMinutes : item.obligation.expectedMinutes), settings.dailyCapacityMinutes),
           examinationProximity: examinationProximityScore(daysToExam),
           weeklyBalance,
@@ -8668,6 +9114,13 @@ exports.withFuzzing = withFuzzing;
           reasons: [
               ...(chunk ? [`split scope: ${chunk.scope}`] : item.obligation.chunking?.status === "synthesis-ready" ? ["final synthesis after split work"] : []),
               ...(examBoundMemory ? ["final memory review before exam"] : []),
+              ...(difficulty?.level === "persistent-difficulty"
+                  ? [`persistent difficulty · ${difficulty.establishedLapses} established FSRS lapses`]
+                  : difficulty?.level === "remediation"
+                      ? [`remediation · ${difficulty.establishedLapses} established FSRS lapses`]
+                      : difficulty?.level === "learning-difficulty"
+                          ? [`early learning difficulty · ${difficulty.earlyLearningFailures} failed learning recalls`]
+                          : []),
               ...planningReasons(item, factors, dueState, daysFromDue, daysToExam),
               ...(weeklyBalance >= 0.7 ? ["subject underrepresented this week"] : []),
           ].slice(0, 6),
@@ -8754,16 +9207,16 @@ exports.withFuzzing = withFuzzing;
   }
 
   class FsrsMemoryPolicy {
-      desiredRetention;
+      schedulingPolicy;
       optimizerProfile;
       id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`;
       type = "memory-recall";
-      constructor(desiredRetention, optimizerProfile = () => null) {
-          this.desiredRetention = desiredRetention;
+      constructor(schedulingPolicy, optimizerProfile = () => null) {
+          this.schedulingPolicy = schedulingPolicy;
           this.optimizerProfile = optimizerProfile;
       }
       scheduler() {
-          return revisionSchedulerPort(this.desiredRetention(), this.optimizerProfile());
+          return revisionSchedulerPort(this.schedulingPolicy(), this.optimizerProfile());
       }
       reviews(context) {
           return context?.memoryReviews ?? [];
@@ -8923,9 +9376,9 @@ exports.withFuzzing = withFuzzing;
   }
   class SchedulerPolicyRouter {
       policies = new Map();
-      constructor(desiredRetention, optimizerProfile = () => null) {
+      constructor(schedulingPolicy, optimizerProfile = () => null) {
           const all = [
-              new FsrsMemoryPolicy(desiredRetention, optimizerProfile),
+              new FsrsMemoryPolicy(schedulingPolicy, optimizerProfile),
               new MasteryPolicy(),
               new ApplicationPolicy(),
               new PerformancePolicy(),
@@ -8978,8 +9431,13 @@ exports.withFuzzing = withFuzzing;
       }
       static async open() {
           const request = indexedDB.open(DB_NAME, DB_VERSION);
+          let upgradeError;
           request.onupgradeneeded = (event) => {
-              assert(event.oldVersion === 0, "Existing Revision Director database schema is unsupported. Clear site data before opening this build.");
+              if (event.oldVersion !== 0) {
+                  upgradeError = new Error("Existing Revision Director database schema is unsupported by this build. Existing data was not modified; open it with a compatible build and export a backup before changing schema.");
+                  request.transaction?.abort();
+                  return;
+              }
               const db = request.result;
               const profiles = db.createObjectStore(Store.Profiles, { keyPath: "id" });
               profiles.createIndex("status", "status");
@@ -9015,7 +9473,17 @@ exports.withFuzzing = withFuzzing;
               db.createObjectStore(Store.Metadata, { keyPath: "key" });
               db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
           };
-          const db = await requestResult(request);
+          const db = await new Promise((resolve, reject) => {
+              request.onsuccess = () => resolve(request.result);
+              request.onerror = () => {
+                  if (upgradeError)
+                      reject(upgradeError);
+                  else if (request.error?.name === "VersionError")
+                      reject(new Error("Existing Revision Director database schema is newer than this build. Existing data was not modified; open it with a compatible build and export a backup before using an older schema."));
+                  else
+                      reject(request.error ?? new Error("IndexedDB open failed."));
+              };
+          });
           db.onversionchange = () => db.close();
           return new IndexedDbRepository(db);
       }
@@ -9156,7 +9624,7 @@ exports.withFuzzing = withFuzzing;
               apply();
           await transactionDone(tx);
       }
-      async replaceMemoryScheduling(settings, obligations) {
+      async replaceSettingsAndObligations(settings, obligations) {
           const tx = this.db.transaction([Store.Settings, Store.Obligations], "readwrite");
           tx.objectStore(Store.Settings).put(settings);
           const obligationStore = tx.objectStore(Store.Obligations);
@@ -9398,7 +9866,18 @@ exports.withFuzzing = withFuzzing;
           if (existing) {
               const canonical = canonicalAppMetadata(existing);
               assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
-              assert(canonical.applicationVersion === APP_VERSION, "Database metadata belongs to a different Revision Director build. Clear site data before opening this build.");
+              if (canonical.applicationVersion !== APP_VERSION) {
+                  try {
+                      await this.repository.put(Store.Metadata, canonicalAppMetadata({
+                          ...canonical,
+                          applicationVersion: APP_VERSION,
+                          updatedAt: nowIso(),
+                      }));
+                  }
+                  catch (error) {
+                      this.diagnosticsJournal.record("storage.metadata.release-refresh", "refresh database release provenance", error);
+                  }
+              }
               return;
           }
           const time = nowIso();
@@ -9473,8 +9952,8 @@ exports.withFuzzing = withFuzzing;
       async recordReview(unit, obligation, event, followUp, relatedObligation, chunkUpdates = [], dailyPlan, commitGuard, postCommitSession) {
           await this.operation("recordReview", () => this.repository.recordReview(canonicalKnowledgeUnit(unit), canonicalRevisionObligation(obligation), canonicalEvidenceEvent(event), followUp ? canonicalRevisionObligation(followUp) : undefined, relatedObligation ? canonicalRevisionObligation(relatedObligation) : undefined, chunkUpdates.map(canonicalObligationChunk), dailyPlan ? canonicalDailyPlanRecord(dailyPlan) : undefined, commitGuard, postCommitSession ? canonicalActiveRetrievalSession(postCommitSession) : undefined));
       }
-      async replaceMemoryScheduling(settings, obligations) {
-          await this.operation("replaceMemoryScheduling", () => this.repository.replaceMemoryScheduling(canonicalAppSettings(settings), obligations.map(canonicalRevisionObligation)));
+      async replaceSettingsAndObligations(settings, obligations) {
+          await this.operation("replaceSettingsAndObligations", () => this.repository.replaceSettingsAndObligations(canonicalAppSettings(settings), obligations.map(canonicalRevisionObligation)));
       }
       async rawDump() {
           return this.operation("rawDump", () => this.repository.rawDump());
@@ -10187,19 +10666,23 @@ exports.withFuzzing = withFuzzing;
       router;
       constructor(repo) {
           this.repo = repo;
-          this.router = new SchedulerPolicyRouter(() => this.settings.desiredRetention, () => activeFsrsOptimizerProfile(this.settings));
+          this.router = new SchedulerPolicyRouter(() => this.settings.fsrsScheduling.policy, () => activeFsrsOptimizerProfile(this.settings));
       }
       async initialize() {
           const stored = await this.repo.get(Store.Settings, "app");
           this.settings = stored ? canonicalAppSettings(stored) : defaultSettings();
-          await prepareFsrsScheduler(this.settings.desiredRetention, activeFsrsOptimizerProfile(this.settings));
+          await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings));
           if (!stored)
               await this.repo.put(Store.Settings, this.settings);
           const profiles = await this.profiles();
           const active = profiles.filter((profile) => profile.status === "active");
           if (this.settings.activeProfileId && !active.some((profile) => profile.id === this.settings.activeProfileId)) {
-              this.settings.activeProfileId = active[0]?.id ?? "";
-              await this.repo.put(Store.Settings, this.settings);
+              const repaired = canonicalAppSettings({
+                  ...this.settings,
+                  activeProfileId: active[0]?.id ?? "",
+              });
+              await this.repo.put(Store.Settings, repaired);
+              this.settings = repaired;
           }
           await this.verifyMemoryProjectionIntegrity();
       }
@@ -10208,7 +10691,7 @@ exports.withFuzzing = withFuzzing;
               this.repo.getAll(Store.Obligations),
               this.repo.getAll(Store.EvidenceEvents),
           ]);
-          verifyMemoryDatasetIntegrity(obligations, evidenceEvents, this.settings.desiredRetention, activeFsrsOptimizerProfile(this.settings));
+          verifyMemoryDatasetIntegrity(obligations, evidenceEvents, this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings));
       }
       storageHealth() {
           return this.repo.storageHealth();
@@ -10223,7 +10706,6 @@ exports.withFuzzing = withFuzzing;
           return clone(this.settings);
       }
       async saveSettings(next) {
-          assert(Number.isFinite(next.desiredRetention) && next.desiredRetention >= 0.75 && next.desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
           assert(Number.isInteger(next.dailyCapacityMinutes) && next.dailyCapacityMinutes >= 5 && next.dailyCapacityMinutes <= 600, "Daily capacity is invalid.");
           assert(Number.isInteger(next.studyDayBoundaryHour) && next.studyDayBoundaryHour >= 0 && next.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
           const activeProfiles = (await this.profiles()).filter((profile) => profile.status === "active");
@@ -10235,13 +10717,50 @@ exports.withFuzzing = withFuzzing;
               assert(next.activeProfileId === "", "Create an active exam profile before selecting a default profile.");
           const canonical = canonicalAppSettings(next);
           assert(JSON.stringify(effectiveFsrsPersonalization(canonical)) === JSON.stringify(effectiveFsrsPersonalization(this.settings)), "Use the explicit FSRS personalization controls to stage, activate, deactivate or remove an optimizer profile.");
-          if (canonical.desiredRetention !== this.settings.desiredRetention) {
-              await this.rebaseMemoryScheduler(canonical, activeFsrsOptimizerProfile(canonical), "retention-change");
+          assert(JSON.stringify(canonical.fsrsScheduling.lastRebase ?? null) === JSON.stringify(this.settings.fsrsScheduling.lastRebase ?? null), "FSRS scheduler rebase metadata is service-owned.");
+          const difficultyChanged = JSON.stringify(canonical.memoryDifficultyPolicy) !== JSON.stringify(this.settings.memoryDifficultyPolicy);
+          if (!fsrsSchedulingPoliciesEqual(canonical.fsrsScheduling.policy, this.settings.fsrsScheduling.policy)) {
+              await this.rebaseMemoryScheduler(canonical, activeFsrsOptimizerProfile(canonical), "scheduler-policy-change");
               return;
           }
-          await prepareFsrsScheduler(canonical.desiredRetention, activeFsrsOptimizerProfile(canonical));
+          await prepareFsrsScheduler(canonical.fsrsScheduling.policy, activeFsrsOptimizerProfile(canonical));
+          if (difficultyChanged) {
+              const [obligations, units] = await Promise.all([this.obligations(), this.units()]);
+              const released = this.releaseStalePersistentDifficultyHolds(obligations, units, canonical.memoryDifficultyPolicy, nowIso());
+              await this.repo.replaceSettingsAndObligations(canonical, released);
+              this.settings = canonical;
+              return;
+          }
+          await this.repo.put(Store.Settings, canonical);
           this.settings = canonical;
-          await this.repo.put(Store.Settings, this.settings);
+      }
+      releaseStalePersistentDifficultyHolds(obligations, units, policy, at) {
+          const unitById = new Map(units.map((unit) => [unit.id, unit]));
+          const released = [];
+          for (const current of obligations) {
+              if (current.type !== "memory-recall" || current.status !== "suspended" || current.suspensionReason !== "persistent-difficulty")
+                  continue;
+              if (memoryDifficultyAssessment(current, policy).automaticHoldEligible)
+                  continue;
+              const unit = unitById.get(current.unitId);
+              assert(unit, "Persistent-difficulty memory references a missing knowledge unit.");
+              const obligation = clone(current);
+              if (unit.status === "active") {
+                  obligation.status = "active";
+                  delete obligation.suspensionReason;
+              }
+              else if (unit.status === "suspended") {
+                  obligation.status = "suspended";
+                  obligation.suspensionReason = "unit";
+              }
+              else {
+                  obligation.status = "archived";
+                  delete obligation.suspensionReason;
+              }
+              obligation.updatedAt = at;
+              released.push(obligation);
+          }
+          return released;
       }
       async optimizerEvidenceSummary() {
           return fsrsOptimizerEvidenceSummary(await this.evidenceEvents());
@@ -10249,17 +10768,26 @@ exports.withFuzzing = withFuzzing;
       async optimizerEvidenceCsv() {
           return fsrsOptimizerCsv(await this.evidenceEvents());
       }
+      async optimizerEvidenceSnapshot() {
+          return fsrsOptimizerEvidenceSnapshot(await this.evidenceEvents());
+      }
+      async assertOptimizerProfileMatchesCurrentEvidence(profile) {
+          const snapshot = await this.optimizerEvidenceSnapshot();
+          assert(snapshot.summary.reviews > 0, "No memory-review evidence is available for FSRS personalization.");
+          assert(profile.sourceSha256 === snapshot.sourceSha256, "FSRS optimizer profile was trained on different or stale review evidence. Re-optimize or import a profile generated from the current canonical evidence export.");
+      }
       async stageFsrsOptimizerProfile(input) {
           const personalization = effectiveFsrsPersonalization(this.settings);
           assert(!personalization.active, "Return to stock FSRS-7 before staging a different optimizer profile.");
           const profile = validateFsrsOptimizerProfile(input);
-          await prepareFsrsScheduler(this.settings.desiredRetention, profile);
+          await this.assertOptimizerProfileMatchesCurrentEvidence(profile);
+          await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, profile);
           const next = canonicalAppSettings({
               ...this.settings,
               fsrsPersonalization: { ...personalization, profile, active: false },
           });
-          this.settings = next;
           await this.repo.put(Store.Settings, next);
+          this.settings = next;
           return clone(profile);
       }
       async clearFsrsOptimizerProfile() {
@@ -10267,14 +10795,15 @@ exports.withFuzzing = withFuzzing;
           assert(!personalization.active, "Return to stock FSRS-7 before removing the optimizer profile.");
           const next = canonicalAppSettings({
               ...this.settings,
-              fsrsPersonalization: { profile: null, active: false, ...(personalization.lastRebase ? { lastRebase: personalization.lastRebase } : {}) },
+              fsrsPersonalization: { profile: null, active: false },
           });
-          this.settings = next;
           await this.repo.put(Store.Settings, next);
+          this.settings = next;
       }
       async activateFsrsOptimizerProfile() {
           const personalization = effectiveFsrsPersonalization(this.settings);
           assert(!personalization.active && personalization.profile, "No staged FSRS optimizer profile is available for activation.");
+          await this.assertOptimizerProfileMatchesCurrentEvidence(personalization.profile);
           const next = canonicalAppSettings({
               ...this.settings,
               fsrsPersonalization: { ...personalization, active: true },
@@ -10293,11 +10822,13 @@ exports.withFuzzing = withFuzzing;
       async rebaseMemoryScheduler(requestedSettings, profile, reason) {
           assert(!(await this.currentActiveRetrieval()), "Finish or end the active retrieval session before changing FSRS scheduler parameters.");
           const settings = canonicalAppSettings(requestedSettings);
-          await prepareFsrsScheduler(settings.desiredRetention, profile);
-          const [obligations, evidenceEvents] = await Promise.all([this.obligations(), this.evidenceEvents()]);
-          verifyMemoryDatasetIntegrity(obligations, evidenceEvents, this.settings.desiredRetention, activeFsrsOptimizerProfile(this.settings));
+          const currentProfile = activeFsrsOptimizerProfile(this.settings);
+          const currentConfiguration = fsrsConfigSnapshot(this.settings.fsrsScheduling.policy, currentProfile);
+          await prepareFsrsScheduler(settings.fsrsScheduling.policy, profile);
+          const [obligations, evidenceEvents, units] = await Promise.all([this.obligations(), this.evidenceEvents(), this.units()]);
+          verifyMemoryDatasetIntegrity(obligations, evidenceEvents, this.settings.fsrsScheduling.policy, currentProfile);
           const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
-          const scheduler = revisionSchedulerPort(settings.desiredRetention, profile);
+          const scheduler = revisionSchedulerPort(settings.fsrsScheduling.policy, profile);
           const at = nowIso();
           let rescheduledObligations = 0;
           const updatedMemory = obligations.filter((obligation) => obligation.type === "memory-recall").map((obligation) => {
@@ -10320,25 +10851,37 @@ exports.withFuzzing = withFuzzing;
                   },
               };
           });
+          assert(currentConfiguration.fingerprint !== scheduler.configuration.fingerprint, "FSRS scheduler rebase must change scheduler identity.");
+          const released = this.releaseStalePersistentDifficultyHolds(updatedMemory, units, settings.memoryDifficultyPolicy, at);
+          if (released.length > 0) {
+              const releasedById = new Map(released.map((obligation) => [obligation.id, obligation]));
+              for (let index = 0; index < updatedMemory.length; index += 1) {
+                  const replacement = releasedById.get(updatedMemory[index].id);
+                  if (replacement)
+                      updatedMemory[index] = replacement;
+              }
+          }
           const personalization = effectiveFsrsPersonalization(settings);
-          const target = profile ? "personalized" : "stock";
           const finalized = canonicalAppSettings({
               ...settings,
-              fsrsPersonalization: {
-                  ...personalization,
-                  active: Boolean(profile),
+              fsrsScheduling: {
+                  policy: canonicalFsrsSchedulingPolicy(settings.fsrsScheduling.policy),
                   lastRebase: {
                       at,
                       reason,
-                      target,
+                      fromConfigFingerprint: currentConfiguration.fingerprint,
+                      toConfigFingerprint: scheduler.configuration.fingerprint,
                       rescheduledObligations,
-                      ...(profile ? { profileSourceSha256: profile.sourceSha256 } : {}),
                   },
               },
+              fsrsPersonalization: {
+                  ...personalization,
+                  active: Boolean(profile),
+              },
           });
-          await this.repo.replaceMemoryScheduling(finalized, updatedMemory);
+          verifyMemoryDatasetIntegrity(updatedMemory, evidenceEvents, finalized.fsrsScheduling.policy, profile);
+          await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);
           this.settings = finalized;
-          verifyMemoryDatasetIntegrity(updatedMemory, evidenceEvents, finalized.desiredRetention, profile);
       }
       async profiles() {
           return (await this.repo.getAll(Store.Profiles)).sort((a, b) => a.name.localeCompare(b.name));
@@ -10963,13 +11506,34 @@ exports.withFuzzing = withFuzzing;
           const beforeDueAt = obligation.dueAt;
           const suggested = suggestRating(obligation.type, normalizedDraft);
           const policy = this.router.get(obligation.type);
+          const priorMemoryReviews = obligation.type === "memory-recall"
+              ? memoryReviewObservationsFor(obligation.id, priorEvidence)
+              : [];
           const completion = obligation.type === "memory-recall"
               ? policy.complete(obligation, confirmed, normalizedDraft, reviewedAt, {
-                  memoryReviews: memoryReviewObservationsFor(obligation.id, priorEvidence),
+                  memoryReviews: priorMemoryReviews,
               })
               : policy.complete(obligation, confirmed, normalizedDraft, reviewedAt);
           obligation.dueAt = completion.dueAt;
           obligation.policyState = completion.policyState;
+          const memoryDifficulty = obligation.type === "memory-recall"
+              ? (() => {
+                  const beforeCard = beforePolicyState.fsrsCard;
+                  const afterCard = completion.policyState.fsrsCard;
+                  const schedulerConfig = completion.schedulerConfig;
+                  assert(beforeCard && afterCard && schedulerConfig, "Memory completion is missing FSRS difficulty evidence.");
+                  const currentReview = {
+                      evidenceEventId: "pending",
+                      reviewedAt: reviewedAt.toISOString(),
+                      rating: confirmed,
+                      source: "direct-memory",
+                      beforeCard: clone(beforeCard),
+                      afterCard: clone(afterCard),
+                      configFingerprint: schedulerConfig.fingerprint,
+                  };
+                  return memoryDifficultyAssessment(obligation, this.settings.memoryDifficultyPolicy, [...priorMemoryReviews, currentReview]);
+              })()
+              : undefined;
           obligation.updatedAt = reviewedAt.toISOString();
           obligation.lastCompletedAt = reviewedAt.toISOString();
           if (durationObservation.accepted) {
@@ -11002,10 +11566,15 @@ exports.withFuzzing = withFuzzing;
               obligation.suspensionReason = "relearning";
               const existing = (await this.obligationsForUnit(unit.id)).find((item) => item.type === "relearn" && item.status === "active" && item.returnObligationId === obligation.id);
               if (!existing) {
-                  const dueAt = addDays(reviewedAt, 1).toISOString();
+                  const dueAt = correctiveRelearnDueAt(await this.profile(unit.profileId), reviewedAt);
                   const policy = this.router.get("relearn");
                   const time = reviewedAt.toISOString();
                   const followUpId = uid("obligation");
+                  const remediationPlan = memoryDifficulty
+                      ? memoryDifficultyRemediationPlan(memoryDifficulty)
+                      : { priorityBoost: 2, guidance: "" };
+                  const escalation = remediationPlan.guidance;
+                  const priorityBoost = remediationPlan.priorityBoost;
                   followUp = {
                       schemaVersion: DOCUMENT_SCHEMA_VERSION,
                       id: followUpId,
@@ -11016,16 +11585,16 @@ exports.withFuzzing = withFuzzing;
                       expectedMinutes: Math.max(10, obligation.expectedMinutes),
                       baselineMinutes: Math.max(10, obligation.expectedMinutes),
                       durationSampleCount: 0,
-                      protocol: `Relearn the weak foundations, then repeat: ${obligation.protocol}`,
-                      successCriteria: `Explain the corrected concept independently before returning to ${obligationLabel(obligation.type)}.`,
+                      protocol: `${escalation}Relearn the weak foundations, then repeat: ${obligation.protocol}`,
+                      successCriteria: `${escalation}Explain the corrected concept independently before returning to ${obligationLabel(obligation.type)}.`,
                       workflow: {
                           kind: "relearning",
-                          prompt: `Repair the failure, then verify independently: ${obligation.workflow.prompt}`,
+                          prompt: `${escalation}Repair the failure, then verify independently: ${obligation.workflow.prompt}`,
                           checkpoints: [...obligation.workflow.checkpoints],
                           responseMedium: "in-app",
                       },
                       freshnessDays: obligation.freshnessDays,
-                      priority: obligation.priority + 2,
+                      priority: obligation.priority + priorityBoost,
                       policyState: policy.createInitialState(dueAt, followUpId),
                       parentObligationId: obligation.id,
                       returnObligationId: obligation.id,
@@ -11069,8 +11638,14 @@ exports.withFuzzing = withFuzzing;
                       else {
                           original.dueAt = addDays(reviewedAt, 3).toISOString();
                       }
-                      original.status = "active";
-                      delete original.suspensionReason;
+                      if (original.type === "memory-recall" && memoryDifficultyAssessment(original, this.settings.memoryDifficultyPolicy).automaticHoldEligible) {
+                          original.status = "suspended";
+                          original.suspensionReason = "persistent-difficulty";
+                      }
+                      else {
+                          original.status = "active";
+                          delete original.suspensionReason;
+                      }
                       original.updatedAt = reviewedAt.toISOString();
                       relatedObligation = original;
                   }
@@ -11126,6 +11701,21 @@ exports.withFuzzing = withFuzzing;
           const dailyPlan = await this.completedPlanRecord(obligation.id, undefined, roundTo(timing.totalActiveMs / 60_000, 1), reviewedAt, event.id);
           await this.repo.recordReview(unit, obligation, event, followUp, relatedObligation, chunkUpdates, dailyPlan, commitGuard, postCommitSession);
           return event;
+      }
+      async resumePersistentDifficulty(obligationId) {
+          const obligation = await this.obligation(obligationId);
+          assert(obligation.type === "memory-recall", "Only memory recall can be resumed from persistent-difficulty hold.");
+          assert(obligation.status === "suspended" && obligation.suspensionReason === "persistent-difficulty", "Memory obligation is not held for persistent difficulty.");
+          const unit = await this.unit(obligation.unitId);
+          assert(unit.status === "active", "Reactivate the knowledge unit before resuming this memory obligation.");
+          const unresolvedRepair = (await this.obligationsForUnit(unit.id)).some((item) => item.type === "relearn" &&
+              (item.status === "active" || item.status === "suspended") &&
+              item.returnObligationId === obligation.id);
+          assert(!unresolvedRepair, "Complete the unresolved relearning repair before resuming this memory obligation.");
+          obligation.status = "active";
+          delete obligation.suspensionReason;
+          obligation.updatedAt = nowIso();
+          await this.repo.put(Store.Obligations, obligation);
       }
       async studyEvents() {
           return (await this.repo.getAll(Store.StudyEvents)).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
@@ -11197,7 +11787,7 @@ exports.withFuzzing = withFuzzing;
       }
       async createBackupArchive(preferCompression = true) {
           const payload = this.validateBackup(await this.exportBackup());
-          verifyMemoryDatasetIntegrity(payload.obligations, payload.evidenceEvents, payload.settings.desiredRetention, activeFsrsOptimizerProfile(payload.settings));
+          verifyMemoryDatasetIntegrity(payload.obligations, payload.evidenceEvents, payload.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(payload.settings));
           return BackupCodec.create(payload, preferCompression);
       }
       async inspectBackupArchive(bytes) {
@@ -11208,8 +11798,8 @@ exports.withFuzzing = withFuzzing;
       }
       async restoreBackupPayload(payload, activeTreatment) {
           const validated = this.validateBackup(payload);
-          await prepareFsrsScheduler(validated.settings.desiredRetention, activeFsrsOptimizerProfile(validated.settings));
-          verifyMemoryDatasetIntegrity(validated.obligations, validated.evidenceEvents, validated.settings.desiredRetention, activeFsrsOptimizerProfile(validated.settings));
+          await prepareFsrsScheduler(validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings));
+          verifyMemoryDatasetIntegrity(validated.obligations, validated.evidenceEvents, validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings));
           await this.repo.replaceFromBackup(validated, activeTreatment);
           this.settings = clone(validated.settings);
       }
@@ -11219,7 +11809,7 @@ exports.withFuzzing = withFuzzing;
       validateBackup(input) {
           const candidate = requireRecord(input, "Backup");
           assert(candidate["format"] === BACKUP_FORMAT && candidate["schemaVersion"] === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
-          assert(candidate["appVersion"] === APP_VERSION, "This backup was not created by the current Revision Director build.");
+          const appVersion = canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version");
           const profiles = canonicalDocumentArray("profile", candidate["profiles"], "Backup profiles");
           const nodes = canonicalDocumentArray("node", candidate["nodes"], "Backup knowledge nodes");
           const units = canonicalDocumentArray("unit", candidate["units"], "Backup knowledge units");
@@ -11327,11 +11917,16 @@ exports.withFuzzing = withFuzzing;
               assert(Object.hasOwn(POLICY_ENGINE_BY_OBLIGATION, obligation.type), "Obligation type is invalid.");
               assert(["active", "completed", "suspended", "archived"].includes(obligation.status), "Obligation status is invalid.");
               if (obligation.status === "suspended")
-                  assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning", "Suspended obligation lacks a valid reason.");
+                  assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning" || obligation.suspensionReason === "persistent-difficulty", "Suspended obligation lacks a valid reason.");
               else
                   assert(obligation.suspensionReason === undefined, "Only suspended obligations may retain a suspension reason.");
-              if (obligation.suspensionReason === "relearning")
-                  assert(obligationMap.size > 0, "Relearning suspension is invalid.");
+              if (obligation.suspensionReason === "relearning") {
+                  assert([...obligationMap.values()].some((item) => item.type === "relearn" &&
+                      (item.status === "active" || item.status === "suspended") &&
+                      item.returnObligationId === obligation.id), "Relearning suspension lacks its unresolved repair obligation.");
+              }
+              if (obligation.suspensionReason === "persistent-difficulty")
+                  assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
               validDate(obligation.dueAt, "Obligation");
               validDate(obligation.createdAt, "Obligation");
               validDate(obligation.updatedAt, "Obligation");
@@ -11405,7 +12000,6 @@ exports.withFuzzing = withFuzzing;
                   const config = event.schedulerConfig;
                   assert(config, "Memory evidence lacks scheduler configuration.");
                   validateFsrsConfigSnapshot(config);
-                  assert(config.desiredRetention >= 0.75 && config.desiredRetention <= 0.97, "Memory evidence lacks a valid scheduler retention.");
               }
               else
                   assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined, "Non-memory evidence cannot claim FSRS provenance.");
@@ -11427,7 +12021,6 @@ exports.withFuzzing = withFuzzing;
                   assert(returned.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Returned-memory policy provenance is invalid.");
                   assert(returned.schedulerPackage === "ts-fsrs" && returned.schedulerVersion === FSRS_PACKAGE_VERSION && returned.schedulerModel === FSRS_MODEL, "Returned-memory scheduler provenance is invalid.");
                   validateFsrsConfigSnapshot(returned.schedulerConfig);
-                  assert(returned.schedulerConfig.desiredRetention >= 0.75 && returned.schedulerConfig.desiredRetention <= 0.97, "Returned-memory scheduler retention is invalid.");
                   for (const state of [returned.beforePolicyState, returned.afterPolicyState]) {
                       assert(state.engine === "ts-fsrs" && state.version === FSRS_PACKAGE_VERSION && state.fsrsCard?.model === FSRS_MODEL, "Returned-memory policy state is invalid.");
                       assert(state.fsrsCard.cardId === returned.obligationId, "Returned-memory card identity is invalid.");
@@ -11435,7 +12028,7 @@ exports.withFuzzing = withFuzzing;
                   }
               }
           }
-          validateMemoryDatasetProjectionChain(obligations, evidenceEvents);
+          validateMemoryDatasetProjectionChain(obligations, memoryReviewObservationIndex(evidenceEvents));
           const chunksByObligation = new Map();
           for (const chunk of chunks) {
               const obligation = obligationMap.get(chunk.obligationId);
@@ -11578,14 +12171,20 @@ exports.withFuzzing = withFuzzing;
           }
           assertDocumentSchema(settings, "Backup settings");
           assert(settings.key === "app" && (profileMap.size === 0 ? settings.activeProfileId === "" : profileMap.has(settings.activeProfileId)), "Backup settings reference an invalid active profile.");
-          assert(Number.isFinite(settings.desiredRetention) && settings.desiredRetention >= 0.75 && settings.desiredRetention <= 0.97, "Desired retention is invalid.");
+          canonicalFsrsSchedulingSettings(settings.fsrsScheduling);
+          const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(settings.memoryDifficultyPolicy);
+          for (const obligation of obligations) {
+              if (obligation.suspensionReason !== "persistent-difficulty")
+                  continue;
+              assert(memoryDifficultyAssessment(obligation, memoryDifficultyPolicy).automaticHoldEligible, "Persistent-difficulty hold is not justified by the active automatic-hold policy.");
+          }
           assert(Number.isFinite(settings.dailyCapacityMinutes) && settings.dailyCapacityMinutes >= 5 && settings.dailyCapacityMinutes <= 600, "Daily revision capacity is invalid.");
           assert(Number.isInteger(settings.studyDayBoundaryHour) && settings.studyDayBoundaryHour >= 0 && settings.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
           return {
               format: BACKUP_FORMAT,
               schemaVersion: BACKUP_SCHEMA_VERSION,
               exportedAt: canonicalIso(requiredString(candidate["exportedAt"], "Backup export date"), "Backup export date"),
-              appVersion: canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version"),
+              appVersion,
               profiles,
               nodes,
               units,
@@ -11635,21 +12234,7 @@ exports.withFuzzing = withFuzzing;
   ]);
   class BackupCodec {
       static encode(value) {
-          if (typeof TextEncoder !== "undefined")
-              return new TextEncoder().encode(value);
-          const bytes = [];
-          for (const symbol of value) {
-              const point = symbol.codePointAt(0);
-              if (point <= 0x7f)
-                  bytes.push(point);
-              else if (point <= 0x7ff)
-                  bytes.push(0xc0 | (point >> 6), 0x80 | (point & 0x3f));
-              else if (point <= 0xffff)
-                  bytes.push(0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f));
-              else
-                  bytes.push(0xf0 | (point >> 18), 0x80 | ((point >> 12) & 0x3f), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f));
-          }
-          return new Uint8Array(bytes);
+          return utf8Bytes(value);
       }
       static async create(payload, preferCompression = true) {
           const collections = this.payloadCollections(payload);
@@ -11836,7 +12421,7 @@ exports.withFuzzing = withFuzzing;
       static parseManifest(input) {
           const value = requireRecord(input, "Backup manifest");
           assert(value["kind"] === "manifest" && value["format"] === BACKUP_ARCHIVE_FORMAT && value["version"] === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
-          assert(value["appVersion"] === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
+          const appVersion = canonicalId(requiredString(value["appVersion"], "Backup application version"), "Backup application version");
           assert(value["payloadFormat"] === BACKUP_FORMAT && value["payloadSchemaVersion"] === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
           const compression = literalChoice(value["compression"], ["none", "gzip"], "Backup compression metadata");
           const hashAlgorithm = literalChoice(value["hashAlgorithm"], ["sha256"], "Backup hash algorithm");
@@ -11850,7 +12435,7 @@ exports.withFuzzing = withFuzzing;
               format: BACKUP_ARCHIVE_FORMAT,
               version: BACKUP_ARCHIVE_VERSION,
               exportedAt: canonicalIso(requiredString(value["exportedAt"], "Backup export date"), "Backup export date"),
-              appVersion: canonicalId(requiredString(value["appVersion"], "Backup application version"), "Backup application version"),
+              appVersion,
               payloadFormat: BACKUP_FORMAT,
               payloadSchemaVersion: BACKUP_SCHEMA_VERSION,
               compression,
@@ -11928,71 +12513,7 @@ exports.withFuzzing = withFuzzing;
           return this.hashBytes(this.encode(JSON.stringify(value)), algorithm);
       }
       static async hashBytes(bytes, _algorithm) {
-          if (globalThis.crypto?.subtle) {
-              const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
-              return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
-          }
-          return this.sha256Fallback(bytes);
-      }
-      static sha256Fallback(input) {
-          const constants = new Uint32Array([
-              0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-              0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-              0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-              0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-              0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-              0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-              0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-              0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-          ]);
-          const bitLength = BigInt(input.byteLength) * 8n;
-          const paddedLength = Math.ceil((input.byteLength + 9) / 64) * 64;
-          const bytes = new Uint8Array(paddedLength);
-          bytes.set(input);
-          bytes[input.byteLength] = 0x80;
-          for (let index = 0; index < 8; index += 1)
-              bytes[paddedLength - 1 - index] = Number((bitLength >> BigInt(index * 8)) & 0xffn);
-          const state = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
-          const words = new Uint32Array(64);
-          const rotate = (value, amount) => (value >>> amount) | (value << (32 - amount));
-          for (let offset = 0; offset < bytes.length; offset += 64) {
-              for (let index = 0; index < 16; index += 1) {
-                  const base = offset + index * 4;
-                  words[index] = ((bytes[base] << 24) | (bytes[base + 1] << 16) | (bytes[base + 2] << 8) | bytes[base + 3]) >>> 0;
-              }
-              for (let index = 16; index < 64; index += 1) {
-                  const x = words[index - 15], y = words[index - 2];
-                  const s0 = rotate(x, 7) ^ rotate(x, 18) ^ (x >>> 3);
-                  const s1 = rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10);
-                  words[index] = (words[index - 16] + s0 + words[index - 7] + s1) >>> 0;
-              }
-              let a = state[0], b = state[1], c = state[2], d = state[3], e = state[4], f = state[5], g = state[6], h = state[7];
-              for (let index = 0; index < 64; index += 1) {
-                  const sum1 = rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25);
-                  const choice = (e & f) ^ (~e & g);
-                  const temp1 = (h + sum1 + choice + constants[index] + words[index]) >>> 0;
-                  const sum0 = rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22);
-                  const majority = (a & b) ^ (a & c) ^ (b & c);
-                  const temp2 = (sum0 + majority) >>> 0;
-                  h = g;
-                  g = f;
-                  f = e;
-                  e = (d + temp1) >>> 0;
-                  d = c;
-                  c = b;
-                  b = a;
-                  a = (temp1 + temp2) >>> 0;
-              }
-              state[0] = (state[0] + a) >>> 0;
-              state[1] = (state[1] + b) >>> 0;
-              state[2] = (state[2] + c) >>> 0;
-              state[3] = (state[3] + d) >>> 0;
-              state[4] = (state[4] + e) >>> 0;
-              state[5] = (state[5] + f) >>> 0;
-              state[6] = (state[6] + g) >>> 0;
-              state[7] = (state[7] + h) >>> 0;
-          }
-          return [...state].map((value) => value.toString(16).padStart(8, "0")).join("");
+          return sha256Hex(bytes);
       }
       static async compress(bytes) {
           const stream = new Blob([ownedArrayBuffer(bytes)]).stream().pipeThrough(new CompressionStream("gzip"));
@@ -13008,6 +13529,8 @@ exports.withFuzzing = withFuzzing;
       ownershipSnapshot;
       restoreCandidateId = "";
       restoreSafetyProofId = "";
+      fsrsOptimizerRun;
+      fsrsOptimizerProgress;
       todayContent = requiredElement("#today-content", HTMLDivElement);
       reviewContent = requiredElement("#review-content", HTMLDivElement);
       libraryContent = requiredElement("#library-content", HTMLDivElement);
@@ -13298,6 +13821,7 @@ exports.withFuzzing = withFuzzing;
           if (wasPrimary && !snapshot.canMutate) {
               this.stopTimer();
               this.hideGapOverlay();
+              this.fsrsOptimizerRun?.cancel();
           }
           const primary = snapshot.canMutate;
           this.ownershipBanner.hidden = primary;
@@ -13362,6 +13886,7 @@ exports.withFuzzing = withFuzzing;
           await this.renderCoordinator.invalidateAndWait("storage", "ownership");
       }
       async handlePageExit() {
+          this.fsrsOptimizerRun?.cancel();
           if (this.ownership.canMutate()) {
               this.reconcilePhaseTime("snapshot");
               this.forceActiveRetrievalSave();
@@ -13714,10 +14239,13 @@ exports.withFuzzing = withFuzzing;
           return `<div class="empty-state"><strong>${escapeHtml(title)}</strong>${escapeHtml(message)}</div>`;
       }
       async renderLibrary() {
+          const settings = this.service.getSettings();
           const profiles = await this.service.profiles();
           const units = (await this.service.units()).filter((unit) => unit.status !== "archived");
           const nodes = await this.service.nodes();
           const obligations = await this.service.obligations();
+          const evidenceEvents = await this.service.evidenceEvents();
+          const memoryReviews = memoryReviewObservationIndex(evidenceEvents);
           const nodeMap = new Map(nodes.map((node) => [node.id, node]));
           const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
           const filtered = units.filter((unit) => {
@@ -13739,7 +14267,24 @@ exports.withFuzzing = withFuzzing;
               const section = topic?.parentId ? nodeMap.get(topic.parentId) : undefined;
               const subject = section?.parentId ? nodeMap.get(section.parentId) : undefined;
               const unitObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.status === "active");
-              return `<article class="unit-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(unit.profileId)?.name ?? "Exam")} · ${escapeHtml(subject?.name ?? "")} › ${escapeHtml(section?.name ?? "")} › ${escapeHtml(topic?.name ?? "")}</div><div class="row-title">${escapeHtml(unit.title)}</div><p>${escapeHtml(unit.scope)}</p><div class="row-meta">${unitObligations.map((obligation) => `<span class="chip ${obligationChip(obligation.type)}">${escapeHtml(obligationLabel(obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(obligation.workflow.kind))}</span>`).join("")}<span>${unit.evidenceCount} evidence events</span><span>${unit.lapseCount} failures</span></div></div><div class="row-actions"><button class="mini-btn" data-action="review-unit" data-id="${unit.id}">REVIEW</button><button class="mini-btn" data-action="add-obligation" data-id="${unit.id}">ADD OBLIGATION</button><button class="mini-btn" data-action="toggle-unit" data-id="${unit.id}" data-status="${unit.status === "active" ? "suspended" : "active"}">${unit.status === "active" ? "SUSPEND" : "ACTIVATE"}</button></div></article>`;
+              const memoryObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.type === "memory-recall" && obligation.status !== "archived");
+              const difficultyPanels = memoryObligations.map((obligation) => {
+                  const assessment = memoryDifficultyAssessment(obligation, settings.memoryDifficultyPolicy, memoryReviews.get(obligation.id) ?? []);
+                  if (assessment.level === "normal")
+                      return "";
+                  const label = assessment.level === "persistent-difficulty"
+                      ? "Persistent difficulty"
+                      : assessment.level === "remediation"
+                          ? "Remediation"
+                          : "Early learning difficulty";
+                  const burden = assessment.level === "learning-difficulty"
+                      ? `${assessment.earlyLearningFailures} failed learning recalls`
+                      : `${assessment.establishedLapses} established FSRS lapses`;
+                  const actions = assessment.recommendedActions.map(memoryDifficultyActionLabel).join(" · ");
+                  return `<div class="policy-box"><strong>${label} · ${burden}.</strong> ${escapeHtml(actions)}.</div>`;
+              }).join("");
+              const heldMemory = memoryObligations.filter((obligation) => obligation.status === "suspended" && obligation.suspensionReason === "persistent-difficulty");
+              return `<article class="unit-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(unit.profileId)?.name ?? "Exam")} · ${escapeHtml(subject?.name ?? "")} › ${escapeHtml(section?.name ?? "")} › ${escapeHtml(topic?.name ?? "")}</div><div class="row-title">${escapeHtml(unit.title)}</div><p>${escapeHtml(unit.scope)}</p><div class="row-meta">${unitObligations.map((obligation) => `<span class="chip ${obligationChip(obligation.type)}">${escapeHtml(obligationLabel(obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(obligation.workflow.kind))}</span>`).join("")}<span>${unit.evidenceCount} evidence events</span><span>${unit.lapseCount} failures</span></div>${difficultyPanels}</div><div class="row-actions"><button class="mini-btn" data-action="review-unit" data-id="${unit.id}">REVIEW</button><button class="mini-btn" data-action="add-obligation" data-id="${unit.id}">ADD OBLIGATION</button>${heldMemory.map((obligation) => `<button class="mini-btn" data-action="resume-persistent-difficulty" data-id="${obligation.id}">RESUME MEMORY</button>`).join("")}<button class="mini-btn" data-action="toggle-unit" data-id="${unit.id}" data-status="${unit.status === "active" ? "suspended" : "active"}">${unit.status === "active" ? "SUSPEND" : "ACTIVATE"}</button></div></article>`;
           }).join("")}</div>` : this.emptyState("No matching knowledge", "Create a unit or change the search filter.")}</div>
           </div>`;
       }
@@ -13801,24 +14346,69 @@ exports.withFuzzing = withFuzzing;
           const profile = personalization.profile;
           const status = personalization.active ? "ACTIVE" : profile ? "STAGED" : "STOCK";
           const statusClass = personalization.active ? "ok" : "";
-          const profileDetail = profile
+          const optimizer = browserFsrsOptimizerAvailability();
+          const running = this.fsrsOptimizerRun !== undefined;
+          const progress = this.fsrsOptimizerProgress;
+          const progressText = progress
+              ? `${progress.stage} · ${progress.total > 0 ? `${progress.current}/${progress.total}` : "working"}`
+              : running ? "Preparing local optimizer…" : optimizer.reason;
+          const progressValue = progress && progress.total > 0
+              ? Math.max(0, Math.min(progress.total, progress.current))
+              : 0;
+          const progressMax = progress && progress.total > 0 ? progress.total : 1;
+          const canOptimize = optimizer.available && !personalization.active && !running && summary.reviews > 0;
+          const holdoutDiagnostics = profile
+              ? fsrsHoldoutDiagnostics(profile.evaluation.holdout.stock, profile.evaluation.holdout.personalized)
+              : undefined;
+          const profileDetail = profile && holdoutDiagnostics
               ? `<div class="dependency-status"><span>Profile</span><strong>${escapeHtml(profile.sourceSha256.slice(0, 12))}…</strong></div>
-             <div class="dependency-status"><span>Held-out log loss</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)}</strong></div>
-             <div class="dependency-status"><span>Held-out RMSE bins</span><strong>${roundTo(profile.evaluation.holdout.stock.rmseBins, 4)} → ${roundTo(profile.evaluation.holdout.personalized.rmseBins, 4)}</strong></div>
+             <div class="dependency-status"><span>Held-out log loss</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)} · ${roundTo(holdoutDiagnostics.logLossImprovement.relative * 100, 2)}% better</strong></div>
+             <div class="dependency-status"><span>Calibration · RMSE bins</span><strong>${roundTo(profile.evaluation.holdout.stock.rmseBins, 4)} → ${roundTo(profile.evaluation.holdout.personalized.rmseBins, 4)} · ${holdoutDiagnostics.calibration.status}</strong></div>
              <div class="dependency-status"><span>Time-series CV</span><strong>LL ${roundTo(profile.evaluation.crossValidation.logLoss, 4)} · RMSE ${roundTo(profile.evaluation.crossValidation.rmseBins, 4)}</strong></div>`
               : `<p class="helper">No validated personalized profile is staged. Stock FSRS-7 remains authoritative.</p>`;
-          const profileActions = personalization.active
-              ? `<button class="mini-btn" type="button" data-action="deactivate-fsrs-profile">RETURN TO STOCK + REPROJECT</button>`
-              : profile
-                  ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
-                  : "";
-          return `<section class="panel settings-card wide"><h3>FSRS-7 personalization</h3>
-          <div class="dependency-status"><span>Scheduling mode</span><strong class="${statusClass}">${status}</strong></div>
-          <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards</strong></div>
+          const profileActions = running
+              ? ""
+              : personalization.active
+                  ? `<button class="mini-btn" type="button" data-action="deactivate-fsrs-profile">RETURN TO STOCK + REPROJECT</button>`
+                  : profile
+                      ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
+                      : "";
+          const localAction = personalization.active
+              ? `<button class="mini-btn" type="button" disabled>RETURN TO STOCK BEFORE RE-OPTIMIZING</button>`
+              : running
+                  ? `<button class="mini-btn" type="button" data-action="cancel-fsrs-optimization">CANCEL OPTIMIZATION</button>`
+                  : `<button class="mini-btn" type="button" data-action="optimize-fsrs-locally" ${canOptimize ? "" : "disabled"}>${profile ? "RE-OPTIMIZE LOCALLY" : "OPTIMIZE LOCALLY"}</button>`;
+          return `<section class="panel settings-card wide" id="fsrs-personalization-card"><h3>FSRS-7 personalization</h3>
+          <div class="dependency-status"><span>Weights</span><strong class="${statusClass}">${status}</strong></div>
+          <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards · ${summary.reliableDurations} timed · ${summary.unavailableDurations} untimed</strong></div>
+          <div class="dependency-status"><span>Local optimizer</span><strong class="${optimizer.available ? "ok" : ""}">${optimizer.available ? "AVAILABLE" : "OPTIONAL BUILD REQUIRED"}</strong></div>
+          <div class="optimizer-progress" data-fsrs-optimizer-progress ${running ? "" : "hidden"}><div><span data-fsrs-optimizer-progress-label>${escapeHtml(progressText)}</span></div><progress data-fsrs-optimizer-progress-bar max="${progressMax}" value="${progressValue}"></progress></div>
           ${profileDetail}
-          <div class="settings-actions"><button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json"></label>${profileActions}</div>
-          <p class="helper">Training is deliberately outside Revision Director. Import only a profile produced by the pinned optimizer tool. Import stages it; activation is separate and atomically rebuilds reviewed memory schedules from immutable Evidence Events. Historical scheduler provenance is never rewritten.</p>
+          <div class="settings-actions">${localAction}<button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn ${running ? "disabled" : ""}">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json" ${running ? "disabled" : ""}></label>${profileActions}</div>
+          <p class="helper">${escapeHtml(progressText)} Local optimization uses a dedicated Worker and the pinned FSRS-7 WASM binding; review evidence does not leave the browser. Optimizer duration is closed-book recall/verification time only; unreliable timing remains in recall history with unavailable cost rather than full-session time. The exact gate remains 64 historical training items, 64 later holdout items and 16 distinct holdout cards after conversion. A successful run is <strong>staged only</strong>; activation and atomic reprojection remain explicit.</p>
         </section>`;
+      }
+      async refreshFsrsPersonalizationCard() {
+          const card = this.settingsContent.querySelector("#fsrs-personalization-card");
+          if (!card)
+              return;
+          const summary = await this.service.optimizerEvidenceSummary();
+          card.outerHTML = this.fsrsPersonalizationCard(this.service.getSettings(), summary);
+          this.applyReadOnlyState();
+      }
+      updateFsrsOptimizerProgress(progress) {
+          this.fsrsOptimizerProgress = progress;
+          const region = this.settingsContent.querySelector("[data-fsrs-optimizer-progress]");
+          const label = this.settingsContent.querySelector("[data-fsrs-optimizer-progress-label]");
+          const bar = this.settingsContent.querySelector("[data-fsrs-optimizer-progress-bar]");
+          if (region)
+              region.hidden = false;
+          if (label)
+              label.textContent = `${progress.stage} · ${progress.total > 0 ? `${progress.current}/${progress.total}` : "working"}`;
+          if (bar) {
+              bar.max = progress.total > 0 ? progress.total : 1;
+              bar.value = progress.total > 0 ? Math.max(0, Math.min(progress.total, progress.current)) : 0;
+          }
       }
       async renderSettings() {
           const settings = this.service.getSettings();
@@ -13835,7 +14425,8 @@ exports.withFuzzing = withFuzzing;
           ${this.pageHead("SYSTEM CONTROL", "Settings", "Revision Director remains deterministic and local-first; AI can later advise without owning the record.")}
           <form id="settings-form" class="settings-grid">
             <section class="panel settings-card"><h3>Planning</h3><label>Default exam profile for new records<select name="activeProfileId" ${profiles.length ? "" : "disabled"}>${profiles.length ? profiles.map((profile) => `<option value="${profile.id}" ${profile.id === settings.activeProfileId ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("") : '<option value="">Create an exam profile first</option>'}</select></label><label>Daily revision capacity<input name="dailyCapacityMinutes" type="number" min="5" max="600" value="${settings.dailyCapacityMinutes}"></label><label>Study-day boundary hour<input name="studyDayBoundaryHour" type="number" min="0" max="12" value="${settings.studyDayBoundaryHour}"></label></section>
-            <section class="panel settings-card"><h3>Memory scheduling</h3><label>Desired retention<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${settings.desiredRetention}"></label><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">FSRS is routed only to memory-recall obligations. It does not schedule answer writing, conceptual mastery or freshness work.</p></section>
+            <section class="panel settings-card"><h3>Memory scheduling</h3><div class="dependency-status"><span>Policy</span><strong>Fixed retention</strong></div><label>Desired retention<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${fixedRetentionForPolicy(settings.fsrsScheduling.policy)}"></label><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">FSRS is routed only to memory-recall obligations. Scheduling policy and personalized weights are independent configuration axes; Cost-ADR is reserved by the scheduler contract but is not enabled in this build.</p></section>
+            <section class="panel settings-card"><h3>Persistent difficulty</h3><label>Escalate to remediation after FSRS lapses<input name="difficultyRemediationLapses" type="number" min="2" max="99" value="${settings.memoryDifficultyPolicy.remediationLapses}"></label><label>Persistent difficulty after FSRS lapses<input name="difficultyPersistentLapses" type="number" min="3" max="100" value="${settings.memoryDifficultyPolicy.persistentDifficultyLapses}"></label><label class="check-option strong-check"><input name="difficultyAutomaticHold" type="checkbox" ${settings.memoryDifficultyPolicy.automaticHold.enabled ? "checked" : ""}>Hold persistent-difficulty memory out of the normal queue after successful remediation</label><label>Automatic-hold lapse threshold<input name="difficultyAutomaticHoldLapses" type="number" min="${settings.memoryDifficultyPolicy.persistentDifficultyLapses + 1}" max="1000" value="${settings.memoryDifficultyPolicy.automaticHold.lapseThreshold}"></label><p class="helper">The signal is the FSRS lapse counter: Again from Review state. Early failures still use ordinary relearning; repeated lapses escalate the remediation itself. Revision Director owns any queue hold; the FSRS card is never marked suspended.</p></section>
             ${this.fsrsPersonalizationCard(settings, optimizerEvidence)}
             <section class="panel settings-card"><h3>Add exam profile</h3><label>Name<input id="new-profile-name" placeholder="IFoS 2027, USMLE Step 1..."></label><label>Exam date<input id="new-profile-date" type="date"></label><button class="btn" type="button" data-action="add-profile">ADD PROFILE</button></section>
             <section class="panel settings-card"><h3>Backup and recovery</h3><button class="btn" type="button" data-action="export-backup">EXPORT BACKUP</button><label class="btn file-btn">IMPORT BACKUP<input id="import-backup" type="file" accept=".rdbackup,application/x-revision-director-backup,application/gzip,application/octet-stream"></label><p class="helper">Export remains one click. Import verifies and previews the file first, then requires a current-state safety copy and explicit restore confirmation.</p></section>
@@ -14074,7 +14665,19 @@ exports.withFuzzing = withFuzzing;
           const ratingGuidance = obligation.type === "memory-recall"
               ? `<div class="policy-box"><strong>FSRS rating:</strong> Again = failed recall; Hard = partial or cued recall; Good = complete independent recall; choose Easy only when recall was unusually effortless.</div>`
               : "";
-          return `<section class="evidence-panel"><div class="workflow-head"><div><span>COMPARE & RECORD</span><h2>${escapeHtml(workflowLabel(spec.kind))} evidence</h2></div><p>The app converts modality-specific results into a common evidence record.</p></div>${specific}${this.commonEvidenceFields()}<div class="suggested-rating"><span>Evidence-based suggestion</span><strong id="suggested-rating">Complete the assessment</strong></div>${ratingGuidance}<div class="rating-grid">${this.reviewPreviews.map((preview) => `<button class="rating-btn ${ratingName(preview.rating).toLowerCase()}" data-action="rate" data-rating="${preview.rating}"><strong>${ratingName(preview.rating)}</strong><span>${escapeHtml(preview.label)}</span></button>`).join("")}</div><div class="policy-box"><strong>Policy:</strong> ${escapeHtml(obligation.policyState.engine)}. The workflow produces evidence; the policy determines the next obligation date.</div></section>`;
+          const difficultyGuidance = obligation.type === "memory-recall"
+              ? (() => {
+                  const assessment = memoryDifficultyAssessment(obligation, this.service.getSettings().memoryDifficultyPolicy);
+                  if (assessment.level === "normal")
+                      return "";
+                  const label = assessment.level === "persistent-difficulty" ? "Persistent difficulty" : assessment.level === "remediation" ? "Remediation" : "Early learning difficulty";
+                  const burden = assessment.level === "learning-difficulty"
+                      ? `${assessment.earlyLearningFailures} failed learning recalls`
+                      : `${assessment.establishedLapses} established FSRS lapses`;
+                  return `<div class="policy-box"><strong>${label}:</strong> ${burden} · ${escapeHtml(assessment.recommendedActions.map(memoryDifficultyActionLabel).join(" · "))}.</div>`;
+              })()
+              : "";
+          return `<section class="evidence-panel"><div class="workflow-head"><div><span>COMPARE & RECORD</span><h2>${escapeHtml(workflowLabel(spec.kind))} evidence</h2></div><p>The app converts modality-specific results into a common evidence record.</p></div>${specific}${this.commonEvidenceFields()}${difficultyGuidance}<div class="suggested-rating"><span>Evidence-based suggestion</span><strong id="suggested-rating">Complete the assessment</strong></div>${ratingGuidance}<div class="rating-grid">${this.reviewPreviews.map((preview) => `<button class="rating-btn ${ratingName(preview.rating).toLowerCase()}" data-action="rate" data-rating="${preview.rating}"><strong>${ratingName(preview.rating)}</strong><span>${escapeHtml(preview.label)}</span></button>`).join("")}</div><div class="policy-box"><strong>Policy:</strong> ${escapeHtml(obligation.policyState.engine)}. The workflow produces evidence; the policy determines the next obligation date.</div></section>`;
       }
       checkpointAssessment(checkpoints) {
           return `<fieldset class="checkpoint-assessment"><legend>Checkpoints retrieved correctly</legend><div class="checkpoint-list">${checkpoints.map((item, index) => `<label class="check-option"><input id="checkpoint-${index}" data-checkpoint data-evidence-input type="checkbox">${escapeHtml(item)}</label>`).join("")}</div></fieldset>`;
@@ -14335,6 +14938,11 @@ exports.withFuzzing = withFuzzing;
                   await this.startUnitSession(element.dataset["id"] ?? "");
               else if (action === "add-obligation")
                   await this.openObligationDialog(element.dataset["id"] ?? "");
+              else if (action === "resume-persistent-difficulty") {
+                  await this.service.resumePersistentDifficulty(element.dataset["id"] ?? "");
+                  await this.renderAll();
+                  this.toast("Memory obligation returned to the normal queue.");
+              }
               else if (action === "toggle-unit") {
                   await this.service.updateUnitStatus(element.dataset["id"] ?? "", literalChoice(element.dataset["status"], ENTITY_STATUSES, "Unit status"));
                   await this.renderAll();
@@ -14418,6 +15026,10 @@ exports.withFuzzing = withFuzzing;
               }
               else if (action === "export-fsrs-evidence")
                   await this.exportFsrsOptimizerEvidence();
+              else if (action === "optimize-fsrs-locally")
+                  await this.optimizeFsrsLocally();
+              else if (action === "cancel-fsrs-optimization")
+                  this.fsrsOptimizerRun?.cancel();
               else if (action === "activate-fsrs-profile") {
                   await this.service.activateFsrsOptimizerProfile();
                   await this.renderAll();
@@ -14799,7 +15411,18 @@ exports.withFuzzing = withFuzzing;
                   schemaVersion: DOCUMENT_SCHEMA_VERSION,
                   key: "app",
                   activeProfileId: formText(data, "activeProfileId"),
-                  desiredRetention: formNumber(data, "desiredRetention"),
+                  fsrsScheduling: {
+                      ...current.fsrsScheduling,
+                      policy: { kind: "fixed-retention", desiredRetention: formNumber(data, "desiredRetention") },
+                  },
+                  memoryDifficultyPolicy: {
+                      remediationLapses: formNumber(data, "difficultyRemediationLapses"),
+                      persistentDifficultyLapses: formNumber(data, "difficultyPersistentLapses"),
+                      automaticHold: {
+                          enabled: data.has("difficultyAutomaticHold"),
+                          lapseThreshold: formNumber(data, "difficultyAutomaticHoldLapses"),
+                      },
+                  },
                   dailyCapacityMinutes: formNumber(data, "dailyCapacityMinutes"),
                   studyDayBoundaryHour: formNumber(data, "studyDayBoundaryHour"),
               });
@@ -14870,15 +15493,52 @@ exports.withFuzzing = withFuzzing;
               await this.renderCoordinator.invalidateAndWait("settings", "ownership");
           }
       }
+      async optimizeFsrsLocally() {
+          assert(this.requireMutable("optimize and stage personalized FSRS-7 weights"), "This tab is read-only.");
+          assert(!this.fsrsOptimizerRun, "FSRS optimization is already running.");
+          const personalization = effectiveFsrsPersonalization(this.service.getSettings());
+          assert(!personalization.active, "Return to stock FSRS-7 before optimizing a replacement profile.");
+          const availability = browserFsrsOptimizerAvailability();
+          assert(availability.available, availability.reason);
+          const snapshot = await this.service.optimizerEvidenceSnapshot();
+          assert(snapshot.summary.reviews > 0, "No memory-review evidence is available for optimization.");
+          this.fsrsOptimizerProgress = { stage: "Preparing local evidence", current: 0, total: 0 };
+          const run = startBrowserFsrsOptimizer(snapshot.csv, {
+              onProgress: (progress) => this.updateFsrsOptimizerProgress(progress),
+          });
+          this.fsrsOptimizerRun = run;
+          await this.refreshFsrsPersonalizationCard();
+          try {
+              const profile = await run.promise;
+              assert(this.requireMutable("stage the locally optimized FSRS-7 profile"), "Review control changed before optimizer staging.");
+              const staged = await this.service.stageFsrsOptimizerProfile(profile);
+              this.toast(`Local FSRS-7 optimization passed the holdout gate · ${staged.evidenceItems} optimizer items. Profile staged; activation remains explicit.`);
+          }
+          catch (error) {
+              if (error instanceof DOMException && error.name === "AbortError") {
+                  if (this.ownership.canMutate())
+                      this.toast("FSRS optimization cancelled.");
+              }
+              else if (error instanceof FsrsOptimizerRejectedError) {
+                  this.toast(`Personalized FSRS-7 was not staged · ${error.reasons.join("; ")}`, true);
+              }
+              else {
+                  this.toast(error instanceof Error ? error.message : "Local FSRS optimization failed.", true);
+              }
+          }
+          finally {
+              if (this.fsrsOptimizerRun === run)
+                  this.fsrsOptimizerRun = undefined;
+              this.fsrsOptimizerProgress = undefined;
+              await this.refreshFsrsPersonalizationCard();
+          }
+      }
       async exportFsrsOptimizerEvidence() {
-          const [csv, summary] = await Promise.all([
-              this.service.optimizerEvidenceCsv(),
-              this.service.optimizerEvidenceSummary(),
-          ]);
-          assert(summary.reviews > 0, "No memory-review evidence is available for optimizer export.");
+          const snapshot = await this.service.optimizerEvidenceSnapshot();
+          assert(snapshot.summary.reviews > 0, "No memory-review evidence is available for optimizer export.");
           const date = new Date().toISOString().slice(0, 10);
-          downloadBlob(`revision-director-fsrs-evidence-${date}.csv`, csv, "text/csv;charset=utf-8");
-          this.toast(`FSRS optimizer evidence exported · ${summary.reviews} reviews across ${summary.cards} cards.`);
+          downloadBlob(`revision-director-fsrs-evidence-${date}.csv`, snapshot.csv, "text/csv;charset=utf-8");
+          this.toast(`FSRS optimizer evidence exported · ${snapshot.summary.reviews} reviews across ${snapshot.summary.cards} cards · ${snapshot.summary.reliableDurations} reliable retrieval durations.`);
       }
       async importFsrsOptimizerProfile(input) {
           if (!this.requireMutable("stage an FSRS optimizer profile")) {
