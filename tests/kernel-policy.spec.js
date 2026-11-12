@@ -575,6 +575,7 @@ async function testCanonicalProfilePersistence() {
   const commits=[];
   const repo={
     getAll:async()=>structuredClone(profiles),
+    get:async()=>undefined,
     putProfileAndSettings:async(profile,settings)=>{commits.push([structuredClone(profile),structuredClone(settings)]);profiles=profiles.filter(x=>x.id!==profile.id);profiles.push(structuredClone(profile));},
   };
   const svc=new api.RevisionService(repo);svc.settings=structuredClone(baseSettings);
