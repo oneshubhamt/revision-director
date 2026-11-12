@@ -7114,7 +7114,13 @@ exports.withFuzzing = withFuzzing;
   function assertDocumentSchema(value, label) {
       assert(value.schemaVersion === DOCUMENT_SCHEMA_VERSION, `${label} uses an unsupported document schema.`);
   }
+  function assertExactKeys(value, label, allowedKeys) {
+      const allowed = new Set(allowedKeys);
+      const unexpected = Object.keys(value).filter((key) => !allowed.has(key));
+      assert(unexpected.length === 0, `${label} contains unexpected fields: ${unexpected.join(", ")}.`);
+  }
   function canonicalWorkflowSpec(value) {
+      assertExactKeys(value, "Workflow", ["kind", "prompt", "checkpoints", "responseMedium", "targetCount", "questionSetRef", "timeLimitMinutes", "wordLimit", "reconstructionShape", "answerMode", "diagramSurface"]);
       const workflow = clone(value);
       workflow.prompt = canonicalText(workflow.prompt, "Workflow prompt", 8_000);
       workflow.checkpoints = [...new Set(workflow.checkpoints.map((checkpoint) => canonicalName(checkpoint, "Workflow checkpoint", 500)))];
@@ -7124,8 +7130,10 @@ exports.withFuzzing = withFuzzing;
       return workflow;
   }
   function canonicalPolicyState(value) {
+      assertExactKeys(value, "Policy state", ["engine", "version", "stage", "successStreak", "failureCount", "lastIntervalDays", "fsrsCard"]);
       const state = clone(value);
       if (state.fsrsCard) {
+          assertExactKeys(state.fsrsCard, "FSRS card", ["model", "cardId", "dueAt", "stability", "stabilityFast", "difficulty", "scheduledDays", "learningStep", "reps", "lapses", "state", "scheduleStatus", "lastReviewAt"]);
           state.fsrsCard.dueAt = canonicalIso(state.fsrsCard.dueAt, "FSRS due date");
           if (state.fsrsCard.lastReviewAt !== undefined)
               state.fsrsCard.lastReviewAt = canonicalIso(state.fsrsCard.lastReviewAt, "FSRS last review date");
@@ -7136,6 +7144,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalExamProfile(value) {
       assertDocumentSchema(value, "Exam profile");
+      assertExactKeys(value, "Exam profile", ["schemaVersion", "id", "name", "examDate", "status", "createdAt", "updatedAt"]);
       if (value.examDate)
           validateCalendarDate(value.examDate, "Exam date");
       return {
@@ -7150,6 +7159,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalKnowledgeNode(value) {
       assertDocumentSchema(value, "Knowledge node");
+      assertExactKeys(value, "Knowledge node", ["schemaVersion", "id", "profileId", "parentId", "kind", "name", "normalizedName", "createdAt", "updatedAt"]);
       const name = canonicalName(value.name, "Knowledge-node name");
       return {
           ...clone(value),
@@ -7165,6 +7175,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalKnowledgeUnit(value) {
       assertDocumentSchema(value, "Knowledge unit");
+      assertExactKeys(value, "Knowledge unit", ["schemaVersion", "id", "profileId", "topicNodeId", "title", "scope", "source", "importance", "status", "createdAt", "updatedAt", "latestEvidenceAt", "latestEvidenceRating", "evidenceCount", "lapseCount"]);
       const unit = clone(value);
       unit.schemaVersion = DOCUMENT_SCHEMA_VERSION;
       unit.id = canonicalId(unit.id, "Knowledge-unit ID");
@@ -7185,6 +7196,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalStudyEvent(value) {
       assertDocumentSchema(value, "Study event");
+      assertExactKeys(value, "Study event", ["schemaVersion", "id", "profileId", "occurredAt", "activityMode", "area", "task", "measure", "source", "durationMinutes", "understanding", "linkedUnitIds", "notes", "origin", "createdAt"]);
       return {
           ...clone(value),
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -7202,6 +7214,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalRevisionObligation(value) {
       assertDocumentSchema(value, "Revision obligation");
+      assertExactKeys(value, "Revision obligation", ["schemaVersion", "id", "unitId", "type", "status", "suspensionReason", "dueAt", "expectedMinutes", "baselineMinutes", "durationSampleCount", "chunking", "protocol", "successCriteria", "workflow", "freshnessDays", "priority", "policyState", "parentObligationId", "returnObligationId", "createdAt", "updatedAt", "lastCompletedAt"]);
       const obligation = clone(value);
       obligation.schemaVersion = DOCUMENT_SCHEMA_VERSION;
       obligation.id = canonicalId(obligation.id, "Revision-obligation ID");
@@ -7289,6 +7302,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalObligationChunk(value) {
       assertDocumentSchema(value, "Obligation chunk");
+      assertExactKeys(value, "Obligation chunk", ["schemaVersion", "id", "obligationId", "cycleId", "ordinal", "total", "label", "scope", "expectedMinutes", "status", "createdAt", "updatedAt", "completedAt", "actualMinutes", "note", "timing"]);
       const chunk = clone(value);
       chunk.schemaVersion = DOCUMENT_SCHEMA_VERSION;
       chunk.id = canonicalId(chunk.id, "Obligation-chunk ID");
@@ -7318,6 +7332,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalDailyPlanRecord(value) {
       assertDocumentSchema(value, "Daily plan");
+      assertExactKeys(value, "Daily plan", ["schemaVersion", "id", "studyDayKey", "createdAt", "updatedAt", "plannerVersion", "versions", "outcomes"]);
       validateCalendarDate(value.studyDayKey, "Daily plan study day");
       const plan = clone(value);
       plan.schemaVersion = DOCUMENT_SCHEMA_VERSION;
@@ -7352,8 +7367,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalAppSettings(value) {
       assertDocumentSchema(value, "Application settings");
-      const allowed = new Set(["schemaVersion", "key", "activeProfileId", "fsrsScheduling", "memoryDifficultyPolicy", "dailyCapacityMinutes", "studyDayBoundaryHour", "fsrsPersonalization"]);
-      assert(Object.keys(value).every((key) => allowed.has(key)), "Application settings contain unexpected fields.");
+      assertExactKeys(value, "Application settings", ["schemaVersion", "key", "activeProfileId", "fsrsScheduling", "memoryDifficultyPolicy", "dailyCapacityMinutes", "studyDayBoundaryHour", "fsrsPersonalization"]);
       assert(value.key === "app", "Application settings key is invalid.");
       assert(typeof value.activeProfileId === "string", "Active profile ID must be a string.");
       const fsrsScheduling = canonicalFsrsSchedulingSettings(value.fsrsScheduling);
@@ -7373,11 +7387,14 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalAppMetadata(value) {
       assertDocumentSchema(value, "Application metadata");
+      assertExactKeys(value, "Application metadata", ["schemaVersion", "key", "databaseName", "databaseVersion", "applicationVersion", "createdAt", "updatedAt"]);
+      assert(value.key === "database", "Application metadata key is invalid.");
+      assert(Number.isInteger(value.databaseVersion) && value.databaseVersion >= 1, "Database metadata version is invalid.");
       return {
-          ...clone(value),
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
           key: "database",
           databaseName: canonicalId(value.databaseName, "Database name"),
+          databaseVersion: value.databaseVersion,
           applicationVersion: canonicalId(value.applicationVersion, "Application version"),
           createdAt: canonicalIso(value.createdAt, "Database creation date"),
           updatedAt: canonicalIso(value.updatedAt, "Database update date"),
@@ -7389,30 +7406,32 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalTimingEvidenceSummary(value) {
       assert(value && typeof value === "object", "Timing evidence is required.");
+      assertExactKeys(value, "Timing evidence", ["totalActiveMs", "activeByPhase", "pauseMs", "pauseCount", "inactiveGapCount", "classifiedFocusMs", "classifiedBreakMs", "ignoredGapMs", "promptExcludedMs", "backwardClockCount", "sourceRevealAt", "durationReliable", "reliabilityFlags"]);
       assert(value.activeByPhase && typeof value.activeByPhase === "object", "Phase timing breakdown is required.");
+      assertExactKeys(value.activeByPhase, "Phase timing breakdown", ["attempt", "compare", "relearn-repair", "relearn-verify"]);
       const phases = ["attempt", "compare", "relearn-repair", "relearn-verify"];
       const activeByPhase = Object.fromEntries(phases.map((phase) => {
-          const raw = Number(value.activeByPhase[phase]);
-          assert(Number.isFinite(raw) && raw >= 0 && raw <= 7 * DAY_MS, "Phase active time is invalid.");
+          const raw = value.activeByPhase[phase];
+          assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= 7 * DAY_MS, "Phase active time is invalid.");
           return [phase, Math.round(raw)];
       }));
       const totalActiveMs = Object.values(activeByPhase).reduce((sum, amount) => sum + amount, 0);
-      assert(Number.isFinite(value.totalActiveMs) && Math.round(value.totalActiveMs) === totalActiveMs, "Total active time does not match phase timing.");
+      assert(typeof value.totalActiveMs === "number" && Number.isFinite(value.totalActiveMs) && Math.round(value.totalActiveMs) === totalActiveMs, "Total active time does not match phase timing.");
       const bounded = (raw, label) => {
-          assert(Number.isFinite(raw) && raw >= 0 && raw <= 30 * DAY_MS, `${label} is invalid.`);
+          assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= 30 * DAY_MS, `${label} is invalid.`);
           return Math.round(raw);
       };
       const count = (raw, label) => {
-          assert(Number.isSafeInteger(raw) && raw >= 0 && raw <= 100_000, `${label} is invalid.`);
+          assert(typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0 && raw <= 100_000, `${label} is invalid.`);
           return raw;
       };
-      const ignoredGapMs = bounded(Number(value.ignoredGapMs), "Ignored gap time");
+      const ignoredGapMs = bounded(value.ignoredGapMs, "Ignored gap time");
       assert(Array.isArray(value.reliabilityFlags), "Timing reliability flags are required.");
       const reliabilityFlags = [...new Set(value.reliabilityFlags)];
       for (const flag of reliabilityFlags)
           assert(flag === "ignored-gap" || flag === "backward-clock", "Timing reliability flag is invalid.");
       assert((ignoredGapMs > 0) === reliabilityFlags.includes("ignored-gap"), "Ignored-gap reliability flag is inconsistent.");
-      const backwardClockCount = count(Number(value.backwardClockCount), "Backward-clock count");
+      const backwardClockCount = count(value.backwardClockCount, "Backward-clock count");
       assert((backwardClockCount > 0) === reliabilityFlags.includes("backward-clock"), "Backward-clock reliability flag is inconsistent.");
       assert(typeof value.durationReliable === "boolean", "Timing reliability state is required.");
       assert(value.durationReliable === (ignoredGapMs === 0), "Timing reliability state is inconsistent.");
@@ -7435,11 +7454,17 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalPhaseTimeRuntimeSnapshot(value) {
       assert(value && typeof value === "object", "Phase-time runtime is invalid.");
+      assertExactKeys(value, "Phase-time runtime", ["currentPhase", "state", "sessionStartedAt", "lastTickAt", "activeByPhase", "pauseStartedAt", "pauseHistory", "phaseHistory", "gapHistory", "pendingGap", "sourceVisible", "sourceRevealAt", "backwardClockCount"]);
       const currentPhase = canonicalReviewPhase(value.currentPhase);
       assert(["running", "paused", "gap-pending"].includes(value.state), "Phase-time state is invalid.");
       assert(value.activeByPhase && typeof value.activeByPhase === "object", "Phase-time breakdown is required.");
+      assertExactKeys(value.activeByPhase, "Phase-time breakdown", ["attempt", "compare", "relearn-repair", "relearn-verify"]);
       const phaseTotal = ["attempt", "compare", "relearn-repair", "relearn-verify"]
-          .reduce((sum, phase) => sum + Number(value.activeByPhase[phase]), 0);
+          .reduce((sum, phase) => {
+          const raw = value.activeByPhase[phase];
+          assert(typeof raw === "number", "Phase active time is invalid.");
+          return sum + raw;
+      }, 0);
       const activeByPhase = canonicalTimingEvidenceSummary({
           totalActiveMs: phaseTotal,
           activeByPhase: value.activeByPhase,
@@ -7448,9 +7473,8 @@ exports.withFuzzing = withFuzzing;
           backwardClockCount: 0, durationReliable: true, reliabilityFlags: [],
       }).activeByPhase;
       const boundedRuntimeMs = (raw, label, maximum = 30 * DAY_MS) => {
-          const value = Number(raw);
-          assert(Number.isFinite(value) && value >= 0 && value <= maximum, `${label} is invalid.`);
-          return Math.round(value);
+          assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= maximum, `${label} is invalid.`);
+          return Math.round(raw);
       };
       assert(Array.isArray(value.pauseHistory), "Pause history is required.");
       const pauseHistory = value.pauseHistory.slice(-TIME_HISTORY_LIMIT).map((pause) => {
@@ -7509,14 +7533,15 @@ exports.withFuzzing = withFuzzing;
           sourceVisible: value.sourceVisible,
           ...(value.sourceRevealAt !== undefined ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
           backwardClockCount: (() => {
-              const count = Number(value.backwardClockCount);
-              assert(Number.isSafeInteger(count) && count >= 0 && count <= 100_000, "Backward-clock count is invalid.");
+              const count = value.backwardClockCount;
+              assert(typeof count === "number" && Number.isSafeInteger(count) && count >= 0 && count <= 100_000, "Backward-clock count is invalid.");
               return count;
           })(),
       };
   }
   function canonicalReviewDraftSnapshot(value) {
       assert(value && typeof value === "object", "Review draft is invalid.");
+      assertExactKeys(value, "Review draft", ["phase", "values", "checked", "diagramStrokes", "attemptElapsedMs"]);
       canonicalReviewPhase(value.phase);
       assert(value.values && typeof value.values === "object" && !Array.isArray(value.values), "Review field values are required.");
       assert(value.checked && typeof value.checked === "object" && !Array.isArray(value.checked), "Review check state is required.");
@@ -7545,6 +7570,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalActiveRetrievalSession(value) {
       assertDocumentSchema(value, "Active retrieval session");
+      assertExactKeys(value, "Active retrieval session", ["schemaVersion", "id", "revision", "status", "queueTargetIds", "activeIndex", "activeTargetId", "phase", "draft", "timeRuntime", "elapsedMs", "startedAt", "updatedAt", "commitToken"]);
       assert(value.id === ACTIVE_RETRIEVAL_ID, "Active retrieval session ID is invalid.");
       assert(["active", "committing", "completed"].includes(value.status), "Active retrieval status is invalid.");
       assert(Number.isSafeInteger(value.revision) && value.revision >= 1, "Active retrieval revision is invalid.");
@@ -7616,6 +7642,7 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalActiveRetrievalEnvelope(input) {
       const value = requireRecord(input, "Active retrieval recovery envelope");
+      assertExactKeys(value, "Active retrieval recovery envelope", ["format", "schemaVersion", "savedAt", "session"]);
       assert(value["format"] === ACTIVE_RETRIEVAL_RECOVERY_FORMAT && value["schemaVersion"] === 1, "Active retrieval recovery envelope is invalid.");
       return {
           format: ACTIVE_RETRIEVAL_RECOVERY_FORMAT,
@@ -9771,6 +9798,19 @@ exports.withFuzzing = withFuzzing;
           await transactionDone(tx);
           return values;
       }
+      async hasAnyStoredData(excluded = []) {
+          const excludedStores = new Set(excluded);
+          for (const store of Object.values(Store)) {
+              if (excludedStores.has(store))
+                  continue;
+              const tx = this.db.transaction(store, "readonly");
+              const count = await requestResult(tx.objectStore(store).count());
+              await transactionDone(tx);
+              if (count > 0)
+                  return true;
+          }
+          return false;
+      }
       async put(store, value) {
           const tx = this.db.transaction(store, "readwrite");
           tx.objectStore(store).put(value);
@@ -9781,6 +9821,12 @@ exports.withFuzzing = withFuzzing;
           const target = tx.objectStore(store);
           for (const value of values)
               target.put(value);
+          await transactionDone(tx);
+      }
+      async putProfileAndSettings(profile, settings) {
+          const tx = this.db.transaction([Store.Profiles, Store.Settings], "readwrite");
+          tx.objectStore(Store.Profiles).put(profile);
+          tx.objectStore(Store.Settings).put(settings);
           await transactionDone(tx);
       }
       async createUnitWithObligation(unit, obligation) {
@@ -10152,6 +10198,9 @@ exports.withFuzzing = withFuzzing;
               }
               return;
           }
+          if (await this.repository.hasAnyStoredData([Store.Metadata])) {
+              throw new Error("Database metadata is missing from a populated Revision Director database. Existing data was not modified.");
+          }
           const time = nowIso();
           const metadata = {
               schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -10191,6 +10240,12 @@ exports.withFuzzing = withFuzzing;
       }
       async putMany(store, values) {
           await this.operation(`putMany.${store}`, () => this.repository.putMany(store, values.map((value) => this.normalize(store, value))));
+      }
+      async hasStoredData(excluded = []) {
+          return this.operation("hasStoredData", () => this.repository.hasAnyStoredData(excluded));
+      }
+      async putProfileAndSettings(profile, settings) {
+          await this.operation("putProfileAndSettings", () => this.repository.putProfileAndSettings(canonicalExamProfile(profile), canonicalAppSettings(settings)));
       }
       async createUnitWithObligation(unit, obligation) {
           await this.operation("createUnitWithObligation", () => this.repository.createUnitWithObligation(canonicalKnowledgeUnit(unit), canonicalRevisionObligation(obligation)));
@@ -10962,20 +11017,24 @@ exports.withFuzzing = withFuzzing;
       async initialize() {
           this.invalidateMemoryReviewAnalysis();
           const stored = await this.repo.get(Store.Settings, "app");
-          this.settings = stored ? canonicalAppSettings(stored) : defaultSettings();
-          if (!stored)
-              await this.repo.put(Store.Settings, this.settings);
-          const profiles = await this.profiles();
-          const active = profiles.filter((profile) => profile.status === "active");
-          if (this.settings.activeProfileId && !active.some((profile) => profile.id === this.settings.activeProfileId)) {
-              const repaired = canonicalAppSettings({
-                  ...this.settings,
-                  activeProfileId: active[0]?.id ?? "",
-              });
-              await this.repo.put(Store.Settings, repaired);
-              this.settings = repaired;
+          if (stored) {
+              this.settings = canonicalAppSettings(stored);
           }
+          else {
+              assert(!(await this.repo.hasStoredData([Store.Settings, Store.Metadata])), "Application settings are missing from a populated Revision Director database. Existing data was not modified.");
+              this.settings = defaultSettings();
+              await this.repo.put(Store.Settings, this.settings);
+          }
+          this.assertActiveProfileSelection(await this.profiles(), this.settings);
           await this.verifyMemoryProjectionIntegrity();
+      }
+      assertActiveProfileSelection(profiles, settings) {
+          const active = profiles.filter((profile) => profile.status === "active");
+          if (active.length === 0) {
+              assert(settings.activeProfileId === "", "Default exam profile must be empty when no active exam profile exists.");
+              return;
+          }
+          assert(active.some((profile) => profile.id === settings.activeProfileId), "Default exam profile must reference an active exam profile.");
       }
       async verifyMemoryProjectionIntegrity() {
           const [obligations, evidenceEvents] = await Promise.all([
@@ -10999,14 +11058,8 @@ exports.withFuzzing = withFuzzing;
       async saveSettings(next) {
           assert(Number.isInteger(next.dailyCapacityMinutes) && next.dailyCapacityMinutes >= 5 && next.dailyCapacityMinutes <= 600, "Daily capacity is invalid.");
           assert(Number.isInteger(next.studyDayBoundaryHour) && next.studyDayBoundaryHour >= 0 && next.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
-          const activeProfiles = (await this.profiles()).filter((profile) => profile.status === "active");
-          if (activeProfiles.length > 0) {
-              const profile = await this.repo.get(Store.Profiles, next.activeProfileId);
-              assert(profile?.status === "active", "Default exam profile is invalid.");
-          }
-          else
-              assert(next.activeProfileId === "", "Create an active exam profile before selecting a default profile.");
           const canonical = canonicalAppSettings(next);
+          this.assertActiveProfileSelection(await this.profiles(), canonical);
           assert(JSON.stringify(effectiveFsrsPersonalization(canonical)) === JSON.stringify(effectiveFsrsPersonalization(this.settings)), "Use the explicit FSRS personalization controls to stage, activate, deactivate or remove an optimizer profile.");
           assert(JSON.stringify(canonical.fsrsScheduling.lastRebase ?? null) === JSON.stringify(this.settings.fsrsScheduling.lastRebase ?? null), "FSRS scheduler rebase metadata is service-owned.");
           const difficultyChanged = JSON.stringify(canonical.memoryDifficultyPolicy) !== JSON.stringify(this.settings.memoryDifficultyPolicy);
@@ -11221,6 +11274,8 @@ exports.withFuzzing = withFuzzing;
           assert(name.trim().length >= 2, "Enter an exam-profile name.");
           if (examDate)
               validateCalendarDate(examDate);
+          const existingProfiles = await this.profiles();
+          this.assertActiveProfileSelection(existingProfiles, this.settings);
           const time = nowIso();
           const profile = {
               schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -11231,15 +11286,18 @@ exports.withFuzzing = withFuzzing;
               createdAt: time,
               updatedAt: time,
           };
-          await this.repo.put(Store.Profiles, profile);
-          if (!this.settings.activeProfileId) {
-              this.settings.activeProfileId = profile.id;
-              await this.repo.put(Store.Settings, this.settings);
-          }
+          const nextSettings = existingProfiles.some((candidate) => candidate.status === "active")
+              ? this.settings
+              : canonicalAppSettings({ ...this.settings, activeProfileId: profile.id });
+          await this.repo.putProfileAndSettings(profile, nextSettings);
+          this.settings = clone(nextSettings);
           return profile;
       }
       async updateProfile(id, name, examDate, status) {
-          const profile = await this.profile(id);
+          const existingProfiles = await this.profiles();
+          this.assertActiveProfileSelection(existingProfiles, this.settings);
+          const profile = existingProfiles.find((candidate) => candidate.id === id);
+          assert(profile, "Exam profile not found.");
           assert(name.trim().length >= 2, "Enter an exam-profile name.");
           if (examDate)
               validateCalendarDate(examDate);
@@ -11248,14 +11306,17 @@ exports.withFuzzing = withFuzzing;
           profile.examDate = examDate;
           profile.status = status;
           profile.updatedAt = nowIso();
-          await this.repo.put(Store.Profiles, profile);
-          if (status !== "active" && this.settings.activeProfileId === profile.id) {
-              const replacement = (await this.profiles()).find((candidate) => candidate.status === "active" && candidate.id !== profile.id);
-              if (replacement) {
-                  this.settings.activeProfileId = replacement.id;
-                  await this.repo.put(Store.Settings, this.settings);
-              }
-          }
+          const nextProfiles = existingProfiles.map((candidate) => candidate.id === profile.id ? profile : candidate);
+          const active = nextProfiles.filter((candidate) => candidate.status === "active");
+          let activeProfileId = this.settings.activeProfileId;
+          if (active.length === 0)
+              activeProfileId = "";
+          else if (!active.some((candidate) => candidate.id === activeProfileId))
+              activeProfileId = active[0].id;
+          const nextSettings = canonicalAppSettings({ ...this.settings, activeProfileId });
+          this.assertActiveProfileSelection(nextProfiles, nextSettings);
+          await this.repo.putProfileAndSettings(profile, nextSettings);
+          this.settings = clone(nextSettings);
           return profile;
       }
       async nodes() {
@@ -12174,6 +12235,7 @@ exports.withFuzzing = withFuzzing;
       }
       validateBackup(input) {
           const candidate = requireRecord(input, "Backup");
+          assertExactKeys(candidate, "Backup", ["format", "schemaVersion", "exportedAt", "appVersion", "profiles", "nodes", "units", "studyEvents", "obligations", "evidenceEvents", "chunks", "dailyPlans", "settings", "activeRetrieval"]);
           assert(candidate["format"] === BACKUP_FORMAT && candidate["schemaVersion"] === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
           const appVersion = canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version");
           const profiles = canonicalDocumentArray("profile", candidate["profiles"], "Backup profiles");
@@ -12534,7 +12596,8 @@ exports.withFuzzing = withFuzzing;
               assert(canonicalActive.queueTargetIds.every(validTarget), "Backup active retrieval references an unknown target.");
           }
           assertDocumentSchema(settings, "Backup settings");
-          assert(settings.key === "app" && (profileMap.size === 0 ? settings.activeProfileId === "" : profileMap.has(settings.activeProfileId)), "Backup settings reference an invalid active profile.");
+          assert(settings.key === "app", "Backup settings key is invalid.");
+          this.assertActiveProfileSelection(profiles, settings);
           canonicalFsrsSchedulingSettings(settings.fsrsScheduling);
           const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(settings.memoryDifficultyPolicy);
           for (const obligation of obligations) {
