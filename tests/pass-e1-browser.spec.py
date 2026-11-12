@@ -30,6 +30,16 @@ def wait_until(frame, predicate, timeout=10000):
         frame.wait_for_timeout(60)
     raise AssertionError("Timed out waiting for condition")
 
+def wait_local_file_settled(frame, name: str, state: str) -> None:
+    wait_until(frame, lambda: frame.evaluate(
+        "(expected) => RevisionDirector.plugins.status().localFiles.some(x=>x.name===expected.name&&x.state===expected.state)",
+        {"name": name, "state": state},
+    ))
+    # loadPluginFiles records runtime status before its final Settings re-render. Waiting
+    # for the filename in the rendered card prevents the next file selection from racing
+    # an input element that is about to be replaced.
+    wait_until(frame, lambda: name in frame.locator("#settings-content").inner_text())
+
 def boot_frame(page):
     page.evaluate("""html => {
       const frame=document.createElement('iframe'); frame.id='app'; frame.style.width='1440px'; frame.style.height='1000px'; document.body.appendChild(frame);
@@ -83,31 +93,31 @@ def main() -> None:
             good_file.write_text("void RevisionDirector.registerPlugin({name:'Local Good',version:'1.2',requires:{dueSummary:1},async setup(api){window.__RD_LOCAL_SUMMARY__=await api.records.getDueSummary();return true;}});")
             frame.locator("#load-plugin-files").set_input_files(str(good_file))
             wait_until(frame, lambda: frame.evaluate("RevisionDirector.plugins.status().registered.some(x=>x.name==='Local Good'&&x.state==='registered')"))
-            wait_until(frame, lambda: frame.evaluate("RevisionDirector.plugins.status().localFiles.some(x=>x.name==='rd-local-good.js'&&x.state==='loaded')"))
+            wait_local_file_settled(frame, "rd-local-good.js", "loaded")
             check(frame.evaluate("window.__RD_LOCAL_SUMMARY__.dueCount") == 0, "Local plugin did not receive canonical API")
             wait_until(frame, lambda: "Local Good" in frame.locator("#settings-content").inner_text()); check(True, "Local plugin status rendered")
 
             inactive_file=tmp/"rd-local-inactive.js"
             inactive_file.write_text("window.__RD_INACTIVE_FILE__=true;")
             frame.locator("#load-plugin-files").set_input_files(str(inactive_file))
-            wait_until(frame, lambda: frame.evaluate("RevisionDirector.plugins.status().localFiles.some(x=>x.name==='rd-local-inactive.js'&&x.state==='inactive')"))
+            wait_local_file_settled(frame, "rd-local-inactive.js", "inactive")
             check(frame.evaluate("window.__RD_INACTIVE_FILE__===true"), "Inactive local file did not evaluate")
 
             fail_file=tmp/"rd-local-fail.js"
             fail_file.write_text("throw new Error('local plugin boom');")
             frame.locator("#load-plugin-files").set_input_files(str(fail_file))
-            wait_until(frame, lambda: frame.evaluate("RevisionDirector.plugins.status().localFiles.some(x=>x.name==='rd-local-fail.js'&&x.state==='failed')"))
+            wait_local_file_settled(frame, "rd-local-fail.js", "failed")
             check(frame.locator("#fatal-error").is_hidden(), "Failed local plugin caused fatal startup state")
 
             wrong_file=tmp/"not-a-plugin.txt"
             wrong_file.write_text("nothing")
             frame.locator("#load-plugin-files").set_input_files(str(wrong_file))
-            wait_until(frame, lambda: frame.evaluate("RevisionDirector.plugins.status().localFiles.some(x=>x.name==='not-a-plugin.txt'&&x.state==='rejected')"))
+            wait_local_file_settled(frame, "not-a-plugin.txt", "rejected")
 
             large_file=tmp/"too-large.js"
             large_file.write_bytes(b"/" + b"*" + b"x"*(1024*1024) + b"*" + b"/")
             frame.locator("#load-plugin-files").set_input_files(str(large_file))
-            wait_until(frame, lambda: frame.evaluate("RevisionDirector.plugins.status().localFiles.some(x=>x.name==='too-large.js'&&x.state==='rejected')"))
+            wait_local_file_settled(frame, "too-large.js", "rejected")
 
         statuses=frame.evaluate("RevisionDirector.plugins.status()")
         check(any(x["name"]=="rd-local-good.js" and x["state"]=="loaded" for x in statuses["localFiles"]), "Loaded local-file status missing")
