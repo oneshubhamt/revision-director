@@ -197,6 +197,64 @@ function aggregateWorkload(rows){
   };
 }
 
+async function productionPolicyExperiment(){
+  const cards=72;
+  const horizons=[90,365,730];
+  const schedulers=[
+    {name:'fixed-0.84',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.84})},
+    {name:'fixed-0.86',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.86})},
+    {name:'fixed-0.88',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.88})},
+    {name:'fixed-0.90',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.9})},
+    {name:'fixed-0.92',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.92})},
+    {name:'cost-adr-832',kind:'cost-adr',scheduler:await costAdrScheduler(832,{learningSteps:['1d'],relearningSteps:['1d']})},
+    {name:'cost-adr-896',kind:'cost-adr',scheduler:await costAdrScheduler(896,{learningSteps:['1d'],relearningSteps:['1d']})},
+    {name:'cost-adr-960',kind:'cost-adr',scheduler:await costAdrScheduler(960,{learningSteps:['1d'],relearningSteps:['1d']})},
+  ];
+  const experiments=[];
+  for(const horizonDays of horizons){
+    const results=[];
+    for(const entry of schedulers){
+      const rows=[];
+      for(let i=0;i<cards;i++) rows.push(projectWorkload(entry.scheduler,RATING_PATTERNS[i%RATING_PATTERNS.length],i,horizonDays));
+      results.push({name:entry.name,kind:entry.kind,...aggregateWorkload(rows)});
+    }
+    const baseline=results.find(row=>row.name==='fixed-0.90');
+    assert.ok(baseline,'Production fixed-retention baseline missing');
+    const fixedRows=results.filter(row=>row.kind==='fixed');
+    for(const row of results){
+      row.reviewDelta=(row.reviews-baseline.reviews)/baseline.reviews;
+      row.retentionDelta=row.meanReviewStateRetrievability-baseline.meanReviewStateRetrievability;
+      if(row.kind==='cost-adr'){
+        const dominator=fixedRows.find(fixedRow=>
+          fixedRow.reviews<=row.reviews
+          && fixedRow.meanReviewStateRetrievability>=row.meanReviewStateRetrievability-.001
+          && (fixedRow.reviews<row.reviews||fixedRow.meanReviewStateRetrievability>row.meanReviewStateRetrievability+.001)
+        );
+        row.paretoDominatedBy=dominator?.name??null;
+        row.meaningfulBenefit=(
+          (
+            row.reviewDelta<=-.10
+            && row.retentionDelta>=-.01
+            && row.minReviewStateRetrievability>=baseline.minReviewStateRetrievability-.02
+          )||(
+            row.retentionDelta>=.01&&row.reviewDelta<=.05
+          )
+        )&&!dominator;
+      }
+    }
+    experiments.push({horizonDays,results});
+  }
+  const costNames=schedulers.filter(entry=>entry.kind==='cost-adr').map(entry=>entry.name);
+  const robustCostAdr=costNames.map(name=>({
+    name,
+    allHorizonsMeaningful:experiments.every(experiment=>experiment.results.find(row=>row.name===name)?.meaningfulBenefit===true),
+    worstReviewDelta:Math.max(...experiments.map(experiment=>experiment.results.find(row=>row.name===name).reviewDelta)),
+    worstRetentionLoss:Math.max(...experiments.map(experiment=>Math.max(0,-experiment.results.find(row=>row.name===name).retentionDelta))),
+    paretoDominatedAnywhere:experiments.some(experiment=>Boolean(experiment.results.find(row=>row.name===name).paretoDominatedBy)),
+  }));
+  return {experiments,robustCostAdr};
+}
+
 async function policyWorkloadExperiment(){
   const cards=72;
   const horizons=[90,365,730];
@@ -266,6 +324,8 @@ async function policyWorkloadExperiment(){
 (async()=>{
   const learning=await learningStepExperiment();
   const workload=await policyWorkloadExperiment();
+  const production=await productionPolicyExperiment();
   console.log('PASS Pass 5 learning-step experiment: '+JSON.stringify(learning));
   console.log('PASS Pass 5 scheduling-policy workload experiment: '+JSON.stringify(workload));
+  console.log('PASS Pass 5 production-policy workload experiment: '+JSON.stringify(production));
 })().catch(error=>{console.error(error);process.exitCode=1;});
