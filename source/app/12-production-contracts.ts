@@ -134,7 +134,7 @@
 
   function canonicalKnowledgeUnit(value: KnowledgeUnit): KnowledgeUnit {
     assertDocumentSchema(value, "Knowledge unit");
-    assertExactKeys(value, "Knowledge unit", ["schemaVersion", "id", "profileId", "topicNodeId", "title", "scope", "source", "importance", "status", "createdAt", "updatedAt", "latestEvidenceAt", "latestEvidenceRating", "evidenceCount", "lapseCount"]);
+    assertExactKeys(value, "Knowledge unit", ["schemaVersion", "id", "profileId", "topicNodeId", "title", "scope", "source", "importance", "status", "createdAt", "updatedAt", "evidenceCount", "lapseCount"]);
     const unit = clone(value);
     unit.schemaVersion = DOCUMENT_SCHEMA_VERSION;
     unit.id = canonicalId(unit.id, "Knowledge-unit ID");
@@ -149,12 +149,6 @@
     assert(Number.isSafeInteger(unit.lapseCount) && unit.lapseCount >= 0 && unit.lapseCount <= unit.evidenceCount, "Knowledge-unit lapse count is invalid.");
     unit.createdAt = canonicalIso(unit.createdAt, "Knowledge-unit creation date");
     unit.updatedAt = canonicalIso(unit.updatedAt, "Knowledge-unit update date");
-    if (unit.latestEvidenceAt !== undefined) unit.latestEvidenceAt = canonicalIso(unit.latestEvidenceAt, "Knowledge-unit evidence date");
-    else delete unit.latestEvidenceAt;
-    if (unit.latestEvidenceRating === undefined) delete unit.latestEvidenceRating;
-    else unit.latestEvidenceRating = validateRating(unit.latestEvidenceRating);
-    assert((unit.evidenceCount === 0) === (unit.latestEvidenceAt === undefined && unit.latestEvidenceRating === undefined), "Knowledge-unit latest-evidence state is inconsistent.");
-    if (unit.evidenceCount > 0) assert(unit.latestEvidenceAt !== undefined && unit.latestEvidenceRating !== undefined, "Knowledge-unit latest evidence is incomplete.");
     return unit;
   }
 
