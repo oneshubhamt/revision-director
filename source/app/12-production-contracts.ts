@@ -182,7 +182,7 @@
 
   function canonicalRevisionObligation(value: RevisionObligation): RevisionObligation {
     assertDocumentSchema(value, "Revision obligation");
-    assertExactKeys(value, "Revision obligation", ["schemaVersion", "id", "unitId", "type", "status", "suspensionReason", "dueAt", "expectedMinutes", "baselineMinutes", "durationSampleCount", "chunking", "protocol", "successCriteria", "workflow", "freshnessDays", "priority", "policyState", "parentObligationId", "returnObligationId", "createdAt", "updatedAt", "lastCompletedAt"]);
+    assertExactKeys(value, "Revision obligation", ["schemaVersion", "id", "unitId", "type", "status", "suspensionReason", "dueAt", "expectedMinutes", "baselineMinutes", "durationSampleCount", "chunking", "protocol", "successCriteria", "workflow", "freshnessDays", "priority", "policyState", "parentObligationId", "returnObligationId", "createdAt", "updatedAt"]);
     const obligation = clone(value);
     obligation.schemaVersion = DOCUMENT_SCHEMA_VERSION;
     obligation.id = canonicalId(obligation.id, "Revision-obligation ID");
@@ -211,8 +211,6 @@
     else delete obligation.returnObligationId;
     obligation.createdAt = canonicalIso(obligation.createdAt, "Revision-obligation creation date");
     obligation.updatedAt = canonicalIso(obligation.updatedAt, "Revision-obligation update date");
-    if (obligation.lastCompletedAt !== undefined) obligation.lastCompletedAt = canonicalIso(obligation.lastCompletedAt, "Revision-obligation completion date");
-    else delete obligation.lastCompletedAt;
     if (obligation.status === "suspended") {
       assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning" || obligation.suspensionReason === "persistent-difficulty", "Suspended obligation lacks a valid reason.");
     } else {
