@@ -178,7 +178,6 @@
     returnObligationId?: string;
     createdAt: ISODateTime;
     updatedAt: ISODateTime;
-    lastCompletedAt?: ISODateTime;
   }
 
   interface RecallWorkflowResult {
