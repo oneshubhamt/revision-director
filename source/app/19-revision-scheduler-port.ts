@@ -540,7 +540,7 @@
       const next = serializeFsrsCard(result.card);
       const reviewLog: FsrsReviewLog = {
         model: FSRS_MODEL,
-        rating: result.revlog.rating,
+        rating: validateRating(result.revlog.rating),
         state: result.revlog.state,
         dueAt: result.revlog.dueAt.toISOString(),
         lastReviewAt: result.revlog.lastReviewAt?.toISOString() ?? null,
@@ -551,7 +551,7 @@
         scheduledDays: result.revlog.scheduledDays,
         learningStep: result.revlog.learningStep,
       };
-      if (result.revlog.scheduleStatus !== undefined) reviewLog["scheduleStatus"] = result.revlog.scheduleStatus;
+      if (result.revlog.scheduleStatus !== undefined) reviewLog.scheduleStatus = storedFsrsScheduleStatus(result.revlog.scheduleStatus);
       return { card: next, reviewLog };
     }
 
