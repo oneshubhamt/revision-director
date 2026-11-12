@@ -493,6 +493,14 @@
         "desiredRetention": 0.9
       }
     },
+    "memoryDifficultyPolicy": {
+      "remediationLapses": 2,
+      "persistentDifficultyLapses": 4,
+      "automaticHold": {
+        "enabled": false,
+        "lapseThreshold": 8
+      }
+    },
     "dailyCapacityMinutes": 60,
     "studyDayBoundaryHour": 4,
     "schemaVersion": 1,
