@@ -1450,33 +1450,31 @@
           validateFsrsConfigSnapshot(config);
         } else assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined, "Non-memory evidence cannot claim FSRS provenance.");
 
-        const returned = event.returnedMemoryTransition;
+        const corrective = event.correctiveMemoryTransition;
         const relearnReturnId = obligation.type === "relearn" ? obligation.returnObligationId : undefined;
-        const returnedTarget = relearnReturnId ? obligationMap.get(relearnReturnId) : undefined;
-        const shouldReturnMemory =
+        const correctiveTarget = relearnReturnId ? obligationMap.get(relearnReturnId) : undefined;
+        const shouldRecordMemoryVerification =
           obligation.type === "relearn" &&
-          returnedTarget?.type === "memory-recall" &&
-          event.confirmedRating >= Rating.Good &&
-          objectiveScore("relearn", event.evidence) >= 2.7 &&
-          event.beforePolicyState.successStreak >= 1;
-        assert(Boolean(returned) === shouldReturnMemory, "Returned-memory scheduler transition presence is inconsistent with relearning completion.");
-        if (returned) {
-          assert(returnedTarget?.type === "memory-recall", "Returned-memory transition lacks a valid memory target.");
-          assert(returned.obligationId === returnedTarget.id, "Returned-memory transition targets the wrong obligation.");
-          assert(returned.rating === Rating.Good, "Returned-memory transition must record a Good closed-book repair.");
-          validDate(returned.beforeDueAt, "Returned-memory prior due date");
-          validDate(returned.afterDueAt, "Returned-memory next due date");
-          assert(returned.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Returned-memory policy provenance is invalid.");
-          assert(returned.schedulerPackage === "ts-fsrs" && returned.schedulerVersion === FSRS_PACKAGE_VERSION && returned.schedulerModel === FSRS_MODEL, "Returned-memory scheduler provenance is invalid.");
-          validateFsrsConfigSnapshot(returned.schedulerConfig);
-          for (const state of [returned.beforePolicyState, returned.afterPolicyState]) {
-            assert(state.engine === "ts-fsrs" && state.version === FSRS_PACKAGE_VERSION && state.fsrsCard?.model === FSRS_MODEL, "Returned-memory policy state is invalid.");
-            assert(state.fsrsCard.cardId === returned.obligationId, "Returned-memory card identity is invalid.");
+          correctiveTarget?.type === "memory-recall";
+        assert(Boolean(corrective) === shouldRecordMemoryVerification, "Corrective-memory scheduler transition presence is inconsistent with a closed-book memory verification.");
+        if (corrective) {
+          assert(correctiveTarget?.type === "memory-recall", "Corrective-memory transition lacks a valid memory target.");
+          assert(corrective.obligationId === correctiveTarget.id, "Corrective-memory transition targets the wrong obligation.");
+          assert(corrective.rating === event.confirmedRating, "Corrective-memory transition rating must match the closed-book verification.");
+          validDate(corrective.beforeDueAt, "Corrective-memory prior due date");
+          validDate(corrective.afterDueAt, "Corrective-memory next due date");
+          assert(corrective.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Corrective-memory policy provenance is invalid.");
+          assert(corrective.schedulerPackage === "ts-fsrs" && corrective.schedulerVersion === FSRS_PACKAGE_VERSION && corrective.schedulerModel === FSRS_MODEL, "Corrective-memory scheduler provenance is invalid.");
+          validateFsrsConfigSnapshot(corrective.schedulerConfig);
+          for (const state of [corrective.beforePolicyState, corrective.afterPolicyState]) {
+            assert(state.engine === "ts-fsrs" && state.version === FSRS_PACKAGE_VERSION && state.fsrsCard?.model === FSRS_MODEL, "Corrective-memory policy state is invalid.");
+            assert(state.fsrsCard.cardId === corrective.obligationId, "Corrective-memory card identity is invalid.");
             requiredFsrs7StabilityFast(state.fsrsCard.stabilityFast);
           }
         }
       }
-      validateMemoryDatasetProjectionChain(obligations, memoryReviewObservationIndex(evidenceEvents));
+      const canonicalMemoryReviews = memoryReviewObservationIndex(evidenceEvents);
+      validateMemoryDatasetProjectionChain(obligations, canonicalMemoryReviews);
 
       const chunksByObligation = new Map<string, ObligationChunk[]>();
       for (const chunk of chunks) {
@@ -1611,7 +1609,7 @@
       const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(settings.memoryDifficultyPolicy);
       for (const obligation of obligations) {
         if (obligation.suspensionReason !== "persistent-difficulty") continue;
-        assert(memoryDifficultyAssessment(obligation, memoryDifficultyPolicy).automaticHoldEligible, "Persistent-difficulty hold is not justified by the active automatic-hold policy.");
+        assert(memoryDifficultyAssessment(obligation, memoryDifficultyPolicy, canonicalMemoryReviews.get(obligation.id) ?? []).automaticHoldEligible, "Persistent-difficulty hold is not justified by the active automatic-hold policy.");
       }
       assert(Number.isFinite(settings.dailyCapacityMinutes) && settings.dailyCapacityMinutes >= 5 && settings.dailyCapacityMinutes <= 600, "Daily revision capacity is invalid.");
       assert(Number.isInteger(settings.studyDayBoundaryHour) && settings.studyDayBoundaryHour >= 0 && settings.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
