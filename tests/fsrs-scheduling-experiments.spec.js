@@ -129,74 +129,114 @@ const RATING_PATTERNS=[
   [F.Rating.Again,F.Rating.Good,F.Rating.Hard,F.Rating.Good,F.Rating.Again,F.Rating.Good],
 ];
 
-function projectWorkload(scheduler,pattern,cardIndex,horizonDays=365){
+function projectWorkload(scheduler,pattern,cardIndex,horizonDays){
   let card=scheduler.newCard({now:new Date(START.getTime()+cardIndex*6*HOUR_MS),cardId:`workload-${cardIndex}`});
   let now=new Date(card.dueAt);
   const horizon=START.getTime()+horizonDays*DAY_MS;
-  let reviews=0,retentionSum=0,minRetention=1,intervalSum=0,sameDay=0,againCount=0;
-  while(now.getTime()<=horizon&&reviews<200){
+  let reviews=0,retentionSum=0,minRetention=1,intervalSum=0,sub20h=0,againCount=0;
+  let reviewStateReviews=0,reviewStateRetentionSum=0,minReviewStateRetention=1;
+  while(now.getTime()<=horizon&&reviews<300){
     const retention=predictedRetrievability(scheduler,card,now);
     retentionSum+=retention;
     minRetention=Math.min(minRetention,retention);
+    if(card.state===F.State.Review){
+      reviewStateReviews++;
+      reviewStateRetentionSum+=retention;
+      minReviewStateRetention=Math.min(minReviewStateRetention,retention);
+    }
     const rating=pattern[reviews%pattern.length];
     if(rating===F.Rating.Again) againCount++;
     const result=scheduler.review({card,grade:rating,now});
     const next=result.card;
     const intervalDays=daysBetween(next.dueAt,now);
     intervalSum+=intervalDays;
-    if(intervalDays<1) sameDay++;
+    if(intervalDays<20/24) sub20h++;
     card=next;
     now=new Date(card.dueAt);
     reviews++;
   }
-  return {reviews,retentionSum,minRetention,intervalSum,sameDay,againCount};
+  return {
+    reviews,retentionSum,minRetention,intervalSum,sub20h,againCount,
+    reviewStateReviews,reviewStateRetentionSum,minReviewStateRetention,
+  };
 }
 
 function aggregateWorkload(rows){
   const total=rows.reduce((acc,row)=>{
-    for(const key of ['reviews','retentionSum','intervalSum','sameDay','againCount']) acc[key]+=row[key];
+    for(const key of ['reviews','retentionSum','intervalSum','sub20h','againCount','reviewStateReviews','reviewStateRetentionSum']) acc[key]+=row[key];
     acc.minRetention=Math.min(acc.minRetention,row.minRetention);
+    acc.minReviewStateRetention=Math.min(acc.minReviewStateRetention,row.minReviewStateRetention);
     return acc;
-  },{reviews:0,retentionSum:0,minRetention:1,intervalSum:0,sameDay:0,againCount:0});
+  },{reviews:0,retentionSum:0,minRetention:1,intervalSum:0,sub20h:0,againCount:0,reviewStateReviews:0,reviewStateRetentionSum:0,minReviewStateRetention:1});
   return {
     cards:rows.length,
     reviews:total.reviews,
     workloadMinutes:total.reviews*SESSION_MINUTES,
     meanDueRetrievability:total.retentionSum/Math.max(1,total.reviews),
     minDueRetrievability:total.minRetention,
+    meanReviewStateRetrievability:total.reviewStateRetentionSum/Math.max(1,total.reviewStateReviews),
+    minReviewStateRetrievability:total.minReviewStateRetention,
+    reviewStateReviews:total.reviewStateReviews,
     meanIntervalDays:total.intervalSum/Math.max(1,total.reviews),
-    sameDayReviews:total.sameDay,
+    sub20hReviews:total.sub20h,
     againCount:total.againCount,
   };
 }
 
 async function policyWorkloadExperiment(){
-  const cards=120;
+  const cards=72;
+  const horizons=[90,365,730];
   const schedulers=[
-    {name:'fixed-0.90',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.9})},
-    {name:'cost-adr-16',scheduler:await costAdrScheduler(16)},
-    {name:'cost-adr-64',scheduler:await costAdrScheduler(64)},
-    {name:'cost-adr-256',scheduler:await costAdrScheduler(256)},
-    {name:'cost-adr-1024',scheduler:await costAdrScheduler(1024)},
+    {name:'current-step-fixed-0.90',kind:'fixed-reference',scheduler:await fixedScheduler({learningSteps:['1d'],relearningSteps:['1d'],desiredRetention:.9})},
+    {name:'fixed-0.84',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.84})},
+    {name:'fixed-0.86',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.86})},
+    {name:'fixed-0.88',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.88})},
+    {name:'fixed-0.90',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.9})},
+    {name:'fixed-0.92',kind:'fixed',scheduler:await fixedScheduler({learningSteps:['23h'],relearningSteps:['23h'],desiredRetention:.92})},
+    {name:'cost-adr-256',kind:'cost-adr',scheduler:await costAdrScheduler(256)},
+    {name:'cost-adr-512',kind:'cost-adr',scheduler:await costAdrScheduler(512)},
+    {name:'cost-adr-768',kind:'cost-adr',scheduler:await costAdrScheduler(768)},
+    {name:'cost-adr-1024',kind:'cost-adr',scheduler:await costAdrScheduler(1024)},
   ];
-  const results=[];
-  for(const entry of schedulers){
-    const rows=[];
-    for(let i=0;i<cards;i++) rows.push(projectWorkload(entry.scheduler,RATING_PATTERNS[i%RATING_PATTERNS.length],i));
-    results.push({name:entry.name,...aggregateWorkload(rows)});
+  const experiments=[];
+  for(const horizonDays of horizons){
+    const results=[];
+    for(const entry of schedulers){
+      const rows=[];
+      for(let i=0;i<cards;i++) rows.push(projectWorkload(entry.scheduler,RATING_PATTERNS[i%RATING_PATTERNS.length],i,horizonDays));
+      results.push({name:entry.name,kind:entry.kind,...aggregateWorkload(rows)});
+    }
+    const baseline=results.find(row=>row.name==='fixed-0.90');
+    const currentStep=results.find(row=>row.name==='current-step-fixed-0.90');
+    assert.ok(baseline&&currentStep,'Required fixed-retention baselines missing');
+    const fixedRows=results.filter(row=>row.kind==='fixed');
+    for(const row of results){
+      row.reviewDelta=(row.reviews-baseline.reviews)/baseline.reviews;
+      row.retentionDelta=row.meanReviewStateRetrievability-baseline.meanReviewStateRetrievability;
+      if(row.kind==='cost-adr'){
+        const dominator=fixedRows.find(fixedRow=>
+          fixedRow.reviews<=row.reviews
+          && fixedRow.meanReviewStateRetrievability>=row.meanReviewStateRetrievability-.001
+          && (fixedRow.reviews<row.reviews||fixedRow.meanReviewStateRetrievability>row.meanReviewStateRetrievability+.001)
+        );
+        row.paretoDominatedBy=dominator?.name??null;
+        const initialBenefit=(
+          row.reviewDelta<=-.10&&row.retentionDelta>=-.01&&row.minReviewStateRetrievability>=baseline.minReviewStateRetrievability-.02
+        )||(
+          row.retentionDelta>=.01&&row.reviewDelta<=.05
+        );
+        row.meaningfulBenefit=initialBenefit&&!dominator;
+      }
+    }
+    const stepReviewDelta=(baseline.reviews-currentStep.reviews)/currentStep.reviews;
+    const stepRetentionDelta=baseline.meanReviewStateRetrievability-currentStep.meanReviewStateRetrievability;
+    experiments.push({
+      horizonDays,
+      stepComparison:{reviewDelta:stepReviewDelta,retentionDelta:stepRetentionDelta,currentReviews:currentStep.reviews,nearDailyReviews:baseline.reviews,currentSub20h:currentStep.sub20hReviews,nearDailySub20h:baseline.sub20hReviews},
+      results,
+    });
   }
-  const baseline=results.find(row=>row.name==='fixed-0.90');
-  assert.ok(baseline,'Fixed-retention baseline missing');
-  for(const row of results){
-    row.reviewDelta=(row.reviews-baseline.reviews)/baseline.reviews;
-    row.retentionDelta=row.meanDueRetrievability-baseline.meanDueRetrievability;
-    row.meaningfulBenefit=(
-      row.reviewDelta<=-.10&&row.retentionDelta>=-.01&&row.minDueRetrievability>=baseline.minDueRetrievability-.02
-    )||(
-      row.retentionDelta>=.01&&row.reviewDelta<=.05
-    );
-  }
-  return results;
+  return experiments;
 }
 
 (async()=>{
