@@ -263,7 +263,7 @@
       const review = reviews[index]!;
       assert(review.evidenceEventId.length > 0, "Memory review lacks evidence identity.");
       validateRating(review.rating);
-      assert(review.source === "direct-memory" || review.source === "relearning-return", "Memory review source is invalid.");
+      assert(review.source === "direct-memory" || review.source === "relearning-verification", "Memory review source is invalid.");
       assert(Number.isFinite(new Date(review.reviewedAt).getTime()), "Memory review timestamp is invalid.");
       assert(/^fnv1a64:[0-9a-f]{16}$/.test(review.configFingerprint), "Memory review configuration fingerprint is invalid.");
       validateStoredFsrsCard(review.beforeCard, cardId);
@@ -310,18 +310,18 @@
     };
   }
 
-  function returnedMemoryReviewObservation(
+  function correctiveMemoryReviewObservation(
     event: EvidenceEvent,
-    returned: ReturnedMemoryTransition,
+    returned: CorrectiveMemoryTransition,
   ): MemoryReviewObservation {
     const beforeCard = returned.beforePolicyState.fsrsCard;
     const afterCard = returned.afterPolicyState.fsrsCard;
-    assert(beforeCard && afterCard, "Returned-memory evidence is missing FSRS replay state.");
+    assert(beforeCard && afterCard, "Corrective-memory evidence is missing FSRS replay state.");
     return {
       evidenceEventId: event.id,
       reviewedAt: event.reviewedAt,
       rating: validateRating(returned.rating),
-      source: "relearning-return",
+      source: "relearning-verification",
       beforeCard: clone(beforeCard),
       afterCard: clone(afterCard),
       configFingerprint: validateFsrsConfigSnapshot(returned.schedulerConfig).fingerprint,
@@ -352,9 +352,9 @@
       if (event.obligationId === obligationId && event.obligationType === "memory-recall") {
         reviews.push(directMemoryReviewObservation(event));
       }
-      const returned = event.returnedMemoryTransition;
+      const returned = event.correctiveMemoryTransition;
       if (returned?.obligationId === obligationId) {
-        reviews.push(returnedMemoryReviewObservation(event, returned));
+        reviews.push(correctiveMemoryReviewObservation(event, returned));
       }
     }
     return finalizeMemoryReviewObservations(obligationId, reviews);
@@ -373,8 +373,8 @@
       if (event.obligationType === "memory-recall") {
         append(event.obligationId, directMemoryReviewObservation(event));
       }
-      const returned = event.returnedMemoryTransition;
-      if (returned) append(returned.obligationId, returnedMemoryReviewObservation(event, returned));
+      const returned = event.correctiveMemoryTransition;
+      if (returned) append(returned.obligationId, correctiveMemoryReviewObservation(event, returned));
     }
     const index = new Map<string, readonly MemoryReviewObservation[]>();
     for (const [obligationId, reviews] of mutable) {
