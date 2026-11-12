@@ -483,6 +483,7 @@ async function testDifficultyPolicyReconciliation() {
   svc.profiles=async()=>[];
   svc.obligations=async()=>[held];
   svc.units=async()=>[{id:'u',status:'active'}];
+  svc.evidenceEvents=async()=>[];
   const disabled={...current,memoryDifficultyPolicy:{...current.memoryDifficultyPolicy,automaticHold:{enabled:false,lapseThreshold:8}}};
   await svc.saveSettings(disabled);
   check(atomic?.settings.memoryDifficultyPolicy.automaticHold.enabled===false&&atomic?.obligations[0]?.status==='active'&&atomic?.obligations[0]?.suspensionReason===undefined,'Disabling automatic hold must atomically return stale policy-held memory to an active unit');
