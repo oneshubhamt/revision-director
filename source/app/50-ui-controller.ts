@@ -835,11 +835,13 @@
            <div class="dependency-status"><span>Held-out RMSE bins</span><strong>${roundTo(profile.evaluation.holdout.stock.rmseBins, 4)} → ${roundTo(profile.evaluation.holdout.personalized.rmseBins, 4)}</strong></div>
            <div class="dependency-status"><span>Time-series CV</span><strong>LL ${roundTo(profile.evaluation.crossValidation.logLoss, 4)} · RMSE ${roundTo(profile.evaluation.crossValidation.rmseBins, 4)}</strong></div>`
         : `<p class="helper">No validated personalized profile is staged. Stock FSRS-7 remains authoritative.</p>`;
-      const profileActions = personalization.active
-        ? `<button class="mini-btn" type="button" data-action="deactivate-fsrs-profile">RETURN TO STOCK + REPROJECT</button>`
-        : profile
-          ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
-          : "";
+      const profileActions = running
+        ? ""
+        : personalization.active
+          ? `<button class="mini-btn" type="button" data-action="deactivate-fsrs-profile">RETURN TO STOCK + REPROJECT</button>`
+          : profile
+            ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
+            : "";
       const localAction = personalization.active
         ? `<button class="mini-btn" type="button" disabled>RETURN TO STOCK BEFORE RE-OPTIMIZING</button>`
         : running
@@ -851,7 +853,7 @@
         <div class="dependency-status"><span>Local optimizer</span><strong class="${optimizer.available ? "ok" : ""}">${optimizer.available ? "AVAILABLE" : "OPTIONAL BUILD REQUIRED"}</strong></div>
         <div class="optimizer-progress" data-fsrs-optimizer-progress ${running ? "" : "hidden"}><div><span data-fsrs-optimizer-progress-label>${escapeHtml(progressText)}</span></div><progress data-fsrs-optimizer-progress-bar max="${progressMax}" value="${progressValue}"></progress></div>
         ${profileDetail}
-        <div class="settings-actions">${localAction}<button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json"></label>${profileActions}</div>
+        <div class="settings-actions">${localAction}<button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn ${running ? "disabled" : ""}">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json" ${running ? "disabled" : ""}></label>${profileActions}</div>
         <p class="helper">${escapeHtml(progressText)} Local optimization uses a dedicated Worker and the pinned FSRS-7 WASM binding; review evidence does not leave the browser. The exact gate remains 64 historical training items, 64 later holdout items and 16 distinct holdout cards after conversion. A successful run is <strong>staged only</strong>; activation and atomic reprojection remain explicit.</p>
       </section>`;
     }

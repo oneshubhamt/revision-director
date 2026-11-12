@@ -56,7 +56,7 @@ The built-in `revision-current` profile owns independent typography, shape, mate
 
 Evidence Events are append-only audit records and the canonical review history for memory obligations. The stored FSRS card is a verified materialized projection, while the scheduler port owns replay, scheduler identity and explicit reprojection across scheduling-policy or weight changes.
 
-Scheduling policy and personalization are orthogonal application-owned configuration axes. Persistent-difficulty management is a separate host lifecycle policy derived from FSRS lapses: it may alter remediation or the domain obligation status, but it never mutates FSRS `scheduleStatus`. Personalization remains behind the profile/evidence boundary; optimizer computation is external to the browser runtime. Detailed scheduler, replay, optimizer-gate, difficulty and rebase semantics live in `SCHEDULING_AND_PLANNING.md`.
+Scheduling policy and personalization are orthogonal application-owned configuration axes. Persistent-difficulty management is a separate host lifecycle policy derived from FSRS lapses: it may alter remediation or the domain obligation status, but it never mutates FSRS `scheduleStatus`. Personalization remains behind the profile/evidence boundary. Native and optional Worker/WASM optimization share one tool-owned optimizer core; the principal browser runtime contains only the small client boundary and never imports the binding. Detailed scheduler, replay, optimizer-gate, difficulty and rebase semantics live in `SCHEDULING_AND_PLANNING.md`.
 
 ## Active retrieval and timing
 

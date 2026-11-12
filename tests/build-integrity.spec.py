@@ -13,7 +13,11 @@ source_manifest = json.loads(source_manifest_path.read_text())
 optimizer_package = json.loads((ROOT / "tools/fsrs-optimizer/package.json").read_text())
 optimizer_lock = json.loads((ROOT / "tools/fsrs-optimizer/package-lock.json").read_text())
 optimizer_policy = (ROOT / "tools/fsrs-optimizer/optimizer-policy.mjs").read_text()
+optimizer_core = (ROOT / "tools/fsrs-optimizer/optimizer-core.mjs").read_text()
+optimizer_worker = (ROOT / "tools/fsrs-optimizer/browser-worker.mjs").read_text()
 optimizer_cli = (ROOT / "tools/fsrs-optimizer/optimize.mjs").read_text()
+optimizer_static_build = (ROOT / "build/build-optimizer-static.mjs").read_text()
+root_package = json.loads((ROOT / "package.json").read_text())
 source_parts = sorted(source_manifest["parts"], key=lambda item: item["order"])
 source_paths = [ROOT / "source" / item["path"] for item in source_parts]
 ts = "".join(path.read_text() for path in source_paths)
@@ -61,7 +65,7 @@ check("measured TypeScript checker parallelism", 'TYPESCRIPT_CHECKERS = 2' in bu
 check("source parts own no runtime wrapper", not first_source.lstrip().startswith("(() => {") and not last_source.rstrip().endswith("})();"))
 check("manifest owns expected layers", all(token in {path.name for path in source_paths} for token in [
     "00-runtime-boundary.ts", "05-presentation-engine.ts", "10-domain-model.ts", "11-domain-kernel.ts",
-    "12-production-contracts.ts", "18-fsrs-personalization.ts", "19-revision-scheduler-port.ts", "20-policy-planning-kernel.ts", "21-policy-implementations.ts",
+    "12-production-contracts.ts", "18-fsrs-personalization.ts", "18a-fsrs-browser-optimizer.ts", "19-revision-scheduler-port.ts", "20-policy-planning-kernel.ts", "21-policy-implementations.ts",
     "30-indexeddb-repository.ts", "31-storage-facade.ts", "32-active-retrieval-persistence.ts", "33-phase-time-runtime.ts", "34-cross-tab-ownership.ts", "40-application-services.ts",
     "41-backup-codec.ts", "45-ui-runtime.ts", "50-ui-controller.ts", "60-public-bridge-bootstrap.ts"
 ]))
@@ -181,10 +185,15 @@ check("FSRS-7 exact 34-weight validation", "FSRS7_PARAMETER_BOUNDS" in ts and "v
 check("FSRS optimizer evidence export", 'review_time,card_id,review_rating,review_duration,review_state' in ts and "fsrsOptimizerCsv" in ts and "relearning-return" in ts)
 check("chronological held-out activation gate", 'strategy: "final-sixth"' in ts and "minimumTrainItems: 64" in ts and "minimumHoldoutItems: 64" in ts and "minimumHoldoutCards: 16" in ts and "personalized.logLoss < stock.logLoss" in ts and "personalized.rmseBins <= stock.rmseBins" in ts)
 check("explicit personalization rebase semantics", "activateFsrsOptimizerProfile" in ts and "deactivateFsrsOptimizerProfile" in ts and "replaceSettingsAndObligations" in ts and "rescheduledObligations" in ts and "Finish or end the active retrieval session before changing FSRS scheduler parameters." in ts)
-check("optimizer remains outside browser runtime", "@open-spaced-repetition/binding" not in ts and "@open-spaced-repetition/binding" not in js and "@open-spaced-repetition/binding" in optimizer_cli)
-check("optimizer dependency pinned", optimizer_package.get("dependencies") == {"@open-spaced-repetition/binding": "0.6.1"} and optimizer_lock.get("packages", {}).get("", {}).get("dependencies") == {"@open-spaced-repetition/binding": "0.6.1"})
-check("optimizer training policy", all(token in optimizer_cli for token in ["computeParameters", "evaluateWithTimeSeriesSplits", "splitChronologicalHoldout", "evaluateHoldoutGate", "finalRetrainedOnAllEvidence"]) and all(token in optimizer_policy for token in ["MIN_TRAIN_ITEMS=64", "MIN_HOLDOUT_ITEMS=64", "MIN_HOLDOUT_CARDS=16", 'HOLDOUT_STRATEGY="final-sixth"']))
-check("optimizer tooling syntax", subprocess.run(["node", "--check", str(ROOT / "tools/fsrs-optimizer/optimizer-policy.mjs")], capture_output=True).returncode == 0 and subprocess.run(["node", "--check", str(ROOT / "tools/fsrs-optimizer/optimize.mjs")], capture_output=True).returncode == 0)
+check("optimizer binding isolated from principal browser runtime", "@open-spaced-repetition/binding" not in ts and "@open-spaced-repetition/binding" not in js and "browserFsrsOptimizerAvailability" in ts and "startBrowserFsrsOptimizer" in ts)
+check("optimizer dependencies pinned", optimizer_package.get("dependencies", {}).get("@open-spaced-repetition/binding") == "0.6.1" and optimizer_package.get("dependencies", {}).get("@open-spaced-repetition/binding-wasm32-wasip1") == "0.6.1" and optimizer_package.get("overrides", {}).get("@emnapi/core") == "2.0.0-beta.3" and optimizer_lock.get("packages", {}).get("", {}).get("dependencies") == optimizer_package.get("dependencies"))
+check("single optimizer algorithm core", "optimizeFsrsProfile" in optimizer_core and "splitChronologicalHoldout" in optimizer_core and "evaluateHoldoutGate" in optimizer_core and "optimizeFsrsProfile" in optimizer_cli and "optimizeFsrsProfile" in optimizer_worker and "splitChronologicalHoldout" not in optimizer_cli and "evaluateHoldoutGate" not in optimizer_cli and "splitChronologicalHoldout" not in optimizer_worker and "evaluateHoldoutGate" not in optimizer_worker)
+check("optimizer training policy", all(token in optimizer_core for token in ["computeParameters", "evaluateWithTimeSeriesSplits", "finalRetrainedOnAllEvidence", 'runtimeLearningSteps:["1d"]', 'runtimeRelearningSteps:["1d"]']) and all(token in optimizer_policy for token in ["MIN_TRAIN_ITEMS=64", "MIN_HOLDOUT_ITEMS=64", "MIN_HOLDOUT_CARDS=16", 'HOLDOUT_STRATEGY="final-sixth"']))
+check("local optimizer is staged only", "stageFsrsOptimizerProfile(profile)" in ts and "activateFsrsOptimizerProfile()" in ts and "Profile staged; activation remains explicit." in ts and "stageFsrsOptimizerProfile(profile); await this.service.activate" not in ts)
+check("optimizer Worker cancellation/progress", 'new Worker(new URL("./fsrs-optimizer.worker.js", document.baseURI)' in ts and "worker.terminate()" in ts and 'type:"progress"' in optimizer_worker and "onProgress" in ts)
+check("optional optimizer static distribution", root_package.get("scripts", {}).get("build:optimizer-static") == "npm run build && node build/build-optimizer-static.mjs" and 'name="revision-director-browser-optimizer"' in optimizer_static_build and "optimizer-footprint.json" in optimizer_static_build and "Revision_Director_Optimizer_Static" in optimizer_static_build and "fsrs-binding.wasm32-wasip1.wasm" in optimizer_static_build and "wasm-unsafe-eval" in optimizer_static_build)
+check("standalone remains optimizer-asset-free", 'name="revision-director-browser-optimizer"' not in shell and "fsrs-optimizer.worker.js" not in html and "fsrs-binding.wasm32-wasip1.wasm" not in html and "connect-src 'none'" in html)
+check("optimizer tooling syntax", all(subprocess.run(["node", "--check", str(ROOT / path)], capture_output=True).returncode == 0 for path in ["tools/fsrs-optimizer/optimizer-policy.mjs","tools/fsrs-optimizer/optimizer-core.mjs","tools/fsrs-optimizer/optimize.mjs","tools/fsrs-optimizer/browser-worker.mjs","tools/fsrs-optimizer/parity.mjs","build/build-optimizer-static.mjs"]))
 check("safe suspension provenance", "type SuspensionReason" in ts and 'suspensionReason = "relearning"' in ts and 'suspensionReason === "unit"' in ts)
 check("automatic relearn follow-up", 'completion.followUpType = "relearn"' in ts)
 check("relearn pauses exact original", 'item.returnObligationId === obligation.id' in ts and 'obligation.status = "suspended"' in ts)

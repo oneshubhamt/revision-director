@@ -2,6 +2,16 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-12 — Local browser FSRS optimizer
+
+- Added an optional local FSRS-7 optimizer using the pinned single-threaded WASIp1 binding inside a dedicated Worker.
+- Preserved the root self-contained `index.html`; optimizer Worker/WASM assets live only in an optional static distribution and are instantiated lazily.
+- Added progress reporting, hard cancellation by Worker termination and fail-closed timeout/error handling.
+- Unified native and browser optimization behind one optimizer core so chronological conversion, 64/64/16 eligibility, held-out non-regression gating, final retraining and profile construction cannot drift.
+- Kept successful local optimization staging-only. Activation remains explicit and uses the existing atomic reprojection path.
+- Added native/WASM parity tooling and build-time optimizer-footprint reporting.
+- Pinned the WASIp1/emnapi runtime dependency set and copied runtime licence texts into the optional distribution.
+
 ## 2026-11-12 — Persistent-difficulty memory management
 
 - Added a host-owned memory-difficulty policy derived from the canonical FSRS Review-state lapse counter rather than a parallel leech counter.

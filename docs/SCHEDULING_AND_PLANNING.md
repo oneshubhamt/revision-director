@@ -43,7 +43,12 @@ Retrievability is calculated from the replay-verified current dual-trace state a
 
 ## Personalization and scheduler rebases
 
-Optimization remains outside the browser runtime. Revision Director exports chronological review evidence; the pinned native tool in `tools/fsrs-optimizer/` produces a versioned FSRS-7 profile.
+Revision Director has two implementations of the same personalization boundary:
+
+- the pinned native optimizer in `tools/fsrs-optimizer/`, retained as the reference implementation;
+- an optional browser-local optimizer that uses the pinned single-threaded WASIp1 binding in a dedicated Worker.
+
+Both runtimes call the same optimizer core for chronological conversion, validation-candidate training, later holdout comparison, final retraining and profile assembly. The browser path differs only in Worker/WASM initialization, Web Crypto hashing, progress delivery and cancellation. No review evidence is uploaded to an optimizer service.
 
 A profile is eligible only when it contains exactly 34 valid FSRS-7 weights and records the required evaluation provenance. The external tool:
 
@@ -54,7 +59,7 @@ A profile is eligible only when it contains exactly 34 valid FSRS-7 weights and 
 5. retrains final weights on all eligible evidence after the gate passes;
 6. records upstream time-series evaluation separately.
 
-Importing a profile only stages it. Activation, deactivation and every scheduling-policy change are explicit scheduler rebases. A rebase:
+Native import and successful browser optimization both **stage only**. Local optimization never activates weights automatically. Activation, deactivation and every scheduling-policy change are explicit scheduler rebases. A rebase:
 
 - is rejected while an active retrieval exists;
 - first verifies the current dataset against the current scheduler;
@@ -64,6 +69,8 @@ Importing a profile only stages it. Activation, deactivation and every schedulin
 - never rewrites historical Evidence Events.
 
 Backup/restore preserves staged or active personalization state. Restore prepares the referenced scheduler configuration and independently verifies every materialized memory projection before replacing current data.
+
+The ordinary `index.html` remains the self-contained `file://` distribution and does not embed optimizer assets. The optional optimizer-enabled static distribution keeps the Worker and WASM as local sibling assets and instantiates them only when **Optimize locally** is pressed. Its build records Worker/WASM byte sizes in `optimizer-footprint.json`; this prevents convenience tooling from silently bloating the principal artifact.
 
 ## Rating semantics
 

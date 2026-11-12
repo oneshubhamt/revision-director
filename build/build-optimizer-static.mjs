@@ -52,6 +52,31 @@ html=html.replace(
 );
 await writeFile(resolve(out,"index.html"),html);
 await copyFile(resolve(root,"THIRD_PARTY_NOTICES.md"),resolve(out,"THIRD_PARTY_NOTICES.md"));
+
+const licenseDir=resolve(out,"licenses/optimizer");
+await mkdir(licenseDir,{recursive:true});
+const runtimePackages=[
+ ["@open-spaced-repetition/binding-wasm32-wasip1","open-spaced-repetition-binding-wasm32-wasip1"],
+ ["@emnapi/core","emnapi-core"],
+ ["@emnapi/runtime","emnapi-runtime"],
+ ["@emnapi/wasi-threads","emnapi-wasi-threads"],
+ ["@napi-rs/wasm-runtime","napi-rs-wasm-runtime"],
+ ["@tybys/wasm-util","tybys-wasm-util"],
+ ["tslib","tslib"]
+];
+for(const [packageName,targetName] of runtimePackages){
+ const packageRoot=resolve(optimizerRoot,"node_modules",...packageName.split("/"));
+ let copied=false;
+ for(const candidate of ["LICENSE","LICENSE.md","LICENSE.txt"]){
+  try{
+   await copyFile(resolve(packageRoot,candidate),resolve(licenseDir,targetName+"-"+candidate));
+   copied=true;
+   break;
+  }catch{}
+ }
+ if(!copied)throw Error("Missing runtime licence text for "+packageName);
+}
+
 await writeFile(
  resolve(out,"README.txt"),
  "Revision Director optimizer-enabled static distribution\n\n"+

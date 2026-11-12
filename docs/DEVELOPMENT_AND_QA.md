@@ -64,17 +64,35 @@ For a material change:
 
 Generated output must be rebuilt from source before release/merge.
 
-## External FSRS optimizer
+## FSRS optimizer runtimes
 
-Personalized training remains isolated under `tools/fsrs-optimizer/` and pins `@open-spaced-repetition/binding@0.6.1`.
+Personalized training remains isolated under `tools/fsrs-optimizer/`. The native reference runtime pins `@open-spaced-repetition/binding@0.6.1`; the optional browser path pins `@open-spaced-repetition/binding-wasm32-wasip1@0.6.1` and the emnapi runtime versions required by that release.
 
 ```sh
 cd tools/fsrs-optimizer
 npm ci
 npm run optimize -- path/to/revision-director-fsrs-evidence.csv profile.json
+npm run parity
 ```
 
-The browser runtime never imports the optimizer binding. CI has a separate native-optimizer job that exercises training, conversion, evaluation and fail-closed CLI output. The permanent app-side integration suite independently verifies realistic replay histories, scheduler rebases, backup/restore, returned-memory transitions, corruption rejection and planner behavior. Exact optimizer eligibility and rebase semantics are documented once in `SCHEDULING_AND_PLANNING.md`.
+The ordinary self-contained build remains:
+
+```sh
+npm ci
+npm run build
+```
+
+For the optional local browser optimizer:
+
+```sh
+npm ci
+npm ci --prefix tools/fsrs-optimizer
+npm run build:optimizer-static
+```
+
+Serve `Revision_Director_Optimizer_Static/` over localhost or HTTPS. The Worker and WASM are local sibling assets, are not present in the root `index.html`, and are fetched/instantiated only when optimization is requested. The static build writes `optimizer-footprint.json` with the exact HTML, Worker and WASM byte counts.
+
+Native and browser runtimes use one `optimizer-core.mjs` for conversion, chronological split, held-out gate, final retraining and profile construction. `parity.mjs` independently compares native and WASM conversion, trained weights and evaluation metrics. Browser cancellation is hard cancellation by Worker termination; progress is reported from the binding callback. Exact optimizer eligibility and rebase semantics are documented once in `SCHEDULING_AND_PLANNING.md`.
 
 ## TypeScript 7 checker parallelism
 
