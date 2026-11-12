@@ -2,6 +2,15 @@
 
 This file records durable product/architecture changes. Detailed implementation-pass chronology is intentionally left to Git history.
 
+## 2026-11-12 — Corrective memory verification topology
+
+- Made every closed-book verification inside a memory-linked corrective relearning workflow a canonical FSRS-7 observation; source-assisted repair itself remains host-owned pedagogy.
+- Removed the accidental requirement for two successful relearning cycles. The first qualifying `Good`/`Easy` verification completes the repair and returns the original memory obligation.
+- Persist `Again`/`Hard` corrective outcomes on the original memory card while keeping the repair active and the memory obligation suspended.
+- Normalized contradictory unsuccessful corrective outcomes so they cannot enter FSRS as successful memory ratings.
+- Reclassified pre-establishment failures from canonical review history, preventing the one-day learning-step adaptation from turning early learning difficulty into false established-memory lapses.
+- Extended optimizer evidence, replay validation, persistent-difficulty reconciliation and tests to use the same corrective-verification history.
+
 ## 2026-11-12 — Local browser FSRS optimizer
 
 - Added an optional local FSRS-7 optimizer using the pinned single-threaded WASIp1 binding inside a dedicated Worker.
