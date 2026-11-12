@@ -91,6 +91,11 @@ async function appendDirectReview(payload, obligation, events, policy, rating, r
   obligation.updatedAt=reviewedAt;
   const event=directEvent(payload,before,completion,rating,reviewedAt,events.length+1);
   events.push(event);
+  const unit=memoryUnit(payload,obligation);
+  unit.evidenceCount=events.filter(item=>item.unitId===unit.id).length;
+  unit.lapseCount=events.filter(item=>item.unitId===unit.id&&item.confirmedRating===api.Rating.Again).length;
+  unit.latestEvidenceAt=reviewedAt;
+  unit.latestEvidenceRating=rating;
   return event;
 }
 
