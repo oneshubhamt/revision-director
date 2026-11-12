@@ -62,16 +62,17 @@
   }
 
   function fsrsWeightsFingerprint(weights: readonly number[]): string {
-    return fingerprintText64(validateFsrs7Weights([...weights]).map((value) => Number(value).toString()).join(","));
+    return fingerprintText64(validateFsrs7Weights([...weights]).map((value) => value.toString()).join(","));
   }
 
   const FSRS7_DEFAULT_WEIGHTS_FINGERPRINT = fsrsWeightsFingerprint(FSRS7_DEFAULT_WEIGHTS);
 
   function optimizerMetrics(value: unknown, label: string): FsrsEvaluationMetrics {
     const record = requireRecord(value, `FSRS optimizer ${label} metrics`);
-    const logLoss = Number(record["logLoss"]);
-    const rmseBins = Number(record["rmseBins"]);
-    assert(Number.isFinite(logLoss) && logLoss >= 0 && Number.isFinite(rmseBins) && rmseBins >= 0, `FSRS optimizer ${label} metrics are invalid.`);
+    assertExactKeys(record, `FSRS optimizer ${label} metrics`, ["logLoss", "rmseBins"]);
+    const logLoss = requiredFiniteNumber(record["logLoss"], `FSRS optimizer ${label} log loss`);
+    const rmseBins = requiredFiniteNumber(record["rmseBins"], `FSRS optimizer ${label} RMSE-bins`);
+    assert(logLoss >= 0 && rmseBins >= 0, `FSRS optimizer ${label} metrics are invalid.`);
     return { logLoss, rmseBins };
   }
 
@@ -106,20 +107,22 @@
     const trainedAt = canonicalIso(requiredString(profile["trainedAt"], "FSRS optimizer training date"), "FSRS optimizer training date");
     const sourceSha256 = requiredString(profile["sourceSha256"], "FSRS optimizer source checksum");
     assert(/^[a-f0-9]{64}$/.test(sourceSha256), "FSRS optimizer source checksum is invalid.");
-    const evidenceItems = Number(profile["evidenceItems"]);
-    assert(Number.isSafeInteger(evidenceItems) && evidenceItems > 0, "FSRS optimizer evidence item count is invalid.");
+    const evidenceItems = requiredSafeInteger(profile["evidenceItems"], "FSRS optimizer evidence item count");
+    assert(evidenceItems > 0, "FSRS optimizer evidence item count is invalid.");
     const weights = validateFsrs7Weights(profile["weights"]);
 
     const evaluation = requireRecord(profile["evaluation"], "FSRS optimizer evaluation");
+    assertExactKeys(evaluation, "FSRS optimizer evaluation", ["crossValidation", "holdout"]);
     const crossValidation = optimizerMetrics(evaluation["crossValidation"], "cross-validation");
     const holdout = requireRecord(evaluation["holdout"], "FSRS optimizer holdout");
+    assertExactKeys(holdout, "FSRS optimizer holdout", ["strategy", "trainItems", "holdoutItems", "holdoutCards", "minimumTrainItems", "minimumHoldoutItems", "minimumHoldoutCards", "stock", "personalized", "incumbent", "gate"]);
     assert(holdout["strategy"] === FSRS_OPTIMIZER_HOLDOUT_STRATEGY && holdout["gate"] === "passed", "FSRS optimizer holdout strategy/gate is invalid.");
-    const trainItems = Number(holdout["trainItems"]);
-    const holdoutItems = Number(holdout["holdoutItems"]);
-    const holdoutCards = Number(holdout["holdoutCards"]);
-    assert(Number.isSafeInteger(trainItems) && trainItems >= FSRS_OPTIMIZER_MIN_TRAIN_ITEMS, "FSRS optimizer training prefix is too small.");
-    assert(Number.isSafeInteger(holdoutItems) && holdoutItems >= FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS, "FSRS optimizer holdout is too small.");
-    assert(Number.isSafeInteger(holdoutCards) && holdoutCards >= FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS && holdoutCards <= holdoutItems, "FSRS optimizer holdout-card count is invalid.");
+    const trainItems = requiredSafeInteger(holdout["trainItems"], "FSRS optimizer training item count");
+    const holdoutItems = requiredSafeInteger(holdout["holdoutItems"], "FSRS optimizer holdout item count");
+    const holdoutCards = requiredSafeInteger(holdout["holdoutCards"], "FSRS optimizer holdout card count");
+    assert(trainItems >= FSRS_OPTIMIZER_MIN_TRAIN_ITEMS, "FSRS optimizer training prefix is too small.");
+    assert(holdoutItems >= FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS, "FSRS optimizer holdout is too small.");
+    assert(holdoutCards >= FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS && holdoutCards <= holdoutItems, "FSRS optimizer holdout-card count is invalid.");
     assert(trainItems + holdoutItems === evidenceItems, "FSRS optimizer holdout counts do not match evidence items.");
     assert(holdout["minimumTrainItems"] === FSRS_OPTIMIZER_MIN_TRAIN_ITEMS
       && holdout["minimumHoldoutItems"] === FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS
@@ -159,6 +162,7 @@
     }
 
     const training = requireRecord(profile["training"], "FSRS optimizer training metadata");
+    assertExactKeys(training, "FSRS optimizer training metadata", ["enableShortTerm", "enableSchedPenalties", "numRelearningSteps", "chronology", "converterFixedUtcOffsetMinutes", "converterRolloverHour", "runtimeLearningSteps", "runtimeRelearningSteps", "validationCandidateTrainedItems", "finalRetrainedOnAllEvidence"]);
     assert(training["enableShortTerm"] === true && training["enableSchedPenalties"] === true && training["numRelearningSteps"] === 1,
       "FSRS optimizer training flags are invalid.");
     assert(training["chronology"] === FSRS_OPTIMIZER_CHRONOLOGY
@@ -238,14 +242,14 @@
     const coefficientsRaw = record["coefficients"];
     assert(Array.isArray(coefficientsRaw) && coefficientsRaw.length === 15, "FSRS Cost-ADR policy must contain exactly 15 coefficients.");
     const coefficients = coefficientsRaw.map((value) => {
-      const coefficient = Number(value);
-      assert(Number.isFinite(coefficient) && coefficient >= -64 && coefficient <= 64, "FSRS Cost-ADR coefficient is invalid.");
+      const coefficient = requiredFiniteNumber(value, "FSRS Cost-ADR coefficient");
+      assert(coefficient >= -64 && coefficient <= 64, "FSRS Cost-ADR coefficient is invalid.");
       return coefficient;
     });
-    const costWeightMin = Number(record["costWeightMin"]);
-    const costWeightMax = Number(record["costWeightMax"]);
-    const retentionMin = Number(record["retentionMin"]);
-    const retentionMax = Number(record["retentionMax"]);
+    const costWeightMin = requiredFiniteNumber(record["costWeightMin"], "FSRS Cost-ADR minimum cost weight");
+    const costWeightMax = requiredFiniteNumber(record["costWeightMax"], "FSRS Cost-ADR maximum cost weight");
+    const retentionMin = requiredFiniteNumber(record["retentionMin"], "FSRS Cost-ADR minimum retention");
+    const retentionMax = requiredFiniteNumber(record["retentionMax"], "FSRS Cost-ADR maximum retention");
     assert(Number.isFinite(costWeightMin) && Number.isFinite(costWeightMax) && costWeightMin >= 0 && costWeightMax > costWeightMin
       && Math.log1p(costWeightMax) > Math.log1p(costWeightMin), "FSRS Cost-ADR cost-weight bounds are invalid.");
     assert(Number.isFinite(retentionMin) && Number.isFinite(retentionMax) && retentionMin > 0 && retentionMax > retentionMin && retentionMax < 1, "FSRS Cost-ADR retention bounds are invalid.");
@@ -253,10 +257,10 @@
     const boundsAllowed = new Set(["sMin", "sMax", "dMin", "dMax"]);
     assert(Object.keys(boundsRecord).every((key) => boundsAllowed.has(key)), "FSRS Cost-ADR state bounds contain unexpected fields.");
     const bounds = {
-      sMin: Number(boundsRecord["sMin"]),
-      sMax: Number(boundsRecord["sMax"]),
-      dMin: Number(boundsRecord["dMin"]),
-      dMax: Number(boundsRecord["dMax"]),
+      sMin: requiredFiniteNumber(boundsRecord["sMin"], "FSRS Cost-ADR minimum stability"),
+      sMax: requiredFiniteNumber(boundsRecord["sMax"], "FSRS Cost-ADR maximum stability"),
+      dMin: requiredFiniteNumber(boundsRecord["dMin"], "FSRS Cost-ADR minimum difficulty"),
+      dMax: requiredFiniteNumber(boundsRecord["dMax"], "FSRS Cost-ADR maximum difficulty"),
     };
     assert(Number.isFinite(bounds.sMin) && Number.isFinite(bounds.sMax) && bounds.sMin > 0 && bounds.sMax > bounds.sMin
       && Math.log(bounds.sMax) > Math.log(bounds.sMin), "FSRS Cost-ADR stability bounds are invalid.");
@@ -271,14 +275,14 @@
     if (kind === "fixed-retention") {
       const allowed = new Set(["kind", "desiredRetention"]);
       assert(Object.keys(record).every((key) => allowed.has(key)), "Fixed-retention scheduling policy contains unexpected fields.");
-      const desiredRetention = Number(record["desiredRetention"]);
-      assert(Number.isFinite(desiredRetention) && desiredRetention >= 0.75 && desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
+      const desiredRetention = requiredFiniteNumber(record["desiredRetention"], "Desired retention");
+      assert(desiredRetention >= 0.75 && desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
       return { kind, desiredRetention };
     }
     if (kind === "cost-adr") {
       const allowed = new Set(["kind", "goalCostWeight", "costAdrPolicy"]);
       assert(Object.keys(record).every((key) => allowed.has(key)), "Cost-ADR scheduling policy contains unexpected fields.");
-      const goalCostWeight = Number(record["goalCostWeight"]);
+      const goalCostWeight = requiredFiniteNumber(record["goalCostWeight"], "FSRS Cost-ADR goal cost weight");
       const costAdrPolicy = canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]);
       assert(
         goalCostWeight === FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT
@@ -341,8 +345,8 @@
       const toConfigFingerprint = requiredString(rebase["toConfigFingerprint"], "FSRS target configuration fingerprint");
       assert(/^fnv1a64:[0-9a-f]{16}$/.test(fromConfigFingerprint) && /^fnv1a64:[0-9a-f]{16}$/.test(toConfigFingerprint), "FSRS scheduler rebase fingerprint is invalid.");
       assert(fromConfigFingerprint !== toConfigFingerprint, "FSRS scheduler rebase must change scheduler identity.");
-      const rescheduledObligations = Number(rebase["rescheduledObligations"]);
-      assert(Number.isSafeInteger(rescheduledObligations) && rescheduledObligations >= 0, "FSRS scheduler rebase count is invalid.");
+      const rescheduledObligations = requiredSafeInteger(rebase["rescheduledObligations"], "FSRS scheduler rebase count");
+      assert(rescheduledObligations >= 0, "FSRS scheduler rebase count is invalid.");
       lastRebase = {
         at: canonicalIso(requiredString(rebase["at"], "FSRS scheduler rebase date"), "FSRS scheduler rebase date"),
         reason,
