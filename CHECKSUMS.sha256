@@ -1,13 +1,13 @@
 96af52d2ab0375669b3bb2e42163a2af0c72bc845eb7f521196076c6e1eaab6d  ./build/build-optimizer-static.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 55bf0f29d63d84aaf7159ae4692ceb6e95b28fb87f7cd190129721c0dab76162  ./CHANGELOG.md
-c32401ed495ff66048b6b8fcf15e1d79cdd63621f1feff63ada7c1af3492ba0c  ./dist/app.js
+a49b0933d4bca27f652c028f336e5098a3cb563bcc869146f51e418c0160913f  ./dist/app.js
 4502865f4c9a00bb4b7bc37cd739eda0fe33f7dc0fc922126eed3b2397c1ba93  ./docs/ARCHITECTURE.md
 e9f95b5218834babf7c7bffc098428d9a2455aa97049a000d2356ca3938e976b  ./docs/DATA_AND_STORAGE.md
 4be673087fa64e201dd3366aa8048557b6250cec76f953648d74ea53aad4a714  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 7d3769b61794c0e9a27d74d17215aa04365560e1212a5ecb4762b62dcbeacac0  ./docs/SCHEDULING_AND_PLANNING.md
-5ca8eefba1e52603eab8d837c227b07a922254e17b34e6d99a6f4c8b46fde425  ./index.html
+ca4b06ca81a183a16f52baba8a3b9f780a880ce1c10207ffe932d65b6fe5b83d  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -33,7 +33,7 @@ a684b2040c0da399ff7477e24761fa1eaeb13ef01ff5b3f4fe82d52da259d8e6  ./source/app/4
 87466297abb0744b2ebde8c80318ec8f1c9ee95a53f393e9744690cd4797e5ab  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 4e71aa41aaeeccad4345344f3cd1f66661ba1148267d91e55a52a6b44a7a4ca1  ./source/app/45-ui-runtime.ts
-ea8658debeaa33aa82f5115affec28599548bf38081ff4997f5bc03cd95adfac  ./source/app/50-ui-controller.ts
+8fa237d277577b535a7c37c5139d53dac56e947d06815b593e267aa91e8d07f6  ./source/app/50-ui-controller.ts
 f9560c8de7e7926321bb71dd697090c98ab34d680b3a4b225d5832f848f51949  ./source/app/55-extension-runtime.ts
 77963fce015a51c7175b7b3b41faefd32600f5cae6c463f19a836e4333aef11b  ./source/app/60-public-bridge-bootstrap.ts
 bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/source-manifest.json

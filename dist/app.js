@@ -9325,7 +9325,7 @@
                   await this.service.recordEvidence(obligationId, committedEvidence, new Date(), guard, post);
                   await this.activePersistence.acceptCommittedTransition(post);
                   this.activeSessionRevision = post.revision;
-                  this.toast(`Recorded ${ratingName(rating)}. Next obligation scheduled.`);
+                  this.toast(`Recorded ${ratingName(effectiveRating)}. Next obligation scheduled.`);
                   this.reviewDrafts.delete(obligationId);
                   this.activeReviewIndex += 1;
                   this.diagramStrokes = [];
