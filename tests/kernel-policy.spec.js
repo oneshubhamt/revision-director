@@ -475,7 +475,7 @@ async function testAutomaticPersistentDifficultyHold() {
       dueAt:returnedDue,
       policyState:{...structuredClone(original.policyState),successStreak:1,lastIntervalDays:3,fsrsCard:{...structuredClone(original.policyState.fsrsCard),dueAt:returnedDue,lastReviewAt:due}},
       policyId:'memory/ts-fsrs@6.0.0/fsrs-7',
-      reviewLog:{},
+      reviewLog:{model:'FSRS-7',rating:3,state:original.policyState.fsrsCard.state,dueAt:original.policyState.fsrsCard.dueAt,lastReviewAt:original.policyState.fsrsCard.lastReviewAt??null,reviewTime:due,stability:original.policyState.fsrsCard.stability,stabilityFast:original.policyState.fsrsCard.stabilityFast,difficulty:original.policyState.fsrsCard.difficulty,scheduledDays:original.policyState.fsrsCard.scheduledDays,learningStep:original.policyState.fsrsCard.learningStep,scheduleStatus:original.policyState.fsrsCard.scheduleStatus},
       schedulerConfig:{model:'FSRS-7',schedulingPolicy:fixed(.9),fractionalDays:true,enableFuzz:false,enableShortTerm:true,learningSteps:['1d'],relearningSteps:['1d'],graduatingInterval:1,allowModelOverride:true,maximumInterval:36500,clearStatsOnForget:false,weightsSource:'ts-fsrs-package-default',weightsFingerprint:'fnv1a64:0000000000000001',fingerprint:'fnv1a64:0000000000000002'}
     })
   }:realGet(type);
