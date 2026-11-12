@@ -426,6 +426,36 @@ async function testAutomaticPersistentDifficultyHold() {
   check(heldAgain?.policyState.fsrsCard.scheduleStatus==='review','Host queue hold must not mutate FSRS scheduleStatus');
 }
 
+async function testDifficultyPolicyReconciliation() {
+  await api.prepareFsrsScheduler(fixed(.9));
+  const memory=new api.FsrsMemoryPolicy(()=>fixed(.9));
+  const held={...obligation('memory-recall',memory,'recall'),id:'held-policy',unitId:'u',status:'suspended',suspensionReason:'persistent-difficulty'};
+  held.policyState.fsrsCard.cardId='held-policy';
+  held.policyState.fsrsCard.lapses=8;
+  held.policyState.fsrsCard.reps=12;
+  held.policyState.fsrsCard.state=2;
+  held.policyState.fsrsCard.scheduleStatus='review';
+  const current={schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:true,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}};
+  let atomic;
+  const svc=new api.RevisionService({
+    put:async()=>{},
+    replaceSettingsAndObligations:async(settings,obligations)=>{atomic={settings:structuredClone(settings),obligations:structuredClone(obligations)};}
+  });
+  svc.settings=structuredClone(current);
+  svc.profiles=async()=>[];
+  svc.obligations=async()=>[held];
+  svc.units=async()=>[{id:'u',status:'active'}];
+  const disabled={...current,memoryDifficultyPolicy:{...current.memoryDifficultyPolicy,automaticHold:{enabled:false,lapseThreshold:8}}};
+  await svc.saveSettings(disabled);
+  check(atomic?.settings.memoryDifficultyPolicy.automaticHold.enabled===false&&atomic?.obligations[0]?.status==='active'&&atomic?.obligations[0]?.suspensionReason===undefined,'Disabling automatic hold must atomically return stale policy-held memory to an active unit');
+
+  atomic=undefined;
+  svc.settings=structuredClone(current);
+  svc.units=async()=>[{id:'u',status:'suspended'}];
+  await svc.saveSettings({...current,memoryDifficultyPolicy:{remediationLapses:9,persistentDifficultyLapses:10,automaticHold:{enabled:true,lapseThreshold:12}}});
+  check(atomic?.obligations[0]?.status==='suspended'&&atomic?.obligations[0]?.suspensionReason==='unit','Releasing a stale persistent-difficulty hold must preserve an independent unit-level pause');
+}
+
 async function testStudyEventRuntimeBoundary() {
   const stored = [];
   const repo = {
@@ -469,4 +499,4 @@ async function testSettingsBoundary() {
   }
 }
 
-Promise.all([testFsrs7Integration(), testTriggerEvidenceLookup(), testRelearningLifecycle(), testPersistentDifficultyResume(), testAutomaticPersistentDifficultyHold(), testStudyEventRuntimeBoundary(), testDueSummaryScope(), testSettingsBoundary()]).then(() => console.log(`PASS ${checks} kernel, workflow, policy and backup checks`)).catch((error) => { console.error(error); process.exitCode = 1; });
+Promise.all([testFsrs7Integration(), testTriggerEvidenceLookup(), testRelearningLifecycle(), testPersistentDifficultyResume(), testAutomaticPersistentDifficultyHold(), testDifficultyPolicyReconciliation(), testStudyEventRuntimeBoundary(), testDueSummaryScope(), testSettingsBoundary()]).then(() => console.log(`PASS ${checks} kernel, workflow, policy and backup checks`)).catch((error) => { console.error(error); process.exitCode = 1; });

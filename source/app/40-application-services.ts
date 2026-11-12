@@ -69,13 +69,57 @@
         JSON.stringify(canonical.fsrsScheduling.lastRebase ?? null) === JSON.stringify(this.settings.fsrsScheduling.lastRebase ?? null),
         "FSRS scheduler rebase metadata is service-owned.",
       );
+      const difficultyChanged =
+        JSON.stringify(canonical.memoryDifficultyPolicy) !== JSON.stringify(this.settings.memoryDifficultyPolicy);
       if (!fsrsSchedulingPoliciesEqual(canonical.fsrsScheduling.policy, this.settings.fsrsScheduling.policy)) {
         await this.rebaseMemoryScheduler(canonical, activeFsrsOptimizerProfile(canonical), "scheduler-policy-change");
         return;
       }
       await prepareFsrsScheduler(canonical.fsrsScheduling.policy, activeFsrsOptimizerProfile(canonical));
+      if (difficultyChanged) {
+        const [obligations, units] = await Promise.all([this.obligations(), this.units()]);
+        const released = this.releaseStalePersistentDifficultyHolds(
+          obligations,
+          units,
+          canonical.memoryDifficultyPolicy,
+          nowIso(),
+        );
+        await this.repo.replaceSettingsAndObligations(canonical, released);
+        this.settings = canonical;
+        return;
+      }
       this.settings = canonical;
       await this.repo.put(Store.Settings, this.settings);
+    }
+
+    private releaseStalePersistentDifficultyHolds(
+      obligations: readonly RevisionObligation[],
+      units: readonly KnowledgeUnit[],
+      policy: MemoryDifficultyPolicy,
+      at: ISODateTime,
+    ): RevisionObligation[] {
+      const unitById = new Map(units.map((unit) => [unit.id, unit]));
+      const released: RevisionObligation[] = [];
+      for (const current of obligations) {
+        if (current.type !== "memory-recall" || current.status !== "suspended" || current.suspensionReason !== "persistent-difficulty") continue;
+        if (memoryDifficultyAssessment(current, policy).automaticHoldEligible) continue;
+        const unit = unitById.get(current.unitId);
+        assert(unit, "Persistent-difficulty memory references a missing knowledge unit.");
+        const obligation = clone(current);
+        if (unit.status === "active") {
+          obligation.status = "active";
+          delete obligation.suspensionReason;
+        } else if (unit.status === "suspended") {
+          obligation.status = "suspended";
+          obligation.suspensionReason = "unit";
+        } else {
+          obligation.status = "archived";
+          delete obligation.suspensionReason;
+        }
+        obligation.updatedAt = at;
+        released.push(obligation);
+      }
+      return released;
     }
 
     async optimizerEvidenceSummary(): Promise<{ cards: number; reviews: number }> {
@@ -141,7 +185,7 @@
       const currentProfile = activeFsrsOptimizerProfile(this.settings);
       const currentConfiguration = fsrsConfigSnapshot(this.settings.fsrsScheduling.policy, currentProfile);
       await prepareFsrsScheduler(settings.fsrsScheduling.policy, profile);
-      const [obligations, evidenceEvents] = await Promise.all([this.obligations(), this.evidenceEvents()]);
+      const [obligations, evidenceEvents, units] = await Promise.all([this.obligations(), this.evidenceEvents(), this.units()]);
       verifyMemoryDatasetIntegrity(
         obligations,
         evidenceEvents,
@@ -172,6 +216,19 @@
         };
       });
       assert(currentConfiguration.fingerprint !== scheduler.configuration.fingerprint, "FSRS scheduler rebase must change scheduler identity.");
+      const released = this.releaseStalePersistentDifficultyHolds(
+        updatedMemory,
+        units,
+        settings.memoryDifficultyPolicy,
+        at,
+      );
+      if (released.length > 0) {
+        const releasedById = new Map(released.map((obligation) => [obligation.id, obligation]));
+        for (let index = 0; index < updatedMemory.length; index += 1) {
+          const replacement = releasedById.get(updatedMemory[index]!.id);
+          if (replacement) updatedMemory[index] = replacement;
+        }
+      }
       const personalization = effectiveFsrsPersonalization(settings);
       const finalized = canonicalAppSettings({
         ...settings,
@@ -190,7 +247,7 @@
           active: Boolean(profile),
         },
       });
-      await this.repo.replaceMemoryScheduling(finalized, updatedMemory);
+      await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);
       this.settings = finalized;
       verifyMemoryDatasetIntegrity(updatedMemory, evidenceEvents, finalized.fsrsScheduling.policy, profile);
     }
@@ -1221,7 +1278,11 @@
         if (obligation.status === "suspended") assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning" || obligation.suspensionReason === "persistent-difficulty", "Suspended obligation lacks a valid reason.");
         else assert(obligation.suspensionReason === undefined, "Only suspended obligations may retain a suspension reason.");
         if (obligation.suspensionReason === "relearning") {
-          assert([...obligationMap.values()].some((item) => item.type === "relearn" && item.status === "active" && item.returnObligationId === obligation.id), "Relearning suspension lacks its active repair obligation.");
+          assert([...obligationMap.values()].some((item) =>
+            item.type === "relearn" &&
+            (item.status === "active" || item.status === "suspended") &&
+            item.returnObligationId === obligation.id
+          ), "Relearning suspension lacks its unresolved repair obligation.");
         }
         if (obligation.suspensionReason === "persistent-difficulty") assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
         validDate(obligation.dueAt, "Obligation"); validDate(obligation.createdAt, "Obligation"); validDate(obligation.updatedAt, "Obligation");
@@ -1450,7 +1511,7 @@
       const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(settings.memoryDifficultyPolicy);
       for (const obligation of obligations) {
         if (obligation.suspensionReason !== "persistent-difficulty") continue;
-        assert(memoryDifficultyAssessment(obligation, memoryDifficultyPolicy).level === "persistent-difficulty", "Persistent-difficulty hold lacks a sufficient FSRS lapse signal.");
+        assert(memoryDifficultyAssessment(obligation, memoryDifficultyPolicy).automaticHoldEligible, "Persistent-difficulty hold is not justified by the active automatic-hold policy.");
       }
       assert(Number.isFinite(settings.dailyCapacityMinutes) && settings.dailyCapacityMinutes >= 5 && settings.dailyCapacityMinutes <= 600, "Daily revision capacity is invalid.");
       assert(Number.isInteger(settings.studyDayBoundaryHour) && settings.studyDayBoundaryHour >= 0 && settings.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");

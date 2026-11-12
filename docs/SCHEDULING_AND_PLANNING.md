@@ -97,7 +97,7 @@ The host policy is:
 
 Persistent difficulty does not bypass the recovery mechanism. Even when automatic hold is enabled, successful closed-book relearning first advances the original memory card through FSRS with a successful return transition. Only then may the **Revision Director obligation** remain suspended with reason `persistent-difficulty`. The FSRS card itself remains schedulable and its `scheduleStatus` is not mutated.
 
-A held item can be deliberately resumed from the Library. Disabling or avoiding automatic hold leaves persistently difficult items in the normal queue but visibly flagged, with a strong weakness signal in planning. Difficulty level is derived from the authoritative FSRS lapse count; Revision Director does not persist a second mutable leech counter.
+A held item can be deliberately resumed from the Library. Disabling automatic hold, or changing thresholds so an existing policy-generated hold no longer qualifies, atomically releases that hold while preserving any independent unit-level pause. Avoiding automatic hold leaves persistently difficult items in the normal queue but visibly flagged, with a strong weakness signal in planning. Difficulty level is derived from the authoritative FSRS lapse count; Revision Director does not persist a second mutable leech counter.
 
 ## Exam horizon
 

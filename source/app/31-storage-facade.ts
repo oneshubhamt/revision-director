@@ -292,8 +292,8 @@
       ));
     }
 
-    async replaceMemoryScheduling(settings: AppSettings, obligations: RevisionObligation[]): Promise<void> {
-      await this.operation("replaceMemoryScheduling", () => this.repository.replaceMemoryScheduling(
+    async replaceSettingsAndObligations(settings: AppSettings, obligations: RevisionObligation[]): Promise<void> {
+      await this.operation("replaceSettingsAndObligations", () => this.repository.replaceSettingsAndObligations(
         canonicalAppSettings(settings),
         obligations.map(canonicalRevisionObligation),
       ));

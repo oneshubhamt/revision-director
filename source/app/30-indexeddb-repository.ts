@@ -240,7 +240,7 @@
       await transactionDone(tx);
     }
 
-    async replaceMemoryScheduling(settings: AppSettings, obligations: RevisionObligation[]): Promise<void> {
+    async replaceSettingsAndObligations(settings: AppSettings, obligations: RevisionObligation[]): Promise<void> {
       const tx = this.db.transaction([Store.Settings, Store.Obligations], "readwrite");
       tx.objectStore(Store.Settings).put(settings);
       const obligationStore = tx.objectStore(Store.Obligations);

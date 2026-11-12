@@ -97,7 +97,7 @@ function buildRepositoryPayload(){
 class MemoryRepo {
   constructor(payload){
     this.replaceFromBackupCalls=0;
-    this.replaceMemorySchedulingCalls=0;
+    this.replaceSettingsAndObligationsCalls=0;
     this.load(payload);
   }
   load(payload){
@@ -120,9 +120,9 @@ class MemoryRepo {
     if(index>=0) rows[index]=clone(value); else rows.push(clone(value));
     this[store]=rows;
   }
-  async replaceMemoryScheduling(settings,updatedMemory){
-    this.replaceMemorySchedulingCalls++;
-    const updates=new Map(updatedMemory.map(item=>[item.id,clone(item)]));
+  async replaceSettingsAndObligations(settings,updatedObligations){
+    this.replaceSettingsAndObligationsCalls++;
+    const updates=new Map(updatedObligations.map(item=>[item.id,clone(item)]));
     this.obligations=this.obligations.map(item=>updates.get(item.id)||item);
     this.settings=clone(settings);
   }
@@ -247,7 +247,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   await service.activateFsrsOptimizerProfile();
   check(service.getSettings().fsrsPersonalization.active===true,'Profile activation must be explicit');
   check(service.getSettings().fsrsScheduling.lastRebase.reason==='activate-profile','Profile activation must record an explicit scheduler rebase');
-  check(repo.replaceMemorySchedulingCalls===2,'Retention and profile changes must each use atomic projection replacement');
+  check(repo.replaceSettingsAndObligationsCalls===2,'Retention and profile changes must each use the shared atomic settings/obligations replacement');
 
   let activeObligation=memoryObligation(repo);
   const activeProfile=api.activeFsrsOptimizerProfile(service.getSettings());
