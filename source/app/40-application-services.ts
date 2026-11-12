@@ -220,6 +220,26 @@
       await this.rebaseMemoryScheduler(next, null, "deactivate-profile");
     }
 
+    async replaceActiveFsrsOptimizerProfile(input: unknown): Promise<FsrsOptimizerProfile> {
+      const personalization = effectiveFsrsPersonalization(this.settings);
+      assert(personalization.active && personalization.profile, "Personalized FSRS-7 is not active.");
+      const candidate = validateFsrsOptimizerProfile(input);
+      await this.assertOptimizerProfileMatchesCurrentEvidence(candidate);
+      const incumbent = candidate.evaluation.holdout.incumbent;
+      assert(incumbent, "Replacement FSRS optimizer profile lacks an incumbent holdout comparison.");
+      assert(
+        incumbent.sourceSha256 === personalization.profile.sourceSha256
+          && incumbent.weightsFingerprint === fsrsWeightsFingerprint(personalization.profile.weights),
+        "Replacement FSRS optimizer profile was not evaluated against the currently active personalized weights.",
+      );
+      const next = canonicalAppSettings({
+        ...this.settings,
+        fsrsPersonalization: { profile: candidate, active: true },
+      });
+      await this.rebaseMemoryScheduler(next, candidate, "replace-profile");
+      return clone(candidate);
+    }
+
     private async rebaseMemoryScheduler(
       requestedSettings: AppSettings,
       profile: FsrsOptimizerProfile | null,

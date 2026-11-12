@@ -21,6 +21,7 @@
   interface BrowserFsrsOptimizerOptions {
     readonly timeoutMs?: number;
     readonly onProgress?: (progress: BrowserFsrsOptimizerProgress) => void;
+    readonly incumbentProfile?: FsrsOptimizerProfile | null;
   }
 
   class FsrsOptimizerRejectedError extends Error {
@@ -40,11 +41,11 @@
       return { available: false, reason: "Browser Worker/WebAssembly support is unavailable." };
     }
     if (location.protocol === "file:") {
-      return { available: false, reason: "Use the optional optimizer-enabled static distribution over localhost or HTTPS for in-app optimization." };
+      return { available: false, reason: "Use the hosted distribution over localhost or HTTPS for in-app optimization; the portable single-file build intentionally omits optimizer assets." };
     }
     const marker = document.querySelector<HTMLMetaElement>('meta[name="revision-director-browser-optimizer"]')?.content;
     if (marker !== FSRS_BROWSER_OPTIMIZER_CAPABILITY) {
-      return { available: false, reason: "This build does not include the local FSRS optimizer Worker/WASM assets." };
+      return { available: false, reason: "This portable build does not include the local FSRS optimizer Worker/WASM assets." };
     }
     if (!globalThis.crypto?.subtle) {
       return { available: false, reason: "Web Crypto is unavailable; serve the optimizer build from a secure context or localhost." };
@@ -137,7 +138,13 @@
       worker.addEventListener("error", (event) => {
         rejectOnce(new Error(event.message || "FSRS optimizer Worker crashed."));
       });
-      worker.postMessage({ type: "optimize", requestId, csv });
+      const incumbentProfile = options.incumbentProfile
+        ? {
+            sourceSha256: options.incumbentProfile.sourceSha256,
+            weights: [...options.incumbentProfile.weights],
+          }
+        : null;
+      worker.postMessage({ type: "optimize", requestId, csv, incumbentProfile });
     });
 
     return {

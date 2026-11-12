@@ -841,13 +841,18 @@
         ? Math.max(0, Math.min(progress.total, progress.current))
         : 0;
       const progressMax = progress && progress.total > 0 ? progress.total : 1;
-      const canOptimize = optimizer.available && !personalization.active && !running && summary.reviews > 0;
+      const canOptimize = optimizer.available && !running && summary.reviews > 0;
       const holdoutDiagnostics = profile
         ? fsrsHoldoutDiagnostics(profile.evaluation.holdout.stock, profile.evaluation.holdout.personalized)
         : undefined;
+      const incumbent = profile?.evaluation.holdout.incumbent;
+      const incumbentDiagnostics = incumbent && profile
+        ? fsrsHoldoutDiagnostics(incumbent.metrics, profile.evaluation.holdout.personalized)
+        : undefined;
       const profileDetail = profile && holdoutDiagnostics
         ? `<div class="dependency-status"><span>Profile</span><strong>${escapeHtml(profile.sourceSha256.slice(0, 12))}…</strong></div>
-           <div class="dependency-status"><span>Held-out log loss</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)} · ${roundTo(holdoutDiagnostics.logLossImprovement.relative * 100, 2)}% better</strong></div>
+           <div class="dependency-status"><span>Held-out log loss · stock</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)} · ${roundTo(holdoutDiagnostics.logLossImprovement.relative * 100, 2)}% better</strong></div>
+           ${incumbentDiagnostics && incumbent ? `<div class="dependency-status"><span>Held-out log loss · prior profile</span><strong>${roundTo(incumbent.metrics.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)} · ${roundTo(incumbentDiagnostics.logLossImprovement.relative * 100, 2)}% better</strong></div>` : ""}
            <div class="dependency-status"><span>Calibration · RMSE bins</span><strong>${roundTo(profile.evaluation.holdout.stock.rmseBins, 4)} → ${roundTo(profile.evaluation.holdout.personalized.rmseBins, 4)} · ${holdoutDiagnostics.calibration.status}</strong></div>
            <div class="dependency-status"><span>Time-series CV</span><strong>LL ${roundTo(profile.evaluation.crossValidation.logLoss, 4)} · RMSE ${roundTo(profile.evaluation.crossValidation.rmseBins, 4)}</strong></div>`
         : `<p class="helper">No validated personalized profile is staged. Stock FSRS-7 remains authoritative.</p>`;
@@ -858,19 +863,17 @@
           : profile
             ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
             : "";
-      const localAction = personalization.active
-        ? `<button class="mini-btn" type="button" disabled>RETURN TO STOCK BEFORE RE-OPTIMIZING</button>`
-        : running
-          ? `<button class="mini-btn" type="button" data-action="cancel-fsrs-optimization">CANCEL OPTIMIZATION</button>`
-          : `<button class="mini-btn" type="button" data-action="optimize-fsrs-locally" ${canOptimize ? "" : "disabled"}>${profile ? "RE-OPTIMIZE LOCALLY" : "OPTIMIZE LOCALLY"}</button>`;
+      const localAction = running
+        ? `<button class="mini-btn" type="button" data-action="cancel-fsrs-optimization">CANCEL OPTIMIZATION</button>`
+        : `<button class="mini-btn" type="button" data-action="optimize-fsrs-locally" ${canOptimize ? "" : "disabled"}>${personalization.active ? "RE-OPTIMIZE + SWITCH IF BETTER" : profile ? "RE-OPTIMIZE LOCALLY" : "OPTIMIZE LOCALLY"}</button>`;
       return `<section class="panel settings-card wide" id="fsrs-personalization-card"><h3>FSRS-7 personalization</h3>
         <div class="dependency-status"><span>Weights</span><strong class="${statusClass}">${status}</strong></div>
         <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards · ${summary.reliableDurations} timed · ${summary.unavailableDurations} untimed</strong></div>
-        <div class="dependency-status"><span>Local optimizer</span><strong class="${optimizer.available ? "ok" : ""}">${optimizer.available ? "AVAILABLE" : "OPTIONAL BUILD REQUIRED"}</strong></div>
+        <div class="dependency-status"><span>Local optimizer</span><strong class="${optimizer.available ? "ok" : ""}">${optimizer.available ? "AVAILABLE" : "HOSTED BUILD REQUIRED"}</strong></div>
         <div class="optimizer-progress" data-fsrs-optimizer-progress ${running ? "" : "hidden"}><div><span data-fsrs-optimizer-progress-label>${escapeHtml(progressText)}</span></div><progress data-fsrs-optimizer-progress-bar max="${progressMax}" value="${progressValue}"></progress></div>
         ${profileDetail}
         <div class="settings-actions">${localAction}<button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn ${running ? "disabled" : ""}">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json" ${running ? "disabled" : ""}></label>${profileActions}</div>
-        <p class="helper">${escapeHtml(progressText)} Local optimization uses a dedicated Worker and the pinned FSRS-7 WASM binding; review evidence does not leave the browser. Optimizer duration is closed-book recall/verification time only; unreliable timing remains in recall history with unavailable cost rather than full-session time. The exact gate remains 64 historical training items, 64 later holdout items and 16 distinct holdout cards after conversion. A successful run is <strong>staged only</strong>; activation and atomic reprojection remain explicit.</p>
+        <p class="helper">${escapeHtml(progressText)} Local optimization uses a dedicated Worker and the pinned FSRS-7 WASM binding; review evidence does not leave the browser. Optimizer duration is closed-book recall/verification time only; unreliable timing remains in recall history with unavailable cost rather than full-session time. The exact gate remains 64 historical training items, 64 later holdout items and 16 distinct holdout cards after conversion. From stock, a successful run is <strong>staged only</strong>. While personalized weights are active, optimization evaluates the candidate against both stock and the active profile on the same holdout; only a candidate that clears both gates replaces the active profile, using one atomic scheduler rebase.</p>
       </section>`;
     }
 
@@ -1890,10 +1893,10 @@
     }
 
     private async optimizeFsrsLocally(): Promise<void> {
-      assert(this.requireMutable("optimize and stage personalized FSRS-7 weights"), "This tab is read-only.");
+      assert(this.requireMutable("optimize personalized FSRS-7 weights"), "This tab is read-only.");
       assert(!this.fsrsOptimizerRun, "FSRS optimization is already running.");
       const personalization = effectiveFsrsPersonalization(this.service.getSettings());
-      assert(!personalization.active, "Return to stock FSRS-7 before optimizing a replacement profile.");
+      const incumbentProfile = personalization.active ? personalization.profile : null;
       const availability = browserFsrsOptimizerAvailability();
       assert(availability.available, availability.reason);
 
@@ -1902,6 +1905,7 @@
 
       this.fsrsOptimizerProgress = { stage: "Preparing local evidence", current: 0, total: 0 };
       const run = startBrowserFsrsOptimizer(snapshot.csv, {
+        incumbentProfile,
         onProgress: (progress) => this.updateFsrsOptimizerProgress(progress),
       });
       this.fsrsOptimizerRun = run;
@@ -1909,14 +1913,20 @@
 
       try {
         const profile = await run.promise;
-        assert(this.requireMutable("stage the locally optimized FSRS-7 profile"), "Review control changed before optimizer staging.");
-        const staged = await this.service.stageFsrsOptimizerProfile(profile);
-        this.toast(`Local FSRS-7 optimization passed the holdout gate · ${staged.evidenceItems} optimizer items. Profile staged; activation remains explicit.`);
+        assert(this.requireMutable("publish the locally optimized FSRS-7 profile"), "Review control changed before optimizer publication.");
+        if (incumbentProfile) {
+          const activated = await this.service.replaceActiveFsrsOptimizerProfile(profile);
+          await this.renderAll();
+          this.toast(`FSRS-7 candidate beat stock and the active profile on the same holdout · ${activated.evidenceItems} optimizer items. Active weights switched with one atomic rebase.`);
+        } else {
+          const staged = await this.service.stageFsrsOptimizerProfile(profile);
+          this.toast(`Local FSRS-7 optimization passed the stock holdout gate · ${staged.evidenceItems} optimizer items. Profile staged; activation remains explicit.`);
+        }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           if (this.ownership.canMutate()) this.toast("FSRS optimization cancelled.");
         } else if (error instanceof FsrsOptimizerRejectedError) {
-          this.toast(`Personalized FSRS-7 was not staged · ${error.reasons.join("; ")}`, true);
+          this.toast(`Personalized FSRS-7 candidate was rejected · ${error.reasons.join("; ")}`, true);
         } else {
           this.toast(error instanceof Error ? error.message : "Local FSRS optimization failed.", true);
         }
@@ -1942,9 +1952,16 @@
       try {
         assert(file.size <= 64 * 1024, "FSRS optimizer profile exceeds the 64 KiB limit.");
         const parsed: unknown = JSON.parse(await file.text());
-        const profile = await this.service.stageFsrsOptimizerProfile(parsed);
-        await this.renderAll();
-        this.toast(`Validated FSRS-7 profile staged · ${profile.evidenceItems} optimizer items. Activation remains explicit.`);
+        const personalization = effectiveFsrsPersonalization(this.service.getSettings());
+        if (personalization.active) {
+          const profile = await this.service.replaceActiveFsrsOptimizerProfile(parsed);
+          await this.renderAll();
+          this.toast(`Validated FSRS-7 replacement activated · ${profile.evidenceItems} optimizer items. Active weights switched with one atomic rebase.`);
+        } else {
+          const profile = await this.service.stageFsrsOptimizerProfile(parsed);
+          await this.renderAll();
+          this.toast(`Validated FSRS-7 profile staged · ${profile.evidenceItems} optimizer items. Activation remains explicit.`);
+        }
       } catch (error) {
         this.toast(error instanceof Error ? error.message : "FSRS optimizer profile import failed.", true);
       } finally {

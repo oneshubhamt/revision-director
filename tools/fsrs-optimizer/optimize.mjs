@@ -9,19 +9,22 @@ import {OptimizerGateRejectedError,optimizeFsrsProfile} from "./optimizer-core.m
 const args=process.argv.slice(2);
 const [input,output,...flagArgs]=args;
 if(!input||!output){
- console.error("Usage: npm run optimize -- <reviews.csv> <profile.json> [--max-seconds=N] [--poll-ms=N]");
+ console.error("Usage: npm run optimize -- <reviews.csv> <profile.json> [--incumbent-profile=profile.json] [--max-seconds=N] [--poll-ms=N]");
  console.error("Input must be Revision Director optimizer evidence exported in chronological order.");
  process.exit(2);
 }
 const inputPath=resolve(input),outputPath=resolve(output),temporaryOutput=outputPath+".tmp";
 if(inputPath===outputPath||inputPath===temporaryOutput)throw Error("Input CSV and output profile must use different paths");
 
-let maxSeconds=0,pollMs=250;
+let maxSeconds=0,pollMs=250,incumbentProfilePath="";
 for(const arg of flagArgs){
  const [name,raw]=arg.split("=",2);
  if(name==="--max-seconds"){
   maxSeconds=Number(raw);
   if(!Number.isFinite(maxSeconds)||maxSeconds<0)throw Error("--max-seconds must be a non-negative number");
+ }else if(name==="--incumbent-profile"){
+  if(!raw)throw Error("--incumbent-profile requires a profile JSON path");
+  incumbentProfilePath=resolve(raw);
  }else if(name==="--poll-ms"){
   pollMs=Number(raw);
   if(!Number.isSafeInteger(pollMs)||pollMs<50||pollMs>5000)throw Error("--poll-ms must be an integer from 50 to 5000");
@@ -59,13 +62,17 @@ const checkpoint=()=>{
 
 const bytes=new Uint8Array(await readFile(inputPath));
 const csv=new TextDecoder().decode(bytes);
+const incumbentProfile=incumbentProfilePath
+ ? JSON.parse(await readFile(incumbentProfilePath,"utf8"))
+ : null;
 try{
  const {profile,rawRows}=await optimizeFsrsProfile({
   binding:{FSRSBinding,computeParameters,convertCsvToFsrsItemsWithCardIds,evaluateWithTimeSeriesSplits},
   csv,
   sourceSha256:data=>createHash("sha256").update(data).digest("hex"),
   optimizerOptions,
-  checkpoint
+  checkpoint,
+  incumbentProfile
  });
  checkpoint();
  await writeFile(temporaryOutput,JSON.stringify(profile,null,2)+"\n","utf8");
@@ -77,6 +84,12 @@ try{
   "personalized",profile.evaluation.holdout.personalized.logLoss);
  console.log("holdout RMSE bins: stock",profile.evaluation.holdout.stock.rmseBins,
   "personalized",profile.evaluation.holdout.personalized.rmseBins);
+ if(profile.evaluation.holdout.incumbent){
+  console.log("holdout log loss: incumbent",profile.evaluation.holdout.incumbent.metrics.logLoss,
+   "personalized",profile.evaluation.holdout.personalized.logLoss);
+  console.log("holdout RMSE bins: incumbent",profile.evaluation.holdout.incumbent.metrics.rmseBins,
+   "personalized",profile.evaluation.holdout.personalized.rmseBins);
+ }
  console.log("time-series log loss:",profile.evaluation.crossValidation.logLoss);
  console.log("time-series RMSE bins:",profile.evaluation.crossValidation.rmseBins);
 }catch(error){

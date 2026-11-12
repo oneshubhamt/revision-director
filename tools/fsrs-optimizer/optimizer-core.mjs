@@ -25,6 +25,17 @@ const ensureWeights=(weights,label)=>{
  return weights;
 };
 
+export const optimizerWeightsFingerprint=weights=>{
+ const values=ensureWeights([...weights],"Weights fingerprint input");
+ let hash=0xcbf29ce484222325n;
+ const canonical=values.map(value=>Number(value).toString()).join(",");
+ for(let index=0;index<canonical.length;index++){
+  hash^=BigInt(canonical.charCodeAt(index));
+  hash=BigInt.asUintN(64,hash*0x100000001b3n);
+ }
+ return "fnv1a64:"+hash.toString(16).padStart(16,"0");
+};
+
 export async function convertFsrsEvidence({binding,csv,sourceSha256}){
  if(typeof csv!=="string"||!csv.trim())throw Error("Optimizer evidence is empty");
  const rawRows=assertChronologicalCsv(csv);
@@ -45,7 +56,7 @@ export async function convertFsrsEvidence({binding,csv,sourceSha256}){
 }
 
 export async function optimizeFsrsProfile({
- binding,csv,sourceSha256,optimizerOptions,checkpoint=()=>undefined
+ binding,csv,sourceSha256,optimizerOptions,checkpoint=()=>undefined,incumbentProfile=null
 }){
  const converted=await convertFsrsEvidence({binding,csv,sourceSha256});
  const {rawRows,sourceSha256:checksum,items,cardIds}=converted;
@@ -75,7 +86,22 @@ export async function optimizeFsrsProfile({
   new binding.FSRSBinding(validationWeights).evaluate(split.holdoutItems,split.holdoutCardIds),
   "Personalized FSRS-7"
  );
- const gate=evaluateHoldoutGate(stock,personalized,split);
+ let incumbentComparison=null;
+ if(incumbentProfile!==null){
+  if(!incumbentProfile||typeof incumbentProfile!=="object")throw Error("Incumbent FSRS profile is invalid");
+  const incumbentWeights=ensureWeights(incumbentProfile.weights,"Incumbent FSRS-7 profile");
+  if(typeof incumbentProfile.sourceSha256!=="string"||!/^[a-f0-9]{64}$/.test(incumbentProfile.sourceSha256))
+   throw Error("Incumbent FSRS profile source checksum is invalid");
+  incumbentComparison={
+   sourceSha256:incumbentProfile.sourceSha256,
+   weightsFingerprint:optimizerWeightsFingerprint(incumbentWeights),
+   metrics:optimizerMetrics(
+    new binding.FSRSBinding(incumbentWeights).evaluate(split.holdoutItems,split.holdoutCardIds),
+    "Active personalized FSRS-7"
+   )
+  };
+ }
+ const gate=evaluateHoldoutGate(stock,personalized,split,incumbentComparison);
  if(!gate.passed)throw new OptimizerGateRejectedError(gate.reasons);
  await checkpoint("after-holdout-gate");
 
@@ -118,6 +144,7 @@ export async function optimizeFsrsProfile({
      minimumHoldoutCards:MIN_HOLDOUT_CARDS,
      stock:gate.stock,
      personalized:gate.personalized,
+     ...(gate.incumbent?{incumbent:gate.incumbent}:{}),
      gate:"passed"
     }
    },

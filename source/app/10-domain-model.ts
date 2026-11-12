@@ -315,6 +315,11 @@
         minimumHoldoutCards: 16;
         stock: FsrsEvaluationMetrics;
         personalized: FsrsEvaluationMetrics;
+        incumbent?: {
+          sourceSha256: string;
+          weightsFingerprint: string;
+          metrics: FsrsEvaluationMetrics;
+        };
         gate: "passed";
       };
     };
@@ -359,7 +364,7 @@
 
   interface FsrsSchedulerRebase {
     at: ISODateTime;
-    reason: "scheduler-policy-change" | "activate-profile" | "deactivate-profile";
+    reason: "scheduler-policy-change" | "activate-profile" | "replace-profile" | "deactivate-profile";
     fromConfigFingerprint: string;
     toConfigFingerprint: string;
     rescheduledObligations: number;

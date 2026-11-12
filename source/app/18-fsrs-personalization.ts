@@ -136,6 +136,27 @@
       diagnostics.calibration.status !== "regressed",
       "Personalized FSRS-7 profile regressed held-out RMSE-bins calibration versus stock FSRS-7.",
     );
+    let incumbent: FsrsOptimizerProfile["evaluation"]["holdout"]["incumbent"] | undefined;
+    if (holdout["incumbent"] !== undefined) {
+      const rawIncumbent = requireRecord(holdout["incumbent"], "FSRS optimizer incumbent comparison");
+      const incumbentAllowed = new Set(["sourceSha256", "weightsFingerprint", "metrics"]);
+      assert(Object.keys(rawIncumbent).every((key) => incumbentAllowed.has(key)), "FSRS optimizer incumbent comparison contains unexpected fields.");
+      const incumbentSourceSha256 = requiredString(rawIncumbent["sourceSha256"], "FSRS optimizer incumbent source checksum");
+      const weightsFingerprint = requiredString(rawIncumbent["weightsFingerprint"], "FSRS optimizer incumbent weights fingerprint");
+      assert(/^[a-f0-9]{64}$/.test(incumbentSourceSha256), "FSRS optimizer incumbent source checksum is invalid.");
+      assert(/^fnv1a64:[0-9a-f]{16}$/.test(weightsFingerprint), "FSRS optimizer incumbent weights fingerprint is invalid.");
+      const metrics = optimizerMetrics(rawIncumbent["metrics"], "incumbent holdout");
+      const incumbentDiagnostics = fsrsHoldoutDiagnostics(metrics, personalized);
+      assert(
+        incumbentDiagnostics.logLossImprovement.absolute + Number.EPSILON >= incumbentDiagnostics.logLossImprovement.required,
+        "Candidate FSRS-7 profile did not achieve the minimum practical held-out log-loss improvement over the active personalized profile.",
+      );
+      assert(
+        incumbentDiagnostics.calibration.status !== "regressed",
+        "Candidate FSRS-7 profile regressed held-out RMSE-bins calibration versus the active personalized profile.",
+      );
+      incumbent = { sourceSha256: incumbentSourceSha256, weightsFingerprint, metrics };
+    }
 
     const training = requireRecord(profile["training"], "FSRS optimizer training metadata");
     assert(training["enableShortTerm"] === true && training["enableSchedPenalties"] === true && training["numRelearningSteps"] === 1,
@@ -170,6 +191,7 @@
           minimumHoldoutCards: FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS,
           stock,
           personalized,
+          ...(incumbent ? { incumbent } : {}),
           gate: "passed",
         },
       },
@@ -314,7 +336,7 @@
       const rebaseAllowed = new Set(["at", "reason", "fromConfigFingerprint", "toConfigFingerprint", "rescheduledObligations"]);
       assert(Object.keys(rebase).every((key) => rebaseAllowed.has(key)), "FSRS scheduler rebase contains unexpected fields.");
       const reason = rebase["reason"];
-      assert(reason === "scheduler-policy-change" || reason === "activate-profile" || reason === "deactivate-profile", "FSRS scheduler rebase reason is invalid.");
+      assert(reason === "scheduler-policy-change" || reason === "activate-profile" || reason === "replace-profile" || reason === "deactivate-profile", "FSRS scheduler rebase reason is invalid.");
       const fromConfigFingerprint = requiredString(rebase["fromConfigFingerprint"], "FSRS prior configuration fingerprint");
       const toConfigFingerprint = requiredString(rebase["toConfigFingerprint"], "FSRS target configuration fingerprint");
       assert(/^fnv1a64:[0-9a-f]{16}$/.test(fromConfigFingerprint) && /^fnv1a64:[0-9a-f]{16}$/.test(toConfigFingerprint), "FSRS scheduler rebase fingerprint is invalid.");

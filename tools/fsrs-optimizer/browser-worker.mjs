@@ -59,7 +59,8 @@ async function optimize(binding,request){
   optimizerOptions:(cardIds,stage)=>({
    modelVersion:"FSRS-7",enableShortTerm:true,enableSchedPenalties:true,numRelearningSteps:1,
    cardIds,progress:progress(requestId,stage)
-  })
+  }),
+  incumbentProfile
  });
  send({type:"result",requestId,profile:result.profile});
 }
