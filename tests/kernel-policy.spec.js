@@ -174,17 +174,16 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   check(good.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(good.policyState.fsrsCard.stabilityFast), 'Reviewed FSRS-7 state must preserve both traces');
   check(good.schedulerConfig.model === 'FSRS-7' && good.schedulerConfig.schedulingPolicy.kind === 'fixed-retention' && good.schedulerConfig.schedulingPolicy.desiredRetention === .9 && good.schedulerConfig.fractionalDays === true, 'FSRS-7 configuration provenance must include the scheduling-policy discriminant');
 
-  const reviewedObligation={...memoryObligation,dueAt:good.dueAt,policyState:structuredClone(good.policyState)};
-  const reviewLapseAt=new Date(good.dueAt);
-  const reviewLapse=memory.complete(reviewedObligation,api.Rating.Again,evidence(1,1,1),reviewLapseAt,{memoryReviews:[]});
-  check(reviewLapse.policyState.fsrsCard.lapses===1&&reviewLapse.followUpType==='relearn','The difficulty signal must use the FSRS Review-state lapse counter, while Again still routes to relearning');
-
   const goodObservation = {
     evidenceEventId:'good-event', reviewedAt:due, rating:api.Rating.Good, source:'direct-memory',
     beforeCard:structuredClone(memoryObligation.policyState.fsrsCard),
     afterCard:structuredClone(good.policyState.fsrsCard),
     configFingerprint:good.schedulerConfig.fingerprint
   };
+  const reviewedObligation={...memoryObligation,dueAt:good.dueAt,policyState:structuredClone(good.policyState)};
+  const reviewLapseAt=new Date(good.dueAt);
+  const reviewLapse=memory.complete(reviewedObligation,api.Rating.Again,evidence(1,1,1),reviewLapseAt,{memoryReviews:[goodObservation]});
+  check(reviewLapse.policyState.fsrsCard.lapses===1&&reviewLapse.followUpType==='relearn','The difficulty signal must use the FSRS Review-state lapse counter, while Again still routes to relearning');
   const port = api.revisionSchedulerPort(fixed(.9));
   port.verifyProjection(good.policyState.fsrsCard, [goodObservation]); checks++;
   const rescheduled = port.reschedule(memoryObligation.policyState.fsrsCard, [goodObservation]);
