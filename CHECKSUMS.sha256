@@ -47,7 +47,7 @@ bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/s
 3246496905f0c6062f1ea01204d020684e6f5fd5f51113e3b12763fc6aff112d  ./tests/build-integrity.spec.py
 15c2c5eb0dcddef5fad2806cc650e9a169a257c03268609bd876aa8baabfacae  ./tests/fixtures/browser-baseline.json
 ca2f42822f71ee00d2dff9b1846806545634c79e2ef75c3cfae46feae5f1cdfb  ./tests/fixtures/browser-baseline.rdbackup
-2f010c3992938c424e2a45ef97f6991e3695a6a77059271436f948e5b6e8b5bb  ./tests/fsrs-browser-optimizer.spec.py
+c61767dc8cfcc2c2adcba8c0637d727e8f900c74e29335463ba7f960386ddb9c  ./tests/fsrs-browser-optimizer.spec.py
 273b4e670def3fe0bc6bf164bb9436a1387fd233d908e2f54abe3a01b5e20a4b  ./tests/fsrs-integration.spec.js
 7b8cf1a2b8eeb399886b86e851489ea6beebac28ea45c17184e124090a2492ec  ./tests/fsrs-optimizer-core.spec.js
 721372a79e498e2f904cfdd7f2cf9c41fe18fdcd95e1b9cfc072d6bae98a0b1c  ./tests/fsrs-optimizer-policy.spec.js
