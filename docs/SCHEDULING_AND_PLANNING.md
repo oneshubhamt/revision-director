@@ -70,7 +70,7 @@ Native import and successful browser optimization both **stage only**. Local opt
 
 Backup/restore preserves staged or active personalization state. Restore prepares the referenced scheduler configuration and independently verifies every materialized memory projection before replacing current data.
 
-The ordinary `index.html` remains the self-contained `file://` distribution and does not embed optimizer assets. The optional optimizer-enabled static distribution keeps the Worker and WASM as local sibling assets and instantiates them only when **Optimize locally** is pressed. Its build records Worker/WASM byte sizes in `optimizer-footprint.json`; this prevents convenience tooling from silently bloating the principal artifact.
+The ordinary `index.html` remains the self-contained `file://` distribution and does not embed optimizer assets. This is a measured packaging decision: at the F3 audit the tracked self-contained HTML was 789,009 bytes, while the official pinned `0.6.1` release asset `fsrs-binding.wasm32-wasip1.wasm` is 1,396,770 bytes (about 1.77× the entire HTML before Worker/runtime code). Base64-inlining that binary alone would add about 1.86 MB. The optional optimizer-enabled static distribution therefore keeps the Worker and WASM as local sibling assets and instantiates them only when **Optimize locally** is pressed. Its build records actual installed Worker/WASM byte sizes in `optimizer-footprint.json`; this prevents convenience tooling from silently bloating the principal artifact.
 
 ## Rating semantics
 

@@ -12,7 +12,7 @@ export class OptimizerGateRejectedError extends Error{
  }
 }
 
-const finiteMetrics=(value,label)=>{
+export const optimizerMetrics=(value,label)=>{
  if(!value||!Number.isFinite(value.logLoss)||value.logLoss<0||
    !Number.isFinite(value.rmseBins)||value.rmseBins<0)
   throw Error(label+" returned invalid evaluation metrics");
@@ -25,9 +25,7 @@ const ensureWeights=(weights,label)=>{
  return weights;
 };
 
-export async function optimizeFsrsProfile({
- binding,csv,sourceSha256,optimizerOptions,checkpoint=()=>undefined
-}){
+export async function convertFsrsEvidence({binding,csv,sourceSha256}){
  if(typeof csv!=="string"||!csv.trim())throw Error("Optimizer evidence is empty");
  const rawRows=assertChronologicalCsv(csv);
  if(rawRows<1)throw Error("Review evidence is empty");
@@ -43,7 +41,14 @@ export async function optimizeFsrsProfile({
  const {items,cardIds}=converted;
  if(!Array.isArray(items)||!Array.isArray(cardIds)||items.length<1||items.length!==cardIds.length)
   throw Error("Review evidence did not produce aligned FSRS-7 optimizer items");
+ return {rawRows,sourceSha256:checksum,items,cardIds};
+}
 
+export async function optimizeFsrsProfile({
+ binding,csv,sourceSha256,optimizerOptions,checkpoint=()=>undefined
+}){
+ const converted=await convertFsrsEvidence({binding,csv,sourceSha256});
+ const {rawRows,sourceSha256:checksum,items,cardIds}=converted;
  const split=splitChronologicalHoldout(items,cardIds);
  if(split.trainCount<MIN_TRAIN_ITEMS||split.holdoutCount<MIN_HOLDOUT_ITEMS||split.holdoutCards<MIN_HOLDOUT_CARDS){
   throw new OptimizerGateRejectedError([
@@ -62,11 +67,11 @@ export async function optimizeFsrsProfile({
  );
  await checkpoint("after-validation-training");
 
- const stock=finiteMetrics(
+ const stock=optimizerMetrics(
   new binding.FSRSBinding().evaluate(split.holdoutItems,split.holdoutCardIds),
   "Stock FSRS-7"
  );
- const personalized=finiteMetrics(
+ const personalized=optimizerMetrics(
   new binding.FSRSBinding(validationWeights).evaluate(split.holdoutItems,split.holdoutCardIds),
   "Personalized FSRS-7"
  );
@@ -82,7 +87,7 @@ export async function optimizeFsrsProfile({
   "Final training"
  );
 
- const crossValidation=finiteMetrics(
+ const crossValidation=optimizerMetrics(
   await binding.evaluateWithTimeSeriesSplits(
    items,
    optimizerOptions(cardIds,"Time-series cross-validation")

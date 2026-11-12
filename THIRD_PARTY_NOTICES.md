@@ -32,7 +32,7 @@ The optional `Revision_Director_Optimizer_Static/` distribution additionally con
 - `@emnapi/runtime@2.0.0-beta.3` — MIT
 - `@emnapi/wasi-threads@2.2.0` — MIT
 - `@napi-rs/wasm-runtime@1.2.6` — MIT
-- `@tybys/wasm-util` — MIT
-- `tslib` — 0BSD
+- `@tybys/wasm-util@0.10.4` — MIT
+- `tslib@2.9.1` — 0BSD
 
 The optimizer-static build copies the installed packages' licence texts into `licenses/optimizer/` beside the Worker/WASM distribution.

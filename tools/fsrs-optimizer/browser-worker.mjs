@@ -1,5 +1,6 @@
 import {createInstance} from "@open-spaced-repetition/binding-wasm32-wasip1/workerd";
-import {OptimizerGateRejectedError,optimizeFsrsProfile} from "./optimizer-core.mjs";
+import {OptimizerGateRejectedError,convertFsrsEvidence,optimizeFsrsProfile,optimizerMetrics} from "./optimizer-core.mjs";
+import {OPTIMIZER_CHRONOLOGY} from "./optimizer-policy.mjs";
 
 const send=message=>self.postMessage(message);
 const hex=buffer=>Array.from(new Uint8Array(buffer),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -26,6 +27,27 @@ const progress=(requestId,stage)=>{
  };
 };
 
+async function probe(binding,request){
+ const {requestId,csv}=request;
+ if(typeof requestId!=="string"||!requestId)throw Error("Optimizer request ID is invalid");
+ const converted=await convertFsrsEvidence({
+  binding,
+  csv,
+  sourceSha256:async bytes=>hex(await crypto.subtle.digest("SHA-256",bytes))
+ });
+ const metrics=optimizerMetrics(
+  new binding.FSRSBinding().evaluate(converted.items,converted.cardIds),
+  "Browser optimizer probe"
+ );
+ send({
+  type:"probe-result",requestId,
+  items:converted.items.length,
+  cards:new Set(converted.cardIds).size,
+  metrics,
+  chronology:OPTIMIZER_CHRONOLOGY
+ });
+}
+
 async function optimize(binding,request){
  const {requestId,csv}=request;
  if(typeof requestId!=="string"||!requestId)throw Error("Optimizer request ID is invalid");
@@ -44,14 +66,14 @@ async function optimize(binding,request){
 
 self.addEventListener("message",event=>{
  const request=event.data;
- if(!request||typeof request!=="object"||request.type!=="optimize")return;
+ if(!request||typeof request!=="object"||(request.type!=="optimize"&&request.type!=="probe"))return;
  void (async()=>{
   let runtime;
   try{
    runtime=await createBindingRuntime();
    if(runtime.binding.__napiBindingTarget!=="wasm32-wasip1")
     throw Error("Unexpected FSRS optimizer binding target");
-   await optimize(runtime.binding,request);
+   await (request.type==="optimize" ? optimize(runtime.binding,request) : probe(runtime.binding,request));
   }catch(error){
    if(error instanceof OptimizerGateRejectedError){
     send({type:"rejected",requestId:request.requestId,reasons:error.reasons});
