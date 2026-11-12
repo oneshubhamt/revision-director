@@ -334,6 +334,43 @@ def scenario_bridge(browser) -> None:
 
 
 
+def scenario_cost_adr_settings(browser) -> None:
+    page, errors = open_page(browser, {"width": 1365, "height": 950}, baseline=True)
+    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
+    settings = page.locator('#settings-form')
+    policy = settings.locator('[name="memorySchedulingPolicy"]')
+    check(policy.count() == 1, "Memory scheduling policy selector missing")
+    check(policy.input_value() == "fixed-retention", "Fixed retention must remain the default scheduling policy")
+
+    policy.select_option("cost-adr")
+    settings.locator('button[type="submit"]').click()
+    page.wait_for_timeout(900)
+    check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
+    settings_text = page.locator("#settings-content").inner_text()
+    check("Cost-ADR · cost weight 1024" in settings_text, "Measured Cost-ADR preset did not become active in Settings")
+
+    with TemporaryDirectory() as tmp:
+        backup_path = str(Path(tmp) / "cost-adr-settings.rdbackup")
+        with page.expect_download() as download_info:
+            page.locator('[data-action="export-backup"]').click()
+        download_info.value.save_as(backup_path)
+        payload = decode_file(Path(backup_path))
+        saved_policy = payload["settings"]["fsrsScheduling"]["policy"]
+        check(saved_policy["kind"] == "cost-adr", "Cost-ADR policy was not persisted in backup state")
+        check(saved_policy["goalCostWeight"] == 1024, "Persisted Cost-ADR goal cost weight is not the measured preset")
+        check(len(saved_policy["costAdrPolicy"]["coefficients"]) == 15, "Persisted Cost-ADR policy lost upstream coefficient provenance")
+
+    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
+    settings = page.locator('#settings-form')
+    settings.locator('[name="memorySchedulingPolicy"]').select_option("fixed-retention")
+    settings.locator('[name="desiredRetention"]').fill("0.90")
+    settings.locator('button[type="submit"]').click()
+    page.wait_for_timeout(900)
+    check("Fixed · 90%" in page.locator("#settings-content").inner_text(), "Return from Cost-ADR to fixed retention did not complete")
+    check(not errors, f"Cost-ADR Settings browser errors: {errors}")
+    page.close()
+
+
 def scenario_pass_d(browser) -> None:
     page, errors = open_page(browser, {"width": 1365, "height": 1000}, baseline=True)
     page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
@@ -418,10 +455,11 @@ def main() -> None:
         scenario_workflows(browser)
         scenario_keyboard_accessibility(browser)
         scenario_bridge(browser)
+        scenario_cost_adr_settings(browser)
         scenario_pass_d(browser)
         scenario_plan_execution_states(browser)
         browser.close()
-    print("PASS 7 Chromium browser QA scenarios")
+    print("PASS 8 Chromium browser QA scenarios")
 
 
 if __name__ == "__main__":
