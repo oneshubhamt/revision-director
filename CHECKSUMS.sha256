@@ -42,10 +42,10 @@ bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/s
 6f911587244611a5fb45ea9c6f07c25b1b8957f5ae05a0af1001867847512a29  ./source/revision-director.shell.html
 9e9a57d9ce399bc80affbf6bea69fdc911af114058932379967d36e2f31b7c12  ./source/revision-director.va7.css
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
-7e7b56ad14f284e16581b687e66dd18a42fdb6973456e8bb68b0fe8a52b477fb  ./tests/backup_fixture_codec.py
+b8acbd89a7a929b219e091e34a9723ab163d608bebec4a2739d6b62ce8a45acd  ./tests/backup_fixture_codec.py
 c7a711a947ef0fa3248423e8de839d784164285a0c41a9aa31e96985dd0386a2  ./tests/browser-qa.spec.py
 804b6cf235305a9ec02182b09cbf342648241b9bcdc75157b0cdb67e02637217  ./tests/build-integrity.spec.py
-15c2c5eb0dcddef5fad2806cc650e9a169a257c03268609bd876aa8baabfacae  ./tests/fixtures/browser-baseline.json
+cb0c953c10f8a02eb28ccc4fe487eb5e045d364835540d5534bd9779d19f8274  ./tests/fixtures/browser-baseline.json
 ca2f42822f71ee00d2dff9b1846806545634c79e2ef75c3cfae46feae5f1cdfb  ./tests/fixtures/browser-baseline.rdbackup
 5094dfbfa9be0d50c066d7da20e99ecd206ada2981a47e8908c907d35b4079ed  ./tests/fsrs-browser-optimizer.spec.py
 251a0bcf7aab028a9f9c41cb928f2803e8c7161a7100d50c438fd2af5f261a15  ./tests/fsrs-integration.spec.js
