@@ -1681,24 +1681,46 @@
         }
       }
       const evidenceCounts = new Map<string, { total: number; lapses: number }>();
-      const durationEventsByObligation = new Map<string, EvidenceEvent[]>();
+      const evidenceByObligation = new Map<string, EvidenceEvent[]>();
       for (const event of evidenceEvents) {
         const count = evidenceCounts.get(event.unitId) ?? { total: 0, lapses: 0 };
         count.total += 1;
         if (event.confirmedRating === Rating.Again) count.lapses += 1;
         evidenceCounts.set(event.unitId, count);
-        const durationEvents = durationEventsByObligation.get(event.obligationId) ?? [];
-        durationEvents.push(event);
-        durationEventsByObligation.set(event.obligationId, durationEvents);
+        const obligationEvents = evidenceByObligation.get(event.obligationId) ?? [];
+        obligationEvents.push(event);
+        evidenceByObligation.set(event.obligationId, obligationEvents);
       }
       for (const unit of units) {
         const count = evidenceCounts.get(unit.id) ?? { total: 0, lapses: 0 };
         assert(unit.evidenceCount === count.total && unit.lapseCount === count.lapses, "Knowledge unit evidence counters do not match its history.");
       }
+      const intervalStateEqual = (left: PolicyState, right: PolicyState): boolean =>
+        left.engine === right.engine &&
+        left.version === right.version &&
+        left.stage === right.stage &&
+        left.successStreak === right.successStreak &&
+        left.failureCount === right.failureCount &&
+        left.lastIntervalDays === right.lastIntervalDays &&
+        left.fsrsCard === undefined &&
+        right.fsrsCard === undefined;
+
       for (const obligation of obligations) {
-        const durationEvents = durationEventsByObligation.get(obligation.id) ?? [];
+        const obligationEvents = [...(evidenceByObligation.get(obligation.id) ?? [])]
+          .sort((left, right) => left.reviewedAt.localeCompare(right.reviewedAt) || left.id.localeCompare(right.id));
+
+        if (obligation.type !== "memory-recall") {
+          const policy = this.router.get(obligation.type);
+          let state = policy.createInitialState(obligation.dueAt);
+          for (const event of obligationEvents) {
+            assert(intervalStateEqual(event.beforePolicyState, state), "Non-memory Evidence Event history does not continue the prior policy state.");
+            state = event.afterPolicyState;
+          }
+          assert(intervalStateEqual(obligation.policyState, state), "Non-memory obligation policy state does not match its Evidence Event history.");
+        }
+
         const acceptedBySample = new Map<number, EvidenceEvent>();
-        for (const event of durationEvents) {
+        for (const event of obligationEvents) {
           const observation = event.durationObservation;
           if (!observation.accepted) continue;
           assert(observation.exactSamples >= 1, "Accepted duration evidence has an invalid exact-sample sequence.");
@@ -1716,7 +1738,7 @@
         }
         assert(obligation.expectedMinutes === estimate, "Obligation duration estimate does not match its accepted evidence history.");
 
-        for (const event of durationEvents) {
+        for (const event of obligationEvents) {
           const observation = event.durationObservation;
           if (observation.accepted) continue;
           assert(observation.exactSamples >= 0 && observation.exactSamples <= obligation.durationSampleCount, "Rejected duration evidence has an invalid exact-sample sequence.");
