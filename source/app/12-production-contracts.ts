@@ -307,6 +307,8 @@
     event.afterDueAt = canonicalIso(event.afterDueAt, "Evidence-event next due date");
     event.beforePolicyState = canonicalPolicyState(event.beforePolicyState);
     event.afterPolicyState = canonicalPolicyState(event.afterPolicyState);
+    const expectedEngine = POLICY_ENGINE_BY_OBLIGATION[event.obligationType];
+    assert(event.beforePolicyState.engine === expectedEngine && event.afterPolicyState.engine === expectedEngine, "Evidence policy state does not match its obligation type.");
     event.policyId = canonicalId(event.policyId, "Evidence-event policy ID");
     event.timing = canonicalTimingEvidenceSummary(event.timing);
     assert(typeof value.elapsedMs === "number" && Number.isFinite(value.elapsedMs) && Math.round(value.elapsedMs) === event.timing.totalActiveMs, "Evidence elapsed time does not match timing evidence.");
@@ -316,11 +318,23 @@
     event.suggestedRating = validateRating(event.suggestedRating);
     event.confirmedRating = validateRating(event.confirmedRating);
     event.durationObservation = canonicalDurationObservation(event.durationObservation);
-    if (event.schedulerConfig !== undefined) event.schedulerConfig = clone(validateFsrsConfigSnapshot(event.schedulerConfig));
-    if (event.reviewLog !== undefined) event.reviewLog = clone(requireRecord(event.reviewLog, "Evidence scheduler review log"));
+    if (event.obligationType === "memory-recall") {
+      assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION && event.schedulerModel === FSRS_MODEL, "Memory evidence lacks exact FSRS-7 provenance.");
+      assert(event.schedulerConfig !== undefined && event.reviewLog !== undefined, "Memory evidence lacks scheduler configuration or review log.");
+      event.schedulerConfig = clone(validateFsrsConfigSnapshot(event.schedulerConfig));
+      event.reviewLog = clone(requireRecord(event.reviewLog, "Evidence scheduler review log"));
+    } else {
+      assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined && event.reviewLog === undefined, "Non-memory evidence cannot contain direct FSRS scheduler provenance.");
+      delete event.schedulerPackage;
+      delete event.schedulerVersion;
+      delete event.schedulerModel;
+      delete event.schedulerConfig;
+      delete event.reviewLog;
+    }
     if (event.followUpObligationId !== undefined) event.followUpObligationId = canonicalId(event.followUpObligationId, "Evidence follow-up obligation ID");
     else delete event.followUpObligationId;
     if (event.correctiveMemoryTransition) {
+      assert(event.obligationType === "relearn", "Only relearning evidence may contain a corrective memory transition.");
       const transition = event.correctiveMemoryTransition;
       assertExactKeys(transition, "Corrective memory transition", ["obligationId", "rating", "beforeDueAt", "afterDueAt", "beforePolicyState", "afterPolicyState", "policyId", "schedulerPackage", "schedulerVersion", "schedulerModel", "schedulerConfig", "reviewLog"]);
       transition.obligationId = canonicalId(transition.obligationId, "Corrective memory obligation ID");
@@ -684,12 +698,19 @@
       assert(queueTargetIds[value.activeIndex] === activeTargetId, "Active retrieval target does not match its queue.");
     }
     const commitToken = value.commitToken === undefined ? undefined : canonicalId(value.commitToken, "Active retrieval commit token");
-    if (value.status === "committing") assert(commitToken, "A committing retrieval requires a commit token.");
+    if (value.status === "active") assert(commitToken === undefined, "An active retrieval cannot retain a commit token.");
+    else assert(commitToken !== undefined, "Committing and completed retrieval states require a commit token.");
     const phase = canonicalReviewPhase(value.phase);
+    const draft = canonicalReviewDraftSnapshot(value.draft);
+    assert(draft.phase === phase, "Active retrieval draft phase differs from its session phase.");
     const timeRuntime = canonicalPhaseTimeRuntimeSnapshot(value.timeRuntime);
     assert(timeRuntime.currentPhase === phase, "Active retrieval phase and timer phase differ.");
     const elapsedMs = Object.values(timeRuntime.activeByPhase).reduce((sum, amount) => sum + amount, 0);
-    assert(Number.isFinite(value.elapsedMs) && Math.round(value.elapsedMs) === elapsedMs, "Active retrieval elapsed time does not match phase timing.");
+    assert(typeof value.elapsedMs === "number" && Number.isFinite(value.elapsedMs) && Math.round(value.elapsedMs) === elapsedMs, "Active retrieval elapsed time does not match phase timing.");
+    const startedAt = canonicalIso(value.startedAt, "Active retrieval start date");
+    const updatedAt = canonicalIso(value.updatedAt, "Active retrieval update date");
+    assert(timeRuntime.sessionStartedAt === startedAt, "Active retrieval start date differs from its timing runtime.");
+    assert(Date.parse(updatedAt) >= Date.parse(startedAt), "Active retrieval update precedes its start.");
     return {
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
       id: ACTIVE_RETRIEVAL_ID,
@@ -699,11 +720,11 @@
       activeIndex: value.activeIndex,
       activeTargetId,
       phase,
-      draft: canonicalReviewDraftSnapshot(value.draft),
+      draft,
       timeRuntime,
       elapsedMs,
-      startedAt: canonicalIso(value.startedAt, "Active retrieval start date"),
-      updatedAt: canonicalIso(value.updatedAt, "Active retrieval update date"),
+      startedAt,
+      updatedAt,
       ...(commitToken ? { commitToken } : {}),
     };
   }
