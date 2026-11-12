@@ -155,8 +155,8 @@ def scenario_basic(browser) -> None:
     page.wait_for_timeout(120)
     settings_text = page.locator("#settings-content").inner_text()
     check("Storage health" in settings_text and "IndexedDB" in settings_text, "Storage-health contract is not visible")
-    check(page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "cost-adr", "Clean installations must default to measured Cost-ADR scheduling")
-    check("Cost-ADR · cost weight 1024" in settings_text, "Clean-install Settings must expose the measured default policy")
+    check(page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "fixed-retention", "Clean installations must default to measured fixed-retention scheduling")
+    check("Fixed · 90%" in settings_text, "Clean-install Settings must expose the measured fixed-90% default policy")
     page.locator("#new-profile-name").fill("IFoS Production Test")
     page.locator("#new-profile-date").fill("2027-11-01")
     page.locator('[data-action="add-profile"]').click()
@@ -349,7 +349,7 @@ def scenario_cost_adr_settings(browser) -> None:
     page.wait_for_timeout(900)
     check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
     settings_text = page.locator("#settings-content").inner_text()
-    check("Cost-ADR · cost weight 1024" in settings_text, "Measured Cost-ADR preset did not become active in Settings")
+    check("Cost-ADR · cost weight 1024" in settings_text, "Optional Cost-ADR preset did not become active in Settings")
 
     with TemporaryDirectory() as tmp:
         backup_path = str(Path(tmp) / "cost-adr-settings.rdbackup")
@@ -359,7 +359,7 @@ def scenario_cost_adr_settings(browser) -> None:
         payload = decode_file(Path(backup_path))
         saved_policy = payload["settings"]["fsrsScheduling"]["policy"]
         check(saved_policy["kind"] == "cost-adr", "Cost-ADR policy was not persisted in backup state")
-        check(saved_policy["goalCostWeight"] == 1024, "Persisted Cost-ADR goal cost weight is not the measured preset")
+        check(saved_policy["goalCostWeight"] == 1024, "Persisted Cost-ADR goal cost weight is not the bounded preset")
         check(len(saved_policy["costAdrPolicy"]["coefficients"]) == 15, "Persisted Cost-ADR policy lost upstream coefficient provenance")
 
     page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
