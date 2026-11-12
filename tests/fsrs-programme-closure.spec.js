@@ -14,11 +14,11 @@ const context = { crypto:webcrypto, structuredClone, console, Date, Intl, URL, B
 context.window=context; context.self=context; context.globalThis=context;
 vm.createContext(context);
 vm.runInContext(vendor, context, { filename:'ts-fsrs-6.0.0.umd.js' });
+const F=context.FSRS;
+if (!F) throw new Error('Vendor FSRS API unavailable');
 vm.runInContext(source, context, { filename:'app.js' });
 const api=context.__RD_FSRS_CLOSURE__;
-const F=context.FSRS;
 if (!api) throw new Error('FSRS closure API unavailable');
-if (!F) throw new Error('Vendor FSRS API unavailable');
 
 let checks=0;
 const clone=value=>structuredClone(value);
