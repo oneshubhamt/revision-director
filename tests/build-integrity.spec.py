@@ -27,6 +27,12 @@ source_parts = sorted(source_manifest["parts"], key=lambda item: item["order"])
 source_paths = [ROOT / "source" / item["path"] for item in source_parts]
 ts = "".join(path.read_text() for path in source_paths)
 contracts_ts = (ROOT / "source/app/12-production-contracts.ts").read_text()
+fsrs_personalization_ts = (ROOT / "source/app/18-fsrs-personalization.ts").read_text()
+planning_ts = (ROOT / "source/app/20-policy-planning-kernel.ts").read_text()
+repository_ts = (ROOT / "source/app/30-indexeddb-repository.ts").read_text()
+storage_ts = (ROOT / "source/app/31-storage-facade.ts").read_text()
+service_ts = (ROOT / "source/app/40-application-services.ts").read_text()
+backup_codec_ts = (ROOT / "source/app/41-backup-codec.ts").read_text()
 tsconfig = json.loads((ROOT / "source/tsconfig.json").read_text())
 build_script = (ROOT / "build/build.py").read_text()
 first_source = source_paths[0].read_text()
@@ -173,7 +179,20 @@ check("atomic profile/settings persistence", "async putProfileAndSettings(profil
 check("strict current document shapes", all(token in contracts_ts for token in ['assertExactKeys(value, "Exam profile"', 'assertExactKeys(value, "Knowledge node"', 'assertExactKeys(value, "Knowledge unit"', 'assertExactKeys(value, "Study event"', 'assertExactKeys(value, "Revision obligation"', 'assertExactKeys(value, "Obligation chunk"', 'assertExactKeys(value, "Daily plan"', 'assertExactKeys(value, "Active retrieval session"', 'assertExactKeys(value, "Application metadata"']))
 check("transactional settings publication", "await this.repo.put(Store.Settings, canonical);\n      this.settings = canonical;" in ts and "await this.repo.put(Store.Settings, next);\n      this.settings = next;" in ts and "validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex);" in ts and "verifyMemoryDatasetIntegrityWithIndex(" in ts and "await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);" in ts)
 check("no timing compatibility synthesis", "fallbackElapsedMs" not in ts and "canonicalTimingEvidenceSummary(value: TimingEvidenceSummary)" in ts and "completeChunk(chunkId: string, timing: TimingEvidenceSummary" in ts)
-check("no current-shape repair coercions", "reliabilityFlags.push" not in contracts_ts and "checked[key] = Boolean(rawValue)" not in contracts_ts and "sourceVisible: Boolean(value.sourceVisible)" not in contracts_ts and "Number(value.activeByPhase[phase])" not in contracts_ts and "Number(value.backwardClockCount)" not in contracts_ts and "const value = Number(raw);" not in contracts_ts and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
+check("no current-shape repair coercions", all(token not in contracts_ts for token in [
+    "reliabilityFlags.push", "checked[key] = Boolean(rawValue)", "sourceVisible: Boolean(value.sourceVisible)",
+    "Number(value.activeByPhase[phase])", "Number(value.backwardClockCount)", "Number(value.pauseMs)",
+    "Number(value.pauseCount)", "Number(value.inactiveGapCount)", "Number(value.classifiedFocusMs)",
+    "Number(value.classifiedBreakMs)", "Number(value.promptExcludedMs)", "const value = Number(raw);",
+    "queueTargetIds.slice(0, 500)", "value.diagramStrokes.slice(0, 256)", "Object.entries(value.values).slice(0, 96)",
+]) and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
+check("strict settings numeric boundaries", "Number(record[" not in fsrs_personalization_ts and "Number(value)" not in fsrs_personalization_ts and "Number(record[" not in planning_ts and "requiredFiniteNumber" in fsrs_personalization_ts and "requiredSafeInteger" in planning_ts)
+check("evidence-only memory difficulty truth", "memoryReviews: readonly MemoryReviewObservation[]" in planning_ts and "card.lapses" not in planning_ts and "conservative fallback" not in planning_ts)
+check("atomic backup state snapshot", "this.db.transaction(stores, \"readonly\")" in repository_ts and "async backupState()" in storage_ts and "const state = await this.repo.backupState();" in service_ts)
+check("single verified restore path", "async importBackup(input: unknown)" not in service_ts and "restoreBackupPayload" in service_ts and "class BackupController" in ts)
+check("canonical SHA-256 archive parser", all(token in backup_codec_ts for token in [
+    'assertExactKeys(value, "Backup manifest"', 'assertExactKeys(value, "Backup counts"', 'assertExactKeys(value, "Backup chunk"', 'assertExactKeys(value, "Backup completion proof"',
+]) and "{16,64}" not in backup_codec_ts and backup_codec_ts.count("{64}") >= 4)
 check("backup payload narrows from unknown", "const candidate = requireRecord(input, \"Backup\")" in ts and "canonicalDocumentArray(\"profile\"" in ts and "candidate.profiles as ExamProfile[]" not in ts and "candidate.evidenceEvents as EvidenceEvent[]" not in ts)
 check("checked external domain boundaries", "function literalChoice<const Values" in ts and "MessageEvent<unknown>" in ts and "async register(input: unknown)" in ts and "private async importStudyEvent(input: unknown)" in ts and "private async createRevisionCandidate(input: unknown)" in ts and " as InactiveGapClassification" not in ts and " as BackupActiveSessionTreatment" not in ts)
 check("archive parsers narrow unknown records", "as Partial<BackupArchive" not in ts and "const candidate: BackupPayload" not in ts and "const parsed = JSON.parse(raw) as ActiveRetrievalRecoveryEnvelope" not in ts and "as Partial<DiagnosticRecord>" not in ts)
