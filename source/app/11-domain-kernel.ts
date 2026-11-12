@@ -709,6 +709,13 @@
     return Rating.Easy;
   }
 
+  function correctiveMemoryRating(confirmedRating: Rating, evidence: ObjectiveEvidence): Rating {
+    const confirmed = validateRating(confirmedRating);
+    const verificationPassed = confirmed >= Rating.Good && objectiveScore("relearn", evidence) >= 2.7;
+    if (verificationPassed) return confirmed;
+    return confirmed === Rating.Again ? Rating.Again : Rating.Hard;
+  }
+
   function validateEvidence(evidence: ObjectiveEvidence): void {
     for (const value of [evidence.completeness, evidence.independence, evidence.application]) {
       assert(Number.isInteger(value) && value >= 0 && value <= 4, "Evidence rubric values must be from 0 to 4.");
