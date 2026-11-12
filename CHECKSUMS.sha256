@@ -4,7 +4,7 @@ d6264881c02f470a764ebd8699c4642c610aa750d17006d1c5e61708812984ba  ./build/build-
 d09e58f20f79f3125293c0dd1aa70b0c0a6c9c58f40c5657c0867b2f6da25f62  ./dist/app.js
 4502865f4c9a00bb4b7bc37cd739eda0fe33f7dc0fc922126eed3b2397c1ba93  ./docs/ARCHITECTURE.md
 6f8073eacfda552b92aa5abf682651ddbda6c6bcea45da64945ef74d21db08e0  ./docs/DATA_AND_STORAGE.md
-e767c05a8b32e97c4f07fd3c0bef9a5c42f48c4eb32c0d84a27accc9b77bd681  ./docs/DEVELOPMENT_AND_QA.md
+0570c6e202c8a8b7017d87057c2e040091216dafe35198879cc98effe0fd0da3  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 b6dd301dd8e4110f1684e7c1af9819e51ea7c395d989d02983c5de71ee4d688b  ./docs/SCHEDULING_AND_PLANNING.md
 746d842bccea4d9bef689d219eafdc599a44a5c5dacb6f5c87281066bd800027  ./index.html
@@ -46,7 +46,7 @@ bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/s
 1de848a4aba3370d68c9c28a1aac54136da966821a3c48b49826030d2b68a400  ./tests/build-integrity.spec.py
 15c2c5eb0dcddef5fad2806cc650e9a169a257c03268609bd876aa8baabfacae  ./tests/fixtures/browser-baseline.json
 ca2f42822f71ee00d2dff9b1846806545634c79e2ef75c3cfae46feae5f1cdfb  ./tests/fixtures/browser-baseline.rdbackup
-28b7a82574d46f465a19050a92d3b51355b3117b1a69dd067347cb63cd88deb7  ./tests/fsrs-browser-optimizer.spec.py
+2f010c3992938c424e2a45ef97f6991e3695a6a77059271436f948e5b6e8b5bb  ./tests/fsrs-browser-optimizer.spec.py
 273b4e670def3fe0bc6bf164bb9436a1387fd233d908e2f54abe3a01b5e20a4b  ./tests/fsrs-integration.spec.js
 7b8cf1a2b8eeb399886b86e851489ea6beebac28ea45c17184e124090a2492ec  ./tests/fsrs-optimizer-core.spec.js
 721372a79e498e2f904cfdd7f2cf9c41fe18fdcd95e1b9cfc072d6bae98a0b1c  ./tests/fsrs-optimizer-policy.spec.js
