@@ -15,6 +15,7 @@ EXPECTED_NAMES = [
     "11-domain-kernel.ts",
     "12-production-contracts.ts",
     "18-fsrs-personalization.ts",
+    "18a-fsrs-browser-optimizer.ts",
     "19-revision-scheduler-port.ts",
     "20-policy-planning-kernel.ts",
     "21-policy-implementations.ts",
@@ -67,6 +68,7 @@ check("presentation engine owned", "interface PresentationManifest" in text_by_n
 check("domain model owned", "interface ExamProfile" in text_by_name["10-domain-model.ts"] and "interface BackupPayload" in text_by_name["10-domain-model.ts"])
 check("production contracts owned", "function canonicalDocument" in text_by_name["12-production-contracts.ts"] and "function canonicalAppMetadata" in text_by_name["12-production-contracts.ts"])
 check("personalization boundary owned", "function validateFsrsOptimizerProfile" in text_by_name["18-fsrs-personalization.ts"] and "function fsrsOptimizerCsv" in text_by_name["18-fsrs-personalization.ts"])
+check("browser optimizer boundary owned", "class FsrsOptimizerRejectedError" in text_by_name["18a-fsrs-browser-optimizer.ts"] and "function startBrowserFsrsOptimizer" in text_by_name["18a-fsrs-browser-optimizer.ts"])
 check("scheduler port owned", "interface RevisionSchedulerPort" in text_by_name["19-revision-scheduler-port.ts"] and "class TsFsrsSchedulerPort" in text_by_name["19-revision-scheduler-port.ts"] and "class Reschedule" in text_by_name["19-revision-scheduler-port.ts"])
 check("policy planning owned", "interface SchedulerPolicy" in text_by_name["20-policy-planning-kernel.ts"] and "function choosePlanItems" in text_by_name["20-policy-planning-kernel.ts"])
 check("repository owned", "const Store = Object.freeze" in text_by_name["30-indexeddb-repository.ts"] and "class IndexedDbRepository" in text_by_name["30-indexeddb-repository.ts"])
