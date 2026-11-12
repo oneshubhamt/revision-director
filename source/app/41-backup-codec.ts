@@ -290,6 +290,7 @@
 
     private static parseManifest(input: unknown): BackupArchiveManifest {
       const value = requireRecord(input, "Backup manifest");
+      assertExactKeys(value, "Backup manifest", ["kind", "format", "version", "exportedAt", "appVersion", "payloadFormat", "payloadSchemaVersion", "compression", "hashAlgorithm", "chunkTargetBytes", "chunkMaxItems", "chunkCount", "counts", "stateChecksum"]);
       assert(value["kind"] === "manifest" && value["format"] === BACKUP_ARCHIVE_FORMAT && value["version"] === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
       const appVersion = canonicalId(requiredString(value["appVersion"], "Backup application version"), "Backup application version");
       assert(value["payloadFormat"] === BACKUP_FORMAT && value["payloadSchemaVersion"] === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
@@ -299,7 +300,7 @@
       const chunkCount = value["chunkCount"];
       assert(typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup manifest chunk count is invalid.");
       const stateChecksum = value["stateChecksum"];
-      assert(typeof stateChecksum === "string" && /^[0-9a-f]{16,64}$/.test(stateChecksum), "Backup state checksum is invalid.");
+      assert(typeof stateChecksum === "string" && /^[0-9a-f]{64}$/.test(stateChecksum), "Backup state checksum is invalid.");
       return {
         kind: "manifest",
         format: BACKUP_ARCHIVE_FORMAT,
@@ -320,6 +321,7 @@
 
     private static parseCounts(input: unknown): BackupArchiveCounts {
       const value = requireRecord(input, "Backup counts");
+      assertExactKeys(value, "Backup counts", BACKUP_ENTITY_ORDER);
       const counts = this.zeroCounts();
       for (const key of BACKUP_ENTITY_ORDER) {
         const count = value[key];
@@ -331,6 +333,7 @@
 
     private static parseChunk(input: unknown): BackupArchiveChunk {
       const value = requireRecord(input, "Backup chunk");
+      assertExactKeys(value, "Backup chunk", ["kind", "sequence", "entityType", "count", "items", "checksum"]);
       const sequence = value["sequence"];
       assert(value["kind"] === "chunk" && typeof sequence === "number" && Number.isInteger(sequence) && sequence >= 0, "Backup chunk sequence is invalid.");
       const entityType = literalChoice(value["entityType"], BACKUP_ENTITY_ORDER, "Backup chunk entity type");
@@ -338,18 +341,19 @@
       const items = value["items"];
       assert(typeof count === "number" && Number.isInteger(count) && Array.isArray(items), "Backup chunk contents are invalid.");
       const checksum = value["checksum"];
-      assert(typeof checksum === "string" && /^[0-9a-f]{16,64}$/.test(checksum), "Backup chunk checksum is invalid.");
+      assert(typeof checksum === "string" && /^[0-9a-f]{64}$/.test(checksum), "Backup chunk checksum is invalid.");
       return { kind: "chunk", sequence, entityType, count, items, checksum };
     }
 
     private static parseCompletion(input: unknown): BackupArchiveCompletion {
       const value = requireRecord(input, "Backup completion proof");
+      assertExactKeys(value, "Backup completion proof", ["kind", "chunkCount", "counts", "chunkHashes", "checksum"]);
       const chunkCount = value["chunkCount"];
       assert(value["kind"] === "complete" && typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup completion proof is invalid.");
       const chunkHashes = value["chunkHashes"];
-      assert(Array.isArray(chunkHashes) && chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{16,64}$/.test(hash)), "Backup completion hashes are invalid.");
+      assert(Array.isArray(chunkHashes) && chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)), "Backup completion hashes are invalid.");
       const checksum = value["checksum"];
-      assert(typeof checksum === "string" && /^[0-9a-f]{16,64}$/.test(checksum), "Backup final checksum is invalid.");
+      assert(typeof checksum === "string" && /^[0-9a-f]{64}$/.test(checksum), "Backup final checksum is invalid.");
       return { kind: "complete", chunkCount, counts: this.parseCounts(value["counts"]), chunkHashes, checksum };
     }
 
