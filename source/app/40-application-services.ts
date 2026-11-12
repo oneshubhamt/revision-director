@@ -105,11 +105,12 @@
       }
       await prepareFsrsScheduler(canonical.fsrsScheduling.policy, activeFsrsOptimizerProfile(canonical));
       if (difficultyChanged) {
-        const [obligations, units] = await Promise.all([this.obligations(), this.units()]);
+        const [obligations, units, evidenceEvents] = await Promise.all([this.obligations(), this.units(), this.evidenceEvents()]);
         const released = this.releaseStalePersistentDifficultyHolds(
           obligations,
           units,
           canonical.memoryDifficultyPolicy,
+          this.memoryReviewIndexFor(evidenceEvents),
           nowIso(),
         );
         await this.repo.replaceSettingsAndObligations(canonical, released);
@@ -124,13 +125,14 @@
       obligations: readonly RevisionObligation[],
       units: readonly KnowledgeUnit[],
       policy: MemoryDifficultyPolicy,
+      reviewIndex: MemoryReviewObservationIndex,
       at: ISODateTime,
     ): RevisionObligation[] {
       const unitById = new Map(units.map((unit) => [unit.id, unit]));
       const released: RevisionObligation[] = [];
       for (const current of obligations) {
         if (current.type !== "memory-recall" || current.status !== "suspended" || current.suspensionReason !== "persistent-difficulty") continue;
-        if (memoryDifficultyAssessment(current, policy).automaticHoldEligible) continue;
+        if (memoryDifficultyAssessment(current, policy, reviewIndex.get(current.id) ?? []).automaticHoldEligible) continue;
         const unit = unitById.get(current.unitId);
         assert(unit, "Persistent-difficulty memory references a missing knowledge unit.");
         const obligation = clone(current);
@@ -263,6 +265,7 @@
         updatedMemory,
         units,
         settings.memoryDifficultyPolicy,
+        reviewIndex,
         at,
       );
       if (released.length > 0) {
