@@ -106,7 +106,7 @@ const clone=value=>structuredClone(value);
   }
 
   const forcedStart=performance.now();
-  api.verifyMemoryDatasetIntegrityWithIndex(obligations,chronologicalIndex,fixed,null);
+  await api.verifyMemoryDatasetIntegrityWithIndex(obligations,chronologicalIndex,fixed,null);
   const forcedReplayMs=performance.now()-forcedStart;
   assert.equal(replayCalls,CARD_COUNT,'Integrity verification must independently replay every reviewed memory exactly once');
 
