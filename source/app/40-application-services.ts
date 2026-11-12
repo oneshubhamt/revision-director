@@ -36,7 +36,6 @@
       this.invalidateMemoryReviewAnalysis();
       const stored = await this.repo.get(Store.Settings, "app");
       this.settings = stored ? canonicalAppSettings(stored) : defaultSettings();
-      await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings));
       if (!stored) await this.repo.put(Store.Settings, this.settings);
       const profiles = await this.profiles();
       const active = profiles.filter((profile) => profile.status === "active");
@@ -56,7 +55,7 @@
         this.repo.getAll(Store.Obligations),
         this.evidenceEvents(),
       ]);
-      verifyMemoryDatasetIntegrityWithIndex(
+      await verifyMemoryDatasetIntegrityWithIndex(
         obligations,
         this.memoryReviewIndexFor(evidenceEvents),
         this.settings.fsrsScheduling.policy,
@@ -275,7 +274,7 @@
       await prepareFsrsScheduler(settings.fsrsScheduling.policy, profile);
       const [obligations, evidenceEvents, units] = await Promise.all([this.obligations(), this.evidenceEvents(), this.units()]);
       const reviewIndex = this.memoryReviewIndexFor(evidenceEvents);
-      verifyMemoryDatasetIntegrityWithIndex(
+      await verifyMemoryDatasetIntegrityWithIndex(
         obligations,
         reviewIndex,
         this.settings.fsrsScheduling.policy,
@@ -338,7 +337,7 @@
         },
       });
       validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex);
-      verifyMemoryDatasetIntegrityWithIndex(
+      await verifyMemoryDatasetIntegrityWithIndex(
         updatedMemory,
         reviewIndex,
         finalized.fsrsScheduling.policy,
@@ -1307,7 +1306,7 @@
 
     async createBackupArchive(preferCompression = true): Promise<BackupArchiveArtifact> {
       const payload = this.validateBackup(await this.exportBackup());
-      verifyMemoryDatasetIntegrity(
+      await verifyMemoryDatasetIntegrity(
         payload.obligations,
         payload.evidenceEvents,
         payload.settings.fsrsScheduling.policy,
@@ -1327,8 +1326,7 @@
 
     async restoreBackupPayload(payload: BackupPayload, activeTreatment: BackupActiveSessionTreatment): Promise<void> {
       const validated = this.validateBackup(payload);
-      await prepareFsrsScheduler(validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings));
-      verifyMemoryDatasetIntegrity(
+      await verifyMemoryDatasetIntegrity(
         validated.obligations,
         validated.evidenceEvents,
         validated.settings.fsrsScheduling.policy,

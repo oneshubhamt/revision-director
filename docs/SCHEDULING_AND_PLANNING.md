@@ -101,7 +101,7 @@ From stock FSRS-7, native import and successful browser optimization still **sta
 - records the prior and target configuration fingerprints in scheduler-owned rebase metadata;
 - never rewrites historical Evidence Events.
 
-Backup/restore preserves staged or active personalization state. Restore prepares the referenced scheduler configuration and independently verifies every materialized memory projection before replacing current data.
+Backup/restore preserves staged or active personalization state. Integrity verification prepares the current scheduler plus every distinct historical scheduler configuration referenced by immutable memory evidence, resolving displaced personalized weights from the replay-profile catalog before replay. This is done explicitly on cold startup, backup verification, rebase and restore rather than relying on an in-process scheduler cache. Restore independently verifies every materialized memory projection before replacing current data.
 
 The root `index.html` remains the self-contained `file://` **portable fallback** and does not embed optimizer assets. This remains a measured packaging decision: at the F3 audit the tracked self-contained HTML was 789,009 bytes, while the official pinned `0.6.1` release asset `fsrs-binding.wasm32-wasip1.wasm` is 1,396,770 bytes (about 1.77× the entire HTML before Worker/runtime code). Base64-inlining that binary alone would add about 1.86 MB.
 

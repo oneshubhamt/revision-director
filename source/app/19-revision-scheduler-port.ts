@@ -710,6 +710,30 @@
     return matches[0]!;
   }
 
+  async function prepareMemoryDatasetReplaySchedulers(
+    reviewIndex: MemoryReviewObservationIndex,
+    profileCatalog: readonly FsrsOptimizerProfile[],
+  ): Promise<void> {
+    const configurations = new Map<string, FsrsConfigSnapshot>();
+    for (const reviews of reviewIndex.values()) {
+      for (const review of reviews) {
+        const config = validateFsrsConfigSnapshot(review.schedulerConfig);
+        const existing = configurations.get(config.fingerprint);
+        if (existing) {
+          assert(JSON.stringify(existing) === JSON.stringify(config), "A single FSRS configuration fingerprint maps to conflicting scheduler snapshots.");
+        } else {
+          configurations.set(config.fingerprint, clone(config));
+        }
+      }
+    }
+    for (const config of configurations.values()) {
+      const historicalProfile = profileForHistoricalFsrsConfiguration(config, profileCatalog);
+      await prepareFsrsScheduler(config.schedulingPolicy, historicalProfile);
+      const prepared = revisionSchedulerPort(config.schedulingPolicy, historicalProfile);
+      assert(prepared.configuration.fingerprint === config.fingerprint, "Historical FSRS configuration cannot be reconstructed exactly.");
+    }
+  }
+
   function verifyHistoricalMemorySchedulerConfigurations(
     reviews: readonly MemoryReviewObservation[],
     profileCatalog: readonly FsrsOptimizerProfile[],
@@ -735,13 +759,15 @@
     }
   }
 
-  function verifyMemoryDatasetIntegrityWithIndex(
+  async function verifyMemoryDatasetIntegrityWithIndex(
     obligations: readonly RevisionObligation[],
     reviewIndex: MemoryReviewObservationIndex,
     schedulingPolicy: FsrsSchedulingPolicy,
     profile: FsrsOptimizerProfile | null = null,
     profileCatalog: readonly FsrsOptimizerProfile[] = profile ? [profile] : [],
-  ): void {
+  ): Promise<void> {
+    await prepareFsrsScheduler(schedulingPolicy, profile);
+    await prepareMemoryDatasetReplaySchedulers(reviewIndex, profileCatalog);
     const scheduler = revisionSchedulerPort(schedulingPolicy, profile);
     for (const obligation of obligations) {
       if (obligation.type !== "memory-recall") continue;
@@ -753,15 +779,15 @@
     }
   }
 
-  function verifyMemoryDatasetIntegrity(
+  async function verifyMemoryDatasetIntegrity(
     obligations: readonly RevisionObligation[],
     evidenceEvents: readonly EvidenceEvent[],
     schedulingPolicy: FsrsSchedulingPolicy,
     profile: FsrsOptimizerProfile | null = null,
     profileCatalog: readonly FsrsOptimizerProfile[] = profile ? [profile] : [],
-  ): MemoryReviewObservationIndex {
+  ): Promise<MemoryReviewObservationIndex> {
     const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
-    verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile, profileCatalog);
+    await verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile, profileCatalog);
     return reviewIndex;
   }
 

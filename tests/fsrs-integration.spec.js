@@ -10,13 +10,16 @@ const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, R
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
-const context = { crypto:webcrypto, structuredClone, console, Date, Intl, URL, Blob, TextEncoder, TextDecoder, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array };
-context.window=context; context.self=context; context.globalThis=context;
-vm.createContext(context);
-vm.runInContext(vendor, context, { filename:'ts-fsrs-6.0.0.umd.js' });
-vm.runInContext(source, context, { filename:'app.js' });
-const api=context.__RD_FSRS_VERIFY__;
-if (!api) throw new Error('FSRS verification API unavailable');
+function createVerificationApi(){
+  const context = { crypto:webcrypto, structuredClone, console, Date, Intl, URL, Blob, TextEncoder, TextDecoder, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array };
+  context.window=context; context.self=context; context.globalThis=context;
+  vm.createContext(context);
+  vm.runInContext(vendor, context, { filename:'ts-fsrs-6.0.0.umd.js' });
+  vm.runInContext(source, context, { filename:'app.js' });
+  if (!context.__RD_FSRS_VERIFY__) throw new Error('FSRS verification API unavailable');
+  return context.__RD_FSRS_VERIFY__;
+}
+const api=createVerificationApi();
 
 let checks=0;
 const clone=value=>structuredClone(value);
@@ -511,6 +514,17 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   check(decoded.inspection.stateChecksum===archive.inspection.stateChecksum,'Backup archive round-trip must preserve the state checksum');
   check(payload.settings.fsrsPersonalization.active===true,'Backup must preserve active personalization');
   check(payload.evidenceEvents.length===repo.evidenceEvents.length,'Backup must preserve complete immutable review history');
+
+  const coldApi=createVerificationApi();
+  const coldRepo=new MemoryRepo(buildRepositoryPayload());
+  const coldService=new coldApi.RevisionService(coldRepo);
+  await coldService.restoreBackupPayload(payload,'discard');
+  await coldService.initialize();
+  const coldObligation=memoryObligation(coldRepo);
+  const coldHistory=coldApi.memoryReviewObservationsFor(coldObligation.id,coldRepo.evidenceEvents);
+  const coldProfile=coldApi.activeFsrsOptimizerProfile(coldService.getSettings());
+  coldApi.revisionSchedulerPort(fixed(.95),coldProfile).verifyProjection(coldObligation.policyState.fsrsCard,coldHistory); checks++;
+  check(coldService.getSettings().fsrsPersonalization.replayProfiles.length===1,'Cold restore must retain the historical profile required for replay');
 
   const restoreRepo=new MemoryRepo(buildRepositoryPayload());
   const restored=new api.RevisionService(restoreRepo);
