@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import importlib.util
 from playwright.sync_api import sync_playwright
 
@@ -29,7 +30,10 @@ def open_page(browser, viewport):
     page.wait_for_timeout(1_200)
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup error')
     page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(100)
-    QA.restore_selected_backup(page, ROOT/'tests/fixtures/browser-baseline.rdbackup')
+    with TemporaryDirectory() as tmpdir:
+        fixture = Path(tmpdir) / "browser-baseline-current.rdbackup"
+        fixture.write_bytes(QA.encode_payload(QA.decode_file(ROOT/'tests/fixtures/browser-baseline.rdbackup')))
+        QA.restore_selected_backup(page, fixture)
     page.add_style_tag(content='*{animation:none!important;transition:none!important;caret-color:transparent!important}html{scroll-behavior:auto!important}')
     return page, errors
 

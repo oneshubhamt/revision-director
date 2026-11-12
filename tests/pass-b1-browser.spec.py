@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 import json
 import shutil
 import time
+from backup_fixture_codec import canonical_fixture_copy
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -245,14 +246,16 @@ def boot_frame(page):
 
 
 def restore_fixture_d2(page, frame, fixture) -> None:
-    frame.locator("#import-backup").set_input_files([])
-    frame.locator("#import-backup").set_input_files(str(fixture))
-    try:
-        frame.locator("#restore-dialog").wait_for(state="visible", timeout=6000)
-    except Exception as error:
-        toast = frame.locator("#toast").inner_text() if frame.locator("#toast").count() else ""
-        fatal = frame.locator("#fatal-error").inner_text() if frame.locator("#fatal-error").count() and frame.locator("#fatal-error").is_visible() else ""
-        raise AssertionError(f"Restore preview did not open · toast={toast!r} · fatal={fatal!r}") from error
+    with TemporaryDirectory() as fixture_tmpdir:
+        canonical_fixture = canonical_fixture_copy(Path(fixture), Path(fixture_tmpdir) / "canonical-fixture.rdbackup")
+        frame.locator("#import-backup").set_input_files([])
+        frame.locator("#import-backup").set_input_files(str(canonical_fixture))
+        try:
+            frame.locator("#restore-dialog").wait_for(state="visible", timeout=6000)
+        except Exception as error:
+            toast = frame.locator("#toast").inner_text() if frame.locator("#toast").count() else ""
+            fatal = frame.locator("#fatal-error").inner_text() if frame.locator("#fatal-error").count() and frame.locator("#fatal-error").is_visible() else ""
+            raise AssertionError(f"Restore preview did not open · toast={toast!r} · fatal={fatal!r}") from error
     with TemporaryDirectory() as tmpdir:
         with page.expect_download() as info:
             frame.locator('[data-action="create-restore-safety"]').click()

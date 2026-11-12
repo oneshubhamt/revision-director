@@ -71,3 +71,8 @@ def decode_file(path:Path)->dict:
     for line in lines[1:-1]:
         if line.get('kind')=='chunk': collections[line['entityType']].extend(line['items'])
     return {"format":manifest["payloadFormat"],"schemaVersion":manifest["payloadSchemaVersion"],"exportedAt":manifest["exportedAt"],"appVersion":manifest["appVersion"],**{k:collections[k] for k in ORDER if k not in ('settings','activeRetrieval')},"settings":collections['settings'][0],"activeRetrieval":collections['activeRetrieval'][0] if collections['activeRetrieval'] else None}
+
+
+def canonical_fixture_copy(source:Path, target:Path)->Path:
+    target.write_bytes(encode_payload(decode_file(source)))
+    return target
