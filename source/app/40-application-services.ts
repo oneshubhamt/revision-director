@@ -1061,8 +1061,6 @@
         delete obligation.chunking;
       }
 
-      unit.latestEvidenceAt = reviewedAt.toISOString();
-      unit.latestEvidenceRating = confirmed;
       unit.evidenceCount += 1;
       if (confirmed === Rating.Again) unit.lapseCount += 1;
       unit.updatedAt = reviewedAt.toISOString();
@@ -1443,8 +1441,7 @@
         assert(unit.title.trim().length > 0 && unit.scope.trim().length > 0, "Knowledge unit title or scope is missing.");
         assert(unit.importance === 1 || unit.importance === 2 || unit.importance === 3, "Knowledge unit importance is invalid.");
         assert(Number.isInteger(unit.evidenceCount) && unit.evidenceCount >= 0 && Number.isInteger(unit.lapseCount) && unit.lapseCount >= 0, "Knowledge unit counters are invalid.");
-        if (unit.latestEvidenceAt) validDate(unit.latestEvidenceAt, "Knowledge unit evidence");
-        if (unit.latestEvidenceRating !== undefined) validRatingValue(unit.latestEvidenceRating, "Knowledge unit");
+
       }
       for (const event of studyEvents) {
         assert(profileMap.has(event.profileId), "Study event references a missing profile.");
