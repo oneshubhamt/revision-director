@@ -599,12 +599,16 @@
       for (const obligation of obligations) {
         if (status !== "all" && obligation.status !== status) continue;
         const unit = unitMap.get(obligation.unitId);
-        if (!unit || unit.status !== "active") continue;
+        assert(unit, "Revision obligation references a missing knowledge unit.");
+        if (unit.status !== "active") continue;
         const profile = profileMap.get(unit.profileId);
+        assert(profile, "Knowledge unit references a missing exam profile.");
         const topicNode = nodeMap.get(unit.topicNodeId);
-        const sectionNode = topicNode?.parentId ? nodeMap.get(topicNode.parentId) : undefined;
-        const subjectNode = sectionNode?.parentId ? nodeMap.get(sectionNode.parentId) : undefined;
-        if (!profile || !topicNode || !sectionNode || !subjectNode) continue;
+        assert(topicNode?.kind === "topic" && topicNode.profileId === unit.profileId, "Knowledge unit references an invalid topic node.");
+        const sectionNode = topicNode.parentId ? nodeMap.get(topicNode.parentId) : undefined;
+        assert(sectionNode?.kind === "section" && sectionNode.profileId === unit.profileId, "Topic node references an invalid section node.");
+        const subjectNode = sectionNode.parentId ? nodeMap.get(sectionNode.parentId) : undefined;
+        assert(subjectNode?.kind === "subject" && subjectNode.profileId === unit.profileId && subjectNode.parentId === null, "Section node references an invalid subject node.");
         joined.push({ obligation, unit, profile, subject: subjectNode.name, section: sectionNode.name, topic: topicNode.name });
       }
       return joined.sort((a, b) => {
@@ -1298,21 +1302,13 @@
     }
 
     async exportBackup(): Promise<BackupPayload> {
+      const state = await this.repo.backupState();
       return {
         format: BACKUP_FORMAT,
         schemaVersion: BACKUP_SCHEMA_VERSION,
         exportedAt: nowIso(),
         appVersion: APP_VERSION,
-        profiles: await this.profiles(),
-        nodes: await this.nodes(),
-        units: await this.units(),
-        studyEvents: await this.studyEvents(),
-        obligations: await this.obligations(),
-        evidenceEvents: await this.evidenceEvents(),
-        chunks: await this.chunks(),
-        dailyPlans: await this.dailyPlanHistory(),
-        settings: this.getSettings(),
-        activeRetrieval: await this.repo.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null,
+        ...state,
       };
     }
 
@@ -1482,13 +1478,8 @@
         if (obligation.type === "memory-recall") {
           assert(obligation.policyState.version === FSRS_PACKAGE_VERSION && obligation.policyState.fsrsCard, "Memory obligation has invalid FSRS-7 state.");
           const fsrsCard = obligation.policyState.fsrsCard;
-          assert(fsrsCard.model === FSRS_MODEL, "Memory obligation uses an unsupported scheduler model.");
-          assert(fsrsCard.cardId === obligation.id, "FSRS card identity does not match its obligation.");
-          assert(fsrsCard.scheduleStatus === "new" || fsrsCard.scheduleStatus === "learning" || fsrsCard.scheduleStatus === "review" || fsrsCard.scheduleStatus === "suspended", "FSRS card schedule status is invalid.");
-          requiredFsrs7StabilityFast(fsrsCard.stabilityFast);
-          validDate(fsrsCard.dueAt, "FSRS card");
+          validateStoredFsrsCard(fsrsCard, obligation.id);
           assert(fsrsCard.dueAt === obligation.dueAt, "Memory obligation due date is not synchronized with its FSRS-7 card.");
-          if (fsrsCard.lastReviewAt) validDate(fsrsCard.lastReviewAt, "FSRS last review");
         }
         if (obligation.parentObligationId) assert(obligationMap.has(obligation.parentObligationId), "Obligation references a missing parent.");
         if (obligation.returnObligationId) assert(obligationMap.has(obligation.returnObligationId), "Relearning obligation references a missing return obligation.");
@@ -1709,14 +1700,6 @@
         activeRetrieval: canonicalActive,
       };
     }
-
-    async importBackup(input: unknown): Promise<void> {
-      const payload = this.validateBackup(input);
-      await this.repo.replaceFromBackup(payload, "discard");
-      this.settings = clone(payload.settings);
-      this.invalidateMemoryReviewAnalysis();
-    }
-
 
   }
 
