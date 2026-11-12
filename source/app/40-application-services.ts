@@ -34,12 +34,6 @@
 
     async initialize(): Promise<void> {
       this.invalidateMemoryReviewAnalysis();
-      const stored = await this.repo.get(Store.Settings, "app");
-      if (!stored) {
-        assert(!(await this.repo.hasStoredData([Store.Settings, Store.Metadata])), "Application settings are missing from a populated Revision Director database. Existing data was not modified.");
-        await this.repo.put(Store.Settings, defaultSettings());
-      }
-
       const state = await this.repo.backupState();
       const validated = this.validateBackup({
         format: BACKUP_FORMAT,
