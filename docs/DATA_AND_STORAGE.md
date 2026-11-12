@@ -1,19 +1,21 @@
 # Data, persistence and recovery
 
-## Clean-slate contract
+## Clean-slate schema contract
 
-Revision Director currently assumes **zero historical production data**. It intentionally contains no schema migration, version adaptation or backward-compatibility path.
+Revision Director intentionally contains no historical schema migration or shape-repair path. Compatibility is determined by the durable schema contracts, **not by the application release string**.
 
-Current identities are strict:
+Current identities are:
 
-- application: `va7.1-pass-f1`;
+- application release: `va7.1-pass-f1` (provenance only);
 - IndexedDB database: `revision-director`;
 - database layout: version `3`;
 - durable document schema: version `1`;
 - backup payload: `revision-director-backup`, schema version `2`;
-- backup archive: current archive contract only.
+- backup archive: version `2`.
 
-If an existing database or backup belongs to another application/schema identity, it is rejected. Development cutovers should clear site data or regenerate current-format fixtures; production code must not infer or transform old shapes.
+A newer or older Revision Director release may open the database and restore a backup when these schema identities remain compatible. The persisted application-version field is release provenance; a compatible release attempts to refresh it after opening, but a failed provenance-only refresh does not block access to otherwise compatible data. Backup application-version fields record export provenance. Neither release string is a compatibility gate.
+
+If an IndexedDB layout or durable document/backup schema is unsupported, the application rejects it without transforming or deleting it. Do not clear site data to resolve a schema mismatch: use a compatible build to export a verified backup before any deliberate schema transition.
 
 ## IndexedDB
 
@@ -31,7 +33,7 @@ The current database contains:
 - `metadata`;
 - `activeRetrieval`.
 
-The database creation path accepts only a fresh database (`oldVersion === 0`). Metadata must match the current database and application identity.
+The database creation path creates stores only for a fresh database (`oldVersion === 0`). Existing databases open normally when their IndexedDB layout version and metadata database identity match the current schema. An attempted unsupported layout upgrade is aborted before schema mutation; a database created by a newer layout also fails closed. Both cases direct the user toward a compatible-build backup path rather than destructive clearing.
 
 ## Durable documents
 

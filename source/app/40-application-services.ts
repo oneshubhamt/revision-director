@@ -17,8 +17,12 @@
       const profiles = await this.profiles();
       const active = profiles.filter((profile) => profile.status === "active");
       if (this.settings.activeProfileId && !active.some((profile) => profile.id === this.settings.activeProfileId)) {
-        this.settings.activeProfileId = active[0]?.id ?? "";
-        await this.repo.put(Store.Settings, this.settings);
+        const repaired = canonicalAppSettings({
+          ...this.settings,
+          activeProfileId: active[0]?.id ?? "",
+        });
+        await this.repo.put(Store.Settings, repaired);
+        this.settings = repaired;
       }
       await this.verifyMemoryProjectionIntegrity();
     }
@@ -88,8 +92,8 @@
         this.settings = canonical;
         return;
       }
+      await this.repo.put(Store.Settings, canonical);
       this.settings = canonical;
-      await this.repo.put(Store.Settings, this.settings);
     }
 
     private releaseStalePersistentDifficultyHolds(
@@ -139,8 +143,8 @@
         ...this.settings,
         fsrsPersonalization: { ...personalization, profile, active: false },
       });
-      this.settings = next;
       await this.repo.put(Store.Settings, next);
+      this.settings = next;
       return clone(profile);
     }
 
@@ -151,8 +155,8 @@
         ...this.settings,
         fsrsPersonalization: { profile: null, active: false },
       });
-      this.settings = next;
       await this.repo.put(Store.Settings, next);
+      this.settings = next;
     }
 
     async activateFsrsOptimizerProfile(): Promise<void> {
@@ -247,9 +251,9 @@
           active: Boolean(profile),
         },
       });
+      verifyMemoryDatasetIntegrity(updatedMemory, evidenceEvents, finalized.fsrsScheduling.policy, profile);
       await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);
       this.settings = finalized;
-      verifyMemoryDatasetIntegrity(updatedMemory, evidenceEvents, finalized.fsrsScheduling.policy, profile);
     }
 
     async profiles(): Promise<ExamProfile[]> {
@@ -1182,7 +1186,7 @@
     validateBackup(input: unknown): BackupPayload {
       const candidate = requireRecord(input, "Backup");
       assert(candidate["format"] === BACKUP_FORMAT && candidate["schemaVersion"] === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
-      assert(candidate["appVersion"] === APP_VERSION, "This backup was not created by the current Revision Director build.");
+      const appVersion = canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version");
 
       const profiles = canonicalDocumentArray("profile", candidate["profiles"], "Backup profiles");
       const nodes = canonicalDocumentArray("node", candidate["nodes"], "Backup knowledge nodes");
@@ -1521,7 +1525,7 @@
         format: BACKUP_FORMAT,
         schemaVersion: BACKUP_SCHEMA_VERSION,
         exportedAt: canonicalIso(requiredString(candidate["exportedAt"], "Backup export date"), "Backup export date"),
-        appVersion: canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version"),
+        appVersion,
         profiles,
         nodes,
         units,

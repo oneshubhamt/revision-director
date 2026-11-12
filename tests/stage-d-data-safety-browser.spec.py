@@ -8,7 +8,8 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tests'))
 from backup_fixture_codec import decode_file
 base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_stage_d_base')
-HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base['INDEXEDDB_SHIM'],1)
+HOOK="window.__RD_STAGE_D_STORAGE__={RevisionData,RevisionService,Store,APP_VERSION,DB_NAME,DB_VERSION}; void boot();"
+HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base['INDEXEDDB_SHIM'],1).replace('void boot();',HOOK,1)
 FIXTURE=ROOT/'tests/fixtures/browser-baseline.rdbackup'
 RECOVERY_KEY='revision-director:active-retrieval:v1'
 checks=0
@@ -60,6 +61,34 @@ def main():
         page.on('dialog',handle_dialog)
         page.set_content(HTML,wait_until='load');wait(page,1400)
         check(not page.locator('#fatal-error').is_visible(),'Fatal startup error')
+        release_schema = page.evaluate("""async()=>{
+          const api=window.__RD_STAGE_D_STORAGE__;
+          const openDb=()=>new Promise((resolve,reject)=>{const request=indexedDB.open(api.DB_NAME,api.DB_VERSION);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
+          const readMetadata=async db=>await new Promise((resolve,reject)=>{const tx=db.transaction(['metadata'],'readonly');const request=tx.objectStore('metadata').get('database');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
+          const writeMetadata=async(db,value)=>await new Promise((resolve,reject)=>{const tx=db.transaction(['metadata'],'readwrite');tx.objectStore('metadata').put(value);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error('metadata transaction aborted'))});
+          const db=await openDb();
+          const initial=await readMetadata(db);
+          const prior={...initial,applicationVersion:'va7.0-compatible-release',updatedAt:'2026-01-01T00:00:00.000Z'};
+          await writeMetadata(db,prior);
+          const reopened=await api.RevisionData.open();
+          const reopenedService=new api.RevisionService(reopened);await reopenedService.initialize();
+          const refreshed=await reopened.get(api.Store.Metadata,'database');
+          const incompatible={...refreshed,databaseVersion:api.DB_VERSION+1};
+          await writeMetadata(db,incompatible);
+          let schemaError='';try{await api.RevisionData.open()}catch(error){schemaError=error instanceof Error?error.message:String(error)}
+          const afterFailure=await readMetadata(db);
+          await writeMetadata(db,refreshed);
+          const recovered=await api.RevisionData.open();const recoveredService=new api.RevisionService(recovered);await recoveredService.initialize();
+          return {current:api.APP_VERSION,appVersion:refreshed.applicationVersion,createdAtPreserved:refreshed.createdAt===initial.createdAt,updatedAtChanged:refreshed.updatedAt!==prior.updatedAt,schemaError,schemaMetadataPreserved:afterFailure.databaseVersion===api.DB_VERSION+1,recoveredCapacity:recoveredService.getSettings().dailyCapacityMinutes,currentCapacity:reopenedService.getSettings().dailyCapacityMinutes};
+        }""")
+        check(release_schema['appVersion']==release_schema['current'],'Compatible application release was treated as a database incompatibility')
+        check(release_schema['createdAtPreserved'],'Compatible release refresh changed database creation identity')
+        check(release_schema['updatedAtChanged'],'Compatible release refresh did not update release provenance')
+        check('Database metadata does not match this production database' in release_schema['schemaError'],'Schema mismatch did not fail closed')
+        check('clear site data' not in release_schema['schemaError'].lower(),'Schema rejection still recommends destructive site-data clearing')
+        check(release_schema['schemaMetadataPreserved'],'Schema rejection rewrote incompatible metadata')
+        check(release_schema['recoveredCapacity']==release_schema['currentCapacity'],'Compatible reopen after schema rejection changed settings')
+
         page.locator('[data-pane="settings"]').click();wait(page,250)
 
         # Export remains a single visible action and opens no restore ceremony.

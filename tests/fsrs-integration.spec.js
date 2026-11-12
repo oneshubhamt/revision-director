@@ -98,6 +98,9 @@ class MemoryRepo {
   constructor(payload){
     this.replaceFromBackupCalls=0;
     this.replaceSettingsAndObligationsCalls=0;
+    this.failNextSettingsPut=false;
+    this.failNextReplaceSettingsAndObligations=false;
+    this.failNextReplaceFromBackup=false;
     this.load(payload);
   }
   load(payload){
@@ -113,6 +116,10 @@ class MemoryRepo {
     return clone(rows.find(item=>item.id===key));
   }
   async put(store,value){
+    if(store==='settings'&&this.failNextSettingsPut){
+      this.failNextSettingsPut=false;
+      throw new Error('Injected settings write failure');
+    }
     if(store==='settings'){ this.settings=clone(value); return; }
     if(store==='activeRetrieval'){ this.activeRetrieval=clone(value); return; }
     const rows=this[store]||[];
@@ -122,12 +129,20 @@ class MemoryRepo {
   }
   async replaceSettingsAndObligations(settings,updatedObligations){
     this.replaceSettingsAndObligationsCalls++;
+    if(this.failNextReplaceSettingsAndObligations){
+      this.failNextReplaceSettingsAndObligations=false;
+      throw new Error('Injected settings/obligations transaction failure');
+    }
     const updates=new Map(updatedObligations.map(item=>[item.id,clone(item)]));
     this.obligations=this.obligations.map(item=>updates.get(item.id)||item);
     this.settings=clone(settings);
   }
   async replaceFromBackup(payload,activeTreatment){
     this.replaceFromBackupCalls++;
+    if(this.failNextReplaceFromBackup){
+      this.failNextReplaceFromBackup=false;
+      throw new Error('Injected restore transaction failure');
+    }
     this.load({...payload,activeRetrieval:activeTreatment==='restore'?payload.activeRetrieval:null});
   }
 }
@@ -220,6 +235,68 @@ async function testReturnedMemoryReplay(){
   const corrupted=clone(returnEvent);
   corrupted.returnedMemoryTransition.beforePolicyState.fsrsCard.reps+=1;
   mustFail(()=>api.memoryReviewObservationsFor(id,[failedEvent,corrupted]),'Returned-memory corruption must fail chain validation');
+}
+
+
+async function testTransactionalSettingsPublication(){
+  const repo=new MemoryRepo(buildRepositoryPayload());
+  const service=new api.RevisionService(repo);
+  await service.initialize();
+  const baseline=service.getSettings();
+  const baselineRepo=clone(repo.settings);
+
+  const ordinary=clone(baseline);
+  ordinary.dailyCapacityMinutes=baseline.dailyCapacityMinutes===600?599:baseline.dailyCapacityMinutes+1;
+  repo.failNextSettingsPut=true;
+  await mustReject(()=>service.saveSettings(ordinary),'Failed ordinary settings write must reject');
+  check(JSON.stringify(service.getSettings())===JSON.stringify(baseline),'Failed ordinary settings write leaked into in-memory settings');
+  check(JSON.stringify(repo.settings)===JSON.stringify(baselineRepo),'Failed ordinary settings write mutated durable settings');
+  const ordinaryReload=new api.RevisionService(repo);
+  await ordinaryReload.initialize();
+  check(JSON.stringify(ordinaryReload.getSettings())===JSON.stringify(baseline),'Reload after failed ordinary settings write did not recover durable settings');
+
+  const profile=optimizerProfile();
+  repo.failNextSettingsPut=true;
+  await mustReject(()=>service.stageFsrsOptimizerProfile(profile),'Failed optimizer-profile staging write must reject');
+  check(service.getSettings().fsrsPersonalization.profile===null,'Failed optimizer staging leaked into in-memory personalization');
+  check(repo.settings.fsrsPersonalization.profile===null,'Failed optimizer staging mutated durable personalization');
+  const stageReload=new api.RevisionService(repo);
+  await stageReload.initialize();
+  check(stageReload.getSettings().fsrsPersonalization.profile===null,'Reload after failed optimizer staging did not recover stock personalization');
+
+  await service.stageFsrsOptimizerProfile(profile);
+  const staged=service.getSettings();
+  repo.failNextSettingsPut=true;
+  await mustReject(()=>service.clearFsrsOptimizerProfile(),'Failed optimizer-profile clear write must reject');
+  check(JSON.stringify(service.getSettings())===JSON.stringify(staged),'Failed optimizer clear leaked into in-memory personalization');
+  check(JSON.stringify(repo.settings)===JSON.stringify(staged),'Failed optimizer clear mutated durable personalization');
+
+  const beforeRebase=service.getSettings();
+  const obligationsBefore=JSON.stringify(repo.obligations);
+  const rebaseRequest=clone(beforeRebase);
+  rebaseRequest.fsrsScheduling={...rebaseRequest.fsrsScheduling,policy:fixed(.95)};
+  repo.failNextReplaceSettingsAndObligations=true;
+  await mustReject(()=>service.saveSettings(rebaseRequest),'Failed scheduler rebase transaction must reject');
+  check(JSON.stringify(service.getSettings())===JSON.stringify(beforeRebase),'Failed scheduler rebase leaked into in-memory settings');
+  check(JSON.stringify(repo.settings)===JSON.stringify(beforeRebase),'Failed scheduler rebase mutated durable settings');
+  check(JSON.stringify(repo.obligations)===obligationsBefore,'Failed scheduler rebase partially mutated obligations');
+  const rebaseReload=new api.RevisionService(repo);
+  await rebaseReload.initialize();
+  check(JSON.stringify(rebaseReload.getSettings())===JSON.stringify(beforeRebase),'Reload after failed scheduler rebase did not recover durable settings');
+
+  const restoreCandidate=buildRepositoryPayload();
+  restoreCandidate.settings.dailyCapacityMinutes=beforeRebase.dailyCapacityMinutes===600?599:beforeRebase.dailyCapacityMinutes+1;
+  const serviceBeforeRestore=service.getSettings();
+  const repoBeforeRestore=clone(repo.settings);
+  const obligationsBeforeRestore=JSON.stringify(repo.obligations);
+  repo.failNextReplaceFromBackup=true;
+  await mustReject(()=>service.restoreBackupPayload(restoreCandidate,'discard'),'Failed restore transaction must reject');
+  check(JSON.stringify(service.getSettings())===JSON.stringify(serviceBeforeRestore),'Failed restore leaked candidate settings into memory');
+  check(JSON.stringify(repo.settings)===JSON.stringify(repoBeforeRestore),'Failed restore mutated durable settings');
+  check(JSON.stringify(repo.obligations)===obligationsBeforeRestore,'Failed restore partially replaced obligations');
+  const restoreReload=new api.RevisionService(repo);
+  await restoreReload.initialize();
+  check(JSON.stringify(restoreReload.getSettings())===JSON.stringify(serviceBeforeRestore),'Reload after failed restore did not recover pre-restore settings');
 }
 
 async function testRebasesBackupRestorePlannerAndCorruption(){
@@ -331,6 +408,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
 (async()=>{
   await testSchedulingPolicyBoundary();
   await testReturnedMemoryReplay();
+  await testTransactionalSettingsPublication();
   await testRebasesBackupRestorePlannerAndCorruption();
   console.log(`PASS ${checks} independent FSRS replay/personalization/restore/planner checks`);
 })().catch(error=>{ console.error(error); process.exitCode=1; });

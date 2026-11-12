@@ -47,8 +47,13 @@
 
     static async open(): Promise<IndexedDbRepository> {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
+      let upgradeError: Error | undefined;
       request.onupgradeneeded = (event) => {
-        assert(event.oldVersion === 0, "Existing Revision Director database schema is unsupported. Clear site data before opening this build.");
+        if (event.oldVersion !== 0) {
+          upgradeError = new Error("Existing Revision Director database schema is unsupported by this build. Existing data was not modified; open it with a compatible build and export a backup before changing schema.");
+          request.transaction?.abort();
+          return;
+        }
         const db = request.result;
           const profiles = db.createObjectStore(Store.Profiles, { keyPath: "id" });
           profiles.createIndex("status", "status");
@@ -92,7 +97,14 @@
           db.createObjectStore(Store.Metadata, { keyPath: "key" });
           db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
       };
-      const db = await requestResult(request);
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => {
+          if (upgradeError) reject(upgradeError);
+          else if (request.error?.name === "VersionError") reject(new Error("Existing Revision Director database schema is newer than this build. Existing data was not modified; open it with a compatible build and export a backup before using an older schema."));
+          else reject(request.error ?? new Error("IndexedDB open failed."));
+        };
+      });
       db.onversionchange = () => db.close();
       return new IndexedDbRepository(db);
     }

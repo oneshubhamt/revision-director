@@ -300,7 +300,7 @@
     private static parseManifest(input: unknown): BackupArchiveManifest {
       const value = requireRecord(input, "Backup manifest");
       assert(value["kind"] === "manifest" && value["format"] === BACKUP_ARCHIVE_FORMAT && value["version"] === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
-      assert(value["appVersion"] === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
+      const appVersion = canonicalId(requiredString(value["appVersion"], "Backup application version"), "Backup application version");
       assert(value["payloadFormat"] === BACKUP_FORMAT && value["payloadSchemaVersion"] === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
       const compression = literalChoice(value["compression"], ["none", "gzip"] as const, "Backup compression metadata");
       const hashAlgorithm = literalChoice(value["hashAlgorithm"], ["sha256"] as const, "Backup hash algorithm");
@@ -314,7 +314,7 @@
         format: BACKUP_ARCHIVE_FORMAT,
         version: BACKUP_ARCHIVE_VERSION,
         exportedAt: canonicalIso(requiredString(value["exportedAt"], "Backup export date"), "Backup export date"),
-        appVersion: canonicalId(requiredString(value["appVersion"], "Backup application version"), "Backup application version"),
+        appVersion,
         payloadFormat: BACKUP_FORMAT,
         payloadSchemaVersion: BACKUP_SCHEMA_VERSION,
         compression,
