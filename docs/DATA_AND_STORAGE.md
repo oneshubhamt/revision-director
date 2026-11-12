@@ -66,7 +66,7 @@ Only active operational state is duplicated locally. Historical evidence, schedu
 
 ## FSRS durable state
 
-Memory review truth is append-only Evidence Events, including successful returns from corrective relearning. The obligation's current FSRS card is a verified materialized projection.
+Memory review truth is append-only Evidence Events, including every closed-book corrective verification linked to memory, whether it fails or succeeds. Source-assisted repair is not memory evidence. The obligation's current FSRS card is a verified materialized projection.
 
 Settings persist the canonical scheduling policy, persistent-difficulty host policy, stock/staged/active personalization state and the last explicit scheduler rebase. Configuration fingerprints cover the complete FSRS scheduling policy and weight provenance; the host difficulty policy is intentionally outside that fingerprint because it does not rewrite the FSRS schedule. Policy changes, activation and deactivation replace settings plus reviewed memory projections transactionally; historical Evidence Events are never rewritten.
 
