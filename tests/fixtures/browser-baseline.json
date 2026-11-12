@@ -506,7 +506,8 @@
     "studyDayBoundaryHour": 4,
     "fsrsPersonalization": {
       "profile": null,
-      "active": false
+      "active": false,
+      "replayProfiles": []
     }
   },
   "activeRetrieval": null

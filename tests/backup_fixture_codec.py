@@ -20,7 +20,10 @@ def canonical_settings(value:dict)->dict:
         "memoryDifficultyPolicy":value["memoryDifficultyPolicy"],
         "dailyCapacityMinutes":value["dailyCapacityMinutes"],
         "studyDayBoundaryHour":value["studyDayBoundaryHour"],
-        "fsrsPersonalization":value["fsrsPersonalization"],
+        "fsrsPersonalization":{
+            **value["fsrsPersonalization"],
+            "replayProfiles":value["fsrsPersonalization"].get("replayProfiles",[]),
+        },
     }
 
 def encode_payload(payload:dict)->bytes:
