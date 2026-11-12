@@ -385,6 +385,7 @@ async function testRelearningLifecycle() {
   check(calls[0][1].status === 'active', 'Failed corrective verification must keep the repair obligation active');
   check(failedVerification?.obligationId === 'original' && failedVerification?.rating === api.Rating.Again, 'Failed closed-book verification must be recorded as an FSRS Again observation');
   check(stillSuspended?.status === 'suspended' && stillSuspended?.suspensionReason === 'relearning', 'Failed corrective verification must keep the original memory out of the normal queue');
+  check(calls[0][1].priority >= original.priority + 3, 'Repeated pre-establishment verification failure must raise unresolved repair priority through the host difficulty policy');
   const learningHistory = api.memoryReviewObservationsFor('original', [failedMemoryEvent, failedVerificationEvent]);
   const learningDifficulty = api.memoryDifficultyAssessment(stillSuspended, api.defaultMemoryDifficultyPolicy(), learningHistory);
   check(learningDifficulty.level === 'learning-difficulty' && learningDifficulty.earlyLearningFailures === 2 && learningDifficulty.establishedLapses === 0, 'Two pre-establishment failures must be learning difficulty even when the one-day FSRS step has entered Review state');
