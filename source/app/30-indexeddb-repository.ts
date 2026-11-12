@@ -125,14 +125,12 @@
 
     async hasAnyStoredData(excluded: readonly StoreName[] = []): Promise<boolean> {
       const excludedStores = new Set<StoreName>(excluded);
-      for (const store of Object.values(Store) as StoreName[]) {
-        if (excludedStores.has(store)) continue;
-        const tx = this.db.transaction(store, "readonly");
-        const count = await requestResult(tx.objectStore(store).count());
-        await transactionDone(tx);
-        if (count > 0) return true;
-      }
-      return false;
+      const stores = (Object.values(Store) as StoreName[]).filter((store) => !excludedStores.has(store));
+      if (stores.length === 0) return false;
+      const tx = this.db.transaction(stores, "readonly");
+      const counts = await Promise.all(stores.map((store) => requestResult(tx.objectStore(store).count())));
+      await transactionDone(tx);
+      return counts.some((count) => count > 0);
     }
 
     async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
