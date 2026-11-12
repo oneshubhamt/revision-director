@@ -83,8 +83,12 @@ def check_all_checkpoints(page) -> None:
 
 def restore_selected_backup(page, backup_path: str | Path, treatment: str = "discard", wait_ms: int = 900, download_page=None) -> None:
     page.locator("#import-backup").set_input_files(str(backup_path))
-    page.wait_for_timeout(wait_ms)
-    check(page.locator("#restore-dialog").is_visible(), "Restore preview did not open")
+    deadline = time.monotonic() + max(5.0, wait_ms / 1000)
+    while time.monotonic() < deadline and not page.locator("#restore-dialog").is_visible():
+        page.wait_for_timeout(80)
+    if not page.locator("#restore-dialog").is_visible():
+        toast = page.locator("#toast").inner_text().strip()
+        raise AssertionError(f"Restore preview did not open; toast={toast!r}")
     with TemporaryDirectory() as tmpdir:
         download_surface = download_page or page
         with download_surface.expect_download() as download_info:
