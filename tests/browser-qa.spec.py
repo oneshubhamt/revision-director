@@ -155,6 +155,8 @@ def scenario_basic(browser) -> None:
     page.wait_for_timeout(120)
     settings_text = page.locator("#settings-content").inner_text()
     check("Storage health" in settings_text and "IndexedDB" in settings_text, "Storage-health contract is not visible")
+    check(page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "cost-adr", "Clean installations must default to measured Cost-ADR scheduling")
+    check("Cost-ADR · cost weight 1024" in settings_text, "Clean-install Settings must expose the measured default policy")
     page.locator("#new-profile-name").fill("IFoS Production Test")
     page.locator("#new-profile-date").fill("2027-11-01")
     page.locator('[data-action="add-profile"]').click()
@@ -340,7 +342,7 @@ def scenario_cost_adr_settings(browser) -> None:
     settings = page.locator('#settings-form')
     policy = settings.locator('[name="memorySchedulingPolicy"]')
     check(policy.count() == 1, "Memory scheduling policy selector missing")
-    check(policy.input_value() == "fixed-retention", "Fixed retention must remain the default scheduling policy")
+    check(policy.input_value() == "fixed-retention", "Restored fixed-retention settings must be preserved instead of being silently migrated to the new default")
 
     policy.select_option("cost-adr")
     settings.locator('button[type="submit"]').click()

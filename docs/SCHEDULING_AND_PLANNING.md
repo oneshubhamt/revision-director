@@ -15,7 +15,7 @@ Memory recall uses the vendored `ts-fsrs@6.0.0` runtime with **FSRS-7 only**.
 
 Current runtime policy:
 
-- scheduling policy: an application-owned discriminated policy; `fixed-retention` remains the default at user target `0.90`, with one optional measured `cost-adr` preset;
+- scheduling policy: an application-owned discriminated policy; the measured `cost-adr` preset is the default for new installations, while `fixed-retention` remains an explicit alternative with user target default `0.90`;
 - dual-trace state: `stability`, `stabilityFast`, `difficulty`;
 - fractional elapsed days;
 - short-term middleware enabled;
@@ -37,7 +37,7 @@ The permanent scheduling experiment uses the pinned vendored runtime directly. I
 
 Under the production `1d` learning/relearning configuration, the selected Cost-ADR goal weight 1024 reduced modeled total long-form sessions versus fixed 0.90 by **21.3% at 90 days, 21.3% at 365 days and 24.7% at 730 days**. Mean retrievability at established-memory review opportunities changed by approximately **−0.13, +0.11 and −0.07 percentage points**, respectively; none of the tested fixed-retention alternatives Pareto-dominated the preset. The activation gate requires at least a 10% workload reduction with no more than a one-percentage-point mean established-memory retrievability loss, or a one-percentage-point retention gain with no more than 5% extra workload.
 
-This is a deterministic product benchmark, not a clinical efficacy claim, a statistical confidence interval or proof that Cost-ADR is superior for every learner. Fixed 0.90 therefore remains the default and Cost-ADR remains explicit opt-in. Changing either scheduling policy still performs a complete atomic scheduler rebase.
+This is a deterministic product benchmark, not a clinical efficacy claim, a statistical confidence interval or proof that Cost-ADR is superior for every learner. The size and consistency of the measured workload benefit are nevertheless sufficient to make the measured Cost-ADR preset the default for **new installations**. Fixed retention remains available as an explicit alternative. Existing persisted scheduling choices are not silently rewritten: they remain authoritative until the user changes policy, at which point the existing complete atomic scheduler rebase applies.
 
 Learning-step alternatives were tested separately. A 23-hour step preserves FSRS Learning/Relearning state after `Again`, whereas the current one-day step reaches Review immediately; however, after Revision Director's real next-day corrective return, the 23-hour variant scheduled the next review at **2.4375 days** versus **3 days** for the current one-day adaptation and did not establish a compensating application-level benefit. Twelve-hour, no-step and upstream minute-scale defaults were still more aggressive. The production learning and relearning steps therefore remain `1d`.
 

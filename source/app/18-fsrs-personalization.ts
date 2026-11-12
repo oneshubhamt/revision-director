@@ -300,7 +300,7 @@
   }
 
   function defaultFsrsSchedulingSettings(): FsrsSchedulingSettings {
-    return { policy: { kind: "fixed-retention", desiredRetention: 0.9 } };
+    return { policy: measuredCostAdrSchedulingPolicy() };
   }
 
   function canonicalFsrsSchedulingSettings(value: unknown): FsrsSchedulingSettings {
