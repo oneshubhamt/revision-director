@@ -51,9 +51,9 @@ Durable data follows:
 capture → sanitise → validate → canonicalise → transact → derive → render
 ```
 
-Canonicalizers reject non-finite values, invalid ranges, impossible relations, malformed timing state, invalid workflow combinations, inconsistent scheduler provenance and unknown current-document fields. Required current-schema fields must be present; numeric fields are not string-coerced; canonicalization may normalize valid values, but it does not synthesize missing fields or repair older shapes.
+Canonicalizers reject non-finite values, invalid ranges, impossible relations, malformed timing state, invalid workflow combinations, inconsistent scheduler provenance and unknown fields throughout current durable documents, including nested plan, evidence, timing, policy and scheduler state. Required current-schema fields must be present; numeric fields are not string-coerced. Canonicalization may normalize representation-preserving values such as ISO timestamps and trimmed text, but it does not synthesize missing fields, deduplicate semantic arrays, clip over-limit recovery content, clamp invalid coordinates, or repair older shapes.
 
-Cross-document invariants are also canonical. If one or more exam profiles are active, `settings.activeProfileId` must identify an active profile. If no profile is active, it must be the empty string. Profile lifecycle changes that can alter this invariant commit the profile and settings together in one IndexedDB transaction. Startup validates the invariant and fails closed rather than silently repairing it.
+Cross-document invariants are also canonical. If one or more exam profiles are active, `settings.activeProfileId` must identify an active profile. If no profile is active, it must be the empty string. Profile lifecycle changes that can alter this invariant commit the profile and settings together in one IndexedDB transaction. Startup reads one atomic multi-store canonical snapshot, validates its full relational shape, and then verifies memory projections against the same snapshot; it fails closed rather than silently repairing or assembling truth from separate reads.
 
 ## Active retrieval recovery
 
@@ -70,7 +70,7 @@ Only active operational state is duplicated locally. Historical evidence, schedu
 
 ## FSRS durable state
 
-Memory review truth is append-only Evidence Events, including every closed-book corrective verification linked to memory, whether it fails or succeeds. Source-assisted repair is not memory evidence. The obligation's current FSRS card is a verified materialized projection.
+Memory review truth is append-only Evidence Events, including every closed-book corrective verification linked to memory, whether it fails or succeeds. Source-assisted repair is not memory evidence. The obligation's current FSRS card is a verified materialized projection. Host difficulty classification is derived from the canonical memory Evidence Event history only; the card's lapse counter is never used as an alternate history fallback.
 
 Settings persist the canonical scheduling policy, persistent-difficulty host policy, stock/staged/active personalization state and the last explicit scheduler rebase. Configuration fingerprints cover the complete FSRS scheduling policy and weight provenance; the host difficulty policy is intentionally outside that fingerprint because it does not rewrite the FSRS schedule. Policy changes, activation and deactivation replace settings plus reviewed memory projections transactionally; historical Evidence Events are never rewritten.
 
@@ -92,13 +92,17 @@ canonical payload
 → optional gzip
 ```
 
-Reading performs bounded decompression, manifest/chunk/checksum verification, reconstruction and then domain-level relational validation.
+Reading performs bounded decompression, manifest/chunk/checksum verification, reconstruction and then domain-level relational validation. Manifest, count, chunk and completion records have closed current shapes, and every SHA-256 field is exactly 64 hexadecimal characters.
 
 A backup may contain zero or one stable active retrieval. Committing/completed active-session states are not valid backup payloads.
 
+## Atomic state snapshots
+
+Backup creation, restore safety proofs and forensic rescue capture all IndexedDB stores through one multi-store readonly transaction. This prevents a concurrent atomic write in another tab from producing a torn mixture of pre-commit and post-commit records. The same snapshot boundary supplies startup relational validation.
+
 ## Destructive restore
 
-Restore is deliberately ceremonial:
+Restore is deliberately ceremonial. There is no secondary direct-import service path:
 
 1. inspect candidate without mutation;
 2. validate and preview it;
