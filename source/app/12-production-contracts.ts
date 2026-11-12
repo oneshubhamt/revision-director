@@ -244,6 +244,7 @@
   function canonicalObjectiveEvidence(value: ObjectiveEvidence): ObjectiveEvidence {
     assertExactKeys(value, "Objective evidence", ["completeness", "independence", "application", "accuracyPercent", "errorTypes", "correctionNote"]);
     assert(Array.isArray(value.errorTypes), "Evidence errors must be an array.");
+    assert(new Set(value.errorTypes).size === value.errorTypes.length, "Evidence errors cannot contain duplicates.");
     const evidence = clone(value);
     evidence.correctionNote = canonicalText(evidence.correctionNote, "Evidence correction note");
     validateEvidence(evidence);
