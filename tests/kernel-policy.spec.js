@@ -124,6 +124,17 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   check(Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'FSRS-7 must persist the fast-memory trace');
   const defaultDifficulty=api.defaultMemoryDifficultyPolicy();
   check(defaultDifficulty.remediationLapses===2&&defaultDifficulty.persistentDifficultyLapses===4&&defaultDifficulty.automaticHold.enabled===false&&defaultDifficulty.automaticHold.lapseThreshold===8,'Persistent-difficulty defaults must preserve ordinary early relearning and keep automatic hold opt-in');
+  const learningProbe=structuredClone(memoryObligation);
+  learningProbe.policyState.fsrsCard.state=1;
+  learningProbe.policyState.fsrsCard.scheduleStatus='learning';
+  const learningReviews=[
+    {rating:api.Rating.Again,beforeCard:{state:0}},
+    {rating:api.Rating.Again,beforeCard:{state:1}}
+  ];
+  const learningDifficulty=api.memoryDifficultyAssessment(learningProbe,defaultDifficulty,learningReviews);
+  check(learningDifficulty.level==='learning-difficulty'&&learningDifficulty.establishedLapses===0&&learningDifficulty.earlyLearningFailures===2&&!learningDifficulty.automaticHoldEligible,'Initial-learning failures must be diagnosed without inventing established FSRS lapses or hold eligibility');
+  const learningPlan=api.memoryDifficultyRemediationPlan(learningDifficulty);
+  check(learningPlan.priorityBoost===3&&learningPlan.guidance.includes('Early learning difficulty (2 failed learning recalls)'),'Early-learning difficulty must strengthen corrective relearning with distinct guidance');
   const difficultyProbe=structuredClone(memoryObligation); difficultyProbe.expectedMinutes=60;
   difficultyProbe.policyState.fsrsCard.lapses=1;
   check(api.memoryDifficultyAssessment(difficultyProbe,defaultDifficulty).level==='normal','A first FSRS review lapse must remain ordinary relearning');
@@ -134,7 +145,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   const persistent=api.memoryDifficultyAssessment(difficultyProbe,defaultDifficulty);
   check(persistent.level==='persistent-difficulty'&&persistent.recommendedActions.includes('scope-review')&&persistent.recommendedActions.includes('split-scope')&&persistent.recommendedActions.includes('prerequisite-review')&&persistent.recommendedActions.includes('deliberate-intervention'),'Persistent difficulty must surface structural interventions for oversized memory work');
   const persistentPlan=api.memoryDifficultyRemediationPlan(persistent);
-  check(persistentPlan.priorityBoost===4&&persistentPlan.guidance.includes('Persistent difficulty (4 FSRS lapses)'),'Persistent difficulty must strengthen remediation without replacing the relearning workflow');
+  check(persistentPlan.priorityBoost===4&&persistentPlan.guidance.includes('Persistent established-memory difficulty (4 FSRS lapses)'),'Persistent difficulty must strengthen remediation without replacing the relearning workflow');
   const holdPolicy={...defaultDifficulty,automaticHold:{enabled:true,lapseThreshold:8}};
   difficultyProbe.policyState.fsrsCard.lapses=8;
   check(api.memoryDifficultyAssessment(difficultyProbe,holdPolicy).automaticHoldEligible===true,'Automatic removal from the normal queue must require an explicit enabled final policy and threshold');
