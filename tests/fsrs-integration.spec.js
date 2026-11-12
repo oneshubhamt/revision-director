@@ -136,6 +136,13 @@ class MemoryRepo {
     if(index>=0) rows[index]=clone(value); else rows.push(clone(value));
     this[store]=rows;
   }
+  async backupState(){
+    return clone({
+      profiles:this.profiles,nodes:this.nodes,units:this.units,studyEvents:this.studyEvents,
+      obligations:this.obligations,evidenceEvents:this.evidenceEvents,chunks:this.chunks,dailyPlans:this.dailyPlans,
+      settings:this.settings,activeRetrieval:this.activeRetrieval,
+    });
+  }
   async replaceSettingsAndObligations(settings,updatedObligations){
     this.replaceSettingsAndObligationsCalls++;
     if(this.failNextReplaceSettingsAndObligations){
