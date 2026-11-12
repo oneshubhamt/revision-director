@@ -53,7 +53,7 @@ ca2f42822f71ee00d2dff9b1846806545634c79e2ef75c3cfae46feae5f1cdfb  ./tests/fixtur
 591b360dc27d511fbc3522632df57c0fe5771f994aa69c35de651ffe81ed069e  ./tests/fsrs-scheduling-experiments.spec.js
 98b32c8dd32cd3483b665d363fc7b7339c015ee8d1fedf176a3e804f99dd1663  ./tests/fsrs-optimizer-core.spec.js
 e26d2addcc499bcb8856b11257140ab78fc7850c971c28dc55ebcea0a49e61b9  ./tests/fsrs-optimizer-policy.spec.js
-d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-qa-supplement.spec.py
+ef26a1dcaaf19b9cc4304ded5525bf9997ceff4add9e2b07eda77349d8216270  ./tests/full-qa-supplement.spec.py
 4480f03a4ec4b8b79a3170d2a1a223f742fa539ee772401cb18b0118d7101e73  ./tests/html-sanity.spec.py
 fa187a0882b116041b0d926fdbe0321f7c55d1646e79717b92c154adada4a70a  ./tests/kernel-policy.spec.js
 08c2e7c96a2934111b773d4f1ebdc85a8e2f11f615cd5b849d026117f2b7e104  ./tests/pass-a2.spec.js
