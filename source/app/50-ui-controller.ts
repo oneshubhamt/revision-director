@@ -1578,10 +1578,17 @@
         const obligation = await this.service.obligation(obligationId);
         const evidence = this.collectEvidence(rating, obligation);
         const suggestion = suggestRating(obligation.type, evidence);
-        if (Math.abs(rating - suggestion) >= 2) {
+        const effectiveRating = obligation.type === "relearn"
+          ? correctiveMemoryRating(rating, evidence)
+          : rating;
+        if (effectiveRating !== rating) {
+          const proceed = window.confirm(`Closed-book verification does not support ${ratingName(rating)}. It will be recorded as ${ratingName(effectiveRating)} and corrective work will remain active. Continue?`);
+          if (!proceed) return;
+        } else if (Math.abs(rating - suggestion) >= 2) {
           const proceed = window.confirm(`Objective evidence suggests ${ratingName(suggestion)}, but you selected ${ratingName(rating)}. Keep your rating?`);
           if (!proceed) return;
         }
+        const committedEvidence = effectiveRating === rating ? evidence : { ...evidence, confirmedRating: effectiveRating };
         const commitToken = uid("commit");
         const committing = this.buildActiveRetrievalSession("committing", commitToken);
         assert(committing, "Active retrieval state is missing.");
@@ -1589,7 +1596,7 @@
         try {
           await this.activePersistence.flush(committing);
           const guard: ActiveCommitGuard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: obligationId, commitToken };
-          await this.service.recordEvidence(obligationId, evidence, new Date(), guard, post);
+          await this.service.recordEvidence(obligationId, committedEvidence, new Date(), guard, post);
           await this.activePersistence.acceptCommittedTransition(post);
           this.activeSessionRevision = post.revision;
           this.toast(`Recorded ${ratingName(rating)}. Next obligation scheduled.`);

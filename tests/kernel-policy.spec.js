@@ -102,6 +102,8 @@ check(api.suggestRating('memory-recall', evidence(3,4,2)) === 2, 'Incomplete rec
 check(api.correctiveMemoryRating(api.Rating.Again, evidence(4,4,3)) === api.Rating.Again, 'Failed corrective verification must preserve an explicit Again');
 check(api.correctiveMemoryRating(api.Rating.Good, evidence(2,3,2)) === api.Rating.Hard, 'A user-confirmed Good cannot become FSRS success when objective corrective verification remains incomplete');
 check(api.correctiveMemoryRating(api.Rating.Good, evidence(4,4,3)) === api.Rating.Good, 'A qualifying closed-book verification must preserve its successful FSRS rating');
+check(api.suggestRating('relearn', evidence(2,3,2)) === api.Rating.Hard, 'Relearning suggestion must use the same 2.7 success gate as corrective scheduling');
+check(api.suggestRating('relearn', evidence(3,3,3)) === api.Rating.Good, 'Relearning evidence above the corrective success gate should suggest Good');
 check(api.suggestRating('memory-recall', evidence(4,3,2)) === 2, 'Cued recall should suggest Hard even when complete');
 check(api.suggestRating('memory-recall', evidence(4,4,4)) === 3, 'Complete independent recall should default to Good; Easy remains a user judgement');
 check(api.suggestRating('application-practice', evidence(3,3,3,85)) >= 3, 'Good application evidence should pass');

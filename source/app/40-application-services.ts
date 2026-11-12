@@ -907,8 +907,11 @@
       const timing = canonicalTimingEvidenceSummary(draft.timing);
       const normalizedDraft: EvidenceDraft = { ...draft, elapsedMs: timing.totalActiveMs, timing };
       validateEvidence(normalizedDraft);
-      const confirmed = validateRating(normalizedDraft.confirmedRating);
+      const requestedRating = validateRating(normalizedDraft.confirmedRating);
       const obligation = await this.obligation(obligationId);
+      const confirmed = obligation.type === "relearn"
+        ? correctiveMemoryRating(requestedRating, normalizedDraft)
+        : requestedRating;
       validateWorkflowSpec(obligation.workflow, obligation.type);
       validateWorkflowResult(normalizedDraft.workflowResult, obligation.workflow.kind);
       assert(obligation.status === "active", "This obligation is not active.");
@@ -922,19 +925,16 @@
       const beforePolicyState = clone(obligation.policyState);
       const beforeDueAt = obligation.dueAt;
       const suggested = suggestRating(obligation.type, normalizedDraft);
-      const schedulingRating = obligation.type === "relearn"
-        ? correctiveMemoryRating(confirmed, normalizedDraft)
-        : confirmed;
       const policy = this.router.get(obligation.type);
       const memoryReviewIndex = this.memoryReviewIndexFor(priorEvidence);
       const priorMemoryReviews = obligation.type === "memory-recall"
         ? memoryReviewIndex.get(obligation.id) ?? []
         : [];
       const completion = obligation.type === "memory-recall"
-        ? policy.complete(obligation, schedulingRating, normalizedDraft, reviewedAt, {
+        ? policy.complete(obligation, confirmed, normalizedDraft, reviewedAt, {
             memoryReviews: priorMemoryReviews,
           })
-        : policy.complete(obligation, schedulingRating, normalizedDraft, reviewedAt);
+        : policy.complete(obligation, confirmed, normalizedDraft, reviewedAt);
 
       obligation.dueAt = completion.dueAt;
       obligation.policyState = completion.policyState;
@@ -1031,7 +1031,7 @@
         }
       }
 
-      const verificationRating = schedulingRating;
+      const verificationRating = confirmed;
       const relearningMastered =
         obligation.type === "relearn" &&
         verificationRating >= Rating.Good;

@@ -704,6 +704,11 @@
     }
     const score = objectiveScore(type, evidence);
     if (score < 1.45) return Rating.Again;
+    if (type === "relearn") {
+      if (score < 2.7) return Rating.Hard;
+      if (score < 3.45) return Rating.Good;
+      return Rating.Easy;
+    }
     if (score < 2.45) return Rating.Hard;
     if (score < 3.45) return Rating.Good;
     return Rating.Easy;
@@ -711,9 +716,8 @@
 
   function correctiveMemoryRating(confirmedRating: Rating, evidence: ObjectiveEvidence): Rating {
     const confirmed = validateRating(confirmedRating);
-    const verificationPassed = confirmed >= Rating.Good && objectiveScore("relearn", evidence) >= 2.7;
-    if (verificationPassed) return confirmed;
-    return confirmed === Rating.Again ? Rating.Again : Rating.Hard;
+    if (confirmed === Rating.Again) return Rating.Again;
+    return suggestRating("relearn", evidence) >= Rating.Good ? confirmed : Rating.Hard;
   }
 
   function validateEvidence(evidence: ObjectiveEvidence): void {
