@@ -84,6 +84,13 @@ class MemoryRepo {
     if(dailyPlan) await this.put('dailyPlans',dailyPlan);
     if(commitGuard&&postCommitSession) this.activeRetrieval=clone(postCommitSession);
   }
+  async backupState(){
+    return clone({
+      profiles:this.profiles,nodes:this.nodes,units:this.units,studyEvents:this.studyEvents,
+      obligations:this.obligations,evidenceEvents:this.evidenceEvents,chunks:this.chunks,dailyPlans:this.dailyPlans,
+      settings:this.settings,activeRetrieval:this.activeRetrieval,
+    });
+  }
   async replaceSettingsAndObligations(settings,updatedObligations){
     this.replaceSettingsAndObligationsCalls++;
     const updates=new Map(updatedObligations.map(item=>[item.id,clone(item)]));
