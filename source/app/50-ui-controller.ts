@@ -985,6 +985,9 @@
       const path = await this.service.hierarchyPath(unit.topicNodeId);
       const profile = await this.service.profile(unit.profileId);
       this.reviewPreviews = await this.service.preview(obligation.id);
+      const memoryReviews = obligation.type === "memory-recall"
+        ? await this.service.memoryReviewHistory(obligation.id)
+        : [];
       const progress = `${this.activeReviewIndex + 1} / ${this.activeReviewIds.length}`;
       const checkpoints = obligation.workflow.checkpoints.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
       const sourcePanel = `<div class="source-panel"><strong>Source and scope</strong><p>${escapeHtml(unit.source || "No source recorded.")}</p><p>${escapeHtml(unit.scope)}</p><strong>Success criteria</strong><p>${escapeHtml(obligation.successCriteria)}</p><strong>Observable checkpoints</strong><ol class="checkpoint-reference">${checkpoints}</ol></div>`;
@@ -1022,7 +1025,7 @@
 
           <section data-review-phase="compare" hidden>
             <div class="comparison-grid">${this.attemptComparisonPanel(obligation)}${sourcePanel}</div>
-            ${this.workflowAssessmentPanel(obligation)}
+            ${this.workflowAssessmentPanel(obligation, memoryReviews)}
           </section>
 
           ${this.reviewTimerMarkup()}
@@ -1116,7 +1119,7 @@
       return "";
     }
 
-    private workflowAssessmentPanel(obligation: RevisionObligation): string {
+    private workflowAssessmentPanel(obligation: RevisionObligation, memoryReviews: readonly MemoryReviewObservation[] = []): string {
       const spec = obligation.workflow;
       const checkpoints = this.checkpointAssessment(spec.checkpoints);
       let specific = "";
@@ -1139,7 +1142,7 @@
         : "";
       const difficultyGuidance = obligation.type === "memory-recall"
         ? (() => {
-            const assessment = memoryDifficultyAssessment(obligation, this.service.getSettings().memoryDifficultyPolicy);
+            const assessment = memoryDifficultyAssessment(obligation, this.service.getSettings().memoryDifficultyPolicy, memoryReviews);
             if (assessment.level === "normal") return "";
             const label = assessment.level === "persistent-difficulty" ? "Persistent difficulty" : assessment.level === "remediation" ? "Remediation" : "Early learning difficulty";
             const burden = assessment.level === "learning-difficulty"
