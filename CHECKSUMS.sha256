@@ -43,7 +43,7 @@ bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/s
 9e9a57d9ce399bc80affbf6bea69fdc911af114058932379967d36e2f31b7c12  ./source/revision-director.va7.css
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 7e7b56ad14f284e16581b687e66dd18a42fdb6973456e8bb68b0fe8a52b477fb  ./tests/backup_fixture_codec.py
-751587242b9709e40306f25c2e81951f6b43c42e8113050e6f194d7b0b4459a7  ./tests/browser-qa.spec.py
+c7a711a947ef0fa3248423e8de839d784164285a0c41a9aa31e96985dd0386a2  ./tests/browser-qa.spec.py
 873db08a8c8bbf947e98ad4f776ec8f1566240bc37141b246992901b460ccce6  ./tests/build-integrity.spec.py
 15c2c5eb0dcddef5fad2806cc650e9a169a257c03268609bd876aa8baabfacae  ./tests/fixtures/browser-baseline.json
 ca2f42822f71ee00d2dff9b1846806545634c79e2ef75c3cfae46feae5f1cdfb  ./tests/fixtures/browser-baseline.rdbackup
