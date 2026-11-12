@@ -509,7 +509,8 @@
     };
     const ignoredGapMs = bounded(value.ignoredGapMs, "Ignored gap time");
     assert(Array.isArray(value.reliabilityFlags), "Timing reliability flags are required.");
-    const reliabilityFlags = [...new Set(value.reliabilityFlags)];
+    const reliabilityFlags = [...value.reliabilityFlags];
+    assert(new Set(reliabilityFlags).size === reliabilityFlags.length, "Timing reliability flags cannot contain duplicates.");
     for (const flag of reliabilityFlags) assert(flag === "ignored-gap" || flag === "backward-clock", "Timing reliability flag is invalid.");
     assert((ignoredGapMs > 0) === reliabilityFlags.includes("ignored-gap"), "Ignored-gap reliability flag is inconsistent.");
     const backwardClockCount = count(value.backwardClockCount, "Backward-clock count");
