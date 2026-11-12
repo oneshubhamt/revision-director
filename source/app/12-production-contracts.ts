@@ -188,15 +188,16 @@
     event.evidence.correctionNote = canonicalText(event.evidence.correctionNote, "Evidence correction note");
     if (event.followUpObligationId !== undefined) event.followUpObligationId = canonicalId(event.followUpObligationId, "Evidence follow-up obligation ID");
     else delete event.followUpObligationId;
-    if (event.returnedMemoryTransition) {
-      const transition = event.returnedMemoryTransition;
-      transition.obligationId = canonicalId(transition.obligationId, "Returned memory obligation ID");
-      transition.beforeDueAt = canonicalIso(transition.beforeDueAt, "Returned memory prior due date");
-      transition.afterDueAt = canonicalIso(transition.afterDueAt, "Returned memory next due date");
+    if (event.correctiveMemoryTransition) {
+      const transition = event.correctiveMemoryTransition;
+      transition.obligationId = canonicalId(transition.obligationId, "Corrective memory obligation ID");
+      transition.rating = validateRating(transition.rating);
+      transition.beforeDueAt = canonicalIso(transition.beforeDueAt, "Corrective memory prior due date");
+      transition.afterDueAt = canonicalIso(transition.afterDueAt, "Corrective memory next due date");
       transition.beforePolicyState = canonicalPolicyState(transition.beforePolicyState);
       transition.afterPolicyState = canonicalPolicyState(transition.afterPolicyState);
-      transition.policyId = canonicalId(transition.policyId, "Returned memory policy ID");
-    } else delete event.returnedMemoryTransition;
+      transition.policyId = canonicalId(transition.policyId, "Corrective memory policy ID");
+    } else delete event.correctiveMemoryTransition;
     event.createdAt = canonicalIso(event.createdAt, "Evidence-event creation date");
     return event;
   }
