@@ -119,6 +119,7 @@
     source: MemoryReviewSource;
     beforeCard: StoredFsrsCard;
     afterCard: StoredFsrsCard;
+    schedulerConfig: FsrsConfigSnapshot;
     configFingerprint: string;
   }
 
@@ -378,6 +379,7 @@
   interface FsrsPersonalizationSettings {
     profile: FsrsOptimizerProfile | null;
     active: boolean;
+    replayProfiles: FsrsOptimizerProfile[];
   }
 
   type MemoryDifficultyLevel = "normal" | "learning-difficulty" | "remediation" | "persistent-difficulty";

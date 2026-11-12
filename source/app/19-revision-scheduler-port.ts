@@ -266,6 +266,8 @@
       assert(review.source === "direct-memory" || review.source === "relearning-verification", "Memory review source is invalid.");
       assert(Number.isFinite(new Date(review.reviewedAt).getTime()), "Memory review timestamp is invalid.");
       assert(/^fnv1a64:[0-9a-f]{16}$/.test(review.configFingerprint), "Memory review configuration fingerprint is invalid.");
+      const schedulerConfig = validateFsrsConfigSnapshot(review.schedulerConfig);
+      assert(review.configFingerprint === schedulerConfig.fingerprint, "Memory review configuration fingerprint does not match its scheduler snapshot.");
       validateStoredFsrsCard(review.beforeCard, cardId);
       validateStoredFsrsCard(review.afterCard, cardId);
       assert(review.afterCard.lastReviewAt === review.reviewedAt, "Memory review timestamp does not match its resulting FSRS card.");
@@ -306,6 +308,7 @@
       source: "direct-memory",
       beforeCard: clone(beforeCard),
       afterCard: clone(afterCard),
+      schedulerConfig: clone(validateFsrsConfigSnapshot(config)),
       configFingerprint: validateFsrsConfigSnapshot(config).fingerprint,
     };
   }
@@ -324,6 +327,7 @@
       source: "relearning-verification",
       beforeCard: clone(beforeCard),
       afterCard: clone(afterCard),
+      schedulerConfig: clone(validateFsrsConfigSnapshot(returned.schedulerConfig)),
       configFingerprint: validateFsrsConfigSnapshot(returned.schedulerConfig).fingerprint,
     };
   }
@@ -679,18 +683,62 @@
     }
   }
 
+  function profileForHistoricalFsrsConfiguration(
+    config: FsrsConfigSnapshot,
+    profileCatalog: readonly FsrsOptimizerProfile[],
+  ): FsrsOptimizerProfile | null {
+    const validated = validateFsrsConfigSnapshot(config);
+    if (validated.weightsSource === "ts-fsrs-package-default") return null;
+    const sourceSha256 = validated.optimizerProfileSourceSha256;
+    assert(sourceSha256, "Historical personalized FSRS configuration lacks profile provenance.");
+    const matches = profileCatalog.filter((profile) =>
+      profile.sourceSha256 === sourceSha256
+      && fsrsWeightsFingerprint(profile.weights) === validated.weightsFingerprint
+    );
+    assert(matches.length === 1, "Historical personalized FSRS configuration cannot resolve its exact optimizer profile.");
+    return matches[0]!;
+  }
+
+  function verifyHistoricalMemorySchedulerConfigurations(
+    reviews: readonly MemoryReviewObservation[],
+    profileCatalog: readonly FsrsOptimizerProfile[],
+  ): void {
+    if (reviews.length === 0) return;
+    const configurations = new Map<string, FsrsConfigSnapshot>();
+    for (const review of reviews) {
+      const config = validateFsrsConfigSnapshot(review.schedulerConfig);
+      const existing = configurations.get(config.fingerprint);
+      if (existing) {
+        assert(JSON.stringify(existing) === JSON.stringify(config), "A single FSRS configuration fingerprint maps to conflicting scheduler snapshots.");
+      } else {
+        configurations.set(config.fingerprint, clone(config));
+      }
+    }
+    const initialCard = reviews[0]!.beforeCard;
+    for (const config of configurations.values()) {
+      const historicalProfile = profileForHistoricalFsrsConfiguration(config, profileCatalog);
+      const historicalScheduler = revisionSchedulerPort(config.schedulingPolicy, historicalProfile);
+      assert(historicalScheduler.configuration.fingerprint === config.fingerprint, "Historical FSRS configuration cannot be reconstructed exactly.");
+      const historicalProjection = historicalScheduler.reschedule(initialCard, reviews);
+      historicalScheduler.verifyProjection(historicalProjection, reviews, true);
+    }
+  }
+
   function verifyMemoryDatasetIntegrityWithIndex(
     obligations: readonly RevisionObligation[],
     reviewIndex: MemoryReviewObservationIndex,
     schedulingPolicy: FsrsSchedulingPolicy,
     profile: FsrsOptimizerProfile | null = null,
+    profileCatalog: readonly FsrsOptimizerProfile[] = profile ? [profile] : [],
   ): void {
     const scheduler = revisionSchedulerPort(schedulingPolicy, profile);
     for (const obligation of obligations) {
       if (obligation.type !== "memory-recall") continue;
       const projection = obligation.policyState.fsrsCard;
       assert(projection, "Memory obligation has no FSRS materialized projection.");
-      scheduler.verifyProjection(projection, reviewIndex.get(obligation.id) ?? [], true);
+      const reviews = reviewIndex.get(obligation.id) ?? [];
+      verifyHistoricalMemorySchedulerConfigurations(reviews, profileCatalog);
+      scheduler.verifyProjection(projection, reviews, true);
     }
   }
 
@@ -699,9 +747,10 @@
     evidenceEvents: readonly EvidenceEvent[],
     schedulingPolicy: FsrsSchedulingPolicy,
     profile: FsrsOptimizerProfile | null = null,
+    profileCatalog: readonly FsrsOptimizerProfile[] = profile ? [profile] : [],
   ): MemoryReviewObservationIndex {
     const reviewIndex = memoryReviewObservationIndex(evidenceEvents);
-    verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile);
+    verifyMemoryDatasetIntegrityWithIndex(obligations, reviewIndex, schedulingPolicy, profile, profileCatalog);
     return reviewIndex;
   }
 

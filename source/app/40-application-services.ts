@@ -61,6 +61,7 @@
         this.memoryReviewIndexFor(evidenceEvents),
         this.settings.fsrsScheduling.policy,
         activeFsrsOptimizerProfile(this.settings),
+        fsrsPersonalizationProfileCatalog(this.settings),
       );
     }
 
@@ -173,15 +174,35 @@
       );
     }
 
+    private async replayProfilesBeforeDiscardingCurrent(
+      personalization: FsrsPersonalizationSettings,
+    ): Promise<FsrsOptimizerProfile[]> {
+      const current = personalization.profile;
+      if (!current) return personalization.replayProfiles.map((profile) => clone(profile));
+      const fingerprint = fsrsWeightsFingerprint(current.weights);
+      const referenced = (await this.evidenceEvents()).some((event) => {
+        const configs = [event.schedulerConfig, event.correctiveMemoryTransition?.schedulerConfig];
+        return configs.some((config) =>
+          config?.weightsSource === "optimizer-profile"
+          && config.weightsFingerprint === fingerprint
+          && config.optimizerProfileSourceSha256 === current.sourceSha256
+        );
+      });
+      return referenced
+        ? appendFsrsReplayProfile(personalization.replayProfiles, current)
+        : personalization.replayProfiles.map((profile) => clone(profile));
+    }
+
     async stageFsrsOptimizerProfile(input: unknown): Promise<FsrsOptimizerProfile> {
       const personalization = effectiveFsrsPersonalization(this.settings);
       assert(!personalization.active, "Return to stock FSRS-7 before staging a different optimizer profile.");
       const profile = validateFsrsOptimizerProfile(input);
       await this.assertOptimizerProfileMatchesCurrentEvidence(profile);
       await prepareFsrsScheduler(this.settings.fsrsScheduling.policy, profile);
+      const replayProfiles = await this.replayProfilesBeforeDiscardingCurrent(personalization);
       const next = canonicalAppSettings({
         ...this.settings,
-        fsrsPersonalization: { ...personalization, profile, active: false },
+        fsrsPersonalization: { profile, active: false, replayProfiles },
       });
       await this.repo.put(Store.Settings, next);
       this.settings = next;
@@ -191,9 +212,10 @@
     async clearFsrsOptimizerProfile(): Promise<void> {
       const personalization = effectiveFsrsPersonalization(this.settings);
       assert(!personalization.active, "Return to stock FSRS-7 before removing the optimizer profile.");
+      const replayProfiles = await this.replayProfilesBeforeDiscardingCurrent(personalization);
       const next = canonicalAppSettings({
         ...this.settings,
-        fsrsPersonalization: { profile: null, active: false },
+        fsrsPersonalization: { profile: null, active: false, replayProfiles },
       });
       await this.repo.put(Store.Settings, next);
       this.settings = next;
@@ -232,9 +254,10 @@
           && incumbent.weightsFingerprint === fsrsWeightsFingerprint(personalization.profile.weights),
         "Replacement FSRS optimizer profile was not evaluated against the currently active personalized weights.",
       );
+      const replayProfiles = appendFsrsReplayProfile(personalization.replayProfiles, personalization.profile);
       const next = canonicalAppSettings({
         ...this.settings,
-        fsrsPersonalization: { profile: candidate, active: true },
+        fsrsPersonalization: { profile: candidate, active: true, replayProfiles },
       });
       await this.rebaseMemoryScheduler(next, candidate, "replace-profile");
       return clone(candidate);
@@ -314,6 +337,13 @@
         },
       });
       validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex);
+      verifyMemoryDatasetIntegrityWithIndex(
+        updatedMemory,
+        reviewIndex,
+        finalized.fsrsScheduling.policy,
+        activeFsrsOptimizerProfile(finalized),
+        fsrsPersonalizationProfileCatalog(finalized),
+      );
       await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);
       this.settings = finalized;
     }

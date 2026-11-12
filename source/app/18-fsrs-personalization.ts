@@ -355,22 +355,55 @@
   }
 
   function defaultFsrsPersonalizationSettings(): FsrsPersonalizationSettings {
-    return { profile: null, active: false };
+    return { profile: null, active: false, replayProfiles: [] };
   }
 
   function canonicalFsrsPersonalizationSettings(value: unknown): FsrsPersonalizationSettings {
     const record = requireRecord(value, "FSRS personalization settings");
-    const allowed = new Set(["profile", "active"]);
+    const allowed = new Set(["profile", "active", "replayProfiles"]);
     assert(Object.keys(record).every((key) => allowed.has(key)), "FSRS personalization settings contain unexpected fields.");
     const profile = record["profile"] === null ? null : validateFsrsOptimizerProfile(record["profile"]);
     const active = record["active"];
     assert(typeof active === "boolean", "FSRS personalization active flag is invalid.");
     assert(!active || profile !== null, "Active FSRS personalization requires an optimizer profile.");
-    return { profile, active };
+    const replayInput = record["replayProfiles"] === undefined ? [] : requiredArray(record["replayProfiles"], "FSRS replay profiles");
+    assert(replayInput.length <= 256, "FSRS replay-profile archive is unreasonably large.");
+    const replayProfiles = replayInput.map((item) => validateFsrsOptimizerProfile(item));
+    const seen = new Set<string>();
+    for (const replayProfile of replayProfiles) {
+      const identity = `${replayProfile.sourceSha256}|${fsrsWeightsFingerprint(replayProfile.weights)}`;
+      assert(!seen.has(identity), "FSRS replay-profile archive contains duplicate profiles.");
+      seen.add(identity);
+    }
+    return { profile, active, replayProfiles };
   }
 
   function effectiveFsrsPersonalization(settings: AppSettings): FsrsPersonalizationSettings {
     return canonicalFsrsPersonalizationSettings(settings.fsrsPersonalization);
+  }
+
+  function fsrsPersonalizationProfileCatalog(settings: AppSettings): FsrsOptimizerProfile[] {
+    const personalization = effectiveFsrsPersonalization(settings);
+    const profiles = [...personalization.replayProfiles];
+    if (personalization.profile) {
+      const identity = `${personalization.profile.sourceSha256}|${fsrsWeightsFingerprint(personalization.profile.weights)}`;
+      if (!profiles.some((profile) => `${profile.sourceSha256}|${fsrsWeightsFingerprint(profile.weights)}` === identity)) {
+        profiles.push(personalization.profile);
+      }
+    }
+    return profiles.map((profile) => clone(profile));
+  }
+
+  function appendFsrsReplayProfile(
+    replayProfiles: readonly FsrsOptimizerProfile[],
+    profile: FsrsOptimizerProfile,
+  ): FsrsOptimizerProfile[] {
+    const validated = validateFsrsOptimizerProfile(profile);
+    const identity = `${validated.sourceSha256}|${fsrsWeightsFingerprint(validated.weights)}`;
+    if (replayProfiles.some((item) => `${item.sourceSha256}|${fsrsWeightsFingerprint(item.weights)}` === identity)) {
+      return replayProfiles.map((item) => clone(item));
+    }
+    return [...replayProfiles.map((item) => clone(item)), clone(validated)];
   }
 
   function activeFsrsOptimizerProfile(settings: AppSettings): FsrsOptimizerProfile | null {
