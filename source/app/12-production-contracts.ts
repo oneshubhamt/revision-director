@@ -52,7 +52,14 @@
     assert(value.schemaVersion === DOCUMENT_SCHEMA_VERSION, `${label} uses an unsupported document schema.`);
   }
 
+  function assertExactKeys(value: object, label: string, allowedKeys: readonly string[]): void {
+    const allowed = new Set(allowedKeys);
+    const unexpected = Object.keys(value).filter((key) => !allowed.has(key));
+    assert(unexpected.length === 0, `${label} contains unexpected fields: ${unexpected.join(", ")}.`);
+  }
+
   function canonicalWorkflowSpec(value: WorkflowSpec): WorkflowSpec {
+    assertExactKeys(value, "Workflow", ["kind", "prompt", "checkpoints", "responseMedium", "targetCount", "questionSetRef", "timeLimitMinutes", "wordLimit", "reconstructionShape", "answerMode", "diagramSurface"]);
     const workflow = clone(value);
     workflow.prompt = canonicalText(workflow.prompt, "Workflow prompt", 8_000);
     workflow.checkpoints = [...new Set(workflow.checkpoints.map((checkpoint) => canonicalName(checkpoint, "Workflow checkpoint", 500)))];
@@ -62,8 +69,10 @@
   }
 
   function canonicalPolicyState(value: PolicyState): PolicyState {
+    assertExactKeys(value, "Policy state", ["engine", "version", "stage", "successStreak", "failureCount", "lastIntervalDays", "fsrsCard"]);
     const state = clone(value);
     if (state.fsrsCard) {
+      assertExactKeys(state.fsrsCard, "FSRS card", ["model", "cardId", "dueAt", "stability", "stabilityFast", "difficulty", "scheduledDays", "learningStep", "reps", "lapses", "state", "scheduleStatus", "lastReviewAt"]);
       state.fsrsCard.dueAt = canonicalIso(state.fsrsCard.dueAt, "FSRS due date");
       if (state.fsrsCard.lastReviewAt !== undefined) state.fsrsCard.lastReviewAt = canonicalIso(state.fsrsCard.lastReviewAt, "FSRS last review date");
       else delete state.fsrsCard.lastReviewAt;
@@ -73,6 +82,7 @@
 
   function canonicalExamProfile(value: ExamProfile): ExamProfile {
     assertDocumentSchema(value, "Exam profile");
+    assertExactKeys(value, "Exam profile", ["schemaVersion", "id", "name", "examDate", "status", "createdAt", "updatedAt"]);
     if (value.examDate) validateCalendarDate(value.examDate, "Exam date");
     return {
       ...clone(value),
@@ -87,6 +97,7 @@
 
   function canonicalKnowledgeNode(value: KnowledgeNode): KnowledgeNode {
     assertDocumentSchema(value, "Knowledge node");
+    assertExactKeys(value, "Knowledge node", ["schemaVersion", "id", "profileId", "parentId", "kind", "name", "normalizedName", "createdAt", "updatedAt"]);
     const name = canonicalName(value.name, "Knowledge-node name");
     return {
       ...clone(value),
@@ -103,6 +114,7 @@
 
   function canonicalKnowledgeUnit(value: KnowledgeUnit): KnowledgeUnit {
     assertDocumentSchema(value, "Knowledge unit");
+    assertExactKeys(value, "Knowledge unit", ["schemaVersion", "id", "profileId", "topicNodeId", "title", "scope", "source", "importance", "status", "createdAt", "updatedAt", "latestEvidenceAt", "latestEvidenceRating", "evidenceCount", "lapseCount"]);
     const unit = clone(value);
     unit.schemaVersion = DOCUMENT_SCHEMA_VERSION;
     unit.id = canonicalId(unit.id, "Knowledge-unit ID");
@@ -121,6 +133,7 @@
 
   function canonicalStudyEvent(value: StudyEvent): StudyEvent {
     assertDocumentSchema(value, "Study event");
+    assertExactKeys(value, "Study event", ["schemaVersion", "id", "profileId", "occurredAt", "activityMode", "area", "task", "measure", "source", "durationMinutes", "understanding", "linkedUnitIds", "notes", "origin", "createdAt"]);
     return {
       ...clone(value),
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -139,6 +152,7 @@
 
   function canonicalRevisionObligation(value: RevisionObligation): RevisionObligation {
     assertDocumentSchema(value, "Revision obligation");
+    assertExactKeys(value, "Revision obligation", ["schemaVersion", "id", "unitId", "type", "status", "suspensionReason", "dueAt", "expectedMinutes", "baselineMinutes", "durationSampleCount", "chunking", "protocol", "successCriteria", "workflow", "freshnessDays", "priority", "policyState", "parentObligationId", "returnObligationId", "createdAt", "updatedAt", "lastCompletedAt"]);
     const obligation = clone(value);
     obligation.schemaVersion = DOCUMENT_SCHEMA_VERSION;
     obligation.id = canonicalId(obligation.id, "Revision-obligation ID");
@@ -214,6 +228,7 @@
 
   function canonicalObligationChunk(value: ObligationChunk): ObligationChunk {
     assertDocumentSchema(value, "Obligation chunk");
+    assertExactKeys(value, "Obligation chunk", ["schemaVersion", "id", "obligationId", "cycleId", "ordinal", "total", "label", "scope", "expectedMinutes", "status", "createdAt", "updatedAt", "completedAt", "actualMinutes", "note", "timing"]);
     const chunk = clone(value);
     chunk.schemaVersion = DOCUMENT_SCHEMA_VERSION;
     chunk.id = canonicalId(chunk.id, "Obligation-chunk ID");
@@ -236,6 +251,7 @@
 
   function canonicalDailyPlanRecord(value: DailyPlanRecord): DailyPlanRecord {
     assertDocumentSchema(value, "Daily plan");
+    assertExactKeys(value, "Daily plan", ["schemaVersion", "id", "studyDayKey", "createdAt", "updatedAt", "plannerVersion", "versions", "outcomes"]);
     validateCalendarDate(value.studyDayKey, "Daily plan study day");
     const plan = clone(value);
     plan.schemaVersion = DOCUMENT_SCHEMA_VERSION;
@@ -271,8 +287,7 @@
 
   function canonicalAppSettings(value: AppSettings): AppSettings {
     assertDocumentSchema(value, "Application settings");
-    const allowed = new Set(["schemaVersion", "key", "activeProfileId", "fsrsScheduling", "memoryDifficultyPolicy", "dailyCapacityMinutes", "studyDayBoundaryHour", "fsrsPersonalization"]);
-    assert(Object.keys(value).every((key) => allowed.has(key)), "Application settings contain unexpected fields.");
+    assertExactKeys(value, "Application settings", ["schemaVersion", "key", "activeProfileId", "fsrsScheduling", "memoryDifficultyPolicy", "dailyCapacityMinutes", "studyDayBoundaryHour", "fsrsPersonalization"]);
     assert(value.key === "app", "Application settings key is invalid.");
     assert(typeof value.activeProfileId === "string", "Active profile ID must be a string.");
     const fsrsScheduling = canonicalFsrsSchedulingSettings(value.fsrsScheduling);
@@ -293,11 +308,14 @@
 
   function canonicalAppMetadata(value: AppMetadata): AppMetadata {
     assertDocumentSchema(value, "Application metadata");
+    assertExactKeys(value, "Application metadata", ["schemaVersion", "key", "databaseName", "databaseVersion", "applicationVersion", "createdAt", "updatedAt"]);
+    assert(value.key === "database", "Application metadata key is invalid.");
+    assert(Number.isInteger(value.databaseVersion) && value.databaseVersion >= 1, "Database metadata version is invalid.");
     return {
-      ...clone(value),
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
       key: "database",
       databaseName: canonicalId(value.databaseName, "Database name"),
+      databaseVersion: value.databaseVersion,
       applicationVersion: canonicalId(value.applicationVersion, "Application version"),
       createdAt: canonicalIso(value.createdAt, "Database creation date"),
       updatedAt: canonicalIso(value.updatedAt, "Database update date"),
@@ -312,29 +330,31 @@
 
   function canonicalTimingEvidenceSummary(value: TimingEvidenceSummary): TimingEvidenceSummary {
     assert(value && typeof value === "object", "Timing evidence is required.");
+    assertExactKeys(value, "Timing evidence", ["totalActiveMs", "activeByPhase", "pauseMs", "pauseCount", "inactiveGapCount", "classifiedFocusMs", "classifiedBreakMs", "ignoredGapMs", "promptExcludedMs", "backwardClockCount", "sourceRevealAt", "durationReliable", "reliabilityFlags"]);
     assert(value.activeByPhase && typeof value.activeByPhase === "object", "Phase timing breakdown is required.");
+    assertExactKeys(value.activeByPhase, "Phase timing breakdown", ["attempt", "compare", "relearn-repair", "relearn-verify"]);
     const phases: ReviewPhase[] = ["attempt", "compare", "relearn-repair", "relearn-verify"];
     const activeByPhase = Object.fromEntries(phases.map((phase) => {
-      const raw = Number(value.activeByPhase[phase]);
-      assert(Number.isFinite(raw) && raw >= 0 && raw <= 7 * DAY_MS, "Phase active time is invalid.");
+      const raw = value.activeByPhase[phase];
+      assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= 7 * DAY_MS, "Phase active time is invalid.");
       return [phase, Math.round(raw)];
     })) as Record<ReviewPhase, number>;
     const totalActiveMs = Object.values(activeByPhase).reduce((sum, amount) => sum + amount, 0);
-    assert(Number.isFinite(value.totalActiveMs) && Math.round(value.totalActiveMs) === totalActiveMs, "Total active time does not match phase timing.");
-    const bounded = (raw: number, label: string) => {
-      assert(Number.isFinite(raw) && raw >= 0 && raw <= 30 * DAY_MS, `${label} is invalid.`);
+    assert(typeof value.totalActiveMs === "number" && Number.isFinite(value.totalActiveMs) && Math.round(value.totalActiveMs) === totalActiveMs, "Total active time does not match phase timing.");
+    const bounded = (raw: unknown, label: string) => {
+      assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= 30 * DAY_MS, `${label} is invalid.`);
       return Math.round(raw);
     };
-    const count = (raw: number, label: string) => {
-      assert(Number.isSafeInteger(raw) && raw >= 0 && raw <= 100_000, `${label} is invalid.`);
+    const count = (raw: unknown, label: string) => {
+      assert(typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0 && raw <= 100_000, `${label} is invalid.`);
       return raw;
     };
-    const ignoredGapMs = bounded(Number(value.ignoredGapMs), "Ignored gap time");
+    const ignoredGapMs = bounded(value.ignoredGapMs, "Ignored gap time");
     assert(Array.isArray(value.reliabilityFlags), "Timing reliability flags are required.");
     const reliabilityFlags = [...new Set(value.reliabilityFlags)];
     for (const flag of reliabilityFlags) assert(flag === "ignored-gap" || flag === "backward-clock", "Timing reliability flag is invalid.");
     assert((ignoredGapMs > 0) === reliabilityFlags.includes("ignored-gap"), "Ignored-gap reliability flag is inconsistent.");
-    const backwardClockCount = count(Number(value.backwardClockCount), "Backward-clock count");
+    const backwardClockCount = count(value.backwardClockCount, "Backward-clock count");
     assert((backwardClockCount > 0) === reliabilityFlags.includes("backward-clock"), "Backward-clock reliability flag is inconsistent.");
     assert(typeof value.durationReliable === "boolean", "Timing reliability state is required.");
     assert(value.durationReliable === (ignoredGapMs === 0), "Timing reliability state is inconsistent.");
@@ -358,11 +378,17 @@
 
   function canonicalPhaseTimeRuntimeSnapshot(value: PhaseTimeRuntimeSnapshot): PhaseTimeRuntimeSnapshot {
     assert(value && typeof value === "object", "Phase-time runtime is invalid.");
+    assertExactKeys(value, "Phase-time runtime", ["currentPhase", "state", "sessionStartedAt", "lastTickAt", "activeByPhase", "pauseStartedAt", "pauseHistory", "phaseHistory", "gapHistory", "pendingGap", "sourceVisible", "sourceRevealAt", "backwardClockCount"]);
     const currentPhase = canonicalReviewPhase(value.currentPhase);
     assert(["running", "paused", "gap-pending"].includes(value.state), "Phase-time state is invalid.");
     assert(value.activeByPhase && typeof value.activeByPhase === "object", "Phase-time breakdown is required.");
+    assertExactKeys(value.activeByPhase, "Phase-time breakdown", ["attempt", "compare", "relearn-repair", "relearn-verify"]);
     const phaseTotal = (["attempt", "compare", "relearn-repair", "relearn-verify"] as ReviewPhase[])
-      .reduce((sum, phase) => sum + Number(value.activeByPhase[phase]), 0);
+      .reduce((sum, phase) => {
+        const raw = value.activeByPhase[phase];
+        assert(typeof raw === "number", "Phase active time is invalid.");
+        return sum + raw;
+      }, 0);
     const activeByPhase = canonicalTimingEvidenceSummary({
       totalActiveMs: phaseTotal,
       activeByPhase: value.activeByPhase,
@@ -371,9 +397,8 @@
       backwardClockCount: 0, durationReliable: true, reliabilityFlags: [],
     }).activeByPhase;
     const boundedRuntimeMs = (raw: unknown, label: string, maximum = 30 * DAY_MS): number => {
-      const value = Number(raw);
-      assert(Number.isFinite(value) && value >= 0 && value <= maximum, `${label} is invalid.`);
-      return Math.round(value);
+      assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= maximum, `${label} is invalid.`);
+      return Math.round(raw);
     };
     assert(Array.isArray(value.pauseHistory), "Pause history is required.");
     const pauseHistory = value.pauseHistory.slice(-TIME_HISTORY_LIMIT).map((pause) => {
@@ -432,8 +457,8 @@
       sourceVisible: value.sourceVisible,
       ...(value.sourceRevealAt !== undefined ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
       backwardClockCount: (() => {
-        const count = Number(value.backwardClockCount);
-        assert(Number.isSafeInteger(count) && count >= 0 && count <= 100_000, "Backward-clock count is invalid.");
+        const count = value.backwardClockCount;
+        assert(typeof count === "number" && Number.isSafeInteger(count) && count >= 0 && count <= 100_000, "Backward-clock count is invalid.");
         return count;
       })(),
     };
@@ -441,6 +466,7 @@
 
   function canonicalReviewDraftSnapshot(value: ReviewDraftSnapshot): ReviewDraftSnapshot {
     assert(value && typeof value === "object", "Review draft is invalid.");
+    assertExactKeys(value, "Review draft", ["phase", "values", "checked", "diagramStrokes", "attemptElapsedMs"]);
     canonicalReviewPhase(value.phase);
     assert(value.values && typeof value.values === "object" && !Array.isArray(value.values), "Review field values are required.");
     assert(value.checked && typeof value.checked === "object" && !Array.isArray(value.checked), "Review check state is required.");
@@ -470,6 +496,7 @@
 
   function canonicalActiveRetrievalSession(value: ActiveRetrievalSession): ActiveRetrievalSession {
     assertDocumentSchema(value, "Active retrieval session");
+    assertExactKeys(value, "Active retrieval session", ["schemaVersion", "id", "revision", "status", "queueTargetIds", "activeIndex", "activeTargetId", "phase", "draft", "timeRuntime", "elapsedMs", "startedAt", "updatedAt", "commitToken"]);
     assert(value.id === ACTIVE_RETRIEVAL_ID, "Active retrieval session ID is invalid.");
     assert(["active", "committing", "completed"].includes(value.status), "Active retrieval status is invalid.");
     assert(Number.isSafeInteger(value.revision) && value.revision >= 1, "Active retrieval revision is invalid.");
@@ -538,6 +565,7 @@
 
   function canonicalActiveRetrievalEnvelope(input: unknown): ActiveRetrievalRecoveryEnvelope {
     const value = requireRecord(input, "Active retrieval recovery envelope");
+    assertExactKeys(value, "Active retrieval recovery envelope", ["format", "schemaVersion", "savedAt", "session"]);
     assert(value["format"] === ACTIVE_RETRIEVAL_RECOVERY_FORMAT && value["schemaVersion"] === 1, "Active retrieval recovery envelope is invalid.");
     return {
       format: ACTIVE_RETRIEVAL_RECOVERY_FORMAT,
