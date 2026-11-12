@@ -1001,6 +1001,7 @@
               source: "direct-memory",
               beforeCard: clone(beforeCard),
               afterCard: clone(afterCard),
+              schedulerConfig: clone(schedulerConfig),
               configFingerprint: schedulerConfig.fingerprint,
             };
             return memoryDifficultyAssessment(
@@ -1127,6 +1128,7 @@
             source: "relearning-verification",
             beforeCard: clone(beforeCard),
             afterCard: clone(afterCard),
+            schedulerConfig: clone(verification.schedulerConfig),
             configFingerprint: verification.schedulerConfig.fingerprint,
           };
           const difficulty = memoryDifficultyAssessment(
