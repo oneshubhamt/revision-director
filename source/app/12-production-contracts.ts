@@ -170,6 +170,16 @@
 
   function canonicalEvidenceEvent(value: EvidenceEvent): EvidenceEvent {
     assertDocumentSchema(value, "Evidence event");
+    const allowed = new Set([
+      "schemaVersion", "id", "profileId", "unitId", "obligationId", "obligationType",
+      "reviewedAt", "elapsedMs", "evidence", "workflow", "workflowResult",
+      "suggestedRating", "confirmedRating", "beforeDueAt", "afterDueAt",
+      "beforePolicyState", "afterPolicyState", "policyId", "schedulerPackage",
+      "schedulerVersion", "schedulerModel", "schedulerConfig", "reviewLog",
+      "durationObservation", "timing", "followUpObligationId",
+      "correctiveMemoryTransition", "createdAt",
+    ]);
+    assert(Object.keys(value).every((key) => allowed.has(key)), "Evidence event contains unexpected fields.");
     const event = clone(value);
     event.schemaVersion = DOCUMENT_SCHEMA_VERSION;
     event.id = canonicalId(event.id, "Evidence-event ID");

@@ -477,6 +477,13 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   check(restored.getSettings().fsrsPersonalization.active===true,'Restore must rehydrate active personalization');
   check(restoreRepo.replaceFromBackupCalls===1,'Valid personalized backup must restore exactly once');
 
+  const retiredTransitionShape=clone(payload);
+  retiredTransitionShape.evidenceEvents[0].returnedMemoryTransition={};
+  const retiredRepo=new MemoryRepo(buildRepositoryPayload());
+  const retiredService=new api.RevisionService(retiredRepo);
+  await mustReject(()=>retiredService.restoreBackupPayload(retiredTransitionShape,'discard'),'Restore must reject retired evidence-transition fields instead of carrying compatibility state');
+  check(retiredRepo.replaceFromBackupCalls===0,'Retired evidence-transition shape must fail before replacement');
+
   const corruptProjection=clone(payload);
   memoryObligation(corruptProjection).policyState.fsrsCard.stability+=.25;
   const rejectRepo=new MemoryRepo(buildRepositoryPayload());
