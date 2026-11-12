@@ -234,7 +234,7 @@ check("safe suspension provenance", "type SuspensionReason" in ts and 'suspensio
 check("automatic relearn follow-up", 'completion.followUpType = "relearn"' in ts)
 check("relearn pauses exact original", 'item.returnObligationId === obligation.id' in ts and 'obligation.status = "suspended"' in ts)
 check("atomic original reactivation", "relatedObligation?: RevisionObligation" in ts and "if (relatedObligation) obligationStore.put(relatedObligation)" in ts)
-check("FSRS relearning resumption", 'const resumed = this.router.get("memory-recall").complete(' in ts and "memoryReviewObservationsFor(original.id, priorEvidence)" in ts and "original.dueAt = resumed.dueAt" in ts and "original.policyState = resumed.policyState" in ts)
+check("FSRS relearning resumption", 'const resumed = this.router.get("memory-recall").complete(' in ts and "memoryReviewIndex.get(original.id) ?? []" in ts and "original.dueAt = resumed.dueAt" in ts and "original.policyState = resumed.policyState" in ts)
 check("FSRS due ownership invariant", 'assert(fsrsCard.dueAt === obligation.dueAt' in ts and "original.lastCompletedAt = reviewedAt.toISOString()" in ts)
 check("early-learning difficulty separated from lapses", '"learning-difficulty"' in ts and "MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD = 2" in ts and "earlyLearningFailures" in ts and "establishedLapses" in ts and "review.beforeCard.state === 0 || review.beforeCard.state === 1" in ts)
 check("exam-bounded corrective relearning", "function correctiveRelearnDueAt" in ts and "correctiveRelearnDueAt(await this.profile(unit.profileId), reviewedAt)" in ts)
