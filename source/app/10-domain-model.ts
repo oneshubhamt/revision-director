@@ -110,7 +110,7 @@
 
   type MemoryMaterializedProjection = StoredFsrsCard;
 
-  type MemoryReviewSource = "direct-memory" | "relearning-return";
+  type MemoryReviewSource = "direct-memory" | "relearning-verification";
 
   interface MemoryReviewObservation {
     evidenceEventId: string;
@@ -431,9 +431,9 @@
     globalWorkflowSamples: number;
   }
 
-  interface ReturnedMemoryTransition {
+  interface CorrectiveMemoryTransition {
     obligationId: string;
-    rating: 3;
+    rating: Rating;
     beforeDueAt: ISODateTime;
     afterDueAt: ISODateTime;
     beforePolicyState: PolicyState;
@@ -473,7 +473,7 @@
     durationObservation: DurationObservation;
     timing: TimingEvidenceSummary;
     followUpObligationId?: string;
-    returnedMemoryTransition?: ReturnedMemoryTransition;
+    correctiveMemoryTransition?: CorrectiveMemoryTransition;
     createdAt: ISODateTime;
   }
 
