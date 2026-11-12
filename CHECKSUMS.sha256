@@ -8,6 +8,7 @@ d09e58f20f79f3125293c0dd1aa70b0c0a6c9c58f40c5657c0867b2f6da25f62  ./dist/app.js
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 b6dd301dd8e4110f1684e7c1af9819e51ea7c395d989d02983c5de71ee4d688b  ./docs/SCHEDULING_AND_PLANNING.md
 746d842bccea4d9bef689d219eafdc599a44a5c5dacb6f5c87281066bd800027  ./index.html
+3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
 835e6c8d75089d5c402237492582aeae0a131a4f4c1d81f5fac882616019458c  ./package-lock.json

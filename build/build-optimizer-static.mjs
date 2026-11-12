@@ -76,8 +76,16 @@ const runtimePackages=[
  ["@tybys/wasm-util","tybys-wasm-util"],
  ["tslib","tslib"]
 ];
+const runtimeLicenseFallbacks=new Map([
+ ["@napi-rs/wasm-runtime@1.2.6",{
+  path:resolve(root,"licences/napi-rs-wasm-runtime-MIT.txt"),
+  sha256:"3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215",
+  license:"MIT"
+ }]
+]);
 for(const [packageName,targetName] of runtimePackages){
  const packageRoot=resolve(optimizerRoot,"node_modules",...packageName.split("/"));
+ const packageMetadata=JSON.parse(await readFile(resolve(packageRoot,"package.json"),"utf8"));
  let copied=false;
  for(const candidate of ["LICENSE","LICENSE.md","LICENSE.txt"]){
   try{
@@ -86,7 +94,20 @@ for(const [packageName,targetName] of runtimePackages){
    break;
   }catch{}
  }
- if(!copied)throw Error("Missing runtime licence text for "+packageName);
+ if(!copied){
+  const fallback=runtimeLicenseFallbacks.get(packageName+"@"+packageMetadata.version);
+  if(fallback){
+   if(packageMetadata.license!==fallback.license)
+    throw Error("Runtime licence metadata changed for "+packageName+"@"+packageMetadata.version);
+   const fallbackBytes=await readFile(fallback.path);
+   const fallbackSha256=createHash("sha256").update(fallbackBytes).digest("hex");
+   if(fallbackSha256!==fallback.sha256)
+    throw Error("Vendored runtime licence identity changed for "+packageName+"@"+packageMetadata.version);
+   await copyFile(fallback.path,resolve(licenseDir,targetName+"-LICENSE"));
+   copied=true;
+  }
+ }
+ if(!copied)throw Error("Missing runtime licence text for "+packageName+"@"+packageMetadata.version);
 }
 
 await writeFile(

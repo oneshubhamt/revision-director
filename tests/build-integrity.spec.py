@@ -203,9 +203,11 @@ check("optimizer training policy", all(token in optimizer_core for token in ["co
 check("local optimizer is staged only", "stageFsrsOptimizerProfile(profile)" in ts and "activateFsrsOptimizerProfile()" in ts and "Profile staged; activation remains explicit." in ts and "stageFsrsOptimizerProfile(profile); await this.service.activate" not in ts)
 check("optimizer Worker cancellation/progress", 'new Worker(new URL("./fsrs-optimizer.worker.js", document.baseURI)' in ts and "worker.terminate()" in ts and 'type:"progress"' in optimizer_worker and "onProgress" in ts)
 check("optional optimizer static distribution", root_package.get("scripts", {}).get("build:optimizer-static") == "npm run build && node build/build-optimizer-static.mjs" and '<meta\\s+name=["\']revision-director-browser-optimizer' in optimizer_static_build and "optimizer-footprint.json" in optimizer_static_build and "Revision_Director_Optimizer_Static" in optimizer_static_build and "fsrs-binding.wasm32-wasip1.wasm" in optimizer_static_build and "wasm-unsafe-eval" in optimizer_static_build)
+check("optimizer runtime licence fallback", '@napi-rs/wasm-runtime@1.2.6' in optimizer_static_build and 'licences/napi-rs-wasm-runtime-MIT.txt' in optimizer_static_build and '3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215' in optimizer_static_build and (ROOT / "licences/napi-rs-wasm-runtime-MIT.txt").is_file())
 check("pinned optimizer WASM identity", 'EXPECTED_WASM_VERSION="0.6.1"' in optimizer_static_build and "EXPECTED_WASM_BYTES=1_396_770" in optimizer_static_build and 'EXPECTED_WASM_SHA256="498d916b2d92180d8547f4d41ad204d63a488e6e0a1fe8c2ab330cf4ff5b8c05"' in optimizer_static_build and "wasmSourceSha256" in optimizer_static_build)
 check("optimizer checksum coverage", all(path in checksum_targets for path in [
     "build/build-optimizer-static.mjs",
+    "licences/napi-rs-wasm-runtime-MIT.txt",
     "source/app/18-fsrs-personalization.ts",
     "source/app/18a-fsrs-browser-optimizer.ts",
     "source/app/19-revision-scheduler-port.ts",

@@ -31,8 +31,8 @@ The optional `Revision_Director_Optimizer_Static/` distribution additionally con
 - `@emnapi/core@2.0.0-beta.3` — MIT
 - `@emnapi/runtime@2.0.0-beta.3` — MIT
 - `@emnapi/wasi-threads@2.2.0` — MIT
-- `@napi-rs/wasm-runtime@1.2.6` — MIT
+- `@napi-rs/wasm-runtime@1.2.6` — MIT · npm package omits the repository-level licence file; verified upstream text retained at `licences/napi-rs-wasm-runtime-MIT.txt` · SHA-256 `3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215`
 - `@tybys/wasm-util@0.10.4` — MIT
 - `tslib@2.9.1` — 0BSD
 
-The optimizer-static build copies the installed packages' licence texts into `licenses/optimizer/` beside the Worker/WASM distribution.
+The optimizer-static build copies installed package licence texts into `licenses/optimizer/` beside the Worker/WASM distribution. For `@napi-rs/wasm-runtime@1.2.6`, whose npm `files` whitelist omits the repository-level licence, the build uses only the version- and checksum-pinned upstream fallback retained above.
