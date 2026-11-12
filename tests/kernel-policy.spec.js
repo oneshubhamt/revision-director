@@ -497,6 +497,7 @@ async function testDifficultyPolicyReconciliation() {
   const current={schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:true,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}};
   let atomic;
   const svc=new api.RevisionService({
+    get:async()=>undefined,
     put:async()=>{},
     replaceSettingsAndObligations:async(settings,obligations)=>{atomic={settings:structuredClone(settings),obligations:structuredClone(obligations)};}
   });
