@@ -416,18 +416,18 @@
           source: "direct-memory",
         });
       }
-      const returned = event.returnedMemoryTransition;
-      if (returned) {
-        const before = returned.beforePolicyState.fsrsCard;
-        assert(before, "Returned-memory optimizer evidence is missing its before-card projection.");
+      const corrective = event.correctiveMemoryTransition;
+      if (corrective) {
+        const before = corrective.beforePolicyState.fsrsCard;
+        assert(before, "Corrective-memory optimizer evidence is missing its before-card projection.");
         rows.push({
           reviewTimeMs: new Date(event.reviewedAt).getTime(),
-          cardId: returned.obligationId,
-          rating: Rating.Good,
-          ...fsrsOptimizerReviewDuration(event, "relearning-return"),
+          cardId: corrective.obligationId,
+          rating: validateRating(corrective.rating),
+          ...fsrsOptimizerReviewDuration(event, "relearning-verification"),
           state: before.state,
           evidenceEventId: event.id,
-          source: "relearning-return",
+          source: "relearning-verification",
         });
       }
     }
