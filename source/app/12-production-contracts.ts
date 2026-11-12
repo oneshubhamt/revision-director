@@ -156,7 +156,13 @@
     obligation.updatedAt = canonicalIso(obligation.updatedAt, "Revision-obligation update date");
     if (obligation.lastCompletedAt !== undefined) obligation.lastCompletedAt = canonicalIso(obligation.lastCompletedAt, "Revision-obligation completion date");
     else delete obligation.lastCompletedAt;
-    if (obligation.suspensionReason === undefined) delete obligation.suspensionReason;
+    if (obligation.status === "suspended") {
+      assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning" || obligation.suspensionReason === "persistent-difficulty", "Suspended obligation lacks a valid reason.");
+    } else {
+      assert(obligation.suspensionReason === undefined, "Only suspended obligations may retain a suspension reason.");
+      delete obligation.suspensionReason;
+    }
+    if (obligation.suspensionReason === "persistent-difficulty") assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
     if (obligation.chunking) obligation.chunking.createdAt = canonicalIso(obligation.chunking.createdAt, "Chunk-cycle creation date");
     else delete obligation.chunking;
     return obligation;
