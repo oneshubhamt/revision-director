@@ -316,7 +316,7 @@ for (const mutation of [
   {...validBackup,settings:{...validBackup.settings,activeProfileId:'missing'}},
   {...validBackup,settings:{...validBackup.settings,fsrsScheduling:{policy:fixed(1.2)}}},
 ]) mustFail(() => service.validateBackup(mutation), 'Hostile backup should fail');
-const conceptUnitWithEvidence={...validBackup.units[0],evidenceCount:1,latestEvidenceAt:due,latestEvidenceRating:3};
+const conceptUnitWithEvidence={...validBackup.units[0],evidenceCount:1};
 check(service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[conceptEvidence]}).evidenceEvents.length === 1, 'Relational workflow evidence backup should pass');
 mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[(({timing,...rest})=>rest)(conceptEvidence)]}),'Current evidence without timing must be rejected');
 const chunkedObligation={...conceptObligation,chunking:{cycleId:'cycle',status:'chunking',originalMinutes:15,synthesisMinutes:5,capacityMinutes:60,totalChunks:2,completedChunks:1,createdAt:due}};
