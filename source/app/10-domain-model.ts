@@ -438,6 +438,21 @@
     globalWorkflowSamples: number;
   }
 
+  interface FsrsReviewLog {
+    model: FsrsModelVersion;
+    rating: Rating;
+    state: number;
+    dueAt: ISODateTime;
+    lastReviewAt: ISODateTime | null;
+    reviewTime: ISODateTime;
+    stability: number;
+    stabilityFast: number;
+    difficulty: number;
+    scheduledDays: number;
+    learningStep: number;
+    scheduleStatus?: StoredFsrsScheduleStatus;
+  }
+
   interface CorrectiveMemoryTransition {
     obligationId: string;
     rating: Rating;
@@ -450,7 +465,7 @@
     schedulerVersion: "6.0.0";
     schedulerModel: FsrsModelVersion;
     schedulerConfig: FsrsConfigSnapshot;
-    reviewLog: Record<string, unknown>;
+    reviewLog: FsrsReviewLog;
   }
 
   interface EvidenceEvent {
@@ -476,7 +491,7 @@
     schedulerVersion?: "6.0.0";
     schedulerModel?: FsrsModelVersion;
     schedulerConfig?: FsrsConfigSnapshot;
-    reviewLog?: Record<string, unknown>;
+    reviewLog?: FsrsReviewLog;
     durationObservation: DurationObservation;
     timing: TimingEvidenceSummary;
     followUpObligationId?: string;
