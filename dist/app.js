@@ -942,6 +942,13 @@
       const score = objectiveScore(type, evidence);
       if (score < 1.45)
           return Rating.Again;
+      if (type === "relearn") {
+          if (score < 2.7)
+              return Rating.Hard;
+          if (score < 3.45)
+              return Rating.Good;
+          return Rating.Easy;
+      }
       if (score < 2.45)
           return Rating.Hard;
       if (score < 3.45)
@@ -950,10 +957,9 @@
   }
   function correctiveMemoryRating(confirmedRating, evidence) {
       const confirmed = validateRating(confirmedRating);
-      const verificationPassed = confirmed >= Rating.Good && objectiveScore("relearn", evidence) >= 2.7;
-      if (verificationPassed)
-          return confirmed;
-      return confirmed === Rating.Again ? Rating.Again : Rating.Hard;
+      if (confirmed === Rating.Again)
+          return Rating.Again;
+      return suggestRating("relearn", evidence) >= Rating.Good ? confirmed : Rating.Hard;
   }
   function validateEvidence(evidence) {
       for (const value of [evidence.completeness, evidence.independence, evidence.application]) {
@@ -5563,8 +5569,11 @@
           const timing = canonicalTimingEvidenceSummary(draft.timing);
           const normalizedDraft = { ...draft, elapsedMs: timing.totalActiveMs, timing };
           validateEvidence(normalizedDraft);
-          const confirmed = validateRating(normalizedDraft.confirmedRating);
+          const requestedRating = validateRating(normalizedDraft.confirmedRating);
           const obligation = await this.obligation(obligationId);
+          const confirmed = obligation.type === "relearn"
+              ? correctiveMemoryRating(requestedRating, normalizedDraft)
+              : requestedRating;
           validateWorkflowSpec(obligation.workflow, obligation.type);
           validateWorkflowResult(normalizedDraft.workflowResult, obligation.workflow.kind);
           assert(obligation.status === "active", "This obligation is not active.");
@@ -5578,19 +5587,16 @@
           const beforePolicyState = clone(obligation.policyState);
           const beforeDueAt = obligation.dueAt;
           const suggested = suggestRating(obligation.type, normalizedDraft);
-          const schedulingRating = obligation.type === "relearn"
-              ? correctiveMemoryRating(confirmed, normalizedDraft)
-              : confirmed;
           const policy = this.router.get(obligation.type);
           const memoryReviewIndex = this.memoryReviewIndexFor(priorEvidence);
           const priorMemoryReviews = obligation.type === "memory-recall"
               ? memoryReviewIndex.get(obligation.id) ?? []
               : [];
           const completion = obligation.type === "memory-recall"
-              ? policy.complete(obligation, schedulingRating, normalizedDraft, reviewedAt, {
+              ? policy.complete(obligation, confirmed, normalizedDraft, reviewedAt, {
                   memoryReviews: priorMemoryReviews,
               })
-              : policy.complete(obligation, schedulingRating, normalizedDraft, reviewedAt);
+              : policy.complete(obligation, confirmed, normalizedDraft, reviewedAt);
           obligation.dueAt = completion.dueAt;
           obligation.policyState = completion.policyState;
           const memoryDifficulty = obligation.type === "memory-recall"
@@ -5680,7 +5686,7 @@
                   };
               }
           }
-          const verificationRating = schedulingRating;
+          const verificationRating = confirmed;
           const relearningMastered = obligation.type === "relearn" &&
               verificationRating >= Rating.Good;
           if (obligation.type === "relearn" && obligation.returnObligationId) {
@@ -9295,11 +9301,20 @@
               const obligation = await this.service.obligation(obligationId);
               const evidence = this.collectEvidence(rating, obligation);
               const suggestion = suggestRating(obligation.type, evidence);
-              if (Math.abs(rating - suggestion) >= 2) {
+              const effectiveRating = obligation.type === "relearn"
+                  ? correctiveMemoryRating(rating, evidence)
+                  : rating;
+              if (effectiveRating !== rating) {
+                  const proceed = window.confirm(`Closed-book verification does not support ${ratingName(rating)}. It will be recorded as ${ratingName(effectiveRating)} and corrective work will remain active. Continue?`);
+                  if (!proceed)
+                      return;
+              }
+              else if (Math.abs(rating - suggestion) >= 2) {
                   const proceed = window.confirm(`Objective evidence suggests ${ratingName(suggestion)}, but you selected ${ratingName(rating)}. Keep your rating?`);
                   if (!proceed)
                       return;
               }
+              const committedEvidence = effectiveRating === rating ? evidence : { ...evidence, confirmedRating: effectiveRating };
               const commitToken = uid("commit");
               const committing = this.buildActiveRetrievalSession("committing", commitToken);
               assert(committing, "Active retrieval state is missing.");
@@ -9307,7 +9322,7 @@
               try {
                   await this.activePersistence.flush(committing);
                   const guard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: obligationId, commitToken };
-                  await this.service.recordEvidence(obligationId, evidence, new Date(), guard, post);
+                  await this.service.recordEvidence(obligationId, committedEvidence, new Date(), guard, post);
                   await this.activePersistence.acceptCommittedTransition(post);
                   this.activeSessionRevision = post.revision;
                   this.toast(`Recorded ${ratingName(rating)}. Next obligation scheduled.`);
