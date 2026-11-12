@@ -1668,19 +1668,22 @@
         }
       }
       const evidenceCounts = new Map<string, { total: number; lapses: number }>();
+      const acceptedDurationCounts = new Map<string, number>();
       for (const event of evidenceEvents) {
         const count = evidenceCounts.get(event.unitId) ?? { total: 0, lapses: 0 };
         count.total += 1;
         if (event.confirmedRating === Rating.Again) count.lapses += 1;
         evidenceCounts.set(event.unitId, count);
+        if (event.durationObservation.accepted) {
+          acceptedDurationCounts.set(event.obligationId, (acceptedDurationCounts.get(event.obligationId) ?? 0) + 1);
+        }
       }
       for (const unit of units) {
         const count = evidenceCounts.get(unit.id) ?? { total: 0, lapses: 0 };
         assert(unit.evidenceCount === count.total && unit.lapseCount === count.lapses, "Knowledge unit evidence counters do not match its history.");
       }
       for (const obligation of obligations) {
-        const acceptedExact = evidenceEvents.filter((event) => event.obligationId === obligation.id && event.durationObservation.accepted).length;
-        assert(obligation.durationSampleCount === acceptedExact, "Obligation duration sample count does not match its accepted history.");
+        assert(obligation.durationSampleCount === (acceptedDurationCounts.get(obligation.id) ?? 0), "Obligation duration sample count does not match its accepted history.");
       }
       let canonicalActive: ActiveRetrievalSession | null = null;
       if (activeRetrieval) {
