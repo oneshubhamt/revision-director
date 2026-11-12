@@ -5,7 +5,7 @@ const { webcrypto } = require('crypto');
 const path = require('path');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsConfigSnapshot, validateStoredFsrsCard, defaultMemoryDifficultyPolicy, canonicalMemoryDifficultyPolicy, memoryDifficultyAssessment, memoryDifficultyRemediationPlan, memoryDifficultyActionLabel, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, correctiveMemoryRating, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsConfigSnapshot, validateStoredFsrsCard, defaultMemoryDifficultyPolicy, canonicalMemoryDifficultyPolicy, memoryDifficultyAssessment, memoryDifficultyRemediationPlan, memoryDifficultyActionLabel, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 
@@ -99,6 +99,9 @@ mustFail(() => api.validateWorkflowResult({...relearnResult,sourceClosedForVerif
 
 check(api.suggestRating('memory-recall', evidence(0,0,0)) === 1, 'Failure should suggest Again');
 check(api.suggestRating('memory-recall', evidence(3,4,2)) === 2, 'Incomplete recall should suggest Hard even when uncued');
+check(api.correctiveMemoryRating(api.Rating.Again, evidence(4,4,3)) === api.Rating.Again, 'Failed corrective verification must preserve an explicit Again');
+check(api.correctiveMemoryRating(api.Rating.Good, evidence(2,4,2)) === api.Rating.Hard, 'A user-confirmed Good cannot become FSRS success when objective corrective verification remains incomplete');
+check(api.correctiveMemoryRating(api.Rating.Good, evidence(4,4,3)) === api.Rating.Good, 'A qualifying closed-book verification must preserve its successful FSRS rating');
 check(api.suggestRating('memory-recall', evidence(4,3,2)) === 2, 'Cued recall should suggest Hard even when complete');
 check(api.suggestRating('memory-recall', evidence(4,4,4)) === 3, 'Complete independent recall should default to Good; Easy remains a user judgement');
 check(api.suggestRating('application-practice', evidence(3,3,3,85)) >= 3, 'Good application evidence should pass');
