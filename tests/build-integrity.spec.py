@@ -18,6 +18,11 @@ optimizer_worker = (ROOT / "tools/fsrs-optimizer/browser-worker.mjs").read_text(
 optimizer_cli = (ROOT / "tools/fsrs-optimizer/optimize.mjs").read_text()
 optimizer_static_build = (ROOT / "build/build-optimizer-static.mjs").read_text()
 root_package = json.loads((ROOT / "package.json").read_text())
+checksum_targets = {
+    line.split("  ./", 1)[1]
+    for line in (ROOT / "CHECKSUMS.sha256").read_text().splitlines()
+    if line
+}
 source_parts = sorted(source_manifest["parts"], key=lambda item: item["order"])
 source_paths = [ROOT / "source" / item["path"] for item in source_parts]
 ts = "".join(path.read_text() for path in source_paths)
@@ -193,6 +198,24 @@ check("local optimizer is staged only", "stageFsrsOptimizerProfile(profile)" in 
 check("optimizer Worker cancellation/progress", 'new Worker(new URL("./fsrs-optimizer.worker.js", document.baseURI)' in ts and "worker.terminate()" in ts and 'type:"progress"' in optimizer_worker and "onProgress" in ts)
 check("optional optimizer static distribution", root_package.get("scripts", {}).get("build:optimizer-static") == "npm run build && node build/build-optimizer-static.mjs" and 'name="revision-director-browser-optimizer"' in optimizer_static_build and "optimizer-footprint.json" in optimizer_static_build and "Revision_Director_Optimizer_Static" in optimizer_static_build and "fsrs-binding.wasm32-wasip1.wasm" in optimizer_static_build and "wasm-unsafe-eval" in optimizer_static_build)
 check("pinned optimizer WASM identity", 'EXPECTED_WASM_VERSION="0.6.1"' in optimizer_static_build and "EXPECTED_WASM_BYTES=1_396_770" in optimizer_static_build and 'EXPECTED_WASM_SHA256="498d916b2d92180d8547f4d41ad204d63a488e6e0a1fe8c2ab330cf4ff5b8c05"' in optimizer_static_build and "wasmSourceSha256" in optimizer_static_build)
+check("optimizer checksum coverage", all(path in checksum_targets for path in [
+    "build/build-optimizer-static.mjs",
+    "source/app/18-fsrs-personalization.ts",
+    "source/app/18a-fsrs-browser-optimizer.ts",
+    "source/app/19-revision-scheduler-port.ts",
+    "tests/fsrs-browser-optimizer.spec.py",
+    "tests/fsrs-integration.spec.js",
+    "tests/fsrs-optimizer-core.spec.js",
+    "tests/fsrs-optimizer-policy.spec.js",
+    "tools/fsrs-optimizer/browser-worker.mjs",
+    "tools/fsrs-optimizer/optimize.mjs",
+    "tools/fsrs-optimizer/optimizer-core.mjs",
+    "tools/fsrs-optimizer/optimizer-policy.mjs",
+    "tools/fsrs-optimizer/package-lock.json",
+    "tools/fsrs-optimizer/package.json",
+    "tools/fsrs-optimizer/parity.mjs",
+    "tools/fsrs-optimizer/smoke.mjs",
+]))
 check("standalone remains optimizer-asset-free", 'name="revision-director-browser-optimizer"' not in shell and "fsrs-optimizer.worker.js" not in html and "fsrs-binding.wasm32-wasip1.wasm" not in html and "connect-src 'none'" in html)
 check("optimizer tooling syntax", all(subprocess.run(["node", "--check", str(ROOT / path)], capture_output=True).returncode == 0 for path in ["tools/fsrs-optimizer/optimizer-policy.mjs","tools/fsrs-optimizer/optimizer-core.mjs","tools/fsrs-optimizer/optimize.mjs","tools/fsrs-optimizer/browser-worker.mjs","tools/fsrs-optimizer/parity.mjs","build/build-optimizer-static.mjs"]))
 check("safe suspension provenance", "type SuspensionReason" in ts and 'suspensionReason = "relearning"' in ts and 'suspensionReason === "unit"' in ts)
