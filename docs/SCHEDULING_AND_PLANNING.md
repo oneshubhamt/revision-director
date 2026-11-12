@@ -63,9 +63,12 @@ A profile is eligible only when it contains exactly 34 valid FSRS-7 weights and 
 1. trains a candidate on the historical first five-sixths;
 2. evaluates stock FSRS-7 and the candidate on the chronological final sixth;
 3. requires at least 64 training items, 64 holdout items and 16 holdout cards;
-4. requires strictly lower held-out log loss and no RMSE-bins regression;
-5. retrains final weights on all eligible evidence after the gate passes;
-6. records upstream time-series evaluation separately.
+4. requires a **practical** held-out log-loss improvement over stock: at least 0.001 absolute or 0.5% relative, whichever is larger;
+5. requires no held-out RMSE-bins calibration regression;
+6. retrains final weights on all eligible evidence after the gate passes;
+7. records upstream time-series evaluation separately.
+
+The practical-improvement threshold is an activation guard against epsilon-sized wins on one holdout, not a claim of statistical significance. Calibration remains separately inspectable through RMSE-bins: the UI reports stock → personalized calibration and whether it improved or remained unchanged. The gate never trades worse calibration for a tiny discrimination gain.
 
 Native import and successful browser optimization both **stage only**. Local optimization never activates weights automatically. Activation, deactivation and every scheduling-policy change are explicit scheduler rebases. A rebase:
 
@@ -97,11 +100,15 @@ The user confirms the final rating.
 
 An `Again` review advances the FSRS-7 state and creates a separate corrective `relearn` obligation. The original memory obligation is suspended rather than independently rescheduled by application code.
 
+Corrective work normally becomes due one day later. When a known examination is closer than that, the relearning due date is capped at the examination deadline so corrective work cannot be silently scheduled beyond the exam. This changes only the application-owned relearning obligation; the FSRS memory-card due date is not rewritten.
+
 After successful closed-book relearning verification, the original memory obligation is advanced again through FSRS-7 with a successful rating. The application does not substitute a hard-coded post-relearning interval.
 
-## Persistent difficulty
+## Learning difficulty and persistent difficulty
 
-Revision Director deliberately uses the **FSRS lapse counter as a signal**, not upstream leech suspension as an independent lifecycle. The vendored default scheduler already records a lapse only when an `Again` occurs from FSRS `Review` state. Revision Director does not install `schedulerLeechMiddleware`, and persisted FSRS cards may not use `scheduleStatus: suspended`.
+Revision Director distinguishes **initial-learning difficulty** from **established-memory lapses**. Repeated `Again` ratings while the card is still in FSRS New/Learning state are counted as failed learning recalls; after two such failures the planner and corrective guidance flag early learning difficulty, but the app does not invent an FSRS lapse or make the item eligible for persistent-difficulty suspension.
+
+Once the memory is established, Revision Director deliberately uses the **authoritative FSRS lapse counter as a signal**, not upstream leech suspension as an independent lifecycle. The vendored default scheduler records a lapse only when an `Again` occurs from FSRS `Review` state. Revision Director does not install `schedulerLeechMiddleware`, and persisted FSRS cards may not use `scheduleStatus: suspended`.
 
 The host policy is:
 
@@ -110,13 +117,13 @@ The host policy is:
 - 4+ lapses: **persistent difficulty**, escalating to scope review, prerequisite review, source review, representation change and deliberate intervention; oversized work is also flagged for splitting;
 - optional automatic hold: disabled by default; when explicitly enabled, the default threshold is 8 FSRS lapses.
 
-Persistent difficulty does not bypass the recovery mechanism. Even when automatic hold is enabled, successful closed-book relearning first advances the original memory card through FSRS with a successful return transition. Only then may the **Revision Director obligation** remain suspended with reason `persistent-difficulty`. The FSRS card itself remains schedulable and its `scheduleStatus` is not mutated.
+Persistent difficulty does not bypass the recovery mechanism. Even when automatic hold is enabled, successful closed-book relearning first advances the original memory card through FSRS with a successful return transition. Only then may the **Revision Director obligation** remain suspended with reason `persistent-difficulty`. The FSRS card itself remains schedulable and its `scheduleStatus` is not mutated. Initial-learning difficulty can raise weakness and corrective priority, but it can never trigger this established-memory hold policy.
 
 A held item can be deliberately resumed from the Library. Disabling automatic hold, or changing thresholds so an existing policy-generated hold no longer qualifies, atomically releases that hold while preserving any independent unit-level pause. Avoiding automatic hold leaves persistently difficult items in the normal queue but visibly flagged, with a strong weakness signal in planning. Difficulty level is derived from the authoritative FSRS lapse count; Revision Director does not persist a second mutable leech counter.
 
 ## Exam horizon
 
-An exam deadline is a planner constraint, not an FSRS parameter. If an FSRS due date falls after a known exam, the planner may offer one final memory-review opportunity inside the final three days. That opportunity does not mutate the FSRS card due date and is suppressed after a review has already occurred in that final window.
+An exam deadline is a planner constraint, not an FSRS parameter. If an FSRS due date falls after a known exam, the planner may offer one final memory-review opportunity inside the final three days. That opportunity does not mutate the FSRS card due date and is suppressed after a review has already occurred in that final window. Examination proximity also raises the planner score of otherwise identical difficult memories, while corrective relearning is deadline-capped as described above; neither mechanism mutates the underlying FSRS schedule.
 
 ## Non-memory policies
 

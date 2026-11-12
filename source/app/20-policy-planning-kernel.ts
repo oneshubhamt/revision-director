@@ -1,3 +1,5 @@
+  const MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD = 2 as const;
+
   const MEMORY_DIFFICULTY_ACTION_LABELS = {
     "scope-review": "reconsider the scope",
     "split-scope": "split oversized material",
@@ -44,18 +46,23 @@
   function memoryDifficultyAssessment(
     obligation: RevisionObligation,
     policy: MemoryDifficultyPolicy,
+    memoryReviews: readonly MemoryReviewObservation[] = [],
   ): MemoryDifficultyAssessment {
     assert(obligation.type === "memory-recall", "Persistent-difficulty assessment is only valid for memory recall.");
     const canonicalPolicy = canonicalMemoryDifficultyPolicy(policy);
     const card = obligation.policyState.fsrsCard;
     assert(card, "Memory obligation has no FSRS card for difficulty assessment.");
-    const fsrsLapses = card.lapses;
+    const establishedLapses = card.lapses;
+    const earlyLearningFailures = memoryReviews.filter((review) =>
+      review.rating === Rating.Again && (review.beforeCard.state === 0 || review.beforeCard.state === 1)).length;
+    const stillLearning = card.state === 0 || card.state === 1;
     const level: MemoryDifficultyLevel =
-      fsrsLapses >= canonicalPolicy.persistentDifficultyLapses ? "persistent-difficulty"
-        : fsrsLapses >= canonicalPolicy.remediationLapses ? "remediation"
-          : "normal";
+      establishedLapses >= canonicalPolicy.persistentDifficultyLapses ? "persistent-difficulty"
+        : establishedLapses >= canonicalPolicy.remediationLapses ? "remediation"
+          : stillLearning && earlyLearningFailures >= MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD ? "learning-difficulty"
+            : "normal";
     const recommendedActions: MemoryDifficultyAction[] = [];
-    if (level === "remediation") {
+    if (level === "learning-difficulty" || level === "remediation") {
       recommendedActions.push("source-revisit", "representation-change");
     } else if (level === "persistent-difficulty") {
       recommendedActions.push("scope-review");
@@ -64,12 +71,13 @@
     }
     return {
       level,
-      fsrsLapses,
+      establishedLapses,
+      earlyLearningFailures,
       recommendedActions,
       automaticHoldEligible:
         level === "persistent-difficulty" &&
         canonicalPolicy.automaticHold.enabled &&
-        fsrsLapses >= canonicalPolicy.automaticHold.lapseThreshold,
+        establishedLapses >= canonicalPolicy.automaticHold.lapseThreshold,
     };
   }
 
@@ -78,20 +86,26 @@
   ): { priorityBoost: number; guidance: string } {
     if (assessment.level === "normal") return { priorityBoost: 2, guidance: "" };
     const actions = assessment.recommendedActions.map(memoryDifficultyActionLabel).join("; ");
+    if (assessment.level === "learning-difficulty") {
+      return {
+        priorityBoost: 3,
+        guidance: `Early learning difficulty (${assessment.earlyLearningFailures} failed learning recalls): ${actions}. `,
+      };
+    }
     if (assessment.level === "remediation") {
       return {
         priorityBoost: 3,
-        guidance: `Repeated lapse remediation (${assessment.fsrsLapses} FSRS lapses): ${actions}. `,
+        guidance: `Repeated established-memory lapse remediation (${assessment.establishedLapses} FSRS lapses): ${actions}. `,
       };
     }
     return {
       priorityBoost: 4,
-      guidance: `Persistent difficulty (${assessment.fsrsLapses} FSRS lapses): ${actions}. `,
+      guidance: `Persistent established-memory difficulty (${assessment.establishedLapses} FSRS lapses): ${actions}. `,
     };
   }
 
   function memoryDifficultyWeaknessFloor(level: MemoryDifficultyLevel): number {
-    return level === "persistent-difficulty" ? 0.9 : level === "remediation" ? 0.72 : 0;
+    return level === "persistent-difficulty" ? 0.9 : level === "remediation" ? 0.72 : level === "learning-difficulty" ? 0.68 : 0;
   }
 
   interface SchedulerPolicyContext {
@@ -133,6 +147,13 @@
     const examDay = Date.UTC(exam.getFullYear(), exam.getMonth(), exam.getDate());
     const referenceDay = Date.UTC(reference.getFullYear(), reference.getMonth(), reference.getDate());
     return Math.round((examDay - referenceDay) / DAY_MS);
+  }
+
+  function correctiveRelearnDueAt(profile: ExamProfile, reviewedAt: Date): ISODateTime {
+    const ordinaryDue = addDays(reviewedAt, 1);
+    const exam = examDateTime(profile);
+    if (!exam) return ordinaryDue.toISOString();
+    return new Date(Math.max(reviewedAt.getTime(), Math.min(ordinaryDue.getTime(), exam.getTime()))).toISOString();
   }
 
   function examinationProximityScore(daysToExam: number): number {
@@ -423,16 +444,14 @@
 
   function fsrsRetrievability(
     obligation: RevisionObligation,
-    evidenceEvents: EvidenceEvent[],
     reference: Date,
     schedulingPolicy: FsrsSchedulingPolicy,
-    reviewIndex?: MemoryReviewObservationIndex,
+    reviews: readonly MemoryReviewObservation[] = [],
     profile: FsrsOptimizerProfile | null = null,
   ): number | undefined {
     if (obligation.type !== "memory-recall" || !obligation.policyState.fsrsCard) return undefined;
     const projection = obligation.policyState.fsrsCard;
     if (projection.reps === 0 || !projection.lastReviewAt) return undefined;
-    const reviews = reviewIndex?.get(obligation.id) ?? memoryReviewObservationsFor(obligation.id, evidenceEvents);
     return revisionSchedulerPort(schedulingPolicy, profile).retrievability(projection, reviews, reference);
   }
 
@@ -508,19 +527,21 @@
     const synthesisReady = item.obligation.chunking?.status === "synthesis-ready";
     if (!synthesisReady && planningDueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
     const temporalRisk = temporalDueRisk(planningDueAt, dayStart, dayEnd, lookaheadDays);
+    const memoryHistory = item.obligation.type === "memory-recall"
+      ? memoryReviews?.get(item.obligation.id) ?? memoryReviewObservationsFor(item.obligation.id, evidenceEvents)
+      : [];
     const retrievability = fsrsRetrievability(
       item.obligation,
-      evidenceEvents,
       reference,
       settings.fsrsScheduling.policy,
-      memoryReviews,
+      memoryHistory,
       activeFsrsOptimizerProfile(settings),
     );
     const desiredRetention = fixedRetentionForPolicy(settings.fsrsScheduling.policy);
     const memoryRisk = retrievability === undefined ? 0 : clamp((desiredRetention - retrievability) / Math.max(desiredRetention - 0.5, 0.1), 0, 1);
     const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
     const difficulty = item.obligation.type === "memory-recall"
-      ? memoryDifficultyAssessment(item.obligation, settings.memoryDifficultyPolicy)
+      ? memoryDifficultyAssessment(item.obligation, settings.memoryDifficultyPolicy, memoryHistory)
       : undefined;
     const factors: PlanningFactors = {
       dueRisk,
@@ -544,7 +565,13 @@
       reasons: [
         ...(chunk ? [`split scope: ${chunk.scope}`] : item.obligation.chunking?.status === "synthesis-ready" ? ["final synthesis after split work"] : []),
         ...(examBoundMemory ? ["final memory review before exam"] : []),
-        ...(difficulty?.level === "persistent-difficulty" ? [`persistent difficulty · ${difficulty.fsrsLapses} FSRS lapses`] : difficulty?.level === "remediation" ? [`remediation · ${difficulty.fsrsLapses} FSRS lapses`] : []),
+        ...(difficulty?.level === "persistent-difficulty"
+          ? [`persistent difficulty · ${difficulty.establishedLapses} established FSRS lapses`]
+          : difficulty?.level === "remediation"
+            ? [`remediation · ${difficulty.establishedLapses} established FSRS lapses`]
+            : difficulty?.level === "learning-difficulty"
+              ? [`early learning difficulty · ${difficulty.earlyLearningFailures} failed learning recalls`]
+              : []),
         ...planningReasons(item, factors, dueState, daysFromDue, daysToExam),
         ...(weeklyBalance >= 0.7 ? ["subject underrepresented this week"] : []),
       ].slice(0, 6),

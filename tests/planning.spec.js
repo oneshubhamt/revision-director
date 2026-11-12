@@ -5,7 +5,7 @@ const path = require('path');
 const { webcrypto } = require('crypto');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
+const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey, memoryDifficultyAssessment, correctiveRelearnDueAt };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -60,6 +60,32 @@ persistentObligation.policyState.fsrsCard.state=2;
 persistentObligation.policyState.fsrsCard.scheduleStatus='review';
 const persistentCandidate=api.buildPlanningCandidate({obligation:persistentObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},[],settings,ref);
 check(persistentCandidate&&persistentCandidate.factors.weakness>=.9&&persistentCandidate.reasons.some(reason=>reason.includes('persistent difficulty')),'Persistent FSRS lapse burden must surface as a strong planner weakness signal without changing the scheduler due date');
+
+const earlyLearningObligation=structuredClone(weakObligation);
+earlyLearningObligation.policyState=structuredClone(weakObligation.policyState);
+earlyLearningObligation.policyState.fsrsCard.state=1;
+earlyLearningObligation.policyState.fsrsCard.scheduleStatus='learning';
+const earlyReviews=[
+  {rating:api.Rating.Again,beforeCard:{state:0}},
+  {rating:api.Rating.Again,beforeCard:{state:1}}
+];
+const earlyAssessment=api.memoryDifficultyAssessment(earlyLearningObligation,settings.memoryDifficultyPolicy,earlyReviews);
+check(earlyAssessment.level==='learning-difficulty'&&earlyAssessment.establishedLapses===0&&earlyAssessment.earlyLearningFailures===2,'Repeated failures during initial learning must be diagnosed separately from established-memory lapses');
+check(earlyAssessment.automaticHoldEligible===false,'Initial-learning difficulty must never trigger the established-memory automatic-hold policy');
+const earlyIndex=new Map([[earlyLearningObligation.id,earlyReviews]]);
+const earlyCandidate=api.buildPlanningCandidate(
+  {obligation:earlyLearningObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},
+  [],settings,ref,.5,undefined,earlyIndex
+);
+check(earlyCandidate&&earlyCandidate.factors.weakness>=.68&&earlyCandidate.reasons.some(reason=>reason.includes('early learning difficulty')),'Early-learning difficulty must become a planner weakness signal without inventing an FSRS lapse');
+
+const persistentNearJoined={obligation:structuredClone(persistentObligation),unit:sharedUnit,profile:profile('shared-profile',3),subject:'S',section:'C',topic:'T'};
+const persistentFarJoined={obligation:structuredClone(persistentObligation),unit:sharedUnit,profile:profile('shared-profile',120),subject:'S',section:'C',topic:'T'};
+const persistentDueBefore=persistentNearJoined.obligation.dueAt;
+const persistentNear=api.buildPlanningCandidate(persistentNearJoined,[],settings,ref);
+const persistentFar=api.buildPlanningCandidate(persistentFarJoined,[],settings,ref);
+check(persistentNear&&persistentFar&&persistentNear.score>persistentFar.score,'Exam proximity must increase corrective priority for otherwise identical difficult memory');
+check(persistentNearJoined.obligation.dueAt===persistentDueBefore,'Exam-proximity corrective planning must not rewrite the FSRS due date');
 const short = api.buildPlanningCandidate(joined('short',0,10,3,60),[],settings,ref);
 const long = api.buildPlanningCandidate(joined('long',0,60,3,60),[],settings,ref);
 check(short.score > long.score, 'Duration fit must affect rank without dominating it');
@@ -114,6 +140,13 @@ async function testMemoryExamHorizon() {
   };
   const reviewedExamJoined = {...examBoundJoined,obligation:reviewedExamObligation};
   check(api.buildPlanningCandidate(reviewedExamJoined,[easyEvent],settings,ref) === undefined, 'A memory review already completed inside the final exam window must not be forced again');
+
+  const sameDayExam=profile('same-day-exam',0);
+  const sameDayCorrective=api.correctiveRelearnDueAt(sameDayExam,ref);
+  const examDeadline=new Date(`${sameDayExam.examDate}T23:59:59`);
+  check(new Date(sameDayCorrective).getTime()>=ref.getTime()&&new Date(sameDayCorrective).getTime()<=examDeadline.getTime(),'Corrective relearning created on exam day must remain schedulable before the examination deadline');
+  const distantExam=profile('distant-exam',10);
+  check(api.correctiveRelearnDueAt(distantExam,ref)===new Date(ref.getTime()+86400000).toISOString(),'Corrective relearning should retain its ordinary one-day delay when the exam horizon does not constrain it');
 }
 
 const item = (id, score, mins, type='concept-reconstruction', dueState='due') => ({joined:{obligation:{id,type,dueAt:ref.toISOString(),expectedMinutes:mins},unit:{},profile:{}},score,dueState,executionMinutes:mins,factors:{dueRisk:.8,examImportance:1,weakness:.5,reviewDuration:.8,examinationProximity:.7,weeklyBalance:.5}});

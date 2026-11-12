@@ -719,6 +719,8 @@
       const units = (await this.service.units()).filter((unit) => unit.status !== "archived");
       const nodes = await this.service.nodes();
       const obligations = await this.service.obligations();
+      const evidenceEvents = await this.service.evidenceEvents();
+      const memoryReviews = memoryReviewObservationIndex(evidenceEvents);
       const nodeMap = new Map(nodes.map((node) => [node.id, node]));
       const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
       const filtered = units.filter((unit) => {
@@ -742,11 +744,22 @@
             const unitObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.status === "active");
             const memoryObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.type === "memory-recall" && obligation.status !== "archived");
             const difficultyPanels = memoryObligations.map((obligation) => {
-              const assessment = memoryDifficultyAssessment(obligation, settings.memoryDifficultyPolicy);
+              const assessment = memoryDifficultyAssessment(
+                obligation,
+                settings.memoryDifficultyPolicy,
+                memoryReviews.get(obligation.id) ?? [],
+              );
               if (assessment.level === "normal") return "";
-              const label = assessment.level === "persistent-difficulty" ? "Persistent difficulty" : "Remediation";
+              const label = assessment.level === "persistent-difficulty"
+                ? "Persistent difficulty"
+                : assessment.level === "remediation"
+                  ? "Remediation"
+                  : "Early learning difficulty";
+              const burden = assessment.level === "learning-difficulty"
+                ? `${assessment.earlyLearningFailures} failed learning recalls`
+                : `${assessment.establishedLapses} established FSRS lapses`;
               const actions = assessment.recommendedActions.map(memoryDifficultyActionLabel).join(" · ");
-              return `<div class="policy-box"><strong>${label} · ${assessment.fsrsLapses} FSRS lapses.</strong> ${escapeHtml(actions)}.</div>`;
+              return `<div class="policy-box"><strong>${label} · ${burden}.</strong> ${escapeHtml(actions)}.</div>`;
             }).join("");
             const heldMemory = memoryObligations.filter((obligation) => obligation.status === "suspended" && obligation.suspensionReason === "persistent-difficulty");
             return `<article class="unit-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(unit.profileId)?.name ?? "Exam")} · ${escapeHtml(subject?.name ?? "")} › ${escapeHtml(section?.name ?? "")} › ${escapeHtml(topic?.name ?? "")}</div><div class="row-title">${escapeHtml(unit.title)}</div><p>${escapeHtml(unit.scope)}</p><div class="row-meta">${unitObligations.map((obligation) => `<span class="chip ${obligationChip(obligation.type)}">${escapeHtml(obligationLabel(obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(obligation.workflow.kind))}</span>`).join("")}<span>${unit.evidenceCount} evidence events</span><span>${unit.lapseCount} failures</span></div>${difficultyPanels}</div><div class="row-actions"><button class="mini-btn" data-action="review-unit" data-id="${unit.id}">REVIEW</button><button class="mini-btn" data-action="add-obligation" data-id="${unit.id}">ADD OBLIGATION</button>${heldMemory.map((obligation) => `<button class="mini-btn" data-action="resume-persistent-difficulty" data-id="${obligation.id}">RESUME MEMORY</button>`).join("")}<button class="mini-btn" data-action="toggle-unit" data-id="${unit.id}" data-status="${unit.status === "active" ? "suspended" : "active"}">${unit.status === "active" ? "SUSPEND" : "ACTIVATE"}</button></div></article>`;
@@ -829,10 +842,13 @@
         : 0;
       const progressMax = progress && progress.total > 0 ? progress.total : 1;
       const canOptimize = optimizer.available && !personalization.active && !running && summary.reviews > 0;
-      const profileDetail = profile
+      const holdoutDiagnostics = profile
+        ? fsrsHoldoutDiagnostics(profile.evaluation.holdout.stock, profile.evaluation.holdout.personalized)
+        : undefined;
+      const profileDetail = profile && holdoutDiagnostics
         ? `<div class="dependency-status"><span>Profile</span><strong>${escapeHtml(profile.sourceSha256.slice(0, 12))}…</strong></div>
-           <div class="dependency-status"><span>Held-out log loss</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)}</strong></div>
-           <div class="dependency-status"><span>Held-out RMSE bins</span><strong>${roundTo(profile.evaluation.holdout.stock.rmseBins, 4)} → ${roundTo(profile.evaluation.holdout.personalized.rmseBins, 4)}</strong></div>
+           <div class="dependency-status"><span>Held-out log loss</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)} · ${roundTo(holdoutDiagnostics.logLossImprovement.relative * 100, 2)}% better</strong></div>
+           <div class="dependency-status"><span>Calibration · RMSE bins</span><strong>${roundTo(profile.evaluation.holdout.stock.rmseBins, 4)} → ${roundTo(profile.evaluation.holdout.personalized.rmseBins, 4)} · ${holdoutDiagnostics.calibration.status}</strong></div>
            <div class="dependency-status"><span>Time-series CV</span><strong>LL ${roundTo(profile.evaluation.crossValidation.logLoss, 4)} · RMSE ${roundTo(profile.evaluation.crossValidation.rmseBins, 4)}</strong></div>`
         : `<p class="helper">No validated personalized profile is staged. Stock FSRS-7 remains authoritative.</p>`;
       const profileActions = running
@@ -1123,8 +1139,11 @@
         ? (() => {
             const assessment = memoryDifficultyAssessment(obligation, this.service.getSettings().memoryDifficultyPolicy);
             if (assessment.level === "normal") return "";
-            const label = assessment.level === "persistent-difficulty" ? "Persistent difficulty" : "Remediation";
-            return `<div class="policy-box"><strong>${label}:</strong> ${assessment.fsrsLapses} FSRS lapses · ${escapeHtml(assessment.recommendedActions.map(memoryDifficultyActionLabel).join(" · "))}.</div>`;
+            const label = assessment.level === "persistent-difficulty" ? "Persistent difficulty" : assessment.level === "remediation" ? "Remediation" : "Early learning difficulty";
+            const burden = assessment.level === "learning-difficulty"
+              ? `${assessment.earlyLearningFailures} failed learning recalls`
+              : `${assessment.establishedLapses} established FSRS lapses`;
+            return `<div class="policy-box"><strong>${label}:</strong> ${burden} · ${escapeHtml(assessment.recommendedActions.map(memoryDifficultyActionLabel).join(" · "))}.</div>`;
           })()
         : "";
       return `<section class="evidence-panel"><div class="workflow-head"><div><span>COMPARE & RECORD</span><h2>${escapeHtml(workflowLabel(spec.kind))} evidence</h2></div><p>The app converts modality-specific results into a common evidence record.</p></div>${specific}${this.commonEvidenceFields()}${difficultyGuidance}<div class="suggested-rating"><span>Evidence-based suggestion</span><strong id="suggested-rating">Complete the assessment</strong></div>${ratingGuidance}<div class="rating-grid">${this.reviewPreviews.map((preview) => `<button class="rating-btn ${ratingName(preview.rating).toLowerCase()}" data-action="rate" data-rating="${preview.rating}"><strong>${ratingName(preview.rating)}</strong><span>${escapeHtml(preview.label)}</span></button>`).join("")}</div><div class="policy-box"><strong>Policy:</strong> ${escapeHtml(obligation.policyState.engine)}. The workflow produces evidence; the policy determines the next obligation date.</div></section>`;

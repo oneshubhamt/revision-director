@@ -2,6 +2,9 @@ export const HOLDOUT_SEGMENTS=6;
 export const MIN_TRAIN_ITEMS=64;
 export const MIN_HOLDOUT_ITEMS=64;
 export const MIN_HOLDOUT_CARDS=16;
+export const MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT=0.001;
+export const MIN_RELATIVE_LOG_LOSS_IMPROVEMENT=0.005;
+export const CALIBRATION_EPSILON=1e-9;
 export const HOLDOUT_STRATEGY="final-sixth";
 export const OPTIMIZER_CHRONOLOGY="elapsed-24h";
 export const OPTIMIZER_FIXED_UTC_OFFSET_MINUTES=0;
@@ -12,6 +15,21 @@ const metric=(value,name)=>{
    !Number.isFinite(value.rmseBins)||value.rmseBins<0)throw Error("Invalid "+name+" evaluation metrics");
  return {logLoss:value.logLoss,rmseBins:value.rmseBins};
 };
+
+export function holdoutDiagnostics(stockEvaluation,personalizedEvaluation){
+ const stock=metric(stockEvaluation,"stock"),personalized=metric(personalizedEvaluation,"personalized");
+ const absolute=stock.logLoss-personalized.logLoss;
+ const relative=stock.logLoss>0?absolute/stock.logLoss:0;
+ const required=Math.max(MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT,stock.logLoss*MIN_RELATIVE_LOG_LOSS_IMPROVEMENT);
+ const delta=personalized.rmseBins-stock.rmseBins;
+ const relativeDelta=stock.rmseBins>0?delta/stock.rmseBins:delta===0?0:Number.POSITIVE_INFINITY;
+ const calibrationStatus=delta<-CALIBRATION_EPSILON?"improved":Math.abs(delta)<=CALIBRATION_EPSILON?"unchanged":"regressed";
+ return {
+  stock,personalized,
+  logLossImprovement:{absolute,relative,required},
+  calibration:{metric:"rmse-bins",delta,relativeDelta,status:calibrationStatus}
+ };
+}
 
 export function splitChronologicalHoldout(items,cardIds){
  if(!Array.isArray(items)||!Array.isArray(cardIds)||items.length!==cardIds.length)
@@ -29,7 +47,8 @@ export function splitChronologicalHoldout(items,cardIds){
 }
 
 export function evaluateHoldoutGate(stockEvaluation,personalizedEvaluation,counts){
- const stock=metric(stockEvaluation,"stock"),personalized=metric(personalizedEvaluation,"personalized");
+ const diagnostics=holdoutDiagnostics(stockEvaluation,personalizedEvaluation);
+ const {stock,personalized}=diagnostics;
  const reasons=[];
  if(!Number.isSafeInteger(counts.trainCount)||counts.trainCount<MIN_TRAIN_ITEMS)
   reasons.push("historical training prefix has fewer than "+MIN_TRAIN_ITEMS+" optimizer items");
@@ -37,11 +56,11 @@ export function evaluateHoldoutGate(stockEvaluation,personalizedEvaluation,count
   reasons.push("later holdout has fewer than "+MIN_HOLDOUT_ITEMS+" optimizer items");
  if(!Number.isSafeInteger(counts.holdoutCards)||counts.holdoutCards<MIN_HOLDOUT_CARDS)
   reasons.push("later holdout spans fewer than "+MIN_HOLDOUT_CARDS+" cards");
- if(!(personalized.logLoss<stock.logLoss))
-  reasons.push("personalized holdout log loss does not improve on stock FSRS-7");
- if(personalized.rmseBins>stock.rmseBins)
-  reasons.push("personalized holdout RMSE bins regresses versus stock FSRS-7");
- return {passed:reasons.length===0,reasons,stock,personalized};
+ if(diagnostics.logLossImprovement.absolute+Number.EPSILON<diagnostics.logLossImprovement.required)
+  reasons.push("personalized holdout log loss improvement is below the practical minimum");
+ if(diagnostics.calibration.status==="regressed")
+  reasons.push("personalized holdout RMSE bins calibration regresses versus stock FSRS-7");
+ return {passed:reasons.length===0,reasons,stock,personalized,diagnostics};
 }
 
 export function assertChronologicalCsv(csv){

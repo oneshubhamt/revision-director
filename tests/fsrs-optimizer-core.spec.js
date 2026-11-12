@@ -48,6 +48,15 @@ const {pathToFileURL}=require("node:url");
   error=>error instanceof mod.OptimizerGateRejectedError&&error.reasons.some(reason=>reason.includes("log loss"))
  );
 
+ const microscopicBinding={...binding,FSRSBinding:class{
+  constructor(candidate){this.candidate=candidate;}
+  evaluate(){return this.candidate?{logLoss:.4195,rmseBins:.079}:{logLoss:.42,rmseBins:.08};}
+ }};
+ await assert.rejects(
+  mod.optimizeFsrsProfile({binding:microscopicBinding,csv,sourceSha256:async()=>"d".repeat(64),optimizerOptions}),
+  error=>error instanceof mod.OptimizerGateRejectedError&&error.reasons.some(reason=>reason.includes("practical minimum"))
+ );
+
  const tooSmall={...binding,convertCsvToFsrsItemsWithCardIds(){
   const items=Array.from({length:120},(_,index)=>({index}));
   return {items,cardIds:items.map((_,index)=>"card-"+Math.floor(index/4))};
@@ -57,5 +66,5 @@ const {pathToFileURL}=require("node:url");
   error=>error instanceof mod.OptimizerGateRejectedError&&error.reasons.some(reason=>reason.includes("Need at least 64"))
  );
 
- console.log("PASS 16 shared FSRS optimizer-core checks");
+ console.log("PASS 17 shared FSRS optimizer-core checks");
 })().catch(error=>{console.error(error);process.exitCode=1;});

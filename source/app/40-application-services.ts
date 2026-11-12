@@ -886,16 +886,38 @@
       const beforeDueAt = obligation.dueAt;
       const suggested = suggestRating(obligation.type, normalizedDraft);
       const policy = this.router.get(obligation.type);
+      const priorMemoryReviews = obligation.type === "memory-recall"
+        ? memoryReviewObservationsFor(obligation.id, priorEvidence)
+        : [];
       const completion = obligation.type === "memory-recall"
         ? policy.complete(obligation, confirmed, normalizedDraft, reviewedAt, {
-            memoryReviews: memoryReviewObservationsFor(obligation.id, priorEvidence),
+            memoryReviews: priorMemoryReviews,
           })
         : policy.complete(obligation, confirmed, normalizedDraft, reviewedAt);
 
       obligation.dueAt = completion.dueAt;
       obligation.policyState = completion.policyState;
       const memoryDifficulty = obligation.type === "memory-recall"
-        ? memoryDifficultyAssessment(obligation, this.settings.memoryDifficultyPolicy)
+        ? (() => {
+            const beforeCard = beforePolicyState.fsrsCard;
+            const afterCard = completion.policyState.fsrsCard;
+            const schedulerConfig = completion.schedulerConfig;
+            assert(beforeCard && afterCard && schedulerConfig, "Memory completion is missing FSRS difficulty evidence.");
+            const currentReview: MemoryReviewObservation = {
+              evidenceEventId: "pending",
+              reviewedAt: reviewedAt.toISOString(),
+              rating: confirmed,
+              source: "direct-memory",
+              beforeCard: clone(beforeCard),
+              afterCard: clone(afterCard),
+              configFingerprint: schedulerConfig.fingerprint,
+            };
+            return memoryDifficultyAssessment(
+              obligation,
+              this.settings.memoryDifficultyPolicy,
+              [...priorMemoryReviews, currentReview],
+            );
+          })()
         : undefined;
       obligation.updatedAt = reviewedAt.toISOString();
       obligation.lastCompletedAt = reviewedAt.toISOString();
@@ -930,7 +952,7 @@
         obligation.suspensionReason = "relearning";
         const existing = (await this.obligationsForUnit(unit.id)).find((item) => item.type === "relearn" && item.status === "active" && item.returnObligationId === obligation.id);
         if (!existing) {
-          const dueAt = addDays(reviewedAt, 1).toISOString();
+          const dueAt = correctiveRelearnDueAt(await this.profile(unit.profileId), reviewedAt);
           const policy = this.router.get("relearn");
           const time = reviewedAt.toISOString();
           const followUpId = uid("obligation");

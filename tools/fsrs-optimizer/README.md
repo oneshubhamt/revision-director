@@ -10,9 +10,10 @@ This directory owns the personalization computation used by both the **native re
 2. convert the evidence with the pinned FSRS-7 binding;
 3. split the first 5/6 for validation training and the final 1/6 for held-out evaluation;
 4. require at least 64 training items, 64 later holdout items and 16 distinct holdout cards;
-5. require personalized held-out log loss to be strictly lower than stock FSRS-7 with no RMSE-bins regression;
-6. retrain the final 34 weights on all evidence;
-7. record upstream time-series evaluation and exact Revision Director runtime-step attestation.
+5. require a practical personalized held-out log-loss gain: at least 0.001 absolute or 0.5% relative versus stock FSRS-7, whichever is larger;
+6. require no held-out RMSE-bins calibration regression and expose the calibration delta diagnostically;
+7. retrain the final 34 weights on all evidence;
+8. record upstream time-series evaluation and exact Revision Director runtime-step attestation.
 
 The native and browser runtimes do not reimplement this sequence.
 

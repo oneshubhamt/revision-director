@@ -8,6 +8,9 @@
   const FSRS_OPTIMIZER_MIN_TRAIN_ITEMS = 64 as const;
   const FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS = 64 as const;
   const FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS = 16 as const;
+  const FSRS_OPTIMIZER_MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT = 0.001 as const;
+  const FSRS_OPTIMIZER_MIN_RELATIVE_LOG_LOSS_IMPROVEMENT = 0.005 as const;
+  const FSRS_OPTIMIZER_CALIBRATION_EPSILON = 1e-9 as const;
   const FSRS_OPTIMIZER_CHRONOLOGY = "elapsed-24h" as const;
   const FSRS_OPTIMIZER_FIXED_UTC_OFFSET_MINUTES = 0 as const;
   const FSRS_OPTIMIZER_ROLLOVER_HOUR = 0 as const;
@@ -72,6 +75,28 @@
     return { logLoss, rmseBins };
   }
 
+  function fsrsHoldoutDiagnostics(
+    stock: FsrsEvaluationMetrics,
+    personalized: FsrsEvaluationMetrics,
+  ): FsrsHoldoutDiagnostics {
+    const absolute = stock.logLoss - personalized.logLoss;
+    const relative = stock.logLoss > 0 ? absolute / stock.logLoss : 0;
+    const required = Math.max(
+      FSRS_OPTIMIZER_MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT,
+      stock.logLoss * FSRS_OPTIMIZER_MIN_RELATIVE_LOG_LOSS_IMPROVEMENT,
+    );
+    const delta = personalized.rmseBins - stock.rmseBins;
+    const relativeDelta = stock.rmseBins > 0 ? delta / stock.rmseBins : delta === 0 ? 0 : Number.POSITIVE_INFINITY;
+    const status: FsrsHoldoutDiagnostics["calibration"]["status"] =
+      delta < -FSRS_OPTIMIZER_CALIBRATION_EPSILON ? "improved"
+        : Math.abs(delta) <= FSRS_OPTIMIZER_CALIBRATION_EPSILON ? "unchanged"
+          : "regressed";
+    return {
+      logLossImprovement: { absolute, relative, required },
+      calibration: { metric: "rmse-bins", delta, relativeDelta, status },
+    };
+  }
+
   function validateFsrsOptimizerProfile(value: unknown): FsrsOptimizerProfile {
     const profile = requireRecord(value, "FSRS optimizer profile");
     const allowed = new Set(["schema", "model", "bindingVersion", "trainedAt", "sourceSha256", "evidenceItems", "weights", "evaluation", "training"]);
@@ -102,8 +127,15 @@
     "FSRS optimizer activation thresholds are invalid.");
     const stock = optimizerMetrics(holdout["stock"], "stock holdout");
     const personalized = optimizerMetrics(holdout["personalized"], "personalized holdout");
-    assert(personalized.logLoss < stock.logLoss && personalized.rmseBins <= stock.rmseBins,
-      "Personalized FSRS-7 profile did not beat stock FSRS-7 on the chronological holdout without RMSE regression.");
+    const diagnostics = fsrsHoldoutDiagnostics(stock, personalized);
+    assert(
+      diagnostics.logLossImprovement.absolute + Number.EPSILON >= diagnostics.logLossImprovement.required,
+      "Personalized FSRS-7 profile did not achieve the minimum practical held-out log-loss improvement over stock FSRS-7.",
+    );
+    assert(
+      diagnostics.calibration.status !== "regressed",
+      "Personalized FSRS-7 profile regressed held-out RMSE-bins calibration versus stock FSRS-7.",
+    );
 
     const training = requireRecord(profile["training"], "FSRS optimizer training metadata");
     assert(training["enableShortTerm"] === true && training["enableSchedPenalties"] === true && training["numRelearningSteps"] === 1,

@@ -281,6 +281,20 @@
     rmseBins: number;
   }
 
+  interface FsrsHoldoutDiagnostics {
+    logLossImprovement: {
+      absolute: number;
+      relative: number;
+      required: number;
+    };
+    calibration: {
+      metric: "rmse-bins";
+      delta: number;
+      relativeDelta: number;
+      status: "improved" | "unchanged" | "regressed";
+    };
+  }
+
   interface FsrsOptimizerProfile {
     schema: "revision-director-fsrs-profile/v1";
     model: "FSRS-7";
@@ -361,7 +375,7 @@
     active: boolean;
   }
 
-  type MemoryDifficultyLevel = "normal" | "remediation" | "persistent-difficulty";
+  type MemoryDifficultyLevel = "normal" | "learning-difficulty" | "remediation" | "persistent-difficulty";
   type MemoryDifficultyAction =
     | "scope-review"
     | "split-scope"
@@ -381,7 +395,8 @@
 
   interface MemoryDifficultyAssessment {
     level: MemoryDifficultyLevel;
-    fsrsLapses: number;
+    establishedLapses: number;
+    earlyLearningFailures: number;
     recommendedActions: MemoryDifficultyAction[];
     automaticHoldEligible: boolean;
   }

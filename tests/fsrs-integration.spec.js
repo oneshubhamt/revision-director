@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot };';
+const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -40,7 +40,7 @@ const recallResult=rating=>({
   cueLevel:rating===api.Rating.Again?'major':rating===api.Rating.Hard?'minor':'none'
 });
 
-function optimizerProfile(sourceSha256='b'.repeat(64)){
+function optimizerProfile(sourceSha256='b'.repeat(64),personalizedLogLoss=.40,personalizedRmse=.08){
   const weights=[...api.FSRS7_DEFAULT_WEIGHTS];
   weights[2]=4.2;
   return api.validateFsrsOptimizerProfile({
@@ -50,7 +50,7 @@ function optimizerProfile(sourceSha256='b'.repeat(64)){
       crossValidation:{logLoss:.39,rmseBins:.07},
       holdout:{strategy:'final-sixth',trainItems:320,holdoutItems:64,holdoutCards:16,
         minimumTrainItems:64,minimumHoldoutItems:64,minimumHoldoutCards:16,
-        stock:{logLoss:.42,rmseBins:.08},personalized:{logLoss:.40,rmseBins:.08},gate:'passed'}
+        stock:{logLoss:.42,rmseBins:.08},personalized:{logLoss:personalizedLogLoss,rmseBins:personalizedRmse},gate:'passed'}
     },
     training:{enableShortTerm:true,enableSchedPenalties:true,numRelearningSteps:1,chronology:'elapsed-24h',
       converterFixedUtcOffsetMinutes:0,converterRolloverHour:0,runtimeLearningSteps:['1d'],
@@ -175,7 +175,17 @@ async function testSchedulingPolicyBoundary(){
   mustFail(()=>api.validateFsrsConfigSnapshot(changedCoefficient),'Changing a Cost-ADR coefficient without recomputing provenance must fail');
   const overflowingDifficulty=costAdr(); overflowingDifficulty.costAdrPolicy.bounds={sMin:.0001,sMax:36500,dMin:-1e308,dMax:1e308};
   mustFail(()=>api.canonicalFsrsSchedulingPolicy(overflowingDifficulty),'Cost-ADR validation must reject a non-finite difficulty span exactly as upstream does');
+  mustFail(
+    ()=>optimizerProfile('b'.repeat(64),.4195,.079),
+    'Application profile validation must reject a microscopic holdout log-loss win even when calibration improves'
+  );
+  mustFail(
+    ()=>optimizerProfile('b'.repeat(64),.40,.081),
+    'Application profile validation must reject RMSE-bins calibration regression'
+  );
   const profile=optimizerProfile();
+  const diagnostics=api.fsrsHoldoutDiagnostics(profile.evaluation.holdout.stock,profile.evaluation.holdout.personalized);
+  check(diagnostics.logLossImprovement.absolute>=diagnostics.logLossImprovement.required&&diagnostics.calibration.status==='unchanged','Application holdout diagnostics must expose practical discrimination gain and calibration status');
   const personalized=api.fsrsConfigSnapshot(fixed(.9),profile);
   check(JSON.stringify(personalized.schedulingPolicy)===JSON.stringify(fixedConfig.schedulingPolicy)&&personalized.fingerprint!==fixedConfig.fingerprint,'Weight personalization must be orthogonal to scheduling policy while still changing scheduler identity');
   await mustReject(()=>api.prepareFsrsScheduler(adaptive),'Cost-ADR policy must fail closed until its runtime is deliberately enabled');
