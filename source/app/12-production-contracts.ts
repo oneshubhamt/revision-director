@@ -520,13 +520,13 @@
     return {
       totalActiveMs,
       activeByPhase,
-      pauseMs: bounded(Number(value.pauseMs), "Pause time"),
-      pauseCount: count(Number(value.pauseCount), "Pause count"),
-      inactiveGapCount: count(Number(value.inactiveGapCount), "Inactive-gap count"),
-      classifiedFocusMs: bounded(Number(value.classifiedFocusMs), "Classified focus time"),
-      classifiedBreakMs: bounded(Number(value.classifiedBreakMs), "Classified break time"),
+      pauseMs: bounded(value.pauseMs, "Pause time"),
+      pauseCount: count(value.pauseCount, "Pause count"),
+      inactiveGapCount: count(value.inactiveGapCount, "Inactive-gap count"),
+      classifiedFocusMs: bounded(value.classifiedFocusMs, "Classified focus time"),
+      classifiedBreakMs: bounded(value.classifiedBreakMs, "Classified break time"),
       ignoredGapMs,
-      promptExcludedMs: bounded(Number(value.promptExcludedMs), "Gap prompt time"),
+      promptExcludedMs: bounded(value.promptExcludedMs, "Gap prompt time"),
       backwardClockCount,
       ...(value.sourceRevealAt !== undefined ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
       durationReliable,
@@ -558,8 +558,9 @@
       assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= maximum, `${label} is invalid.`);
       return Math.round(raw);
     };
-    assert(Array.isArray(value.pauseHistory), "Pause history is required.");
-    const pauseHistory = value.pauseHistory.slice(-TIME_HISTORY_LIMIT).map((pause) => {
+    assert(Array.isArray(value.pauseHistory) && value.pauseHistory.length <= TIME_HISTORY_LIMIT, "Pause history is invalid or exceeds its canonical bound.");
+    const pauseHistory = value.pauseHistory.map((pause) => {
+      assertExactKeys(pause, "Pause record", ["id", "reason", "phase", "startedAt", "endedAt", "durationMs"]);
       assert(["manual", "inactive-gap-break", "classification-prompt"].includes(pause.reason), "Pause reason is invalid.");
       const startedAt = canonicalIso(pause.startedAt, "Pause start date");
       const endedAt = canonicalIso(pause.endedAt, "Pause end date");
@@ -567,14 +568,16 @@
       assert(Date.parse(endedAt) >= Date.parse(startedAt), "Pause end precedes its start.");
       return { id: canonicalId(pause.id, "Pause ID"), reason: pause.reason, phase: canonicalReviewPhase(pause.phase), startedAt, endedAt, durationMs };
     });
-    assert(Array.isArray(value.phaseHistory), "Phase history is required.");
-    const phaseHistory = value.phaseHistory.slice(-TIME_HISTORY_LIMIT).map((transition) => {
+    assert(Array.isArray(value.phaseHistory) && value.phaseHistory.length <= TIME_HISTORY_LIMIT, "Phase history is invalid or exceeds its canonical bound.");
+    const phaseHistory = value.phaseHistory.map((transition) => {
+      assertExactKeys(transition, "Phase transition", ["from", "to", "at", "sourceVisible", "reason"]);
       assert(["source-reveal", "begin-verification", "verification-reveal", "queue-advance"].includes(transition.reason), "Phase transition reason is invalid.");
       assert(typeof transition.sourceVisible === "boolean", "Phase-transition source visibility is invalid.");
       return { from: canonicalReviewPhase(transition.from), to: canonicalReviewPhase(transition.to), at: canonicalIso(transition.at, "Phase transition date"), sourceVisible: transition.sourceVisible, reason: transition.reason };
     });
-    assert(Array.isArray(value.gapHistory), "Inactive-gap history is required.");
-    const gapHistory = value.gapHistory.slice(-TIME_HISTORY_LIMIT).map((gap) => {
+    assert(Array.isArray(value.gapHistory) && value.gapHistory.length <= TIME_HISTORY_LIMIT, "Inactive-gap history is invalid or exceeds its canonical bound.");
+    const gapHistory = value.gapHistory.map((gap) => {
+      assertExactKeys(gap, "Inactive-gap record", ["id", "phase", "source", "detectedAt", "resolvedAt", "gapMs", "classification", "focusMs", "breakMs", "ignoredMs", "promptMs"]);
       assert(["focus", "break", "split", "ignore"].includes(gap.classification), "Inactive-gap classification is invalid.");
       assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(gap.source), "Inactive-gap source is invalid.");
       const gapMs = boundedRuntimeMs(gap.gapMs, "Inactive-gap duration");
@@ -589,6 +592,7 @@
     });
     let pendingGap: PendingInactiveGap | undefined;
     if (value.pendingGap) {
+      assertExactKeys(value.pendingGap, "Pending inactive gap", ["id", "phase", "source", "lastReliableAt", "detectedAt", "gapMs"]);
       assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(value.pendingGap.source), "Pending-gap source is invalid.");
       const lastReliableAt = canonicalIso(value.pendingGap.lastReliableAt, "Pending-gap reliable date");
       const detectedAt = canonicalIso(value.pendingGap.detectedAt, "Pending-gap detection date");
@@ -629,23 +633,31 @@
     assert(value.values && typeof value.values === "object" && !Array.isArray(value.values), "Review field values are required.");
     assert(value.checked && typeof value.checked === "object" && !Array.isArray(value.checked), "Review check state is required.");
     assert(Array.isArray(value.diagramStrokes), "Review diagram strokes are required.");
+    const valueEntries = Object.entries(value.values);
+    assert(valueEntries.length <= 96, "Review field set exceeds its canonical bound.");
     const values: Record<string, string> = {};
-    for (const [rawKey, rawValue] of Object.entries(value.values).slice(0, 96)) {
+    for (const [rawKey, rawValue] of valueEntries) {
       const key = canonicalId(rawKey, "Review field ID");
-      assert(typeof rawValue === "string", "Review field value is invalid.");
-      values[key] = rawValue.slice(0, 20_000);
+      assert(typeof rawValue === "string" && rawValue.length <= 20_000, "Review field value is invalid or too long.");
+      values[key] = rawValue;
     }
+    const checkedEntries = Object.entries(value.checked);
+    assert(checkedEntries.length <= 128, "Review check set exceeds its canonical bound.");
     const checked: Record<string, boolean> = {};
-    for (const [rawKey, rawValue] of Object.entries(value.checked).slice(0, 128)) {
+    for (const [rawKey, rawValue] of checkedEntries) {
       const key = canonicalId(rawKey, "Review check ID");
       assert(typeof rawValue === "boolean", "Review check value is invalid.");
       checked[key] = rawValue;
     }
-    const diagramStrokes = value.diagramStrokes.slice(0, 256).map((stroke) => {
-      assert(Array.isArray(stroke), "Diagram stroke is invalid.");
-      return stroke.slice(0, 2_000).map((point) => {
-        assert(point && typeof point === "object" && Number.isFinite(point.x) && Number.isFinite(point.y), "Diagram point is invalid.");
-        return { x: roundTo(clamp(point.x, 0, 1), 6), y: roundTo(clamp(point.y, 0, 1), 6) };
+    assert(value.diagramStrokes.length <= 256, "Review diagram exceeds its canonical stroke bound.");
+    const diagramStrokes = value.diagramStrokes.map((stroke) => {
+      assert(Array.isArray(stroke) && stroke.length <= 2_000, "Diagram stroke is invalid or exceeds its canonical point bound.");
+      return stroke.map((point) => {
+        assert(point && typeof point === "object" && !Array.isArray(point), "Diagram point is invalid.");
+        assertExactKeys(point, "Diagram point", ["x", "y"]);
+        assert(typeof point.x === "number" && Number.isFinite(point.x) && point.x >= 0 && point.x <= 1
+          && typeof point.y === "number" && Number.isFinite(point.y) && point.y >= 0 && point.y <= 1, "Diagram point is outside the canonical canvas.");
+        return { x: roundTo(point.x, 6), y: roundTo(point.y, 6) };
       });
     });
     assert(Number.isFinite(value.attemptElapsedMs) && value.attemptElapsedMs >= 0 && value.attemptElapsedMs <= 7 * DAY_MS, "Attempt duration is invalid.");
@@ -658,8 +670,9 @@
     assert(value.id === ACTIVE_RETRIEVAL_ID, "Active retrieval session ID is invalid.");
     assert(["active", "committing", "completed"].includes(value.status), "Active retrieval status is invalid.");
     assert(Number.isSafeInteger(value.revision) && value.revision >= 1, "Active retrieval revision is invalid.");
-    assert(Array.isArray(value.queueTargetIds), "Active retrieval queue is required.");
-    const queueTargetIds = [...new Set(value.queueTargetIds.slice(0, 500).map((id) => canonicalId(id, "Review target ID")))];
+    assert(Array.isArray(value.queueTargetIds) && value.queueTargetIds.length <= 500, "Active retrieval queue is invalid or exceeds its canonical bound.");
+    const queueTargetIds = value.queueTargetIds.map((id) => canonicalId(id, "Review target ID"));
+    assert(new Set(queueTargetIds).size === queueTargetIds.length, "Active retrieval queue cannot contain duplicate targets.");
     assert(Number.isInteger(value.activeIndex) && value.activeIndex >= 0 && value.activeIndex <= queueTargetIds.length, "Active retrieval index is invalid.");
     assert(typeof value.activeTargetId === "string", "Active retrieval target ID must be a string.");
     const activeTargetId = value.status === "completed" ? value.activeTargetId : canonicalId(value.activeTargetId, "Active review target ID");
