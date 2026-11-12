@@ -60,7 +60,9 @@
     assert(availability.available, availability.reason);
     assert(csv.trim().length > 0, "Optimizer evidence is empty.");
 
-    const requestId = globalThis.crypto.randomUUID();
+    const requestId = typeof globalThis.crypto.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `fsrs-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const worker = new Worker(new URL("./fsrs-optimizer.worker.js", document.baseURI), {
       type: "module",
       name: "revision-director-fsrs-optimizer",
@@ -99,8 +101,8 @@
           const stage = message["stage"];
           const current = message["current"];
           const total = message["total"];
-          if (typeof stage === "string" && typeof current === "number" && Number.isFinite(current)
-            && typeof total === "number" && Number.isFinite(total)) {
+          if (typeof stage === "string" && typeof current === "number" && Number.isFinite(current) && current >= 0
+            && typeof total === "number" && Number.isFinite(total) && total >= 0) {
             options.onProgress?.({ stage, current, total });
           }
           return;
