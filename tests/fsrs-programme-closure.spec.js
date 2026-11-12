@@ -61,6 +61,7 @@ class MemoryRepo {
     this.settings=clone(payload.settings); this.activeRetrieval=clone(payload.activeRetrieval??null);
   }
   async getAll(store){ return clone(this[store]||[]); }
+  async getByIndex(store,indexName,query){ return clone((this[store]||[]).filter(item=>item[indexName]===query)); }
   async get(store,key){
     if(store==='settings') return key==='app'?clone(this.settings):undefined;
     if(store==='activeRetrieval') return key==='current'&&this.activeRetrieval?clone(this.activeRetrieval):undefined;
