@@ -39,8 +39,9 @@ check(profile.id === 'p' && profile.name === 'Exam Profile', 'Profile canonicali
 check(profile.createdAt.endsWith('Z') && profile.updatedAt.endsWith('Z'), 'Profile dates were not canonicalised');
 mustFail(() => api.canonicalExamProfile({...rawProfile, schemaVersion:2}), 'Unsupported document schema was accepted');
 
-const node = api.canonicalKnowledgeNode({ schemaVersion:1, id:'n', profileId:'p', parentId:null, kind:'subject', name:'  Public   Administration ', normalizedName:'wrong', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt });
-check(node.name === 'Public Administration' && node.normalizedName === 'public administration', 'Node canonical name contract failed');
+mustFail(() => api.canonicalKnowledgeNode({ schemaVersion:1, id:'n', profileId:'p', parentId:null, kind:'subject', name:'  Public   Administration ', normalizedName:'wrong', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt }), 'Stored normalized node name was silently repaired');
+const node = api.canonicalKnowledgeNode({ schemaVersion:1, id:'n', profileId:'p', parentId:null, kind:'subject', name:'Public Administration', normalizedName:'public administration', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt });
+check(node.name === 'Public Administration' && node.normalizedName === 'public administration', 'Canonical node name contract failed');
 const settings = api.canonicalAppSettings({ schemaVersion:1, key:'app', activeProfileId:'  p ', fsrsScheduling:{policy:fixed(.9)}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]} });
 check(settings.activeProfileId === 'p' && settings.fsrsScheduling.policy.kind === 'fixed-retention', 'Settings canonicalisation failed');
 mustFail(() => api.canonicalAppSettings({ ...settings, desiredRetention:.9 }), 'Obsolete top-level desiredRetention was accepted');
