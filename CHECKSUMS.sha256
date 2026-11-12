@@ -1,13 +1,13 @@
 a1c5156be4e965e17176e0edbb76021d30ac222894fa0a395af7c90a42ede441  ./build/build-hosted.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
-fc896f2333555ce5f152cef34a176a85e3349ec8c3f3abb24379bb0a49311811  ./dist/app.js
+3727e9c4dc0445a734d5f210ea6ce3145209ffd22848fdd302816dc270bc9852  ./dist/app.js
 4502865f4c9a00bb4b7bc37cd739eda0fe33f7dc0fc922126eed3b2397c1ba93  ./docs/ARCHITECTURE.md
 e9f95b5218834babf7c7bffc098428d9a2455aa97049a000d2356ca3938e976b  ./docs/DATA_AND_STORAGE.md
 e1fce6fd7391d4f04537001ab9cb3a77a75bae9c08fef6862ec056724f71b896  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 658346d92ecde3f659fee8b6d23cdbc28284a692fee3970691b64ff2aa211824  ./docs/SCHEDULING_AND_PLANNING.md
-7f9c1ab826ad72b198f375d993cbfa76412e11c08a69560306239a0043802982  ./index.html
+dc206b120ee1e57ed178523c0f8b49260afd1f5c79b4f000e80d84928d7e6574  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -29,7 +29,7 @@ a62cad2e949c943db82066ccf8418d09738284db0dfede9c3df15b9b075385ca  ./source/app/1
 c835f78e652f1a6b67657e474f4b179fbb568dcc05e807977d516d674819e482  ./source/app/32-active-retrieval-persistence.ts
 ac494ddc8ae368b65427c0257e2fddd371ecd96a9f20466cccc3f412c6ed1f89  ./source/app/33-phase-time-runtime.ts
 35b1a74b9fa68f7e0815356936ef138a3d457301394581b838516181aeca4101  ./source/app/34-cross-tab-ownership.ts
-a5e6e7536085948dd1b5e54ea7e74f732c4f5bcf5da7b9320dbcdf2d82202485  ./source/app/40-application-services.ts
+ce030d320dac958ec534bb4238ad89dba62db0e9898a3f7916f7b869ee1e8ad8  ./source/app/40-application-services.ts
 87466297abb0744b2ebde8c80318ec8f1c9ee95a53f393e9744690cd4797e5ab  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 4e71aa41aaeeccad4345344f3cd1f66661ba1148267d91e55a52a6b44a7a4ca1  ./source/app/45-ui-runtime.ts
@@ -44,11 +44,11 @@ bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 bcbb04fd1cec4a5e2fcdb7c9e477a29e85de72f25b98fc9ab2d2e8ac63e10ffe  ./tests/backup_fixture_codec.py
 c7a711a947ef0fa3248423e8de839d784164285a0c41a9aa31e96985dd0386a2  ./tests/browser-qa.spec.py
-804b6cf235305a9ec02182b09cbf342648241b9bcdc75157b0cdb67e02637217  ./tests/build-integrity.spec.py
+41ef5b55d1401bb23ab2afc9911dc870e31db9fb643547b68fa8a0c405f85a30  ./tests/build-integrity.spec.py
 cb0c953c10f8a02eb28ccc4fe487eb5e045d364835540d5534bd9779d19f8274  ./tests/fixtures/browser-baseline.json
 ca2f42822f71ee00d2dff9b1846806545634c79e2ef75c3cfae46feae5f1cdfb  ./tests/fixtures/browser-baseline.rdbackup
 5094dfbfa9be0d50c066d7da20e99ecd206ada2981a47e8908c907d35b4079ed  ./tests/fsrs-browser-optimizer.spec.py
-251a0bcf7aab028a9f9c41cb928f2803e8c7161a7100d50c438fd2af5f261a15  ./tests/fsrs-integration.spec.js
+dde30b131c8ef284f4b952b382abc6b51d20faa3919315f9494c5b32179ecc85  ./tests/fsrs-integration.spec.js
 37191ed3feb81c7f4004e4aada9bc5a7e76b64cd38f158ddabe05c7768afe5ea  ./tests/fsrs-scale-benchmark.spec.js
 591b360dc27d511fbc3522632df57c0fe5771f994aa69c35de651ffe81ed069e  ./tests/fsrs-scheduling-experiments.spec.js
 98b32c8dd32cd3483b665d363fc7b7339c015ee8d1fedf176a3e804f99dd1663  ./tests/fsrs-optimizer-core.spec.js
@@ -85,7 +85,7 @@ f7fedb2f577b1130a4328cabfba618851ce2cc08a78513fd5fa787a9470e051f  ./tests/stage-
 fb274b5516753df9c04a96ea334d834daa7d4f1e1ee2ba6ff187925276e8a000  ./tests/stage-d-data-safety.spec.js
 f5ea0c53a9220c8e20205d3e79308615279ff2663be759ace6ef551cade23897  ./tests/stage-d-restore-ui.spec.py
 3a574cbc82a6011d5b7c792540d992efde6d1d7caa1fdb41c3502e59b8a87896  ./THIRD_PARTY_NOTICES.md
-13e441bd9ac47f0792a1d7ce82389934220d46c1fb11630a11e54b381088dfa4  ./tools/fsrs-optimizer/browser-worker.mjs
+437e6e999d5e9195ec94d016694c75ebbc7bc84b9b0016fcc45c9e1a4c206825  ./tools/fsrs-optimizer/browser-worker.mjs
 ac5dc954b6e4c61887397eaa35c9f306e58fc90dbfb954f62985e3337b53dae0  ./tools/fsrs-optimizer/optimize.mjs
 c774c26f672998e14045d9df1fc7af9376859f6471dcecb1a9e5e9df1c78c99c  ./tools/fsrs-optimizer/optimizer-core.mjs
 3412e0e72ff6cb9859730aac26ee5362d40a8a8ac55c507413f0e5b1a0b6f3d8  ./tools/fsrs-optimizer/optimizer-policy.mjs

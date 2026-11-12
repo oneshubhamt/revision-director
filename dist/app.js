@@ -5009,7 +5009,7 @@
           assert(incumbent, "Replacement FSRS optimizer profile lacks an incumbent holdout comparison.");
           assert(incumbent.sourceSha256 === personalization.profile.sourceSha256
               && incumbent.weightsFingerprint === fsrsWeightsFingerprint(personalization.profile.weights), "Replacement FSRS optimizer profile was not evaluated against the currently active personalized weights.");
-          const replayProfiles = appendFsrsReplayProfile(personalization.replayProfiles, personalization.profile);
+          const replayProfiles = await this.replayProfilesBeforeDiscardingCurrent(personalization);
           const next = canonicalAppSettings({
               ...this.settings,
               fsrsPersonalization: { profile: candidate, active: true, replayProfiles },
