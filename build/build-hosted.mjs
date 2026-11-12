@@ -113,7 +113,7 @@ for(const [packageName,targetName] of runtimePackages){
 await writeFile(
  resolve(out,"README.txt"),
  "Revision Director hosted distribution\n\n"+
- "Serve this directory over localhost or HTTPS. This is the normal hosted/PWA-ready distribution: the dedicated FSRS optimizer Worker and WASM asset ship as local sibling files and no optimizer backend is used. The root index.html remains the lean self-contained file:// portable fallback and intentionally omits optimizer assets.\n"
+ "Serve this directory over localhost or HTTPS. This is the normal hosted distribution: the dedicated FSRS optimizer Worker and WASM asset ship as local sibling files and no optimizer backend is used. A host application may package/cache the same assets in its own PWA shell; this build does not itself add a web-app manifest or service worker. The root index.html remains the lean self-contained file:// portable fallback and intentionally omits optimizer assets.\n"
 );
 
 const baseHtmlBytes=(await stat(resolve(root,"index.html"))).size;
