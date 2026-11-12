@@ -69,7 +69,7 @@ async function serviceChecks(){
     updateChunkWithObligation:async(chunk,obligation,dailyPlan)=>{ Object.assign(chunks.find(c=>c.id===chunk.id),chunk); Object.assign(parent,obligation); atomicPlan=dailyPlan; if(dailyPlan) storedPlan=structuredClone(dailyPlan); },
   };
   const service=new api.RevisionService(repo);
-  service.settings={schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}};
+  service.settings={schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}};
   service.manualPlanItem=async(obligationId,chunkId)=>({key:api.planItemKey(obligationId,chunkId),obligationId,...(chunkId?{chunkId}:{}),profileId:'p',unitId:'u',subject:'Geology',workflow:'reconstruction',title:'Manual item',estimatedMinutes:20,score:0,disposition:'selected',reasons:['manual']});
   const queueItem={...item('x','Geology','reconstruction',80),executionMinutes:30};
   const base={generatedAt:now,studyDayKey:'2026-07-25',capacityMinutes:60,candidateMinutes:30,plannedMinutes:30,selected:[queueItem],requiredOverrun:[],mustSplit:[],deferred:[],overdueCount:0,dueCount:1,broughtForwardCount:0};
@@ -97,7 +97,7 @@ async function serviceChecks(){
     put:async()=>{},
   };
   const eligibilityService=new api.RevisionService(eligibilityRepo);
-  eligibilityService.settings={schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}};
+  eligibilityService.settings={schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}};
   const oversized={...joined('Geology','eligible'),obligation:{...obligation,id:'eligible',unitId:'eligible',expectedMinutes:120,baselineMinutes:120,dueAt:now}};
   await eligibilityService.ensureAutomaticChunking([{...oversized,profile:{...oversized.profile,status:'suspended'}}],60,new Date(now));
   await eligibilityService.ensureAutomaticChunking([{...oversized,obligation:{...oversized.obligation,dueAt:'2027-07-25T06:00:00.000Z'}}],60,new Date(now));
