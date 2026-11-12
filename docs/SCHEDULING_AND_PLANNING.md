@@ -33,7 +33,7 @@ The one-day step is a product adaptation for long-form revision sessions: it pre
 
 ### Advanced scheduling experiment gate
 
-The permanent scheduling experiment uses the pinned vendored runtime directly. Its representative workload models 72 memory items, six deterministic recall-quality archetypes, 15-minute long-form sessions, and the actual Revision Director failure lifecycle: direct `Again` → suspended memory → next-day corrective relearning → successful FSRS return. It evaluates 90-, 365- and 730-day horizons and compares Cost-ADR against fixed-retention targets 0.84, 0.86, 0.88, 0.90 and 0.92.
+The permanent scheduling experiment uses the pinned vendored runtime directly. Its representative workload models 72 memory items, six deterministic recall-quality archetypes, 15-minute long-form sessions, and a representative successful corrective path: direct `Again` → suspended memory → next-day corrective verification → successful FSRS return. It evaluates 90-, 365- and 730-day horizons and compares Cost-ADR against fixed-retention targets 0.84, 0.86, 0.88, 0.90 and 0.92. Failed corrective verification is now canonical FSRS evidence too; broader outcome-sensitive policy recalibration is intentionally a separate scheduling-policy decision rather than hidden inside this lifecycle correction.
 
 Under the production `1d` learning/relearning configuration, the selected Cost-ADR goal weight 1024 reduced modeled total long-form sessions versus fixed 0.90 by **21.3% at 90 days, 21.3% at 365 days and 24.7% at 730 days**. Mean retrievability at established-memory review opportunities changed by approximately **−0.13, +0.11 and −0.07 percentage points**, respectively; none of the tested fixed-retention alternatives Pareto-dominated the preset. The activation gate requires at least a 10% workload reduction with no more than a one-percentage-point mean established-memory retrievability loss, or a one-percentage-point retention gain with no more than 5% extra workload.
 
@@ -66,7 +66,7 @@ Both runtimes call the same optimizer core for chronological conversion, validat
 
 ### Canonical optimizer evidence
 
-Optimizer history preserves the memory outcome independently of workflow-cost measurement. Direct memory reviews export the closed-book `attempt` phase as `review_duration`; successful returns from corrective relearning export only the closed-book `relearn-verify` phase. Comparison, source-assisted repair and other workflow time remain available to Revision Director's capacity/duration model but are not represented as memory-review cost.
+Optimizer history preserves the memory outcome independently of workflow-cost measurement. Direct memory reviews export the closed-book `attempt` phase as `review_duration`; every memory-linked corrective relearning event exports its closed-book `relearn-verify` phase, including unsuccessful verification. Comparison, source-assisted repair and other workflow time remain available to Revision Director's capacity/duration model but are not represented as memory-review cost.
 
 If timing is unreliable, the review remains in chronological recall history with its rating/state, while `review_duration` is exported as `0` (unavailable cost for the pinned converter) rather than substituting full-workflow time. The pinned FSRS converter currently requires a non-negative integer duration field but constructs parameter-training items from card/rating/time/state chronology rather than that duration.
 
@@ -116,13 +116,13 @@ An `Again` review advances the FSRS-7 state and creates a separate corrective `r
 
 Corrective work normally becomes due one day later. When a known examination is closer than that, the relearning due date is capped at the examination deadline so corrective work cannot be silently scheduled beyond the exam. This changes only the application-owned relearning obligation; the FSRS memory-card due date is not rewritten.
 
-After successful closed-book relearning verification, the original memory obligation is advanced again through FSRS-7 with a successful rating. The application does not substitute a hard-coded post-relearning interval.
+Closed-book corrective verification is the exact boundary back into FSRS-7. Every verification advances the original memory card once with the confirmed rating. `Again` or `Hard` therefore remains genuine memory evidence while the repair obligation stays active and the original memory stays suspended; the first qualifying `Good` or `Easy` verification completes the repair and returns the memory obligation to the normal queue. Source-assisted repair itself never becomes an FSRS observation. The application does not substitute a hard-coded post-relearning interval.
 
 ## Learning difficulty and persistent difficulty
 
-Revision Director distinguishes **initial-learning difficulty** from **established-memory lapses**. Repeated `Again` ratings while the card is still in FSRS New/Learning state are counted as failed learning recalls; after two such failures the planner and corrective guidance flag early learning difficulty, but the app does not invent an FSRS lapse or make the item eligible for persistent-difficulty suspension.
+Revision Director distinguishes **initial-learning difficulty** from **established-memory lapses** using canonical memory-review history. Failures before the first successful `Good`/`Easy` memory observation are counted as early-learning failures even if the one-day learning-step adaptation has already moved the raw FSRS card into Review state. After two such failures the planner and corrective guidance flag early learning difficulty. Only failures after a demonstrated successful memory observation count toward host remediation/persistent-difficulty policy.
 
-Once the memory is established, Revision Director deliberately uses the **authoritative FSRS lapse counter as a signal**, not upstream leech suspension as an independent lifecycle. The vendored default scheduler records a lapse only when an `Again` occurs from FSRS `Review` state. Revision Director does not install `schedulerLeechMiddleware`, and persisted FSRS cards may not use `scheduleStatus: suspended`.
+The raw FSRS lapse counter remains part of the canonical card projection, but host difficulty policy is derived from the canonical review sequence so the one-day product adaptation cannot misclassify a pre-establishment corrective failure as an established-memory lapse. Revision Director still does not install `schedulerLeechMiddleware`, and persisted FSRS cards may not use `scheduleStatus: suspended`.
 
 The host policy is:
 
