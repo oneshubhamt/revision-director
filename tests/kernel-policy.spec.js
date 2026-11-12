@@ -140,6 +140,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   check(api.memoryDifficultyAssessment(difficultyProbe,holdPolicy).automaticHoldEligible===true,'Automatic removal from the normal queue must require an explicit enabled final policy and threshold');
   mustFail(()=>api.canonicalMemoryDifficultyPolicy({...defaultDifficulty,remediationLapses:1}),'Difficulty policy must reject a threshold that escalates the first FSRS lapse');
   mustFail(()=>api.canonicalMemoryDifficultyPolicy({...defaultDifficulty,persistentDifficultyLapses:2}),'Persistent difficulty must occur strictly after remediation');
+  mustFail(()=>api.canonicalMemoryDifficultyPolicy({...defaultDifficulty,automaticHold:{enabled:true,lapseThreshold:4}}),'Automatic hold must remain a later final stage than persistent difficulty');
   mustFail(()=>api.validateStoredFsrsCard({...difficultyProbe.policyState.fsrsCard,scheduleStatus:'suspended'}),'FSRS scheduleStatus must not become a second suspension truth');
   check(memoryObligation.policyState.fsrsCard.cardId === 'o', 'FSRS cards must retain stable obligation identity');
 

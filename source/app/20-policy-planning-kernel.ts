@@ -29,7 +29,7 @@
     const enabled = automaticHoldRecord["enabled"];
     const lapseThreshold = Number(automaticHoldRecord["lapseThreshold"]);
     assert(typeof enabled === "boolean", "Memory automatic-hold flag is invalid.");
-    assert(Number.isSafeInteger(lapseThreshold) && lapseThreshold >= persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold is invalid.");
+    assert(Number.isSafeInteger(lapseThreshold) && lapseThreshold > persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold must be later than persistent difficulty.");
     return {
       remediationLapses,
       persistentDifficultyLapses,

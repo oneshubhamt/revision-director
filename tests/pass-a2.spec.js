@@ -46,6 +46,7 @@ check(settings.activeProfileId === 'p' && settings.fsrsScheduling.policy.kind ==
 mustFail(() => api.canonicalAppSettings({ ...settings, desiredRetention:.9 }), 'Obsolete top-level desiredRetention was accepted');
 mustFail(() => api.canonicalAppSettings((({memoryDifficultyPolicy,...rest})=>rest)(settings)), 'Missing canonical memory-difficulty policy was accepted');
 mustFail(() => api.canonicalAppSettings({ ...settings, memoryDifficultyPolicy:{...settings.memoryDifficultyPolicy,automaticHold:{enabled:true,lapseThreshold:3}} }), 'Automatic hold below persistent-difficulty threshold was accepted');
+mustFail(() => api.canonicalAppSettings({ ...settings, memoryDifficultyPolicy:{...settings.memoryDifficultyPolicy,automaticHold:{enabled:true,lapseThreshold:4}} }), 'Automatic hold at the persistent-difficulty boundary was accepted');
 mustFail(() => api.canonicalAppSettings({ schemaVersion:1, key:'app', fsrsScheduling:{policy:fixed(.9)}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} }), 'Missing current settings fields were accepted');
 
 const plan = api.canonicalDailyPlanRecord({ schemaVersion:1, id:' d ', studyDayKey:'2026-07-25', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt, plannerVersion:' pass-d-2 ', versions:[{version:1,generatedAt:rawProfile.createdAt,capacityMinutes:60,reason:'initial',items:[]}], outcomes:[] });
