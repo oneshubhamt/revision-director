@@ -179,6 +179,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
     evidenceEventId:'again-event', reviewedAt:due, rating:api.Rating.Again, source:'direct-memory',
     beforeCard:structuredClone(memoryObligation.policyState.fsrsCard),
     afterCard:structuredClone(again.policyState.fsrsCard),
+    schedulerConfig:structuredClone(again.schedulerConfig),
     configFingerprint:again.schedulerConfig.fingerprint
   };
   const failedObligation = {...memoryObligation, dueAt:again.dueAt, policyState:again.policyState};
@@ -196,6 +197,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
     evidenceEventId:'good-event', reviewedAt:due, rating:api.Rating.Good, source:'direct-memory',
     beforeCard:structuredClone(memoryObligation.policyState.fsrsCard),
     afterCard:structuredClone(good.policyState.fsrsCard),
+    schedulerConfig:structuredClone(good.schedulerConfig),
     configFingerprint:good.schedulerConfig.fingerprint
   };
   const reviewedObligation={...memoryObligation,dueAt:good.dueAt,policyState:structuredClone(good.policyState)};

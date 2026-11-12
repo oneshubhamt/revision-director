@@ -52,6 +52,7 @@ const clone=value=>structuredClone(value);
       source:'direct-memory',
       beforeCard:before,
       afterCard:clone(card),
+      schedulerConfig:clone(scheduler.configuration),
       configFingerprint:scheduler.configuration.fingerprint,
     });
   }
