@@ -93,9 +93,21 @@
           plans.createIndex("studyDayKey", "studyDayKey", { unique: true });
           plans.createIndex("updatedAt", "updatedAt");
 
-          db.createObjectStore(Store.Settings, { keyPath: "key" });
-          db.createObjectStore(Store.Metadata, { keyPath: "key" });
+          const settings = db.createObjectStore(Store.Settings, { keyPath: "key" });
+          const metadata = db.createObjectStore(Store.Metadata, { keyPath: "key" });
           db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
+
+          const createdAt = nowIso();
+          settings.add(defaultSettings());
+          metadata.add({
+            schemaVersion: DOCUMENT_SCHEMA_VERSION,
+            key: "database",
+            databaseName: DB_NAME,
+            databaseVersion: DB_VERSION,
+            applicationVersion: APP_VERSION,
+            createdAt,
+            updatedAt: createdAt,
+          } satisfies AppMetadata);
       };
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         request.onsuccess = () => resolve(request.result);
@@ -121,16 +133,6 @@
       const values = await requestResult(tx.objectStore(store).getAll());
       await transactionDone(tx);
       return values as StoreValue<S>[];
-    }
-
-    async hasAnyStoredData(excluded: readonly StoreName[] = []): Promise<boolean> {
-      const excludedStores = new Set<StoreName>(excluded);
-      const stores = (Object.values(Store) as StoreName[]).filter((store) => !excludedStores.has(store));
-      if (stores.length === 0) return false;
-      const tx = this.db.transaction(stores, "readonly");
-      const counts = await Promise.all(stores.map((store) => requestResult(tx.objectStore(store).count())));
-      await transactionDone(tx);
-      return counts.some((count) => count > 0);
     }
 
     async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
