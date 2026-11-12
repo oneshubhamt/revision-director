@@ -193,11 +193,24 @@
     obligation.schemaVersion = DOCUMENT_SCHEMA_VERSION;
     obligation.id = canonicalId(obligation.id, "Revision-obligation ID");
     obligation.unitId = canonicalId(obligation.unitId, "Revision-obligation unit ID");
+    assert(OBLIGATION_TYPES.includes(obligation.type), "Revision-obligation type is invalid.");
+    assert(["active", "completed", "suspended", "archived"].includes(obligation.status), "Revision-obligation status is invalid.");
+    assert(typeof obligation.expectedMinutes === "number" && Number.isFinite(obligation.expectedMinutes) && obligation.expectedMinutes >= 1 && obligation.expectedMinutes <= 240, "Revision-obligation expected duration is invalid.");
+    assert(typeof obligation.baselineMinutes === "number" && Number.isFinite(obligation.baselineMinutes) && obligation.baselineMinutes >= 1 && obligation.baselineMinutes <= 240, "Revision-obligation baseline duration is invalid.");
+    assert(Number.isSafeInteger(obligation.durationSampleCount) && obligation.durationSampleCount >= 0, "Revision-obligation duration sample count is invalid.");
+    assert(Number.isSafeInteger(obligation.freshnessDays) && obligation.freshnessDays >= 1 && obligation.freshnessDays <= 3650, "Revision-obligation freshness period is invalid.");
+    assert(Number.isSafeInteger(obligation.priority) && obligation.priority >= 0 && obligation.priority <= 100_000, "Revision-obligation priority is invalid.");
     obligation.dueAt = canonicalIso(obligation.dueAt, "Revision-obligation due date");
     obligation.protocol = canonicalText(obligation.protocol, "Revision protocol");
     obligation.successCriteria = canonicalText(obligation.successCriteria, "Revision success criteria");
     obligation.workflow = canonicalWorkflowSpec(obligation.workflow);
+    validateWorkflowSpec(obligation.workflow, obligation.type);
     obligation.policyState = canonicalPolicyState(obligation.policyState);
+    assert(obligation.policyState.engine === POLICY_ENGINE_BY_OBLIGATION[obligation.type], "Revision-obligation policy does not match its type.");
+    if (obligation.type === "memory-recall") {
+      const card = obligation.policyState.fsrsCard;
+      assert(card && card.cardId === obligation.id && card.dueAt === obligation.dueAt, "Memory obligation and FSRS card are not synchronized.");
+    }
     if (obligation.parentObligationId !== undefined) obligation.parentObligationId = canonicalId(obligation.parentObligationId, "Parent obligation ID");
     else delete obligation.parentObligationId;
     if (obligation.returnObligationId !== undefined) obligation.returnObligationId = canonicalId(obligation.returnObligationId, "Return obligation ID");
@@ -213,8 +226,18 @@
       delete obligation.suspensionReason;
     }
     if (obligation.suspensionReason === "persistent-difficulty") assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
-    if (obligation.chunking) obligation.chunking.createdAt = canonicalIso(obligation.chunking.createdAt, "Chunk-cycle creation date");
-    else delete obligation.chunking;
+    if (obligation.chunking) {
+      assertExactKeys(obligation.chunking, "Chunking state", ["cycleId", "status", "originalMinutes", "synthesisMinutes", "capacityMinutes", "totalChunks", "completedChunks", "createdAt"]);
+      obligation.chunking.cycleId = canonicalId(obligation.chunking.cycleId, "Chunk-cycle ID");
+      assert(obligation.chunking.status === "chunking" || obligation.chunking.status === "synthesis-ready", "Chunking state is invalid.");
+      assert(typeof obligation.chunking.originalMinutes === "number" && Number.isFinite(obligation.chunking.originalMinutes) && obligation.chunking.originalMinutes >= 1 && obligation.chunking.originalMinutes <= 240, "Chunking original duration is invalid.");
+      assert(typeof obligation.chunking.synthesisMinutes === "number" && Number.isFinite(obligation.chunking.synthesisMinutes) && obligation.chunking.synthesisMinutes >= 1 && obligation.chunking.synthesisMinutes < obligation.chunking.originalMinutes, "Chunking synthesis duration is invalid.");
+      assert(Number.isSafeInteger(obligation.chunking.capacityMinutes) && obligation.chunking.capacityMinutes >= 5 && obligation.chunking.capacityMinutes <= 600, "Chunking capacity is invalid.");
+      assert(Number.isSafeInteger(obligation.chunking.totalChunks) && obligation.chunking.totalChunks >= 2, "Chunking total is invalid.");
+      assert(Number.isSafeInteger(obligation.chunking.completedChunks) && obligation.chunking.completedChunks >= 0 && obligation.chunking.completedChunks <= obligation.chunking.totalChunks, "Chunking completed count is invalid.");
+      assert(obligation.chunking.originalMinutes === obligation.expectedMinutes, "Chunking duration does not match the parent obligation.");
+      obligation.chunking.createdAt = canonicalIso(obligation.chunking.createdAt, "Chunk-cycle creation date");
+    } else delete obligation.chunking;
     return obligation;
   }
 
