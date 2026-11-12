@@ -29,7 +29,7 @@ const nodes = [
   { schemaVersion:1, id:'t', profileId:'p', parentId:'c', kind:'topic', name:'Topic', normalizedName:'topic', createdAt:now, updatedAt:now },
 ];
 const unit = { schemaVersion:1, id:'u', profileId:'p', topicNodeId:'t', title:'Unit', scope:'Scope', source:'Source', importance:3, status:'active', createdAt:now, updatedAt:now, evidenceCount:0, lapseCount:0 };
-const settings = { schemaVersion:1, key:'app', activeProfileId:'p', desiredRetention:.9, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} };
+const settings = { schemaVersion:1, key:'app', activeProfileId:'p', fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} };
 const validBackup = { format:'revision-director-backup', schemaVersion:2, exportedAt:now, appVersion:'va7.1-pass-f1', profiles:[profile], nodes, units:[unit], studyEvents:[], obligations:[baseObligation], evidenceEvents:[], chunks:[], dailyPlans:[], settings, activeRetrieval:null };
 const validator = new api.RevisionService({});
 

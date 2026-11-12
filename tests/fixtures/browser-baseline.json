@@ -487,7 +487,12 @@
   "settings": {
     "key": "app",
     "activeProfileId": "profile_ms320pmc_1ok138i1vvaaga",
-    "desiredRetention": 0.9,
+    "fsrsScheduling": {
+      "policy": {
+        "kind": "fixed-retention",
+        "desiredRetention": 0.9
+      }
+    },
     "dailyCapacityMinutes": 60,
     "studyDayBoundaryHour": 4,
     "schemaVersion": 1,
