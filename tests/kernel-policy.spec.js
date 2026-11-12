@@ -318,7 +318,8 @@ for (const mutation of [
   {...validBackup,settings:{...validBackup.settings,activeProfileId:'missing'}},
   {...validBackup,settings:{...validBackup.settings,fsrsScheduling:{policy:fixed(1.2)}}},
 ]) mustFail(() => service.validateBackup(mutation), 'Hostile backup should fail');
-check(service.validateBackup({...validBackup,units:[{...validBackup.units[0],evidenceCount:1}],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[conceptEvidence]}).evidenceEvents.length === 1, 'Relational workflow evidence backup should pass');
+const conceptUnitWithEvidence={...validBackup.units[0],evidenceCount:1,latestEvidenceAt:due,latestEvidenceRating:3};
+check(service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[conceptEvidence]}).evidenceEvents.length === 1, 'Relational workflow evidence backup should pass');
 mustFail(()=>service.validateBackup({...validBackup,units:[{...validBackup.units[0],evidenceCount:1}],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[(({timing,...rest})=>rest)(conceptEvidence)]}),'Current evidence without timing must be rejected');
 const chunkedObligation={...conceptObligation,chunking:{cycleId:'cycle',status:'chunking',originalMinutes:15,synthesisMinutes:5,capacityMinutes:60,totalChunks:2,completedChunks:1,createdAt:due}};
 const chunkRecords=[
@@ -335,7 +336,16 @@ mustFail(()=>service.validateBackup({...suspendedOnlyBackup,settings:{...suspend
 mustFail(()=>service.validateBackup({...validBackup,profiles:[{...validBackup.profiles[0],retiredField:true}]}),'Current durable documents must reject unknown top-level fields');
 mustFail(()=>service.validateBackup({...validBackup,retiredField:true}),'Current backup payloads must reject unknown top-level fields');
 const stringTiming={...conceptEvidence,timing:{...conceptEvidence.timing,activeByPhase:{...conceptEvidence.timing.activeByPhase,attempt:'1000'}}};
-mustFail(()=>service.validateBackup({...validBackup,units:[{...validBackup.units[0],evidenceCount:1}],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[stringTiming]}),'Timing canonicalization must reject numeric strings');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[stringTiming]}),'Timing canonicalization must reject numeric strings');
+const stringTimingScalar={...conceptEvidence,timing:{...conceptEvidence.timing,pauseMs:'0'}};
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[stringTimingScalar]}),'Timing scalar fields must reject numeric strings');
+mustFail(()=>service.validateBackup({...validBackup,settings:{...validBackup.settings,fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:'0.9'}}}}),'FSRS scheduling settings must reject numeric strings');
+mustFail(()=>service.validateBackup({...validBackup,settings:{...validBackup.settings,memoryDifficultyPolicy:{...validBackup.settings.memoryDifficultyPolicy,remediationLapses:'2'}}}),'Memory difficulty settings must reject numeric strings');
+mustFail(()=>service.validateBackup({...validBackup,obligations:[{...conceptObligation,workflow:{...conceptObligation.workflow,checkpoints:['A','A']}}]}),'Workflow checkpoints must reject duplicates rather than silently deduplicate');
+mustFail(()=>service.validateBackup({...validBackup,nodes:validBackup.nodes.map(n=>n.id==='t'?{...n,normalizedName:'wrong'}:n)}),'Knowledge-node canonical names must not be silently repaired');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[{...conceptEvidence,elapsedMs:999}]}),'Evidence elapsed time must match timing rather than be overwritten');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[{...conceptEvidence,evidence:{...conceptEvidence.evidence,errorTypes:['slow-retrieval','slow-retrieval']}}]}),'Evidence errors must reject duplicates rather than silently deduplicate');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[{...conceptEvidence,durationObservation:{...conceptEvidence.durationObservation,retiredField:true}}]}),'Nested evidence records must reject unknown fields');
 const relearnPolicyForPause=new api.RelearnPolicy();
 const pausedOriginal={...conceptObligation,status:'suspended',suspensionReason:'relearning'};
 const pausedRepair={schemaVersion:1,...obligation('relearn',relearnPolicyForPause,'relearning'),id:'repair',unitId:'u',status:'suspended',suspensionReason:'unit',parentObligationId:'o',returnObligationId:'o'};
@@ -344,6 +354,7 @@ check(service.validateBackup(unitPausedRepairBackup).obligations.length===2,'A u
 mustFail(()=>service.validateBackup({...passDBackup,chunks:[chunkRecords[1]]}),'Daily plans must reject missing chunk references');
 mustFail(()=>service.validateBackup({...passDBackup,dailyPlans:[{...dailyPlan,plannerVersion:'wrong'}]}),'Daily plans must reject unknown planner versions');
 mustFail(()=>service.validateBackup({...passDBackup,dailyPlans:[{...dailyPlan,versions:[{...dailyPlan.versions[0],reason:'wrong'}]}]}),'Daily plans must reject unknown amendment reasons');
+mustFail(()=>service.validateBackup({...passDBackup,dailyPlans:[{...dailyPlan,versions:[{...dailyPlan.versions[0],items:[{...dailyPlan.versions[0].items[0],retiredField:true}]}]}]}),'Daily-plan items must reject unknown nested fields');
 mustFail(()=>service.validateBackup({...passDBackup,obligations:[{...chunkedObligation,chunking:{...chunkedObligation.chunking,completedChunks:0}}]}),'Chunk counters must match durable chunk records');
 mustFail(()=>service.validateBackup({...passDBackup,dailyPlans:[{...dailyPlan,outcomes:[{itemKey:'unknown',status:'completed',completedAt:due,actualMinutes:5}]}]}),'Daily-plan outcomes must reference a known planned item');
 
