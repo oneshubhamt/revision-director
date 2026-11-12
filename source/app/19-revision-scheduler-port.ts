@@ -146,6 +146,7 @@
   }
 
   function validateFsrsConfigSnapshot(config: FsrsConfigSnapshot): FsrsConfigSnapshot {
+    assertExactKeys(config, "FSRS configuration", ["model", "schedulingPolicy", "fractionalDays", "enableFuzz", "enableShortTerm", "learningSteps", "relearningSteps", "graduatingInterval", "allowModelOverride", "maximumInterval", "clearStatsOnForget", "weightsSource", "weightsFingerprint", "optimizerProfileSourceSha256", "fingerprint"]);
     assert(config.model === FSRS_MODEL, "FSRS configuration model is invalid.");
     const schedulingPolicy = canonicalFsrsSchedulingPolicy(config.schedulingPolicy);
     assert(JSON.stringify(config.schedulingPolicy) === JSON.stringify(schedulingPolicy), "FSRS scheduling policy is not canonical.");
