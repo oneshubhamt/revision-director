@@ -1,4 +1,4 @@
-a1c5156be4e965e17176e0edbb76021d30ac222894fa0a395af7c90a42ede441  ./build/build-hosted.mjs
+8c8b2ec2d49893ef333988bd18ee8d5e80b1bef40fed6bfae1a9f6b596a882b4  ./build/build-hosted.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
 3727e9c4dc0445a734d5f210ea6ce3145209ffd22848fdd302816dc270bc9852  ./dist/app.js
@@ -6,7 +6,7 @@ e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
 e9f95b5218834babf7c7bffc098428d9a2455aa97049a000d2356ca3938e976b  ./docs/DATA_AND_STORAGE.md
 e1fce6fd7391d4f04537001ab9cb3a77a75bae9c08fef6862ec056724f71b896  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
-658346d92ecde3f659fee8b6d23cdbc28284a692fee3970691b64ff2aa211824  ./docs/SCHEDULING_AND_PLANNING.md
+8c339647502966a5cf1b19a85eac39d26bfe3b7b8200e6685be4f57218d9b1ad  ./docs/SCHEDULING_AND_PLANNING.md
 dc206b120ee1e57ed178523c0f8b49260afd1f5c79b4f000e80d84928d7e6574  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
@@ -78,7 +78,7 @@ b7c75605881c26a57b75bd0c208ffb07ca474b0c789ecf51b38baf078bde13f8  ./tests/pass-e
 3a2fc67b17ab25264d05f9732ffa736a1a3802b0984268b79c8510e2ed505d6a  ./tests/pass-e1.spec.js
 837c50f5074441e946770782bcfac89799ce7eeba8e0177a2d70d228d5737aea  ./tests/planning.spec.js
 cea9ce3bf214784e353ece1bd654b93c8a12c7f13e5a69ace9a008e6d7fa4140  ./tests/source-ownership.spec.py
-e0622ca0dfe7e577e991c5a3a0a12f57bd21140ab2bcf513ebf936da7b6b52a9  ./tests/stage-b-hostile-recovery.spec.py
+90247d23fdf3afcad980af34305fd6ade2d3ed4473f2b9977e4b372f193fe3d5  ./tests/stage-b-hostile-recovery.spec.py
 5602087e260cf9d59f1ef54dfaba8c2663ac0231ce7568812c7a42fdb733669d  ./tests/stage-c-behavioural.spec.py
 b51050a3efc8380d9e7318d637a0fb6ac48ef915491750c3cfac1bef9bc44a83  ./tests/stage-c-responsive.spec.py
 7339efcf705814741dfddb11ab11d34d497d5183089ef7394ff8d1d311328e57  ./tests/stage-d-data-safety-browser.spec.py
