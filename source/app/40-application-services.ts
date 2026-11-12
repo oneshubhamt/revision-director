@@ -107,6 +107,10 @@
       );
       const difficultyChanged =
         JSON.stringify(canonical.memoryDifficultyPolicy) !== JSON.stringify(this.settings.memoryDifficultyPolicy);
+      const studyDayBoundaryChanged = canonical.studyDayBoundaryHour !== this.settings.studyDayBoundaryHour;
+      if (difficultyChanged || studyDayBoundaryChanged) {
+        assert(!(await this.currentActiveRetrieval()), "Finish or end the active retrieval session before changing review-affecting settings.");
+      }
       if (!fsrsSchedulingPoliciesEqual(canonical.fsrsScheduling.policy, this.settings.fsrsScheduling.policy)) {
         await this.rebaseMemoryScheduler(canonical, activeFsrsOptimizerProfile(canonical), "scheduler-policy-change");
         return;
@@ -390,6 +394,7 @@
     }
 
     async updateProfile(id: string, name: string, examDate: string, status: "active" | "suspended"): Promise<ExamProfile> {
+      assert(!(await this.currentActiveRetrieval()), "Finish or end the active retrieval session before changing an exam profile.");
       const existingProfiles = await this.profiles();
       this.assertActiveProfileSelection(existingProfiles, this.settings);
       const profile = existingProfiles.find((candidate) => candidate.id === id);
@@ -513,6 +518,7 @@
     }
 
     async updateUnitStatus(id: string, status: EntityStatus): Promise<void> {
+      assert(!(await this.currentActiveRetrieval()), "Finish or end the active retrieval session before changing knowledge-unit status.");
       const unit = await this.unit(id);
       unit.status = status;
       unit.updatedAt = nowIso();
@@ -899,6 +905,11 @@
       const chunk = await this.repo.get(Store.Chunks, chunkId);
       assert(chunk && chunk.status === "pending", "This split session is no longer pending.");
       const obligation = await this.obligation(chunk.obligationId);
+      assert(obligation.status === "active", "This split-session obligation is no longer active.");
+      const unit = await this.unit(obligation.unitId);
+      assert(unit.status === "active", "This split-session knowledge unit is no longer active.");
+      const profile = await this.profile(unit.profileId);
+      assert(profile.status === "active", "This split-session exam profile is no longer active.");
       assert(obligation.chunking?.cycleId === chunk.cycleId && obligation.chunking.status === "chunking", "Split-session state is inconsistent.");
       const canonicalTiming = canonicalTimingEvidenceSummary(timing);
       const actualMinutes = roundTo(Math.max(1, canonicalTiming.totalActiveMs / 60_000), 1);
@@ -989,6 +1000,9 @@
       validateWorkflowResult(normalizedDraft.workflowResult, obligation.workflow.kind);
       assert(obligation.status === "active", "This obligation is not active.");
       const unit = await this.unit(obligation.unitId);
+      assert(unit.status === "active", "This knowledge unit is no longer active.");
+      const profile = await this.profile(unit.profileId);
+      assert(profile.status === "active", "This exam profile is no longer active.");
       const priorEvidence = await this.evidenceEvents();
       const chunking = obligation.chunking;
       const cycleChunks = chunking?.status === "synthesis-ready" ? (await this.chunksForObligation(obligation.id)).filter((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "completed") : [];
@@ -1067,7 +1081,7 @@
         obligation.suspensionReason = "relearning";
         const existing = (await this.obligationsForUnit(unit.id)).find((item) => item.type === "relearn" && item.status === "active" && item.returnObligationId === obligation.id);
         if (!existing) {
-          const dueAt = correctiveRelearnDueAt(await this.profile(unit.profileId), reviewedAt);
+          const dueAt = correctiveRelearnDueAt(profile, reviewedAt);
           const policy = this.router.get("relearn");
           const time = reviewedAt.toISOString();
           const followUpId = uid("obligation");
