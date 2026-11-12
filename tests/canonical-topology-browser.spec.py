@@ -77,11 +77,11 @@ def main() -> None:
           raw.stores.metadata.records=[];
         }""")
         frame = boot(page)
-        wait_fatal(frame, "Database metadata is missing from a populated Revision Director database")
+        wait_fatal(frame, "Database metadata is missing from this Revision Director database")
         check(store_records(page, "metadata") == [], "Missing metadata was silently regenerated")
         check(store_records(page, "settings") == before_settings, "Metadata failure mutated surviving settings")
 
-        # Missing settings are only created for a genuinely empty fresh database.
+        # Missing settings in an existing database are never reconstructed.
         fresh_host(page)
         frame = boot(page); wait_ready(frame)
         page.evaluate("""() => {
@@ -93,7 +93,7 @@ def main() -> None:
         }""")
         before_metadata = store_records(page, "metadata")
         frame = boot(page)
-        wait_fatal(frame, "Application settings are missing from a populated Revision Director database")
+        wait_fatal(frame, "Canonical storage must contain exactly one application-settings document")
         check(store_records(page, "settings") == [], "Missing settings were silently synthesized over populated state")
         check(store_records(page, "metadata") == before_metadata, "Settings failure mutated metadata")
         check(len(store_records(page, "profiles")) == 1, "Settings failure mutated surviving profile data")
