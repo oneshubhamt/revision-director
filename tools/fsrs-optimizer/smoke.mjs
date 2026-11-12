@@ -68,6 +68,14 @@ assert.equal(evaluateHoldoutGate(
 assert.equal(evaluateHoldoutGate(
   {logLoss:.4,rmseBins:.08},{logLoss:.39,rmseBins:.081},split,
 ).passed,false);
+assert.equal(evaluateHoldoutGate(
+  {logLoss:.4,rmseBins:.08},{logLoss:.38,rmseBins:.07},split,
+  {sourceSha256:"a".repeat(64),weightsFingerprint:"fnv1a64:0123456789abcdef",metrics:{logLoss:.39,rmseBins:.075}},
+).passed,true);
+assert.equal(evaluateHoldoutGate(
+  {logLoss:.4,rmseBins:.08},{logLoss:.39,rmseBins:.075},split,
+  {sourceSha256:"a".repeat(64),weightsFingerprint:"fnv1a64:0123456789abcdef",metrics:{logLoss:.385,rmseBins:.074}},
+).passed,false);
 
 const temp=await mkdtemp(join(tmpdir(),"revision-director-fsrs-"));
 try{

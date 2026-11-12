@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, costAdrPresetSchedulingPolicy, defaultFsrsSchedulingSettings, FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics };';
+const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, costAdrPresetSchedulingPolicy, defaultFsrsSchedulingSettings, FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics, fsrsWeightsFingerprint };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -40,9 +40,14 @@ const recallResult=rating=>({
   cueLevel:rating===api.Rating.Again?'major':rating===api.Rating.Hard?'minor':'none'
 });
 
-function optimizerProfile(sourceSha256='b'.repeat(64),personalizedLogLoss=.40,personalizedRmse=.08){
+function optimizerProfile(sourceSha256='b'.repeat(64),personalizedLogLoss=.40,personalizedRmse=.08,incumbentProfile=null,weight2=4.2){
   const weights=[...api.FSRS7_DEFAULT_WEIGHTS];
-  weights[2]=4.2;
+  weights[2]=weight2;
+  const incumbent=incumbentProfile?{
+    sourceSha256:incumbentProfile.sourceSha256,
+    weightsFingerprint:api.fsrsWeightsFingerprint(incumbentProfile.weights),
+    metrics:{logLoss:.41,rmseBins:.079}
+  }:undefined;
   return api.validateFsrsOptimizerProfile({
     schema:'revision-director-fsrs-profile/v1',model:'FSRS-7',bindingVersion:'0.6.1',
     trainedAt:'2026-11-11T00:00:00.000Z',sourceSha256,evidenceItems:384,weights,
@@ -50,7 +55,8 @@ function optimizerProfile(sourceSha256='b'.repeat(64),personalizedLogLoss=.40,pe
       crossValidation:{logLoss:.39,rmseBins:.07},
       holdout:{strategy:'final-sixth',trainItems:320,holdoutItems:64,holdoutCards:16,
         minimumTrainItems:64,minimumHoldoutItems:64,minimumHoldoutCards:16,
-        stock:{logLoss:.42,rmseBins:.08},personalized:{logLoss:personalizedLogLoss,rmseBins:personalizedRmse},gate:'passed'}
+        stock:{logLoss:.42,rmseBins:.08},personalized:{logLoss:personalizedLogLoss,rmseBins:personalizedRmse},
+        ...(incumbent?{incumbent}:{}),gate:'passed'}
     },
     training:{enableShortTerm:true,enableSchedPenalties:true,numRelearningSteps:1,chronology:'elapsed-24h',
       converterFixedUtcOffsetMinutes:0,converterRolloverHour:0,runtimeLearningSteps:['1d'],
@@ -420,7 +426,7 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   const staleProfile=optimizerProfile('c'.repeat(64));
   await mustReject(()=>service.stageFsrsOptimizerProfile(staleProfile),'Stale optimizer profile must be rejected before staging');
   check(service.getSettings().fsrsPersonalization.profile===null,'Stale optimizer profile mutated personalization state');
-  const profile=optimizerProfile(evidenceSnapshot.sourceSha256);
+  let profile=optimizerProfile(evidenceSnapshot.sourceSha256);
   await service.stageFsrsOptimizerProfile(profile);
   check(service.getSettings().fsrsPersonalization.active===false,'Profile import must remain staging-only');
   const originalTiming=clone(repo.evidenceEvents[0].timing);
@@ -450,6 +456,22 @@ async function testRebasesBackupRestorePlannerAndCorruption(){
   const mixed=api.memoryReviewObservationsFor(activeObligation.id,repo.evidenceEvents);
   check(new Set(mixed.map(item=>item.configFingerprint)).size===2,'Realistic history must preserve stock-to-personalized configuration boundary');
   api.revisionSchedulerPort(fixed(.95),profile).verifyProjection(activeObligation.policyState.fsrsCard,mixed); checks++;
+
+  const replacementSnapshot=await service.optimizerEvidenceSnapshot();
+  const replacementProfile=optimizerProfile(replacementSnapshot.sourceSha256,.38,.07,activeProfile,4.25);
+  const mismatchedReplacement=clone(replacementProfile);
+  mismatchedReplacement.evaluation.holdout.incumbent.weightsFingerprint='fnv1a64:0000000000000000';
+  await mustReject(()=>service.replaceActiveFsrsOptimizerProfile(mismatchedReplacement),'Profile replacement must reject a candidate not evaluated against the currently active weights');
+  const replacementsBefore=repo.replaceSettingsAndObligationsCalls;
+  await service.replaceActiveFsrsOptimizerProfile(replacementProfile);
+  check(repo.replaceSettingsAndObligationsCalls===replacementsBefore+1,'Personalized-to-personalized switch must use exactly one atomic settings/obligations replacement');
+  check(service.getSettings().fsrsScheduling.lastRebase.reason==='replace-profile','Personalized-to-personalized switch must record replace-profile rebase provenance');
+  check(service.getSettings().fsrsPersonalization.active===true,'Profile replacement must keep personalization active without a stock intermediate state');
+  check(service.getSettings().fsrsPersonalization.profile.sourceSha256===replacementProfile.sourceSha256,'Profile replacement did not publish the winning candidate');
+  profile=replacementProfile;
+  activeObligation=memoryObligation(repo);
+  const replacedHistory=api.memoryReviewObservationsFor(activeObligation.id,repo.evidenceEvents);
+  api.revisionSchedulerPort(fixed(.95),profile).verifyProjection(activeObligation.policyState.fsrsCard,replacedHistory); checks++;
 
   const profileDue=activeObligation.dueAt;
   const joined={obligation:clone(activeObligation),unit:clone(activeUnit),profile:clone(memoryProfile(repo,activeUnit)),subject:'Microbiology',section:'Bacteriology',topic:'Staphylococcus aureus'};
