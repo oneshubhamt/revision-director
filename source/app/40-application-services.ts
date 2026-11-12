@@ -887,6 +887,13 @@
       return { ...base, planRecordId: persisted.id, versionNumber: persisted.version };
     }
 
+    async memoryReviewHistory(obligationId: string): Promise<MemoryReviewObservation[]> {
+      const obligation = await this.obligation(obligationId);
+      assert(obligation.type === "memory-recall", "Memory-review history is only available for memory obligations.");
+      const evidence = await this.evidenceEvents();
+      return (this.memoryReviewIndexFor(evidence).get(obligationId) ?? []).map((review) => clone(review));
+    }
+
     async preview(obligationId: string, now = new Date()): Promise<SchedulePreview[]> {
       const obligation = await this.obligation(obligationId);
       const policy = this.router.get(obligation.type);
