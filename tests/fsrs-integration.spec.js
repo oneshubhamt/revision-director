@@ -186,7 +186,7 @@ async function testSchedulingPolicyBoundary(){
   check(api.FSRS7_DEFAULT_WEIGHTS[0]===originalWeight,'Canonical FSRS scheduler options must own a defensive weight copy');
   const historical=api.historicalFsrsConfigurations([[{schedulerConfig:clone(fixedConfig)},{schedulerConfig:clone(fixedConfig)}]]);
   check(historical.size===1&&historical.get(fixedConfig.fingerprint).fingerprint===fixedConfig.fingerprint,'Historical FSRS configuration collection must deduplicate identical canonical snapshots by fingerprint');
-    const changedGoal=costAdr(); changedGoal.goalCostWeight=992;
+  const changedGoal=costAdr(); changedGoal.goalCostWeight=992;
   mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedGoal),'Arbitrary Cost-ADR goal weights must remain unavailable');
   const changedCoefficient=costAdr(); changedCoefficient.costAdrPolicy.coefficients[0]-=.001;
   mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedCoefficient),'Arbitrary Cost-ADR coefficient variants must remain unavailable');

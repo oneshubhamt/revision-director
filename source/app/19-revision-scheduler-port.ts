@@ -604,7 +604,7 @@
   function fsrsBaseSchedulerOptions(
     desiredRetention: number,
     weights?: readonly number[],
-  ) {
+  ): FsrsDefaultSchedulerOptions {
     return {
       version: FSRS_MODEL,
       desiredRetention,
