@@ -1,13 +1,13 @@
 8c8b2ec2d49893ef333988bd18ee8d5e80b1bef40fed6bfae1a9f6b596a882b4  ./build/build-hosted.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
-9ca790af25437214732c56bc936318035f6bc08d0ef94d5e11e133d8eaf7f06a  ./dist/app.js
+53a4b7d833ff736d258f77fcbe76f3a9a77fe1fd5cf4d32ac8ce1fcbfa525afd  ./dist/app.js
 c85281700cd326e4766dc9b910ad942b86a592740540cb1e30a73ea3f95d69f0  ./docs/ARCHITECTURE.md
 828f12d41aef7e571a4d8f79db87d23e6607abafacbc440d714bbd7f13e0863b  ./docs/DATA_AND_STORAGE.md
 e1fce6fd7391d4f04537001ab9cb3a77a75bae9c08fef6862ec056724f71b896  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ba443230bfdda805284486e5b36639034180a19c288be052d9e329ab4d001404  ./docs/SCHEDULING_AND_PLANNING.md
-30c707fe1a6c5e5add54e473cd51a20007957400f6e0da8dc102c5a7a0fcffe4  ./index.html
+da4321936b9ecdde519420211d15e4ce045df4a3d6a12a01a96b1c8e75013377  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -18,7 +18,7 @@ e58ca8bf7184a3b6430fda3a1415cd2dee7816d279840b426dbf3c919df2cbd7  ./README.md
 de8d46d2767a2cb078b3b2aacc097dc86a5e653a01b881fd3dcc43f575842c89  ./source/app/05-presentation-engine.ts
 635c6319c4cb125d8bc33edaede18351105620051fa4ac7e72955909cd8a22bd  ./source/app/10-domain-model.ts
 87529b6271cc41f2bd911f690e0260217529919fbff4377700c9d613b9e5f57e  ./source/app/11-domain-kernel.ts
-fe092bdcce0d4c188013abe3c8c127f57e6931845f162c547c078f22763a3ce6  ./source/app/12-production-contracts.ts
+f7e74fe830825dc860895133ed8454d8eddd1e38e8bbf0696081416e2deb7ec1  ./source/app/12-production-contracts.ts
 90aa051ed9cce196a4ec656ead806dd169fd590daddf8478460b0401b2b9130a  ./source/app/18-fsrs-personalization.ts
 2d5512cd296f2137c8de43a858651393681ebfb4a1ae02832de3aa03151db5a0  ./source/app/18a-fsrs-browser-optimizer.ts
 77fb915ac44a9a0fe4dadfd27901a1ffaaa34df7c0b25e94403ae0d430de7125  ./source/app/19-revision-scheduler-port.ts
@@ -29,7 +29,7 @@ e52c6d22fc37957e350ed20ed0f66ff5d8e148f17c0f40bd382d892a8d644739  ./source/app/3
 c835f78e652f1a6b67657e474f4b179fbb568dcc05e807977d516d674819e482  ./source/app/32-active-retrieval-persistence.ts
 ac494ddc8ae368b65427c0257e2fddd371ecd96a9f20466cccc3f412c6ed1f89  ./source/app/33-phase-time-runtime.ts
 35b1a74b9fa68f7e0815356936ef138a3d457301394581b838516181aeca4101  ./source/app/34-cross-tab-ownership.ts
-10f26c8d08292335ad7dbd026641fcc1b7c79dc078dd969fc8153a13dd85752b  ./source/app/40-application-services.ts
+c22534e083ba25552deff6a1bc0590a4e0614f97194c7b2e947216717535faed  ./source/app/40-application-services.ts
 d5610c476e00e3c9fe063542a0aa94fe5d7c1b38d427410b00ca54815d1479ff  ./source/app/41-backup-codec.ts
 70d512b10bd2d851215b3c9ca0f6673614a1bc5decbe32f1613bcdc37bb09a0f  ./source/app/42-backup-controller.ts
 4e71aa41aaeeccad4345344f3cd1f66661ba1148267d91e55a52a6b44a7a4ca1  ./source/app/45-ui-runtime.ts
@@ -43,7 +43,7 @@ bf878d6e7996af658ff4908b597c43bed1b1c227bb40c882bef51b97e5db6fdf  ./source/app/s
 9e9a57d9ce399bc80affbf6bea69fdc911af114058932379967d36e2f31b7c12  ./source/revision-director.va7.css
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 eb7a3059fcd8b8014e23ab612e430e64015bbbdb6fdeb5906907e288fe4dd826  ./tests/backup_fixture_codec.py
-f56e423e6d32718522c26aefac13cebd150062aad46a7983f6ad352790281edb  ./tests/browser-qa.spec.py
+e4e83aa90be121047e81aa1acb4a0ff2626983ed98d836673054f1f41e35a383  ./tests/browser-qa.spec.py
 76a37a3ef2ef97f4510a153dbbb884b76b8eb32857262480edda7cc5ddcd073a  ./tests/build-integrity.spec.py
 cb0c953c10f8a02eb28ccc4fe487eb5e045d364835540d5534bd9779d19f8274  ./tests/fixtures/browser-baseline.json
 909124745204ba2ad8536712f53588bcd3b91422854fa9191c161d13d0b7867b  ./tests/fixtures/browser-baseline.rdbackup
