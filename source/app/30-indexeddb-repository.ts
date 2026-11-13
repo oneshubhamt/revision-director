@@ -42,6 +42,11 @@
     });
   }
 
+  async function rootKnowledgeNodeId(profileId: string, normalizedName: string): Promise<string> {
+    const digest = await sha256Hex(utf8Bytes(`${profileId}\u0000subject\u0000${normalizedName}`));
+    return `subject_${digest.slice(0, 32)}`;
+  }
+
   class IndexedDbRepository {
     private constructor(private readonly db: IDBDatabase) {}
 
@@ -141,6 +146,12 @@
       await transactionDone(tx);
     }
 
+    async add<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
+      const tx = this.db.transaction(store, "readwrite");
+      tx.objectStore(store).add(value);
+      await transactionDone(tx);
+    }
+
     async putMany<S extends StoreName>(store: S, values: StoreValue<S>[]): Promise<void> {
       const tx = this.db.transaction(store, "readwrite");
       const target = tx.objectStore(store);
@@ -178,9 +189,35 @@
 
 
     async findNode(profileId: string, parentId: string | null, kind: KnowledgeNodeKind, name: string): Promise<KnowledgeNode | undefined> {
-      const candidates = await this.getByIndex(Store.Nodes, "profileId", profileId);
       const normalized = normalizeName(name);
-      return candidates.find((node) => node.parentId === parentId && node.kind === kind && node.normalizedName === normalized);
+      if (parentId !== null) {
+        return this.getOneByIndex(Store.Nodes, "pathLookup", [profileId, parentId, kind, normalized]);
+      }
+
+      assert(kind === "subject", "Only subject nodes may exist at the hierarchy root.");
+      const canonicalRootId = await rootKnowledgeNodeId(profileId, normalized);
+      const canonicalRoot = await this.get(Store.Nodes, canonicalRootId);
+      if (canonicalRoot) {
+        assert(canonicalRoot.profileId === profileId && canonicalRoot.parentId === null
+          && canonicalRoot.kind === kind && canonicalRoot.normalizedName === normalized,
+        "Canonical root-node identity collides with a different knowledge node.");
+        return canonicalRoot;
+      }
+
+      // Existing clean-slate databases created before deterministic root IDs may
+      // contain one random-ID root subject. Read it without repairing storage;
+      // all newly created root subjects use the deterministic primary key.
+      const legacyRoots = (await this.getByIndex(Store.Nodes, "profileId", profileId))
+        .filter((node) => node.parentId === null && node.kind === kind && node.normalizedName === normalized);
+      assert(legacyRoots.length <= 1, "Knowledge hierarchy contains duplicate root subjects.");
+      return legacyRoots[0];
+    }
+
+    async getOneByIndex<S extends StoreName>(store: S, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<StoreValue<S> | undefined> {
+      const tx = this.db.transaction(store, "readonly");
+      const result = await requestResult(tx.objectStore(store).index(indexName).get(query));
+      await transactionDone(tx);
+      return result as StoreValue<S> | undefined;
     }
 
     async getByIndex<S extends StoreName>(store: S, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<StoreValue<S>[]> {
@@ -215,14 +252,7 @@
         if (dailyPlan) tx.objectStore(Store.DailyPlans).put(dailyPlan);
         if (commitGuard && postCommitSession) tx.objectStore(Store.ActiveRetrieval).put(postCommitSession);
       };
-      if (commitGuard) {
-        const request = tx.objectStore(Store.ActiveRetrieval).get(commitGuard.sessionId);
-        request.onsuccess = () => {
-          const current = request.result as ActiveRetrievalSession | undefined;
-          if (!current || current.status !== "committing" || current.revision !== commitGuard.expectedRevision || current.activeTargetId !== commitGuard.targetId || current.commitToken !== commitGuard.commitToken) { tx.abort(); return; }
-          apply();
-        };
-      } else apply();
+      this.applyWithCommitGuard(tx, commitGuard, apply);
       await transactionDone(tx);
     }
 
@@ -260,15 +290,31 @@
         if (dailyPlan) tx.objectStore(Store.DailyPlans).put(dailyPlan);
         if (commitGuard && postCommitSession) tx.objectStore(Store.ActiveRetrieval).put(postCommitSession);
       };
-      if (commitGuard) {
-        const request = tx.objectStore(Store.ActiveRetrieval).get(commitGuard.sessionId);
-        request.onsuccess = () => {
-          const current = request.result as ActiveRetrievalSession | undefined;
-          if (!current || current.status !== "committing" || current.revision !== commitGuard.expectedRevision || current.activeTargetId !== commitGuard.targetId || current.commitToken !== commitGuard.commitToken) { tx.abort(); return; }
-          apply();
-        };
-      } else apply();
+      this.applyWithCommitGuard(tx, commitGuard, apply);
       await transactionDone(tx);
+    }
+
+    private applyWithCommitGuard(tx: IDBTransaction, commitGuard: ActiveCommitGuard | undefined, apply: () => void): void {
+      if (!commitGuard) {
+        apply();
+        return;
+      }
+      const request = tx.objectStore(Store.ActiveRetrieval).get(commitGuard.sessionId);
+      request.onsuccess = () => {
+        const current = request.result as ActiveRetrievalSession | undefined;
+        const matches = Boolean(
+          current
+          && current.status === "committing"
+          && current.revision === commitGuard.expectedRevision
+          && current.activeTargetId === commitGuard.targetId
+          && current.commitToken === commitGuard.commitToken
+        );
+        if (!matches) {
+          tx.abort();
+          return;
+        }
+        apply();
+      };
     }
 
     async replaceSettingsAndObligations(settings: AppSettings, obligations: RevisionObligation[]): Promise<void> {
