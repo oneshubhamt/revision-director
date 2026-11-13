@@ -187,6 +187,34 @@ def wait_for_app_ready(page: Page, *, timeout: int = 10_000) -> None:
         assert not page.locator("#fatal-error").is_visible(), "Fatal startup error"
 
 
+def open_rendered_pane(page: Page, pane: str, *, timeout: int = 10_000) -> None:
+    tab = page.locator(f'[data-pane="{pane}"]')
+    panel = page.locator(f'#pane-{pane}')
+    if tab.get_attribute("aria-selected") == "true":
+        panel.wait_for(state="visible", timeout=timeout)
+        return
+    content = page.locator(f'#{pane}-content')
+    marker = f"qa-stale-{pane}"
+    if content.count() and content.locator(":scope > *").count():
+        content.locator(":scope > *").first.evaluate(
+            "(e, marker) => e.setAttribute('data-qa-render-marker', marker)",
+            marker,
+        )
+    tab.click()
+    wait_until(
+        page,
+        lambda: tab.get_attribute("aria-selected") == "true"
+        and panel.is_visible()
+        and (
+            not content.count()
+            or content.locator(f'[data-qa-render-marker="{marker}"]').count() == 0
+        ),
+        timeout=timeout,
+        interval=30,
+        message=f"Timed out waiting for {pane} pane render",
+    )
+
+
 def wait_for_layout(page: Page) -> None:
     page.evaluate(
         """() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"""
