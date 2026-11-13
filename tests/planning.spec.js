@@ -58,8 +58,10 @@ persistentObligation.policyState.fsrsCard.lapses=4;
 persistentObligation.policyState.fsrsCard.reps=8;
 persistentObligation.policyState.fsrsCard.state=2;
 persistentObligation.policyState.fsrsCard.scheduleStatus='review';
-const persistentCandidate=api.buildPlanningCandidate({obligation:persistentObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},[],settings,ref);
-check(persistentCandidate&&persistentCandidate.factors.weakness>=.9&&persistentCandidate.reasons.some(reason=>reason.includes('persistent difficulty')),'Persistent FSRS lapse burden must surface as a strong planner weakness signal without changing the scheduler due date');
+const persistentReviews=[{rating:api.Rating.Good},...Array.from({length:4},()=>({rating:api.Rating.Again}))];
+const persistentIndex=new Map([[persistentObligation.id,persistentReviews]]);
+const persistentCandidate=api.buildPlanningCandidate({obligation:persistentObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},[],settings,ref,.5,undefined,persistentIndex);
+check(persistentCandidate&&persistentCandidate.factors.weakness>=.9&&persistentCandidate.reasons.some(reason=>reason.includes('persistent difficulty')),'Persistent established-memory failure history must surface as a strong planner weakness signal without changing the scheduler due date');
 
 const earlyLearningObligation=structuredClone(weakObligation);
 earlyLearningObligation.policyState=structuredClone(weakObligation.policyState);
@@ -82,8 +84,8 @@ check(earlyCandidate&&earlyCandidate.factors.weakness>=.68&&earlyCandidate.reaso
 const persistentNearJoined={obligation:structuredClone(persistentObligation),unit:sharedUnit,profile:profile('shared-profile',3),subject:'S',section:'C',topic:'T'};
 const persistentFarJoined={obligation:structuredClone(persistentObligation),unit:sharedUnit,profile:profile('shared-profile',120),subject:'S',section:'C',topic:'T'};
 const persistentDueBefore=persistentNearJoined.obligation.dueAt;
-const persistentNear=api.buildPlanningCandidate(persistentNearJoined,[],settings,ref);
-const persistentFar=api.buildPlanningCandidate(persistentFarJoined,[],settings,ref);
+const persistentNear=api.buildPlanningCandidate(persistentNearJoined,[],settings,ref,.5,undefined,persistentIndex);
+const persistentFar=api.buildPlanningCandidate(persistentFarJoined,[],settings,ref,.5,undefined,persistentIndex);
 check(persistentNear&&persistentFar&&persistentNear.score>persistentFar.score,'Exam proximity must increase corrective priority for otherwise identical difficult memory');
 check(persistentNearJoined.obligation.dueAt===persistentDueBefore,'Exam-proximity corrective planning must not rewrite the FSRS due date');
 const short = api.buildPlanningCandidate(joined('short',0,10,3,60),[],settings,ref);
