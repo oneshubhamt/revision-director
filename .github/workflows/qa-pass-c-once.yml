@@ -1,4 +1,4 @@
-name: One-off Pass C QA measurements
+name: One-off Pass C QA measurements # final Pass C profile
 on:
   push:
     branches: [working]
