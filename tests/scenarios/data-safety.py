@@ -174,12 +174,15 @@ def main():
         page.locator('#import-backup').set_input_files(str(rescue))
         wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='.rdrescue import handler did not finish')
         check(not page.locator('#restore-dialog').is_visible(),'.rdrescue entered ordinary restore ceremony')
-        check('backup' in page.locator('#toast').inner_text().lower() or 'manifest' in page.locator('#toast').inner_text().lower(),'.rdrescue rejection was not reported')
+        rescue_message=page.locator('#toast').inner_text().strip()
+        check(bool(rescue_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')"), f'.rdrescue rejection was not reported as an error · toast={rescue_message!r}')
         raw=tmp/'raw.json';raw.write_text(json.dumps({'format':'revision-director-backup'}))
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files(str(raw))
         wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Raw JSON import handler did not finish')
-        check(not page.locator('#restore-dialog').is_visible(),'Raw JSON entered restore ceremony')
+        raw_message=page.locator('#toast').inner_text().strip()
+        check(not page.locator('#restore-dialog').is_visible() and bool(raw_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')"),
+              f'Raw JSON did not fail through the rejection UI contract · toast={raw_message!r}')
 
         check(not errors,f'Browser errors: {errors}')
         browser.close()
