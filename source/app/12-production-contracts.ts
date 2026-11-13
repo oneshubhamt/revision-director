@@ -22,10 +22,6 @@
     return canonical;
   }
 
-  function canonicalOptionalId(value: string | undefined, label: string): string | undefined {
-    return value === undefined ? undefined : canonicalId(value, label);
-  }
-
   function canonicalName(value: string, label: string, maxLength = 240): string {
     assert(typeof value === "string", `${label} must be a string.`);
     const canonical = value.trim().replace(/\s+/g, " ");
@@ -43,10 +39,6 @@
   function canonicalIso(value: ISODateTime, label: string): ISODateTime {
     assert(typeof value === "string", `${label} must be a date-time string.`);
     return parseDate(value).toISOString();
-  }
-
-  function canonicalOptionalIso(value: ISODateTime | undefined, label: string): ISODateTime | undefined {
-    return value === undefined ? undefined : canonicalIso(value, label);
   }
 
   function assertDocumentSchema(value: { schemaVersion: DocumentSchemaVersion }, label: string): void {
