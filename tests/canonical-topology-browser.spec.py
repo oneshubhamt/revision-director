@@ -1,11 +1,10 @@
 from __future__ import annotations
 from pathlib import Path
-import runpy
 from playwright.sync_api import sync_playwright
 from helpers.browser_harness import ROOT, launch_chromium
+from helpers.persistent_browser import create_persistent_frame, persistent_html
 
-b1 = runpy.run_path(str(ROOT / "tests/scenarios/persistent-active-retrieval.py"), run_name="rd_canonical_topology_base")
-HTML = (ROOT / "index.html").read_text().replace("<head>", "<head>" + b1["PERSISTENT_BROWSER_SHIM"], 1)
+HTML = persistent_html()
 checks = 0
 
 
@@ -25,17 +24,13 @@ def detach_app(page) -> None:
 
 
 def boot(page):
-    page.evaluate("""() => {
-      document.querySelector('#app')?.remove();
-      const frame=document.createElement('iframe');
-      frame.id='app'; frame.name='canonical-topology-app';
-      document.body.appendChild(frame);
-    }""")
-    frame = page.frame(name="canonical-topology-app")
-    if frame is None:
-        raise AssertionError("Canonical-topology QA frame was not created")
-    frame.set_content(HTML, wait_until="load")
-    return frame
+    return create_persistent_frame(
+        page,
+        HTML,
+        name="canonical-topology-app",
+        width=1280,
+        height=900,
+    )
 
 
 def wait_ready(frame) -> None:
