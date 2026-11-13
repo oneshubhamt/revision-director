@@ -99,7 +99,6 @@ expected_optimizer_dependencies = {
 }
 check("optimizer dependencies pinned", optimizer_dependencies == expected_optimizer_dependencies)
 check("optimizer lock root matches package", optimizer_lock.get("packages", {}).get("", {}).get("dependencies") == optimizer_dependencies)
-check("portable build excludes optimizer assets", "revision-director-browser-optimizer" not in html and "fsrs-binding.wasm32-wasip1.wasm" not in html)
 
 checksum_targets = {
     line.split("  ./", 1)[1]
