@@ -90,7 +90,7 @@ f5ea0c53a9220c8e20205d3e79308615279ff2663be759ace6ef551cade23897  ./tests/stage-
 3a574cbc82a6011d5b7c792540d992efde6d1d7caa1fdb41c3502e59b8a87896  ./THIRD_PARTY_NOTICES.md
 437e6e999d5e9195ec94d016694c75ebbc7bc84b9b0016fcc45c9e1a4c206825  ./tools/fsrs-optimizer/browser-worker.mjs
 ac5dc954b6e4c61887397eaa35c9f306e58fc90dbfb954f62985e3337b53dae0  ./tools/fsrs-optimizer/optimize.mjs
-0000000000000000000000000000000000000000000000000000000000000000  ./tools/fsrs-optimizer/optimizer-contract.json
+0000000000000000000000000000000000000000000000000000000000000000  ./tools/fsrs-optimizer/optimizer-contract.mjs
 c774c26f672998e14045d9df1fc7af9376859f6471dcecb1a9e5e9df1c78c99c  ./tools/fsrs-optimizer/optimizer-core.mjs
 3412e0e72ff6cb9859730aac26ee5362d40a8a8ac55c507413f0e5b1a0b6f3d8  ./tools/fsrs-optimizer/optimizer-policy.mjs
 a6bd7c9aa21cfd15b3abadffd4c4bc26a49e0c5f95ffa451009a82ac2c313484  ./tools/fsrs-optimizer/package-lock.json
