@@ -7,6 +7,7 @@ const parts = [...manifest.parts].sort((a,b)=>a.order-b.order);
 const source = parts.map(item=>fs.readFileSync(path.join(root, "source", item.path), "utf8")).join("");
 const runtime = fs.readFileSync(path.join(root, "source/app/45-ui-runtime.ts"), "utf8");
 const workflowFormAdapter = fs.readFileSync(path.join(root, "source/app/46-workflow-form-adapter.ts"), "utf8");
+const activeRetrieval = fs.readFileSync(path.join(root, "source/app/47-active-retrieval-workspace.ts"), "utf8");
 const domainKernel = fs.readFileSync(path.join(root, "source/app/11-domain-kernel.ts"), "utf8");
 const backupValidation = fs.readFileSync(path.join(root, "source/app/22-backup-validation.ts"), "utf8");
 const evidenceTransition = fs.readFileSync(path.join(root, "source/app/23-evidence-transition.ts"), "utf8");
@@ -48,7 +49,7 @@ check("Form ID shadowing guarded", ui.includes('form.getAttribute("id")'));
 check("Delegated settings uses submitted form", ui.includes('event.target;') && ui.includes('form.getAttribute("id") === "settings-form"'));
 check("Read-only state is a render finalizer", ui.includes('this.applyReadOnlyState();') && ui.indexOf('this.applyReadOnlyState();') < ui.indexOf('if (this.gapFocus.isOpen())'));
 check("Settings replacement is fail-closed", /settingsContent\.innerHTML[\s\S]*?this\.applyReadOnlyState\(\);/.test(ui));
-check("Diagram pointer stream remains direct", ui.includes('canvas.addEventListener("pointerdown"') && ui.includes('canvas.addEventListener("pointermove"'));
+check("Diagram pointer stream remains direct", activeRetrieval.includes('canvas.addEventListener("pointerdown"') && activeRetrieval.includes('canvas.addEventListener("pointermove"'));
 check("Static ARIA tablist", shell.includes('role="tablist"'));
 check("Six static ARIA tabs", (shell.match(/role="tab"/g)||[]).length === 6);
 check("Six static ARIA tabpanels", (shell.match(/role="tabpanel"/g)||[]).length === 6);
@@ -62,6 +63,15 @@ check("Safe-area variables", css.includes("safe-area-inset-bottom") && css.inclu
 check("Compact independent scroll", css.includes("height:calc(100dvh - 64px - env(safe-area-inset-bottom))") && css.includes("overflow-y:auto"));
 check("Viewport cover", shell.includes("viewport-fit=cover"));
 check("Workflow form adapter has dedicated ownership", parts.some(item=>item.path === "app/46-workflow-form-adapter.ts"));
+check("Active retrieval workspace has dedicated ownership",
+  parts.some(item=>item.path === "app/47-active-retrieval-workspace.ts")
+  && activeRetrieval.includes("class ActiveRetrievalWorkspace")
+  && activeRetrieval.includes("async render()")
+  && activeRetrieval.includes("async flushForOwnershipRelease()")
+  && !ui.includes("private activeReviewIds")
+  && !ui.includes("private reviewPhase")
+  && !ui.includes("private phaseTime")
+  && !ui.includes("private commitInFlight"));
 check("Domain kernel is DOM-free",
   !/FormData|HTMLFormElement|HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|innerHTML|document\./.test(domainKernel));
 check("Workflow form machinery lives in UI adapter",
