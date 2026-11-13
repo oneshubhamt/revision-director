@@ -4205,7 +4205,7 @@
       async replaceSettingsAndObligations(settings, obligations) {
           await this.operation("replaceSettingsAndObligations", () => this.repository.replaceSettingsAndObligations(canonicalAppSettings(settings), obligations.map(canonicalRevisionObligation)));
       }
-      async backupState() {
+      async backupState(activeRetrievalMode = "validate") {
           return this.operation("backupState", async () => {
               const raw = await this.repository.rawDump();
               const settings = raw[Store.Settings];
@@ -4215,7 +4215,8 @@
               assert(metadata.length === 1, "Canonical storage must contain exactly one database-metadata document.");
               const canonicalMetadata = canonicalDocument("metadata", metadata[0]);
               assert(canonicalMetadata.databaseName === DB_NAME && canonicalMetadata.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
-              assert(activeRetrieval.length <= 1, "Canonical storage may contain at most one active retrieval session.");
+              if (activeRetrievalMode === "validate")
+                  assert(activeRetrieval.length <= 1, "Canonical storage may contain at most one active retrieval session.");
               return {
                   profiles: canonicalDocumentArray("profile", raw[Store.Profiles], "Stored exam profiles"),
                   nodes: canonicalDocumentArray("node", raw[Store.Nodes], "Stored knowledge nodes"),
@@ -4226,7 +4227,9 @@
                   chunks: canonicalDocumentArray("chunk", raw[Store.Chunks], "Stored obligation chunks"),
                   dailyPlans: canonicalDocumentArray("daily-plan", raw[Store.DailyPlans], "Stored daily plans"),
                   settings: canonicalDocument("settings", settings[0]),
-                  activeRetrieval: activeRetrieval.length === 1 ? canonicalDocument("active-retrieval", activeRetrieval[0]) : null,
+                  activeRetrieval: activeRetrievalMode === "validate" && activeRetrieval.length === 1
+                      ? canonicalDocument("active-retrieval", activeRetrieval[0])
+                      : null,
               };
           });
       }
@@ -4964,7 +4967,7 @@
       }
       async initialize() {
           this.invalidateMemoryReviewAnalysis();
-          const state = await this.repo.backupState();
+          const state = await this.repo.backupState("ignore");
           this.settings = clone(state.settings);
           this.assertActiveProfileSelection(state.profiles, this.settings);
           await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);
