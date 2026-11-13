@@ -197,19 +197,21 @@ def main():
         confirm_restore(page)
         check(page.locator('#sb-units').inner_text()=='2','Forensic-gated restore did not recover known-good backup')
 
-        # Rescue and raw JSON cannot enter the normal restore ceremony.
+        # Hostile content cannot enter the normal restore ceremony even when renamed to an accepted .rdbackup.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        rescue_probe=tmp/'forensic-rescue-disguised.rdbackup'
+        rescue_probe.write_bytes(rescue.read_bytes())
         page.evaluate("document.querySelector('#toast').textContent=''")
-        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(rescue))
+        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(rescue_probe))
         rescue_result=wait_for_backup_import_result(page, timeout=5000)
-        check(not rescue_result['preview'],'.rdrescue entered ordinary restore ceremony')
-        check(bool(rescue_result['message']) and rescue_result['error'], f".rdrescue rejection was not reported as an error · result={rescue_result!r}")
-        raw=tmp/'raw.json';raw.write_text(json.dumps({'format':'revision-director-backup'}))
+        check(not rescue_result['preview'] and bool(rescue_result['message']) and rescue_result['error'],
+              f"Forensic rescue disguised as .rdbackup was not rejected · result={rescue_result!r}")
+        raw=tmp/'raw-disguised.rdbackup';raw.write_text(json.dumps({'format':'revision-director-backup'}))
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(raw))
         raw_result=wait_for_backup_import_result(page, timeout=5000)
         check(not raw_result['preview'] and bool(raw_result['message']) and raw_result['error'],
-              f"Raw JSON did not fail through the rejection UI contract · result={raw_result!r}")
+              f"Raw JSON disguised as .rdbackup was not rejected · result={raw_result!r}")
 
         check(not errors,f'Browser errors: {errors}')
         browser.close()
