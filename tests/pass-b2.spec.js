@@ -1,7 +1,7 @@
 'use strict';
 const { createAppRuntime } = require('./helpers/runtime-harness');
 
-const { api, context } = createAppRuntime({
+const { api } = createAppRuntime({
   globalName: '__RD_B2_TEST__',
   expose: ["APP_VERSION","INACTIVE_GAP_THRESHOLD_MS","TIME_HISTORY_LIMIT","phaseTimeSnapshot","timingEvidenceSummary","canonicalTimingEvidenceSummary","canonicalPhaseTimeRuntimeSnapshot","canonicalActiveRetrievalSession","PhaseTimeRuntime","durationObservationFor"],
   requireFsrs: false,
