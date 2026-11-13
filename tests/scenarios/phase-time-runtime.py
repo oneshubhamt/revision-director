@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
-from backup_fixture_codec import decode_file
+from backup_fixture_codec import baseline_backup_path, decode_file
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
@@ -21,7 +21,7 @@ from helpers.persistent_browser import (
     create_persistent_frame,
     host_state_get as state_get,
 )
-BASELINE_BACKUP = ROOT / "tests/fixtures/browser-baseline.rdbackup"
+BASELINE_BACKUP = baseline_backup_path()
 CLOCK_SHIM = r"""
 <script>
 (() => {
