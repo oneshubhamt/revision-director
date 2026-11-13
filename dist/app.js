@@ -907,9 +907,6 @@
       assert(/^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$/.test(canonical), `${label} contains unsupported identifier characters.`);
       return canonical;
   }
-  function canonicalOptionalId(value, label) {
-      return value === undefined ? undefined : canonicalId(value, label);
-  }
   function canonicalName(value, label, maxLength = 240) {
       assert(typeof value === "string", `${label} must be a string.`);
       const canonical = value.trim().replace(/\s+/g, " ");
@@ -925,9 +922,6 @@
   function canonicalIso(value, label) {
       assert(typeof value === "string", `${label} must be a date-time string.`);
       return parseDate(value).toISOString();
-  }
-  function canonicalOptionalIso(value, label) {
-      return value === undefined ? undefined : canonicalIso(value, label);
   }
   function assertDocumentSchema(value, label) {
       assert(value.schemaVersion === DOCUMENT_SCHEMA_VERSION, `${label} uses an unsupported document schema.`);
@@ -1516,18 +1510,39 @@
   /* ==========================================================================
      FSRS-7 PERSONALIZATION CONTRACT — EXTERNAL OPTIMIZER BOUNDARY
      ========================================================================== */
-  const FSRS_OPTIMIZER_PROFILE_SCHEMA = "revision-director-fsrs-profile/v1";
-  const FSRS_OPTIMIZER_BINDING_VERSION = "0.6.1";
-  const FSRS_OPTIMIZER_HOLDOUT_STRATEGY = "final-sixth";
-  const FSRS_OPTIMIZER_MIN_TRAIN_ITEMS = 64;
-  const FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS = 64;
-  const FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS = 16;
-  const FSRS_OPTIMIZER_MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT = 0.001;
-  const FSRS_OPTIMIZER_MIN_RELATIVE_LOG_LOSS_IMPROVEMENT = 0.005;
-  const FSRS_OPTIMIZER_CALIBRATION_EPSILON = 1e-9;
-  const FSRS_OPTIMIZER_CHRONOLOGY = "elapsed-24h";
-  const FSRS_OPTIMIZER_FIXED_UTC_OFFSET_MINUTES = 0;
-  const FSRS_OPTIMIZER_ROLLOVER_HOUR = 0;
+  const FSRS_OPTIMIZER_CONTRACT = Object.freeze({
+      profileSchema: "revision-director-fsrs-profile/v1",
+      model: FSRS_MODEL,
+      bindingVersion: "0.6.1",
+      holdoutSegments: 6,
+      holdoutStrategy: "final-sixth",
+      minimumTrainItems: 64,
+      minimumHoldoutItems: 64,
+      minimumHoldoutCards: 16,
+      minimumAbsoluteLogLossImprovement: 0.001,
+      minimumRelativeLogLossImprovement: 0.005,
+      calibrationEpsilon: 1e-9,
+      chronology: "elapsed-24h",
+      converterFixedUtcOffsetMinutes: 0,
+      converterRolloverHour: 0,
+      enableShortTerm: true,
+      enableSchedPenalties: true,
+      numRelearningSteps: 1,
+      runtimeLearningSteps: Object.freeze(["1d"]),
+      runtimeRelearningSteps: Object.freeze(["1d"]),
+  });
+  const FSRS_OPTIMIZER_PROFILE_SCHEMA = FSRS_OPTIMIZER_CONTRACT.profileSchema;
+  const FSRS_OPTIMIZER_BINDING_VERSION = FSRS_OPTIMIZER_CONTRACT.bindingVersion;
+  const FSRS_OPTIMIZER_HOLDOUT_STRATEGY = FSRS_OPTIMIZER_CONTRACT.holdoutStrategy;
+  const FSRS_OPTIMIZER_MIN_TRAIN_ITEMS = FSRS_OPTIMIZER_CONTRACT.minimumTrainItems;
+  const FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS = FSRS_OPTIMIZER_CONTRACT.minimumHoldoutItems;
+  const FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS = FSRS_OPTIMIZER_CONTRACT.minimumHoldoutCards;
+  const FSRS_OPTIMIZER_MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT = FSRS_OPTIMIZER_CONTRACT.minimumAbsoluteLogLossImprovement;
+  const FSRS_OPTIMIZER_MIN_RELATIVE_LOG_LOSS_IMPROVEMENT = FSRS_OPTIMIZER_CONTRACT.minimumRelativeLogLossImprovement;
+  const FSRS_OPTIMIZER_CALIBRATION_EPSILON = FSRS_OPTIMIZER_CONTRACT.calibrationEpsilon;
+  const FSRS_OPTIMIZER_CHRONOLOGY = FSRS_OPTIMIZER_CONTRACT.chronology;
+  const FSRS_OPTIMIZER_FIXED_UTC_OFFSET_MINUTES = FSRS_OPTIMIZER_CONTRACT.converterFixedUtcOffsetMinutes;
+  const FSRS_OPTIMIZER_ROLLOVER_HOUR = FSRS_OPTIMIZER_CONTRACT.converterRolloverHour;
   // Pinned ts-fsrs@6.0.0 FSRS-7 defaults and parameter bounds. Keep these
   // synchronized with vendor/ts-fsrs-6.0.0; profile activation also passes the
   // weights through DefaultScheduler, providing a second vendor-level check.
@@ -1646,12 +1661,16 @@
       }
       const training = requireRecord(profile["training"], "FSRS optimizer training metadata");
       assertExactKeys(training, "FSRS optimizer training metadata", ["enableShortTerm", "enableSchedPenalties", "numRelearningSteps", "chronology", "converterFixedUtcOffsetMinutes", "converterRolloverHour", "runtimeLearningSteps", "runtimeRelearningSteps", "validationCandidateTrainedItems", "finalRetrainedOnAllEvidence"]);
-      assert(training["enableShortTerm"] === true && training["enableSchedPenalties"] === true && training["numRelearningSteps"] === 1, "FSRS optimizer training flags are invalid.");
+      assert(training["enableShortTerm"] === FSRS_OPTIMIZER_CONTRACT.enableShortTerm
+          && training["enableSchedPenalties"] === FSRS_OPTIMIZER_CONTRACT.enableSchedPenalties
+          && training["numRelearningSteps"] === FSRS_OPTIMIZER_CONTRACT.numRelearningSteps, "FSRS optimizer training flags are invalid.");
       assert(training["chronology"] === FSRS_OPTIMIZER_CHRONOLOGY
           && training["converterFixedUtcOffsetMinutes"] === FSRS_OPTIMIZER_FIXED_UTC_OFFSET_MINUTES
           && training["converterRolloverHour"] === FSRS_OPTIMIZER_ROLLOVER_HOUR, "FSRS optimizer chronology metadata is invalid.");
-      assert(Array.isArray(training["runtimeLearningSteps"]) && training["runtimeLearningSteps"].length === 1 && training["runtimeLearningSteps"][0] === "1d"
-          && Array.isArray(training["runtimeRelearningSteps"]) && training["runtimeRelearningSteps"].length === 1 && training["runtimeRelearningSteps"][0] === "1d", "FSRS optimizer runtime step metadata is invalid.");
+      assert(Array.isArray(training["runtimeLearningSteps"])
+          && JSON.stringify(training["runtimeLearningSteps"]) === JSON.stringify(FSRS_OPTIMIZER_CONTRACT.runtimeLearningSteps)
+          && Array.isArray(training["runtimeRelearningSteps"])
+          && JSON.stringify(training["runtimeRelearningSteps"]) === JSON.stringify(FSRS_OPTIMIZER_CONTRACT.runtimeRelearningSteps), "FSRS optimizer runtime step metadata is invalid.");
       assert(training["validationCandidateTrainedItems"] === trainItems && training["finalRetrainedOnAllEvidence"] === true, "FSRS optimizer final-training metadata is invalid.");
       return {
           schema: FSRS_OPTIMIZER_PROFILE_SCHEMA,
@@ -1678,14 +1697,14 @@
               },
           },
           training: {
-              enableShortTerm: true,
-              enableSchedPenalties: true,
-              numRelearningSteps: 1,
+              enableShortTerm: FSRS_OPTIMIZER_CONTRACT.enableShortTerm,
+              enableSchedPenalties: FSRS_OPTIMIZER_CONTRACT.enableSchedPenalties,
+              numRelearningSteps: FSRS_OPTIMIZER_CONTRACT.numRelearningSteps,
               chronology: FSRS_OPTIMIZER_CHRONOLOGY,
               converterFixedUtcOffsetMinutes: FSRS_OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,
               converterRolloverHour: FSRS_OPTIMIZER_ROLLOVER_HOUR,
-              runtimeLearningSteps: ["1d"],
-              runtimeRelearningSteps: ["1d"],
+              runtimeLearningSteps: [...FSRS_OPTIMIZER_CONTRACT.runtimeLearningSteps],
+              runtimeRelearningSteps: [...FSRS_OPTIMIZER_CONTRACT.runtimeRelearningSteps],
               validationCandidateTrainedItems: trainItems,
               finalRetrainedOnAllEvidence: true,
           },
