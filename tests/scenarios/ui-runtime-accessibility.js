@@ -1,7 +1,7 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(__dirname, "../..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "source/app/source-manifest.json"), "utf8"));
 const parts = [...manifest.parts].sort((a,b)=>a.order-b.order);
 const source = parts.map(item=>fs.readFileSync(path.join(root, "source", item.path), "utf8")).join("");

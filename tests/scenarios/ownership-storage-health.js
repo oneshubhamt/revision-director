@@ -1,5 +1,5 @@
 'use strict';
-const { createAppRuntime, memoryLocalStorage } = require('./helpers/runtime-harness');
+const { createAppRuntime, memoryLocalStorage } = require('../helpers/runtime-harness');
 
 (async () => {
   class FakeBroadcastChannel {
