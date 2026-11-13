@@ -64,7 +64,7 @@ npm run qa:full
 
 `qa:core` rebuilds the authoritative artifacts, refreshes the tracked checksum manifest in the working tree, checks source/build ownership, and runs every non-browser JavaScript regression. `qa:optimizer` exercises the isolated native optimizer runtime. `qa:browser:durability` is the focused phase-time/durability gate. `qa:browser` runs the complete Python/Chromium matrix plus full browser/WASM optimizer training. `qa:full` runs all four surfaces in order. Browser commands require Playwright and Chromium; local hosted-optimizer runs require `npm ci --prefix tools/fsrs-optimizer` and `npm run build:hosted` if the hosted distribution is not already present.
 
-The Python browser suite shares stable launch, error-capture, wait, module-loading and scenario-runner primitives from `tests/helpers/browser_harness.py`. Behavior-specific shims remain with the scenarios that own them.
+The Python browser suite shares stable launch, error-capture, wait, module-loading and scenario-runner primitives from `tests/helpers/browser_harness.py`. The reusable persistent IndexedDB shim, host-state access, iframe bootstrapping and safety-copy restore ceremony live in `tests/helpers/persistent_browser.py`. Clock manipulation, hostile-commit injection, broadcast-channel behavior and other scenario-specific shims remain with the scenarios that own them.
 
 ## Required QA discipline
 

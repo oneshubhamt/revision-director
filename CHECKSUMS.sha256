@@ -72,6 +72,7 @@ acd76cfbffc74fa75fe28b45ad8d8c9d1343452c50fc6af15048c7bcc032d0ee  ./tests/planni
 e2b1b48e938f8d39317233f3931b59a34024fa6f17b05f1dcd57695c26a69776  ./tests/storage-and-recovery.spec.js
 2bb8f693110fc0f4383c3e65589a5dd38d2f87bc824bb1fee68ed0fd34c09c11  ./tests/ui-and-presentation.spec.js
 f70e895482b8dea69c483c60a8cf357fa4964a59e4648d6c8ed764f98b0f5dae  ./tests/helpers/browser_harness.py
+0000000000000000000000000000000000000000000000000000000000000000  ./tests/helpers/persistent_browser.py
 187e93c1f479335f69aea4d206df6a1336496020b93d56a469ce168613f91df4  ./tests/helpers/suite-runner.js
 98ff8e2597a022af3ba2df1a3ae71207a172dd3e10ae3a64b5c62e3af9a01728  ./tests/qa.py
 4480f03a4ec4b8b79a3170d2a1a223f742fa539ee772401cb18b0118d7101e73  ./tests/html-sanity.spec.py

@@ -49,6 +49,10 @@ shell = (ROOT / "source/revision-director.shell.html").read_text()
 css = (ROOT / "source/revision-director.va7.css").read_text()
 js = (ROOT / "dist/app.js").read_text()
 html = (ROOT / "index.html").read_text()
+browser_harness_py = (ROOT / "tests/helpers/browser_harness.py").read_text()
+persistent_browser_py = (ROOT / "tests/helpers/persistent_browser.py").read_text()
+browser_scenario_paths = sorted((ROOT / "tests/scenarios").glob("*.py"))
+browser_scenarios = {path.name: path.read_text() for path in browser_scenario_paths}
 vendor_path = ROOT / "vendor/ts-fsrs-6.0.0/index.umd.js"
 vendor = vendor_path.read_text()
 package = json.loads((ROOT / "vendor/ts-fsrs-6.0.0/package.json").read_text())
@@ -82,13 +86,15 @@ check("TypeScript correctness flags", all(tsconfig.get("compilerOptions", {}).ge
 check("build assembles emitted files", "expected_outputs" in build_script and "manifest-ordered-emitted-js" in build_script and "textwrap.indent(body, \"  \")" in build_script)
 check("measured TypeScript checker parallelism", 'TYPESCRIPT_CHECKERS = 2' in build_script and '"--checkers", str(TYPESCRIPT_CHECKERS)' in build_script)
 check("source parts own no runtime wrapper", not first_source.lstrip().startswith("(() => {") and not last_source.rstrip().endswith("})();"))
-check("manifest owns expected layers", all(token in {path.name for path in source_paths} for token in [
+check("manifest owns exact ordered layers", [path.name for path in source_paths] == [
     "00-runtime-boundary.ts", "05-presentation-engine.ts", "10-domain-model.ts", "11-domain-kernel.ts",
-    "12-production-contracts.ts", "18-fsrs-personalization.ts", "18a-fsrs-browser-optimizer.ts", "19-revision-scheduler-port.ts", "20-policy-planning-kernel.ts", "21-policy-implementations.ts",
-    "22-backup-validation.ts", "23-evidence-transition.ts",
-    "30-indexeddb-repository.ts", "31-storage-facade.ts", "32-active-retrieval-persistence.ts", "33-phase-time-runtime.ts", "34-cross-tab-ownership.ts", "40-application-services.ts",
-    "41-backup-codec.ts", "45-ui-runtime.ts", "46-workflow-form-adapter.ts", "47-active-retrieval-workspace.ts", "50-ui-controller.ts", "60-public-bridge-bootstrap.ts"
-]))
+    "12-production-contracts.ts", "18-fsrs-personalization.ts", "18a-fsrs-browser-optimizer.ts", "19-revision-scheduler-port.ts",
+    "20-policy-planning-kernel.ts", "21-policy-implementations.ts", "22-backup-validation.ts", "23-evidence-transition.ts",
+    "30-indexeddb-repository.ts", "31-storage-facade.ts", "32-active-retrieval-persistence.ts", "33-phase-time-runtime.ts",
+    "34-cross-tab-ownership.ts", "40-application-services.ts", "41-backup-codec.ts", "42-backup-controller.ts",
+    "45-ui-runtime.ts", "46-workflow-form-adapter.ts", "47-active-retrieval-workspace.ts", "48-settings-workspace.ts",
+    "50-ui-controller.ts", "55-extension-runtime.ts", "60-public-bridge-bootstrap.ts",
+])
 check("shell presentation manifest placeholder", "<!-- INLINE_PRESENTATION_MANIFEST -->" in shell)
 check("shell presentation prepaint placeholder", "<!-- INLINE_PRESENTATION_PREPAINT -->" in shell)
 check("shell CSS placeholder", "<!-- INLINE_CSS -->" in shell)
@@ -391,5 +397,10 @@ check("ownership lifecycle closure", "releaseForExit" in ts and 'window.addEvent
 check("storage quota refresh", "refreshStorageHealth(requestPersistence = false)" in ts and "refreshStorageHealth(true)" in ts and "storage-capacity-banner" in shell)
 check("ownership and hostile-recovery behavioral suites", (ROOT / "tests/scenarios/ownership-storage-health.js").exists() and (ROOT / "tests/scenarios/ownership-storage-health.py").exists() and (ROOT / "tests/scenarios/hostile-recovery.py").exists() and (ROOT / "tests/browser-recovery.spec.py").exists())
 check("historical pass/stage test entrypoints removed", not list((ROOT / "tests").glob("pass-*")) and not list((ROOT / "tests").glob("stage-*")))
+check("shared browser harness files checksum-covered", all(path in checksum_targets for path in ["tests/helpers/browser_harness.py", "tests/helpers/persistent_browser.py", "tests/helpers/suite-runner.js", "tests/qa.py"]))
+check("browser scenarios use shared launch and error plumbing", len(browser_scenarios) == 15 and all(".chromium.launch(" not in body and "page.on(\"pageerror\"" not in body and "page.on('pageerror'" not in body and "page.on(\"console\"" not in body and "page.on('console'" not in body for body in browser_scenarios.values()))
+check("browser scenarios have no scenario imports or runpy loaders", all("runpy" not in body and "scenarios/persistent-active-retrieval.py" not in body for body in browser_scenarios.values()))
+check("browser polling centralized", all("while time.monotonic() < deadline" not in body and "while time.monotonic()<deadline" not in body for body in browser_scenarios.values()) and "def wait_until(" in browser_harness_py)
+check("persistent browser plumbing centralized", all(token in persistent_browser_py for token in ["PERSISTENT_BROWSER_SHIM", "create_persistent_frame", "host_state_all", "host_state_get", "restore_backup_with_safety_copy"]) and "class FakeStorage" not in browser_scenarios["persistent-active-retrieval.py"])
 subprocess.run(["node", "--check", str(ROOT / "dist/app.js")], check=True)
 print(f"PASS {len(checks)} build-integrity checks")
