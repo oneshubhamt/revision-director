@@ -102,8 +102,16 @@ def restore_selected_backup(page, backup_path: str | Path, treatment: str = "dis
     page.locator("#restore-safety-saved").check()
     page.locator("#restore-replace-confirm").check()
     check(page.locator("#restore-final-button").is_enabled(), "Final restore remained disabled")
+    page.evaluate("document.querySelector('#toast').textContent=''")
     page.locator("#restore-final-button").click()
-    wait_until(page, lambda: "restored" in page.locator("#toast").inner_text().lower(), timeout=8000, interval=40, message="Restore did not complete")
+    page.locator("#restore-dialog").wait_for(state="hidden")
+    wait_until(
+        page,
+        lambda: "restored" in page.locator("#toast").inner_text().lower(),
+        timeout=8000,
+        interval=40,
+        message="Restore did not complete canonical hydration",
+    )
 
 def open_page(browser, viewport=None, baseline: bool = False):
     page = browser.new_page(viewport=viewport or {"width": 1440, "height": 1000})
