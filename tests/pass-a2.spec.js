@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_A2_TEST__ = { APP_VERSION, DB_NAME, DB_VERSION, DOCUMENT_SCHEMA_VERSION, BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, Store, defaultSettings, canonicalExamProfile, canonicalKnowledgeNode, canonicalAppSettings, canonicalDailyPlanRecord, latestPlanVersion, AppDiagnostics, RevisionData, RevisionService };';
+const hook = 'window.__RD_A2_TEST__ = { APP_VERSION, DB_NAME, DB_VERSION, DOCUMENT_SCHEMA_VERSION, BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, Store, defaultSettings, canonicalExamProfile, canonicalKnowledgeNode, canonicalAppSettings, canonicalDailyPlanRecord, latestPlanVersion, AppDiagnostics, RevisionData, RevisionService, validateBackupPayload };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -86,12 +86,12 @@ check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound')
     settings:{schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}},
     activeRetrieval:null,
   };
-  check(service.validateBackup(emptyBackup).profiles.length === 0, 'Clean empty production backup was rejected');
-  mustFail(() => service.validateBackup({...emptyBackup, format:'revision-director-va7-1'}), 'Non-current backup identity was accepted');
-  mustFail(() => service.validateBackup({...emptyBackup, profiles:[null]}), 'Non-object backup profile was accepted');
-  mustFail(() => service.validateBackup({...emptyBackup, profiles:'not-an-array'}), 'Non-array backup collection was accepted');
-  mustFail(() => service.validateBackup({...emptyBackup, settings:{...emptyBackup.settings, schemaVersion:2}}), 'Unsupported settings schema was accepted');
-  mustFail(() => service.validateBackup({...emptyBackup, activeRetrieval:42}), 'Non-object active retrieval payload was accepted');
-  mustFail(() => service.validateBackup({...emptyBackup, profiles:[{...rawProfile,status:'suspended',id:'profile\" autofocus onfocus=alert(1) x=\"'}]}), 'Hostile imported identifier was accepted');
+  check(api.validateBackupPayload(emptyBackup).profiles.length === 0, 'Clean empty production backup was rejected');
+  mustFail(() => api.validateBackupPayload({...emptyBackup, format:'revision-director-va7-1'}), 'Non-current backup identity was accepted');
+  mustFail(() => api.validateBackupPayload({...emptyBackup, profiles:[null]}), 'Non-object backup profile was accepted');
+  mustFail(() => api.validateBackupPayload({...emptyBackup, profiles:'not-an-array'}), 'Non-array backup collection was accepted');
+  mustFail(() => api.validateBackupPayload({...emptyBackup, settings:{...emptyBackup.settings, schemaVersion:2}}), 'Unsupported settings schema was accepted');
+  mustFail(() => api.validateBackupPayload({...emptyBackup, activeRetrieval:42}), 'Non-object active retrieval payload was accepted');
+  mustFail(() => api.validateBackupPayload({...emptyBackup, profiles:[{...rawProfile,status:'suspended',id:'profile\" autofocus onfocus=alert(1) x=\"'}]}), 'Hostile imported identifier was accepted');
   console.log(`PASS ${checks} Pass A2 production-contract and storage-facade checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });
