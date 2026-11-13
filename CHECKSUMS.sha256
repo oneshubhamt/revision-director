@@ -3,13 +3,13 @@
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 af876ea5cb9b13c35ab6626f3ba640de3946ffad1329f5c1e6adf4483b67fa81  ./build/checksums.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
-1b95de2c6ad87a61f98a3f5318f479a58235d1a6004215bf7a2718022facb614  ./dist/app.js
+8e4c8f2e69b521d621a181bf52dd02e9283fb3ecf292d64767003097c8489f9b  ./dist/app.js
 2aa4507050fcebca069e0874287856820a62a6f4febe7b8acd4de28decf6446d  ./docs/ARCHITECTURE.md
 9af5c8c6dca1d54165e1355a12c8cc24865167752553b87a29a8af3178191604  ./docs/DATA_AND_STORAGE.md
 fd8f5185f6caa63a8404018018bf48938446ea2076c987cf22923085e0973bb9  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ba443230bfdda805284486e5b36639034180a19c288be052d9e329ab4d001404  ./docs/SCHEDULING_AND_PLANNING.md
-3642968ebe631a4d72a595984cbe55c27159c2ec29b3c3da4bc562b310d38826  ./index.html
+1e1523f0aa28ed7f533a383ef1b13869ad9d1496ed4eed29b5b514a4de60825c  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -39,7 +39,7 @@ db4f20d09fa64fa2b60bd157ef951c8e53859eec54b0e0391ab2d245e356c838  ./source/app/4
 0cededf4bb604246ea36f49159cc9145f2581a3e5842b75bc99c8efc13fc2442  ./source/app/45-ui-runtime.ts
 995a2f1a55be2ec3315fb1f228e31c74e2841f9f2d8ba6cb8b9ac0a40ff39015  ./source/app/46-workflow-form-adapter.ts
 3e1d94b2a64682a7f484446ac7a1d0faaa9b8d07b01a1aedf459963c138dcdab  ./source/app/47-active-retrieval-workspace.ts
-358da03c5dd41c17335add3724831f84a141301d67566f646dcb32f8ad9acfb0  ./source/app/50-ui-controller.ts
+5f55de8aa4ef394375347e075a17b9b1464babacfe6d5af3a6e23a76077f3ff5  ./source/app/50-ui-controller.ts
 f9560c8de7e7926321bb71dd697090c98ab34d680b3a4b225d5832f848f51949  ./source/app/55-extension-runtime.ts
 77963fce015a51c7175b7b3b41faefd32600f5cae6c463f19a836e4333aef11b  ./source/app/60-public-bridge-bootstrap.ts
 e30f76f9a4dcb5f47b7decb1b68bf3e369b69864c56320fc41fbabb2225b192c  ./source/app/source-manifest.json
@@ -89,7 +89,7 @@ ea376c42c45dd829aef23d5b709f43ff4494370af73edf924e7590cc893a367d  ./tests/pass-f
 d021d6343f33dcb0bc85d151c4bed0b9768042f3aeb7f5233971df7d9a91ff36  ./tests/planning.spec.js
 95e40fcffebd727171a210fb86eb7fadc311e3ec8e0ccac4d1b3894198a8f330  ./tests/runtime-harness-ownership.spec.js
 6bfbbb4ac5915ef7f9e03a1a7bc6e1aa29c5d7bcdfe749c842e72d5a24f42daa  ./tests/source-ownership.spec.py
-e0622ca0dfe7e577e991c5a3a0a12f57bd21140ab2bcf513ebf936da7b6b52a9  ./tests/stage-b-hostile-recovery.spec.py
+72dbaca3c41c982ea60129522ef6e8b0146823f705183d874ffb60c424971c97  ./tests/stage-b-hostile-recovery.spec.py
 f7fedb2f577b1130a4328cabfba618851ce2cc08a78513fd5fa787a9470e051f  ./tests/stage-c-behavioural.spec.py
 1b0713d910c13a84343066a181aa48ff701a3e0f151d83e382bbb7f5776e241c  ./tests/stage-c-responsive.spec.py
 0694726071e6300ee1129d0d1bebaa3529568e218fbe1510a88c6ede5f775f11  ./tests/stage-d-data-safety-browser.spec.py

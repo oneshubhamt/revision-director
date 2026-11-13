@@ -9576,7 +9576,10 @@
           await this.renderCoordinator.invalidateAndWait(...domains);
       }
       async renderPane(pane) {
-          await this.renderCoordinator.invalidateAndWait("plan", pane, "sidebar", "ownership", "storage");
+          const domains = [pane, "sidebar", "ownership", "storage"];
+          if (pane === "today" || pane === "review" || !this.planSnapshot)
+              domains.unshift("plan");
+          await this.renderCoordinator.invalidateAndWait(...domains);
       }
       async refreshPlanSnapshot() {
           this.planSnapshot = await this.service.calculateDailyPlan(new Date());
