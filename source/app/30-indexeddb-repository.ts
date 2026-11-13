@@ -93,9 +93,21 @@
           plans.createIndex("studyDayKey", "studyDayKey", { unique: true });
           plans.createIndex("updatedAt", "updatedAt");
 
-          db.createObjectStore(Store.Settings, { keyPath: "key" });
-          db.createObjectStore(Store.Metadata, { keyPath: "key" });
+          const settings = db.createObjectStore(Store.Settings, { keyPath: "key" });
+          const metadata = db.createObjectStore(Store.Metadata, { keyPath: "key" });
           db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
+
+          const createdAt = nowIso();
+          settings.add(defaultSettings());
+          metadata.add({
+            schemaVersion: DOCUMENT_SCHEMA_VERSION,
+            key: "database",
+            databaseName: DB_NAME,
+            databaseVersion: DB_VERSION,
+            applicationVersion: APP_VERSION,
+            createdAt,
+            updatedAt: createdAt,
+          } satisfies AppMetadata);
       };
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         request.onsuccess = () => resolve(request.result);
@@ -121,18 +133,6 @@
       const values = await requestResult(tx.objectStore(store).getAll());
       await transactionDone(tx);
       return values as StoreValue<S>[];
-    }
-
-    async hasAnyStoredData(excluded: readonly StoreName[] = []): Promise<boolean> {
-      const excludedStores = new Set<StoreName>(excluded);
-      for (const store of Object.values(Store) as StoreName[]) {
-        if (excludedStores.has(store)) continue;
-        const tx = this.db.transaction(store, "readonly");
-        const count = await requestResult(tx.objectStore(store).count());
-        await transactionDone(tx);
-        if (count > 0) return true;
-      }
-      return false;
     }
 
     async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
@@ -281,8 +281,12 @@
 
     async rawDump(): Promise<Record<StoreName, unknown[]>> {
       const stores = Object.values(Store) as StoreName[];
+      const tx = this.db.transaction(stores, "readonly");
+      const requests = stores.map((store) => requestResult(tx.objectStore(store).getAll()));
+      const values = await Promise.all(requests);
+      await transactionDone(tx);
       const dump = {} as Record<StoreName, unknown[]>;
-      for (const store of stores) dump[store] = await this.getAll(store);
+      stores.forEach((store, index) => { dump[store] = values[index] ?? []; });
       return dump;
     }
 
