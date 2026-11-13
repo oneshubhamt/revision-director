@@ -161,12 +161,15 @@ def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) ->
 
 
 def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[str, object]:
+    # Import owns the file input until inspection reaches its finally block.
+    # Synchronize on that lifecycle rather than requiring a toast and input reset
+    # to be observable in the same polling instant.
     page.wait_for_function(
         """() => {
+          const input=document.querySelector('#import-backup');
           const dialog=document.querySelector('#restore-dialog');
-          const toast=document.querySelector('#toast');
           return Boolean(dialog instanceof HTMLDialogElement && dialog.open)
-            || Boolean(toast?.textContent?.trim());
+            || Boolean(input instanceof HTMLInputElement && input.files?.length === 0);
         }""",
         timeout=timeout,
     )
@@ -175,6 +178,7 @@ def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[s
         "preview": page.locator("#restore-dialog").is_visible(),
         "message": message,
         "error": page.locator("#toast").evaluate("e=>e.classList.contains('error')"),
+        "inspectionComplete": page.locator("#import-backup").evaluate("e=>e instanceof HTMLInputElement && e.files?.length === 0"),
     }
 
 def load_test_module(path: str | Path, name: str):
