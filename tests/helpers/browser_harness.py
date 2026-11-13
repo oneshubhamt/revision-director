@@ -4,16 +4,14 @@ from pathlib import Path
 import importlib.util
 import os
 import shutil
-import subprocess
-import sys
 import time
 from typing import Callable
 
 from playwright.sync_api import Browser, Page, Playwright
+from backup_fixture_codec import baseline_backup_path
 
 ROOT = Path(__file__).resolve().parents[2]
 TESTS = ROOT / "tests"
-SCENARIOS = TESTS / "scenarios"
 BASELINE_BACKUP = baseline_backup_path()
 DEFAULT_CHROMIUM_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"]
 
@@ -113,13 +111,3 @@ def open_html_page(
     if page.locator("#fatal-error").count():
         assert not page.locator("#fatal-error").is_visible(), "Fatal startup error"
     return page, errors
-
-
-def run_python_scenarios(paths: Iterable[str]) -> None:
-    env = os.environ.copy()
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = str(TESTS) + (os.pathsep + existing if existing else "")
-    for relative in paths:
-        path = SCENARIOS / relative
-        print(f"==> {path.relative_to(ROOT)}", flush=True)
-        subprocess.run([sys.executable, str(path)], cwd=ROOT, env=env, check=True)
