@@ -1,22 +1,19 @@
 from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import importlib.util
-import shutil
-import time
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, chromium_executable
-BASE_HTML = (ROOT / "index.html").read_text()
-spec = importlib.util.spec_from_file_location("pass_b1_browser", TESTS / "scenarios/persistent-active-retrieval.py")
-module = importlib.util.module_from_spec(spec)
-assert spec.loader
-spec.loader.exec_module(module)
-PERSISTENT_BROWSER_SHIM = module.PERSISTENT_BROWSER_SHIM
-HTML = BASE_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM, 1)
+from helpers.browser_harness import (
+    ROOT,
+    capture_browser_errors,
+    launch_chromium,
+    wait_until as shared_wait_until,
+)
+from helpers.persistent_browser import create_persistent_frame, persistent_html
+HTML = persistent_html()
 checks = 0
 
 def check(condition: bool, message: str) -> None:
@@ -26,12 +23,7 @@ def check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 def wait_until(frame, predicate, timeout=10000):
-    deadline = time.monotonic() + timeout / 1000
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        frame.wait_for_timeout(60)
-    raise AssertionError("Timed out waiting for condition")
+    shared_wait_until(frame, predicate, timeout=timeout, interval=60)
 
 def wait_local_file_settled(frame, name: str, state: str) -> None:
     wait_until(frame, lambda: frame.evaluate(
@@ -44,25 +36,18 @@ def wait_local_file_settled(frame, name: str, state: str) -> None:
     wait_until(frame, lambda: name in frame.locator("#settings-content").inner_text())
 
 def boot_frame(page):
-    page.evaluate("""html => {
-      const frame=document.createElement('iframe'); frame.id='app'; frame.style.width='1440px'; frame.style.height='1000px'; document.body.appendChild(frame);
-      frame.contentDocument.open(); frame.contentDocument.write(html); frame.contentDocument.close();
-    }""", HTML)
-    frame=page.frame(name="app") or page.frames[-1]
+    frame = create_persistent_frame(page, HTML, name="app", width=1440, height=1000)
     wait_until(frame, lambda: frame.locator("#fatal-error").count() == 1 and frame.evaluate("typeof window.RevisionDirector === 'object'"))
     wait_until(frame, lambda: frame.evaluate("document.documentElement.dataset.reviewOwnership") in ["primary","secondary","faulted"])
     check(not frame.locator("#fatal-error").is_visible(), "Fatal startup error")
     return frame
 
 def main() -> None:
-    chromium = chromium_executable()
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True, executable_path=chromium if chromium else None)
+        browser = launch_chromium(pw)
         context = browser.new_context(viewport={"width": 1600, "height": 1100})
         page = context.new_page()
-        errors: list[str] = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
-        page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
+        errors = capture_browser_errors(page)
         page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
         frame=boot_frame(page)
 
