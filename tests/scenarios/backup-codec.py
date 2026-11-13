@@ -8,7 +8,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_until
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_backup_import_result, wait_until
 base=load_browser_qa('revision_director_backup_codec')
 INDEXEDDB_SHIM=base.INDEXEDDB_SHIM
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+INDEXEDDB_SHIM,1)
@@ -60,16 +60,14 @@ def main():
             tampered=tmp/'tampered.rdbackup'; tampered.write_text('\n'.join(json.dumps(x,separators=(',',':')) for x in parsed)+'\n')
             page.evaluate("document.querySelector('#toast').textContent=''")
             page.locator('#import-backup').set_input_files(str(tampered))
-            wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Tampered archive import handler did not finish')
-            tampered_message=page.locator('#toast').inner_text().strip()
-            check(bool(tampered_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')") and not page.locator('#restore-dialog').is_visible(),
-                  f'Tampered archive did not fail through the rejection UI contract · toast={tampered_message!r}')
+            tampered_result=wait_for_backup_import_result(page, timeout=5000)
+            check(bool(tampered_result['message']) and tampered_result['error'] and not tampered_result['preview'],
+                  f"Tampered archive did not fail through the rejection UI contract · result={tampered_result!r}")
             page.evaluate("document.querySelector('#toast').textContent=''")
             page.locator('#import-backup').set_input_files(str(RAW))
-            wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Raw JSON import handler did not finish')
-            raw_message=page.locator('#toast').inner_text().strip()
-            check(bool(raw_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')") and not page.locator('#restore-dialog').is_visible(),
-                  f'Raw JSON did not fail through the rejection UI contract · toast={raw_message!r}')
+            raw_result=wait_for_backup_import_result(page, timeout=5000)
+            check(bool(raw_result['message']) and raw_result['error'] and not raw_result['preview'],
+                  f"Raw JSON did not fail through the rejection UI contract · result={raw_result!r}")
         check(not errors,f'Browser errors: {errors}')
         browser.close()
     print(f'PASS {checks} Pass D1 browser codec checks')
