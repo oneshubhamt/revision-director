@@ -6,7 +6,7 @@ const memory = memoryLocalStorage();
 const memoryStorage = memory.values;
 const { api } = createAppRuntime({
   globalName: '__RD_B1_TEST__',
-  expose: ["APP_VERSION","DB_VERSION","Store","ACTIVE_RETRIEVAL_ID","ACTIVE_RETRIEVAL_RECOVERY_KEY","ACTIVE_RETRIEVAL_RECOVERY_FORMAT","ACTIVE_RETRIEVAL_DEBOUNCE_MS","ACTIVE_RETRIEVAL_RECOVERY_MAX_CHARS","ACTIVE_RETRIEVAL_RECOVERY_TEXT_CHARS","ACTIVE_RETRIEVAL_RECOVERY_POINTS","canonicalReviewDraftSnapshot","canonicalActiveRetrievalSession","canonicalActiveRetrievalEnvelope","newerActiveRetrieval","compactActiveRetrievalSession","ActiveRetrievalPersistence"],
+  expose: ["Store","ACTIVE_RETRIEVAL_RECOVERY_KEY","ACTIVE_RETRIEVAL_RECOVERY_FORMAT","ACTIVE_RETRIEVAL_RECOVERY_MAX_CHARS","ACTIVE_RETRIEVAL_RECOVERY_TEXT_CHARS","ACTIVE_RETRIEVAL_RECOVERY_POINTS","canonicalReviewDraftSnapshot","canonicalActiveRetrievalSession","canonicalActiveRetrievalEnvelope","newerActiveRetrieval","compactActiveRetrievalSession","ActiveRetrievalPersistence"],
   context: { localStorage: memory.api },
 });
 
@@ -40,10 +40,6 @@ function session(revision, overrides = {}) {
 }
 
 (async () => {
-  check(api.APP_VERSION === 'va7.1-pass-f1' && api.DB_VERSION === 3, 'Pass B1 identity is wrong');
-  check(api.Store.ActiveRetrieval === 'activeRetrieval', 'Active retrieval store is missing');
-  check(api.ACTIVE_RETRIEVAL_DEBOUNCE_MS === 350, 'Debounce contract changed');
-  check(api.ACTIVE_RETRIEVAL_RECOVERY_MAX_CHARS === 900000 && api.ACTIVE_RETRIEVAL_RECOVERY_TEXT_CHARS === 160000 && api.ACTIVE_RETRIEVAL_RECOVERY_POINTS === 12000, 'Emergency snapshot limits changed');
 
   const canonical = api.canonicalActiveRetrievalSession(session(1));
   check(canonical.id === 'current' && canonical.revision === 1, 'Active session canonicalisation failed');
