@@ -34,7 +34,7 @@
 
     async initialize(): Promise<void> {
       this.invalidateMemoryReviewAnalysis();
-      const state = await this.repo.backupState();
+      const state = await this.repo.backupState("ignore");
       this.settings = clone(state.settings);
       this.assertActiveProfileSelection(state.profiles, this.settings);
       await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);
