@@ -264,7 +264,7 @@ def scenario_workflows(browser) -> None:
     page.locator("#error-application-failure").check()
     page.locator('[data-action="rate"][data-rating="1"]').click()
     wait_until(page, lambda: "RECALL" in page.locator("#review-content").inner_text(), timeout=5000, interval=40, message="Recall did not follow")
-    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.wait_for_timeout(120)
+    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
     check_all_checkpoints(page); rate_good(page)
 
     relearn = page.locator(".planner-row").filter(has_text="Relearn")
@@ -360,7 +360,7 @@ def scenario_cost_adr_settings(browser) -> None:
         check(saved_policy["goalCostWeight"] == 1024, "Persisted Cost-ADR goal cost weight is not the bounded preset")
         check(len(saved_policy["costAdrPolicy"]["coefficients"]) == 15, "Persisted Cost-ADR policy lost upstream coefficient provenance")
 
-    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
+    page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
     settings = page.locator('#settings-form')
     settings.locator('[name="memorySchedulingPolicy"]').select_option("fixed-retention")
     settings.locator('[name="desiredRetention"]').fill("0.90")
