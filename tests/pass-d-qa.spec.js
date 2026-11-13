@@ -1,7 +1,7 @@
 'use strict';
 const { createAppRuntime } = require('./helpers/runtime-harness');
 
-const { api, context } = createAppRuntime({
+const { api } = createAppRuntime({
   globalName: '__RD_D_QA__',
   expose: ["RevisionService","MasteryPolicy","createAutomaticChunks","weeklySubjectBalanceScores","interleaveSelected","planItemKey","subjectBalanceKey","validateBackupPayload"],
   requireFsrs: false,
