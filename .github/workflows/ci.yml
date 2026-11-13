@@ -53,6 +53,9 @@ jobs:
       - name: Build with pinned TypeScript 7
         run: npm run build
 
+      - name: Regenerate canonical browser backup fixture
+        run: python3 tests/backup_fixture_codec.py tests/fixtures/browser-baseline.json tests/fixtures/browser-baseline.rdbackup
+
       - name: Refresh tracked checksums
         run: |
           python3 - <<'PY'
@@ -165,10 +168,10 @@ jobs:
 
       - name: Commit generated artifacts
         run: |
-          if ! git diff --quiet -- dist/app.js index.html CHECKSUMS.sha256; then
+          if ! git diff --quiet -- dist/app.js index.html CHECKSUMS.sha256 tests/fixtures/browser-baseline.rdbackup; then
             git config user.name "revision-director-ci"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add dist/app.js index.html CHECKSUMS.sha256
+            git add dist/app.js index.html CHECKSUMS.sha256 tests/fixtures/browser-baseline.rdbackup
             git commit -m "build: synchronize generated artifacts [skip ci]"
             git push origin HEAD:working
           fi
@@ -227,6 +230,9 @@ jobs:
 
       - name: Build with pinned TypeScript 7
         run: npm run build
+
+      - name: Regenerate canonical browser backup fixture
+        run: python3 tests/backup_fixture_codec.py tests/fixtures/browser-baseline.json tests/fixtures/browser-baseline.rdbackup
 
       - name: Install Playwright harness
         run: |
