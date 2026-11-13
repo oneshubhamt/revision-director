@@ -98,7 +98,7 @@ def shared_chromium():
     executable = os.environ.get("CHROMIUM_EXECUTABLE") or shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
     if not executable:
         raise AssertionError("Chromium executable is required for browser QA.")
-    with TemporaryDirectory(prefix="revision-director-browser-") as user_data_dir:
+    with TemporaryDirectory(prefix="revision-director-browser-", ignore_cleanup_errors=True) as user_data_dir:
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
