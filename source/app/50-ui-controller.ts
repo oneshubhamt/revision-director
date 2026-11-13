@@ -1099,7 +1099,7 @@
       const inspection = candidate.inspection;
       const active = candidate.payload.activeRetrieval;
       const warnings = inspection.warnings.length ? `<div class="restore-step restore-warning"><h3>Verification notes</h3>${inspection.warnings.map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}</div>` : "";
-      const activeSection = active ? `<section class="restore-step"><h3>Unfinished retrieval in backup</h3><p>${escapeHtml(active.activeTargetId)} · ${escapeHtml(this.phaseLabel(active.phase))} · revision ${active.revision}</p><div class="restore-session-options"><label class="restore-check"><input type="radio" name="restore-active-treatment" value="restore">Restore this unfinished retrieval after replacement</label><label class="restore-check"><input type="radio" name="restore-active-treatment" value="discard">Discard it and restore records only</label></div></section>` : `<section class="restore-step"><h3>Active retrieval</h3><p>This backup contains no unfinished retrieval session.</p></section>`;
+      const activeSection = active ? `<section class="restore-step"><h3>Unfinished retrieval in backup</h3><p>${escapeHtml(active.activeTargetId)} · ${escapeHtml(reviewPhaseLabel(active.phase))} · revision ${active.revision}</p><div class="restore-session-options"><label class="restore-check"><input type="radio" name="restore-active-treatment" value="restore">Restore this unfinished retrieval after replacement</label><label class="restore-check"><input type="radio" name="restore-active-treatment" value="discard">Discard it and restore records only</label></div></section>` : `<section class="restore-step"><h3>Active retrieval</h3><p>This backup contains no unfinished retrieval session.</p></section>`;
       this.restorePreview.innerHTML = `
         <section class="restore-step"><h3>Verified restore preview</h3><p>The file has been decoded, integrity-checked and relationally validated. No application data has been changed.</p><div class="restore-summary">
           <div class="restore-stat"><span>Created</span><strong>${escapeHtml(formatDateTime(inspection.exportedAt))}</strong></div>
@@ -1148,7 +1148,7 @@
       const proceed = window.confirm("Final confirmation: replace all current Revision Director records with this verified backup?");
       if (!proceed) return;
       const result = await this.backupController.restore(this.restoreCandidateId, this.restoreSafetyProofId, treatment);
-      this.activePersistence.resetEmergencyAfterRestore(result.restoredActiveRetrieval);
+      this.activeRetrieval.resetEmergencyAfterRestore(result.restoredActiveRetrieval);
       this.restoreCandidateId = "";
       this.restoreSafetyProofId = "";
       this.dialogFocus.close(this.restoreDialog);
