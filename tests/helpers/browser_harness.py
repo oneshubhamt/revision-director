@@ -158,13 +158,14 @@ def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) ->
 
 
 def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[str, object]:
+    # SettingsWorkspace.importBackup clears the file input in its finally block,
+    # after inspection has either rendered the preview or reported the error.
     wait_until(
         page,
-        lambda: page.locator("#restore-dialog").is_visible()
-        or bool(page.locator("#toast").inner_text().strip()),
+        lambda: page.locator("#import-backup").input_value() == "",
         timeout=timeout,
         interval=40,
-        message="Timed out waiting for backup import terminal state",
+        message="Timed out waiting for backup inspection completion",
     )
     message = page.locator("#toast").inner_text().strip()
     return {
