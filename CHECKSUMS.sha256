@@ -1,7 +1,6 @@
 8c8b2ec2d49893ef333988bd18ee8d5e80b1bef40fed6bfae1a9f6b596a882b4  ./build/build-hosted.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 af876ea5cb9b13c35ab6626f3ba640de3946ffad1329f5c1e6adf4483b67fa81  ./build/checksums.py
-e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
 bf9c6c0130ab8721dba7d2e5a75662d948110dbb10a08f073aba309b61644cd9  ./dist/app.js
 c3659b79af5c364824c135c893c654b118af1d8dc5f02a3ff3df25a687e277eb  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
@@ -9,7 +8,6 @@ c3659b79af5c364824c135c893c654b118af1d8dc5f02a3ff3df25a687e277eb  ./index.html
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
 835e6c8d75089d5c402237492582aeae0a131a4f4c1d81f5fac882616019458c  ./package-lock.json
 58056dd0af7027df8a818cca98a319bdbe764e5780be7c58308d49a268ae3868  ./package.json
-1bf422be2367b1a64365c76f1bbe44174207957bc0ac508958f6c1fd3e9cf4de  ./README.md
 0598a738c9cee048b7c5bb589139fcb72dd8e55e9906427fee8ad4b0f1f59072  ./source/app/00-runtime-boundary.ts
 de8d46d2767a2cb078b3b2aacc097dc86a5e653a01b881fd3dcc43f575842c89  ./source/app/05-presentation-engine.ts
 899e58eab58e1ca287b40527658b23772d034ad2a3c6b9b50cf7cf63a1e87bb8  ./source/app/10-domain-model.ts
