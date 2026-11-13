@@ -349,9 +349,12 @@ mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEviden
 mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[{...conceptEvidence,evidence:{...conceptEvidence.evidence,errorTypes:['slow-retrieval','slow-retrieval']}}]}),'Evidence errors must reject duplicates rather than silently deduplicate');
 mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[{...conceptEvidence,durationObservation:{...conceptEvidence.durationObservation,retiredField:true}}]}),'Nested evidence records must reject unknown fields');
 const relearnPolicyForPause=new api.RelearnPolicy();
-const pausedOriginal={...conceptObligation,status:'suspended',suspensionReason:'relearning'};
+const repairObjective=evidence(0,0,0);
+const failedCompletion=conceptPolicy.complete(conceptObligation,api.Rating.Again,repairObjective,new Date(due));
+const repairTrigger={...conceptEvidence,id:'repair-trigger',evidence:repairObjective,suggestedRating:api.Rating.Again,confirmedRating:api.Rating.Again,afterDueAt:failedCompletion.dueAt,afterPolicyState:failedCompletion.policyState,policyId:failedCompletion.policyId,followUpObligationId:'repair'};
+const pausedOriginal={...conceptObligation,dueAt:failedCompletion.dueAt,policyState:failedCompletion.policyState,durationSampleCount:1,status:'suspended',suspensionReason:'relearning'};
 const pausedRepair={schemaVersion:1,...obligation('relearn',relearnPolicyForPause,'relearning'),id:'repair',unitId:'u',status:'suspended',suspensionReason:'unit',parentObligationId:'o',returnObligationId:'o'};
-const unitPausedRepairBackup={...validBackup,units:[{...validBackup.units[0],status:'suspended'}],obligations:[pausedOriginal,pausedRepair]};
+const unitPausedRepairBackup={...validBackup,units:[{...validBackup.units[0],status:'suspended',evidenceCount:1,lapseCount:1}],obligations:[pausedOriginal,pausedRepair],evidenceEvents:[repairTrigger]};
 check(service.validateBackup(unitPausedRepairBackup).obligations.length===2,'A unit-level pause must preserve an unresolved relearning chain rather than make the backup invalid');
 mustFail(()=>service.validateBackup({...passDBackup,chunks:[chunkRecords[1]]}),'Daily plans must reject missing chunk references');
 mustFail(()=>service.validateBackup({...passDBackup,dailyPlans:[{...dailyPlan,plannerVersion:'wrong'}]}),'Daily plans must reject unknown planner versions');
