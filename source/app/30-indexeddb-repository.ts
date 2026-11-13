@@ -44,6 +44,10 @@
 
   type RevisionWriteDurability = "default" | "strict";
 
+  function storeWriteDurability(store: StoreName): RevisionWriteDurability {
+    return store === Store.ActiveRetrieval || store === Store.Metadata ? "default" : "strict";
+  }
+
   function readwriteTransaction(
     db: IDBDatabase,
     stores: StoreName | StoreName[],
@@ -159,19 +163,19 @@
     }
 
     async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
-      const tx = readwriteTransaction(this.db, store);
+      const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
       tx.objectStore(store).put(value);
       await transactionDone(tx);
     }
 
     async add<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
-      const tx = readwriteTransaction(this.db, store);
+      const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
       tx.objectStore(store).add(value);
       await transactionDone(tx);
     }
 
     async putMany<S extends StoreName>(store: S, values: StoreValue<S>[]): Promise<void> {
-      const tx = readwriteTransaction(this.db, store);
+      const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
       const target = tx.objectStore(store);
       for (const value of values) target.put(value);
       await transactionDone(tx);
@@ -200,7 +204,7 @@
     }
 
     async delete(store: StoreName, key: IDBValidKey): Promise<void> {
-      const tx = readwriteTransaction(this.db, store);
+      const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
       tx.objectStore(store).delete(key);
       await transactionDone(tx);
     }
@@ -213,6 +217,21 @@
       }
 
       assert(kind === "subject", "Only subject nodes may exist at the hierarchy root.");
+      const deterministic = await this.get(Store.Nodes, await rootKnowledgeNodeId(profileId, normalized));
+      if (deterministic) {
+        assert(
+          deterministic.profileId === profileId
+            && deterministic.parentId === null
+            && deterministic.kind === "subject"
+            && deterministic.normalizedName === normalized,
+          "Deterministic root-subject identity conflicts with stored hierarchy data.",
+        );
+        return deterministic;
+      }
+
+      // Imported current-format backups may legitimately retain non-generated IDs.
+      // The validator enforces semantic uniqueness, so this is a bounded compatibility lookup,
+      // not a second uniqueness policy.
       const roots = (await this.getByIndex(Store.Nodes, "profileId", profileId))
         .filter((node) => node.parentId === null && node.kind === kind && node.normalizedName === normalized);
       assert(roots.length <= 1, "Knowledge hierarchy contains duplicate root subjects.");
