@@ -23,6 +23,33 @@ def chromium_executable() -> str | None:
     return shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
 
 
+class SharedChromiumSession:
+    def __init__(self, browser):
+        self._browser = browser
+        self._contexts = []
+
+    def new_context(self, **kwargs):
+        context = self._browser.new_context(**kwargs)
+        self._contexts.append(context)
+        return context
+
+    def new_page(self, **kwargs):
+        context = self.new_context(**kwargs)
+        return context.new_page()
+
+    def close(self) -> None:
+        for context in reversed(self._contexts):
+            try:
+                context.close()
+            except Exception:
+                pass
+        self._contexts.clear()
+        self._browser.close()
+
+    def __getattr__(self, name):
+        return getattr(self._browser, name)
+
+
 def launch_chromium(
     playwright: Playwright,
     *,
@@ -31,7 +58,7 @@ def launch_chromium(
 ):
     endpoint = os.environ.get("REVISION_DIRECTOR_CDP_ENDPOINT")
     if endpoint:
-        return playwright.chromium.connect_over_cdp(endpoint)
+        return SharedChromiumSession(playwright.chromium.connect_over_cdp(endpoint))
     executable = chromium_executable()
     return playwright.chromium.launch(
         headless=headless,
