@@ -3,13 +3,13 @@
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 af876ea5cb9b13c35ab6626f3ba640de3946ffad1329f5c1e6adf4483b67fa81  ./build/checksums.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
-6c89def79f8dcd4a1e7b4b7d62387f2adacc23d9e1105c38c8c0e6b96ff34fee  ./dist/app.js
+81856860898a885588e045eec71647d55dfa9b64167f9021f5e3f2c71ad9ffb2  ./dist/app.js
 2aa4507050fcebca069e0874287856820a62a6f4febe7b8acd4de28decf6446d  ./docs/ARCHITECTURE.md
 9af5c8c6dca1d54165e1355a12c8cc24865167752553b87a29a8af3178191604  ./docs/DATA_AND_STORAGE.md
 fd8f5185f6caa63a8404018018bf48938446ea2076c987cf22923085e0973bb9  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ba443230bfdda805284486e5b36639034180a19c288be052d9e329ab4d001404  ./docs/SCHEDULING_AND_PLANNING.md
-3ba874963159d3ed002a97a1b81b13c7825c1e33a3ae45a6446f9e544c5efe9e  ./index.html
+62648c5144deb21a98af864c8c7e5f1b82d18286d73fc5e51b646c2af7f8333f  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -23,7 +23,7 @@ de8d46d2767a2cb078b3b2aacc097dc86a5e653a01b881fd3dcc43f575842c89  ./source/app/0
 1e943c54bc7363c5237d74e34e8dbd3796fad5fb91c91a8a3899c3cd0d744cae  ./source/app/12-production-contracts.ts
 4a2d2b74c4bb4d0f7940d3c00b000839f268d0f660693cef7d5129f5d725e5a0  ./source/app/18-fsrs-personalization.ts
 2d5512cd296f2137c8de43a858651393681ebfb4a1ae02832de3aa03151db5a0  ./source/app/18a-fsrs-browser-optimizer.ts
-c9fb42874e8aa2f7de935a0a988ef9de2591df1eeed61c42edbfbfe862261ace  ./source/app/19-revision-scheduler-port.ts
+83f9df52ee0eb62ba4696381d27332d7ddb8c8dee87450382ee8662bfa6e9ca9  ./source/app/19-revision-scheduler-port.ts
 bd5c4c4fde3af146b49ffba5104edfe01959630b7764e49a711cddd5bbc05ad8  ./source/app/20-policy-planning-kernel.ts
 7d6de3dcba9f7f27b47156e75f02525c64998736ced555e93eb41751d69f4eb8  ./source/app/21-policy-implementations.ts
 94aa5778799b0362ccbde0740f26fc120dc005534b916889ea9e9ca86bf79567  ./source/app/22-backup-validation.ts
@@ -38,7 +38,7 @@ db4f20d09fa64fa2b60bd157ef951c8e53859eec54b0e0391ab2d245e356c838  ./source/app/4
 85ff6bec88cdb0a59a346f492f456d83dd33375218dd5512985f78040e9593c6  ./source/app/42-backup-controller.ts
 0cededf4bb604246ea36f49159cc9145f2581a3e5842b75bc99c8efc13fc2442  ./source/app/45-ui-runtime.ts
 995a2f1a55be2ec3315fb1f228e31c74e2841f9f2d8ba6cb8b9ac0a40ff39015  ./source/app/46-workflow-form-adapter.ts
-3e1d94b2a64682a7f484446ac7a1d0faaa9b8d07b01a1aedf459963c138dcdab  ./source/app/47-active-retrieval-workspace.ts
+625830e17dc53b61be05794420691b2ce7b723288a438a852321517d330c52ca  ./source/app/47-active-retrieval-workspace.ts
 5f55de8aa4ef394375347e075a17b9b1464babacfe6d5af3a6e23a76077f3ff5  ./source/app/50-ui-controller.ts
 82f5cb4afd81db6ee8a35817e53a56715233024848e7abcbf36875b2c57800d3  ./source/app/55-extension-runtime.ts
 77963fce015a51c7175b7b3b41faefd32600f5cae6c463f19a836e4333aef11b  ./source/app/60-public-bridge-bootstrap.ts
@@ -55,7 +55,7 @@ cb0c953c10f8a02eb28ccc4fe487eb5e045d364835540d5534bd9779d19f8274  ./tests/fixtur
 909124745204ba2ad8536712f53588bcd3b91422854fa9191c161d13d0b7867b  ./tests/fixtures/browser-baseline.rdbackup
 5094dfbfa9be0d50c066d7da20e99ecd206ada2981a47e8908c907d35b4079ed  ./tests/fsrs-browser-optimizer.spec.py
 cea0d1ea07a4ed9312f7ebc27cd105c4f89a39647551a1028f52af23d246a000  ./tests/fsrs-contract-parity.spec.js
-b22b707d25b0c768bf63fcc92ec0c1533fa0b1a7541d8be36e496a645d60b963  ./tests/fsrs-integration.spec.js
+8a931253892fd5952ed523499345f44beead8f6f1da7cc5d1828cc47794a314d  ./tests/fsrs-integration.spec.js
 98b32c8dd32cd3483b665d363fc7b7339c015ee8d1fedf176a3e804f99dd1663  ./tests/fsrs-optimizer-core.spec.js
 e26d2addcc499bcb8856b11257140ab78fc7850c971c28dc55ebcea0a49e61b9  ./tests/fsrs-optimizer-policy.spec.js
 7e8cc59f88c1ff0b5809c47b8bcc93d536f4837907b28ef8ee38e55850afcbec  ./tests/fsrs-scale-benchmark.spec.js
@@ -74,7 +74,7 @@ c7c28f1a2937cf63909e15f77427f855dc22e626c43ff73018c4625762635dc9  ./tests/pass-b
 998881182ee476429ac588554d22c8937d83b000929dfe8880a4e82d7b381127  ./tests/pass-c1-browser.spec.py
 284684f6c0cbbb2b9230a78f4e30607b4f0fe19aa69f369c11a70a6e973215c7  ./tests/pass-c1.spec.js
 dc02fca37a1878f665ddf3a74ea25e52888c5a9401264db2c92a86d29ce0f5a9  ./tests/pass-c2-browser.spec.py
-f901fef9cd7a9a3cef3b38ea34583ef0b3807c7f37a88850520f70dd559cd68d  ./tests/pass-c2.spec.js
+7434eba724552dd14374d278e2cf6c56cbe95d57c90888a5a033f26659772620  ./tests/pass-c2.spec.js
 d12254a7043c6f9cd66a4bf4996185a05f5a2f620cffc3a6e1cf1c042c91cfa8  ./tests/pass-d-browser-qa.spec.py
 21c0b2b6cd6a28b2fe62078cef46eedf67253ca839b9c3e4a8025043ec6afb59  ./tests/pass-d-qa.spec.js
 fa58e39e150add91acfe1242a4fe1da9e88ef27072e2ec08699735d3fc22a2b9  ./tests/pass-d.spec.js

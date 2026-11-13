@@ -2584,11 +2584,10 @@
       }
   }
   const FSRS_SCHEDULER_CACHE = new Map();
-  async function createCostAdrFsrsScheduler(runtime, policy, profile) {
-      const weights = profile ? profile.weights : [...FSRS7_DEFAULT_WEIGHTS];
-      const reference = await runtime.DefaultScheduler({
+  function fsrsBaseSchedulerOptions(desiredRetention, weights) {
+      return {
           version: FSRS_MODEL,
-          desiredRetention: 0.9,
+          desiredRetention,
           enableShortTerm: true,
           learningSteps: FSRS_LEARNING_STEPS,
           relearningSteps: FSRS_RELEARNING_STEPS,
@@ -2597,8 +2596,12 @@
           enableFuzz: false,
           maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
           clearStatsOnForget: false,
-          weights,
-      });
+          ...(weights ? { weights: [...weights] } : {}),
+      };
+  }
+  async function createCostAdrFsrsScheduler(runtime, policy, profile) {
+      const weights = profile ? [...profile.weights] : [...FSRS7_DEFAULT_WEIGHTS];
+      const reference = await runtime.DefaultScheduler(fsrsBaseSchedulerOptions(0.9, weights));
       assert(typeof runtime.defineScheduler === "function", "Embedded ts-fsrs runtime does not expose scheduler composition.");
       return runtime.defineScheduler(reference.definition)
           .use(runtime.schedulerCostAdrMiddleware, runtime.schedulerFuzzingMiddleware, runtime.schedulerStatsMiddleware, runtime.schedulerScheduledDaysMiddleware, runtime.schedulerLearningStepsMiddleware, runtime.schedulerMaximumIntervalMiddleware, runtime.schedulerMonotonicIntervalMiddleware)
@@ -2627,19 +2630,7 @@
           return;
       const runtime = runtimeFsrs();
       const scheduler = policy.kind === "fixed-retention"
-          ? await runtime.DefaultScheduler({
-              version: FSRS_MODEL,
-              desiredRetention: fixedRetentionForPolicy(policy),
-              enableShortTerm: true,
-              learningSteps: FSRS_LEARNING_STEPS,
-              relearningSteps: FSRS_RELEARNING_STEPS,
-              graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
-              allowModelOverride: true,
-              enableFuzz: false,
-              maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
-              clearStatsOnForget: false,
-              ...(validatedProfile ? { weights: validatedProfile.weights } : {}),
-          })
+          ? await runtime.DefaultScheduler(fsrsBaseSchedulerOptions(fixedRetentionForPolicy(policy), validatedProfile?.weights))
           : await createCostAdrFsrsScheduler(runtime, policy, validatedProfile);
       const port = new TsFsrsSchedulerPort(scheduler, configuration);
       const probe = port.newCard("2000-01-01T00:00:00.000Z", "revision-director-fsrs7-probe");
@@ -2672,9 +2663,9 @@
       assert(matches.length === 1, "Historical personalized FSRS configuration cannot resolve its exact optimizer profile.");
       return matches[0];
   }
-  async function prepareMemoryDatasetReplaySchedulers(reviewIndex, profileCatalog) {
+  function historicalFsrsConfigurations(reviewGroups) {
       const configurations = new Map();
-      for (const reviews of reviewIndex.values()) {
+      for (const reviews of reviewGroups) {
           for (const review of reviews) {
               const config = validateFsrsConfigSnapshot(review.schedulerConfig);
               const existing = configurations.get(config.fingerprint);
@@ -2686,6 +2677,10 @@
               }
           }
       }
+      return configurations;
+  }
+  async function prepareMemoryDatasetReplaySchedulers(reviewIndex, profileCatalog) {
+      const configurations = historicalFsrsConfigurations(reviewIndex.values());
       for (const config of configurations.values()) {
           const historicalProfile = profileForHistoricalFsrsConfiguration(config, profileCatalog);
           await prepareFsrsScheduler(config.schedulingPolicy, historicalProfile);
@@ -2696,17 +2691,7 @@
   function verifyHistoricalMemorySchedulerConfigurations(reviews, profileCatalog, currentConfigFingerprint) {
       if (reviews.length === 0)
           return;
-      const configurations = new Map();
-      for (const review of reviews) {
-          const config = validateFsrsConfigSnapshot(review.schedulerConfig);
-          const existing = configurations.get(config.fingerprint);
-          if (existing) {
-              assert(JSON.stringify(existing) === JSON.stringify(config), "A single FSRS configuration fingerprint maps to conflicting scheduler snapshots.");
-          }
-          else {
-              configurations.set(config.fingerprint, clone(config));
-          }
-      }
+      const configurations = historicalFsrsConfigurations([reviews]);
       for (const config of configurations.values()) {
           if (config.fingerprint === currentConfigFingerprint)
               continue;
@@ -9008,6 +8993,31 @@
               await this.activePersistence.flush(session);
           await this.host.openPane("review");
       }
+      async commitActiveRetrievalTransition(targetId, commit) {
+          const commitToken = uid("commit");
+          const committing = this.buildActiveRetrievalSession("committing", commitToken);
+          assert(committing, "Active retrieval state is missing.");
+          const post = await this.postCommitSession(commitToken);
+          try {
+              await this.activePersistence.flush(committing);
+              const guard = {
+                  sessionId: ACTIVE_RETRIEVAL_ID,
+                  expectedRevision: committing.revision,
+                  targetId,
+                  commitToken,
+              };
+              await commit(guard, post);
+              await this.activePersistence.acceptCommittedTransition(post);
+              this.activeSessionRevision = post.revision;
+              return post;
+          }
+          catch (error) {
+              const resumed = this.buildActiveRetrievalSession("active");
+              if (resumed)
+                  await this.activePersistence.flush(resumed).catch(() => undefined);
+              throw error;
+          }
+      }
       async completeActiveChunk() {
           if (!this.host.requireMutable("complete a retrieval chunk"))
               return;
@@ -9021,37 +9031,23 @@
               assert(this.phaseTime && this.phaseTime.status() === "running", "Resume and classify interruptions before completing this chunk.");
               const timing = this.timingSummary();
               const note = this.reviewContent.querySelector("#chunk-note")?.value ?? "";
-              const commitToken = uid("commit");
-              const committing = this.buildActiveRetrievalSession("committing", commitToken);
-              assert(committing, "Active retrieval state is missing.");
-              const post = await this.postCommitSession(commitToken);
-              try {
-                  await this.activePersistence.flush(committing);
-                  const guard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: target, commitToken };
-                  await this.service.completeChunk(chunkId, timing, note, new Date(), guard, post);
-                  await this.activePersistence.acceptCommittedTransition(post);
-                  this.activeSessionRevision = post.revision;
-                  this.host.toast("Chunk completed. Parent scheduling remains unchanged until final synthesis.");
-                  this.reviewDrafts.delete(target);
-                  this.activeReviewIndex += 1;
-                  this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
-                  this.attemptElapsedMs = 0;
-                  this.diagramStrokes = [];
-                  if (this.activeReviewIndex >= this.activeReviewIds.length) {
-                      await this.endReviewSession(false);
-                      await this.host.openPane("today");
-                      return;
-                  }
-                  this.reviewPhase = post.phase;
-                  await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
-                  await this.host.invalidateAfterCommit();
+              const post = await this.commitActiveRetrievalTransition(target, async (guard, postCommitSession) => {
+                  await this.service.completeChunk(chunkId, timing, note, new Date(), guard, postCommitSession);
+              });
+              this.host.toast("Chunk completed. Parent scheduling remains unchanged until final synthesis.");
+              this.reviewDrafts.delete(target);
+              this.activeReviewIndex += 1;
+              this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
+              this.attemptElapsedMs = 0;
+              this.diagramStrokes = [];
+              if (this.activeReviewIndex >= this.activeReviewIds.length) {
+                  await this.endReviewSession(false);
+                  await this.host.openPane("today");
+                  return;
               }
-              catch (error) {
-                  const resumed = this.buildActiveRetrievalSession("active");
-                  if (resumed)
-                      await this.activePersistence.flush(resumed).catch(() => undefined);
-                  throw error;
-              }
+              this.reviewPhase = post.phase;
+              await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
+              await this.host.invalidateAfterCommit();
           }
           finally {
               this.commitInFlight = false;
@@ -9099,37 +9095,23 @@
                       return;
               }
               const committedEvidence = effectiveRating === rating ? evidence : { ...evidence, confirmedRating: effectiveRating };
-              const commitToken = uid("commit");
-              const committing = this.buildActiveRetrievalSession("committing", commitToken);
-              assert(committing, "Active retrieval state is missing.");
-              const post = await this.postCommitSession(commitToken);
-              try {
-                  await this.activePersistence.flush(committing);
-                  const guard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: obligationId, commitToken };
-                  await this.service.recordEvidence(obligationId, committedEvidence, new Date(), guard, post);
-                  await this.activePersistence.acceptCommittedTransition(post);
-                  this.activeSessionRevision = post.revision;
-                  this.host.toast(`Recorded ${ratingName(effectiveRating)}. Next obligation scheduled.`);
-                  this.reviewDrafts.delete(obligationId);
-                  this.activeReviewIndex += 1;
-                  this.diagramStrokes = [];
-                  this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
-                  this.attemptElapsedMs = 0;
-                  if (this.activeReviewIndex >= this.activeReviewIds.length) {
-                      await this.endReviewSession(false);
-                      await this.host.openPane("today");
-                      return;
-                  }
-                  this.reviewPhase = post.phase;
-                  await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
-                  await this.host.invalidateAfterCommit();
+              const post = await this.commitActiveRetrievalTransition(obligationId, async (guard, postCommitSession) => {
+                  await this.service.recordEvidence(obligationId, committedEvidence, new Date(), guard, postCommitSession);
+              });
+              this.host.toast(`Recorded ${ratingName(effectiveRating)}. Next obligation scheduled.`);
+              this.reviewDrafts.delete(obligationId);
+              this.activeReviewIndex += 1;
+              this.diagramStrokes = [];
+              this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
+              this.attemptElapsedMs = 0;
+              if (this.activeReviewIndex >= this.activeReviewIds.length) {
+                  await this.endReviewSession(false);
+                  await this.host.openPane("today");
+                  return;
               }
-              catch (error) {
-                  const resumed = this.buildActiveRetrievalSession("active");
-                  if (resumed)
-                      await this.activePersistence.flush(resumed).catch(() => undefined);
-                  throw error;
-              }
+              this.reviewPhase = post.phase;
+              await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
+              await this.host.invalidateAfterCommit();
           }
           finally {
               this.commitInFlight = false;
