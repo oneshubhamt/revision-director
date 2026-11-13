@@ -26,6 +26,7 @@ checksum_targets = {
 }
 source_parts = sorted(source_manifest["parts"], key=lambda item: item["order"])
 source_paths = [ROOT / "source" / item["path"] for item in source_parts]
+source_checksum_paths = {"source/" + item["path"] for item in source_parts}
 ts = "".join(path.read_text() for path in source_paths)
 contracts_ts = (ROOT / "source/app/12-production-contracts.ts").read_text()
 fsrs_personalization_ts = (ROOT / "source/app/18-fsrs-personalization.ts").read_text()
@@ -130,6 +131,7 @@ check("no TS namespace", "namespace RD" not in ts and "namespace RevisionDirecto
 check("no compiled RD global", not re.search(r"\bvar\s+RD\b", js))
 check("temporary FSRS global removed", 'delete (window as Window & { FSRS?: FsrsUmdRuntime }).FSRS' in ts)
 check("production database identity", 'const DB_NAME = "revision-director"' in ts and 'const DB_VERSION = 3' in ts)
+check("all maintained source modules checksum-covered", source_checksum_paths <= checksum_targets)
 check("document schema version contract", 'type DocumentSchemaVersion = 1' in ts and 'const DOCUMENT_SCHEMA_VERSION: DocumentSchemaVersion = 1' in ts)
 check("all durable documents versioned", all(token in ts for token in [
     "interface ExamProfile", "interface KnowledgeNode", "interface KnowledgeUnit", "interface StudyEvent",
