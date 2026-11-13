@@ -26,7 +26,7 @@ class FakeService{
   diagnostics(){return structuredClone(this.diags)}
 }
 (async()=>{
-  check(api.BACKUP_ARCHIVE_VERSION===2&&api.BACKUP_SCHEMA_VERSION===2,'Stage D versions are not closed at v2');
+  check(api.BACKUP_ARCHIVE_VERSION===3&&api.BACKUP_SCHEMA_VERSION===2,'Stage D archive/payload versions are not canonical');
 
   const sourceBytes=(await api.BackupCodec.create(validator.validateBackup(empty()),false)).bytes;
   const service=new FakeService();
