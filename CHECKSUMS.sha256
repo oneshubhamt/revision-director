@@ -59,7 +59,7 @@ d6bc6dadfd2d12d8b29c25b3946face36d4ea2d395331f08276c9ad19cf1c167  ./tests/full-q
 926888392a6a776cd4ce7176477cab166dce112deb728d22dfaaaabcb6ed05d6  ./tests/pass-a2.spec.js
 2ff0e066db667df7f5f7dfb8df6aefff24a444dffcc76379ce7b37f369f9c36e  ./tests/pass-b1-browser.spec.py
 dd38b5383d968a41af915ac9ae74eff17ab816a8c8f32e73bc2530770bb6aef3  ./tests/pass-b1.spec.js
-cfb63d4ccea3eb4748cf45eacdaa7e2ea67bc3243636a067f67d18464c34ac8d  ./tests/pass-b2-browser.spec.py
+e584ac88b7831a7a8ad945915013232b7b30573782be2854ea17bf7476a375a2  ./tests/pass-b2-browser.spec.py
 8b148bc0c1dd2d532231985090825f5e7d6142660bfc6a9142f427090074c632  ./tests/pass-b2.spec.js
 8073a927407d8bb8e366ff922dc0a83a52069db492f5d49f41f59261910f1214  ./tests/pass-b3-browser.spec.py
 d18e9322c3d0260ec5999ebfd42c91f632d1d497e1786e7b18481b44ecb271bf  ./tests/pass-b3.spec.js
