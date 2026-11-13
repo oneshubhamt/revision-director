@@ -141,7 +141,29 @@ def main():
 
         # The saved active-session backup requires explicit restore/discard treatment.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(active_safety)); page.locator('#restore-dialog').wait_for(state='visible')
+        wait_until(
+            page,
+            lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
+            and page.locator('#import-backup').is_enabled(),
+            timeout=5000,
+            interval=40,
+            message='Restore surface did not return to mutable primary state',
+        )
+        page.locator('#import-backup').set_input_files([])
+        page.locator('#import-backup').set_input_files(str(active_safety))
+        wait_until(
+            page,
+            lambda: page.locator('#restore-dialog').is_visible()
+            or page.locator('#import-backup').evaluate('e=>e.value') == '',
+            timeout=8000,
+            interval=40,
+            message='Active-session backup import handler did not finish',
+        )
+        if not page.locator('#restore-dialog').is_visible():
+            raise AssertionError(
+                f"Active-session safety backup was rejected · ownership={page.evaluate('document.documentElement.dataset.reviewOwnership')!r} · "
+                f"enabled={page.locator('#import-backup').is_enabled()} · toast={page.locator('#toast').inner_text()!r}"
+            )
         check(page.locator('input[name="restore-active-treatment"]').count()==2,'Active-session treatment choices are missing')
         active_restore_safety=safety_download(page,tmp)
         confirm_restore(page,treatment='restore')
