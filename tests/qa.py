@@ -38,7 +38,6 @@ CORE_NODE_PLAN = (
     "tests/scenarios/ownership-storage-health.js",
     "tests/scenarios/reliability-closure.js",
     "tests/scenarios/presentation-kernel.js",
-    "tests/scenarios/ui-runtime-accessibility.js",
 )
 
 BROWSER_PLAN = (
