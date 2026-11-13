@@ -42,6 +42,24 @@
     });
   }
 
+  type RevisionWriteDurability = "default" | "strict";
+
+  function readwriteTransaction(
+    db: IDBDatabase,
+    stores: StoreName | StoreName[],
+    durability: RevisionWriteDurability = "default",
+  ): IDBTransaction {
+    if (durability === "default") return db.transaction(stores, "readwrite");
+    try {
+      return db.transaction(stores, "readwrite", { durability: "strict" });
+    } catch (error) {
+      if (error instanceof TypeError || (isRecord(error) && error["name"] === "TypeError")) {
+        return db.transaction(stores, "readwrite");
+      }
+      throw error;
+    }
+  }
+
   async function rootKnowledgeNodeId(profileId: string, normalizedName: string): Promise<string> {
     const digest = await sha256Hex(utf8Bytes(`${profileId}\u0000subject\u0000${normalizedName}`));
     return `subject_${digest.slice(0, 32)}`;
@@ -141,40 +159,40 @@
     }
 
     async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
-      const tx = this.db.transaction(store, "readwrite");
+      const tx = readwriteTransaction(this.db, store);
       tx.objectStore(store).put(value);
       await transactionDone(tx);
     }
 
     async add<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
-      const tx = this.db.transaction(store, "readwrite");
+      const tx = readwriteTransaction(this.db, store);
       tx.objectStore(store).add(value);
       await transactionDone(tx);
     }
 
     async putMany<S extends StoreName>(store: S, values: StoreValue<S>[]): Promise<void> {
-      const tx = this.db.transaction(store, "readwrite");
+      const tx = readwriteTransaction(this.db, store);
       const target = tx.objectStore(store);
       for (const value of values) target.put(value);
       await transactionDone(tx);
     }
 
     async putProfileAndSettings(profile: ExamProfile, settings: AppSettings): Promise<void> {
-      const tx = this.db.transaction([Store.Profiles, Store.Settings], "readwrite");
+      const tx = readwriteTransaction(this.db, [Store.Profiles, Store.Settings], "strict");
       tx.objectStore(Store.Profiles).put(profile);
       tx.objectStore(Store.Settings).put(settings);
       await transactionDone(tx);
     }
 
     async createUnitWithObligation(unit: KnowledgeUnit, obligation: RevisionObligation): Promise<void> {
-      const tx = this.db.transaction([Store.Units, Store.Obligations], "readwrite");
+      const tx = readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict");
       tx.objectStore(Store.Units).add(unit);
       tx.objectStore(Store.Obligations).add(obligation);
       await transactionDone(tx);
     }
 
     async updateUnitWithObligations(unit: KnowledgeUnit, obligations: RevisionObligation[]): Promise<void> {
-      const tx = this.db.transaction([Store.Units, Store.Obligations], "readwrite");
+      const tx = readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict");
       tx.objectStore(Store.Units).put(unit);
       const target = tx.objectStore(Store.Obligations);
       for (const obligation of obligations) target.put(obligation);
@@ -182,7 +200,7 @@
     }
 
     async delete(store: StoreName, key: IDBValidKey): Promise<void> {
-      const tx = this.db.transaction(store, "readwrite");
+      const tx = readwriteTransaction(this.db, store);
       tx.objectStore(store).delete(key);
       await transactionDone(tx);
     }
@@ -216,7 +234,7 @@
     }
 
     async putObligationWithChunks(obligation: RevisionObligation, chunks: ObligationChunk[]): Promise<void> {
-      const tx = this.db.transaction([Store.Obligations, Store.Chunks], "readwrite");
+      const tx = readwriteTransaction(this.db, [Store.Obligations, Store.Chunks], "strict");
       tx.objectStore(Store.Obligations).put(obligation);
       const target = tx.objectStore(Store.Chunks);
       for (const chunk of chunks) target.put(chunk);
@@ -233,7 +251,7 @@
       const stores: StoreName[] = [Store.Obligations, Store.Chunks];
       if (dailyPlan) stores.push(Store.DailyPlans);
       if (commitGuard) stores.push(Store.ActiveRetrieval);
-      const tx = this.db.transaction(stores, "readwrite");
+      const tx = readwriteTransaction(this.db, stores, "strict");
       const apply = () => {
         tx.objectStore(Store.Obligations).put(obligation);
         tx.objectStore(Store.Chunks).put(chunk);
@@ -265,7 +283,7 @@
       const stores: StoreName[] = [Store.Units, Store.Obligations, Store.EvidenceEvents, Store.Chunks];
       if (dailyPlan) stores.push(Store.DailyPlans);
       if (commitGuard) stores.push(Store.ActiveRetrieval);
-      const tx = this.db.transaction(stores, "readwrite");
+      const tx = readwriteTransaction(this.db, stores, "strict");
       const apply = () => {
         const obligationStore = tx.objectStore(Store.Obligations);
         tx.objectStore(Store.Units).put(unit);
@@ -306,7 +324,7 @@
     }
 
     async replaceSettingsAndObligations(settings: AppSettings, obligations: RevisionObligation[]): Promise<void> {
-      const tx = this.db.transaction([Store.Settings, Store.Obligations], "readwrite");
+      const tx = readwriteTransaction(this.db, [Store.Settings, Store.Obligations], "strict");
       tx.objectStore(Store.Settings).put(settings);
       const obligationStore = tx.objectStore(Store.Obligations);
       for (const obligation of obligations) obligationStore.put(obligation);
@@ -326,7 +344,7 @@
 
     async replaceFromBackup(payload: BackupPayload, activeTreatment: BackupActiveSessionTreatment): Promise<void> {
       const stores: StoreName[] = [Store.Profiles, Store.Nodes, Store.Units, Store.StudyEvents, Store.Obligations, Store.EvidenceEvents, Store.Chunks, Store.DailyPlans, Store.Settings, Store.ActiveRetrieval];
-      const tx = this.db.transaction(stores, "readwrite");
+      const tx = readwriteTransaction(this.db, stores, "strict");
       for (const store of stores) tx.objectStore(store).clear();
       for (const value of payload.profiles) tx.objectStore(Store.Profiles).put(value);
       for (const value of payload.nodes) tx.objectStore(Store.Nodes).put(value);
