@@ -4,7 +4,7 @@ const {spawnSync}=require("node:child_process");
 
 function runNodeScenarios(files){
   for(const file of files){
-    const target=path.join(__dirname,"scenarios",file);
+    const target=path.join(__dirname,"..","scenarios",file);
     console.log("==> "+path.relative(path.resolve(__dirname,".."),target));
     const result=spawnSync(process.execPath,[target],{stdio:"inherit"});
     if(result.error) throw result.error;
