@@ -50,28 +50,8 @@ jobs:
       - name: Install locked Node toolchain
         run: npm ci
 
-      - name: Build with pinned TypeScript 7
-        run: npm run build
-
-      - name: Refresh tracked checksums
-        run: python3 build/checksums.py --write
-
-      - name: JavaScript syntax
-        run: node --check dist/app.js
-
-      - name: Core integrity and ownership
-        run: |
-          python3 tests/build-integrity.spec.py
-          python3 tests/html-sanity.spec.py
-          python3 tests/source-ownership.spec.py
-
-      - name: Non-browser JavaScript regressions
-        run: |
-          set -euo pipefail
-          for file in tests/*.spec.js; do
-            echo "==> $file"
-            node "$file"
-          done
+      - name: Core QA
+        run: npm run qa:core
 
       - name: Require committed generated artifacts elsewhere
         if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/working') }}
@@ -144,7 +124,7 @@ jobs:
         run: npm ls --prefix tools/fsrs-optimizer --all --parseable > /dev/null
 
       - name: Exercise native FSRS-7 optimizer boundary
-        run: npm run --prefix tools/fsrs-optimizer smoke
+        run: npm run qa:optimizer
 
   browser:
     name: Browser / durability
@@ -180,19 +160,8 @@ jobs:
           python3 -m pip install --disable-pip-version-check playwright
           test -x /usr/bin/chromium
 
-      - name: Pass B2 durability gate
-        run: python3 tests/pass-b2-browser.spec.py
+      - name: Durability gate
+        run: npm run qa:browser:durability
 
-      - name: Python and Chromium regressions
-        run: |
-          set -euo pipefail
-          for file in tests/*.spec.py; do
-            case "$file" in
-              tests/build-integrity.spec.py|tests/html-sanity.spec.py|tests/source-ownership.spec.py|tests/pass-b2-browser.spec.py) continue ;;
-            esac
-            echo "==> $file"
-            python3 "$file"
-          done
-
-      - name: Full browser/WASM FSRS optimizer training
-        run: python3 tests/fsrs-browser-optimizer.spec.py full
+      - name: Browser / durability matrix
+        run: npm run qa:browser
