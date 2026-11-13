@@ -1297,9 +1297,9 @@
     async triggeringEvidence(relearningObligationId: string): Promise<EvidenceEvent | undefined> {
       const obligation = await this.obligation(relearningObligationId);
       if (obligation.type !== "relearn") return undefined;
-      const events = await this.evidenceEvents();
-      return events.find((event) => event.followUpObligationId === obligation.id)
-        ?? events.find((event) => event.obligationId === obligation.parentObligationId);
+      const matches = (await this.evidenceEvents()).filter((event) => event.followUpObligationId === obligation.id);
+      assert(matches.length === 1, "Relearning obligation must have exactly one triggering Evidence Event.");
+      return matches[0];
     }
 
     async currentActiveRetrieval(): Promise<ActiveRetrievalSession | null> {
@@ -1498,6 +1498,7 @@
           }
         }
       }
+      const triggeringEvidenceByRelearn = new Map<string, EvidenceEvent[]>();
       for (const event of evidenceEvents) {
         const unit = unitMap.get(event.unitId);
         const obligation = obligationMap.get(event.obligationId);
@@ -1529,6 +1530,9 @@
             followUp.returnObligationId === event.obligationId,
             "Evidence event follow-up does not match its exact relearning child.",
           );
+          const triggers = triggeringEvidenceByRelearn.get(followUp.id) ?? [];
+          triggers.push(event);
+          triggeringEvidenceByRelearn.set(followUp.id, triggers);
         }
         if (event.obligationType !== "memory-recall") {
           const policy = this.router.get(event.obligationType);
@@ -1583,6 +1587,11 @@
             requiredFsrs7StabilityFast(state.fsrsCard.stabilityFast);
           }
         }
+      }
+      for (const obligation of obligations) {
+        if (obligation.type !== "relearn") continue;
+        const triggers = triggeringEvidenceByRelearn.get(obligation.id) ?? [];
+        assert(triggers.length === 1, "Relearning obligation must have exactly one triggering Evidence Event.");
       }
       const canonicalMemoryReviews = memoryReviewObservationIndex(evidenceEvents);
       validateMemoryDatasetProjectionChain(obligations, canonicalMemoryReviews);
