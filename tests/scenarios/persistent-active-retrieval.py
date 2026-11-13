@@ -133,10 +133,14 @@ def main() -> None:
         row = frame.locator(".unit-row").filter(has_text="Staphylococcus aureus — recognition and clinical reasoning")
         check(row.count() == 1, "Target unit missing")
         row.locator('[data-action="review-unit"]').click()
-        frame.wait_for_timeout(500)
+        wait_until(frame, lambda: frame.locator("#attempt-text").count() == 1)
         check(frame.locator("#attempt-text").count() == 1, "Recall workflow did not start")
         frame.locator("#attempt-text").fill("Recovered closed-book answer")
-        frame.wait_for_timeout(700)
+        wait_until(
+            frame,
+            lambda: (state_get(page, "activeRetrieval", "current") or {}).get("draft", {}).get("values", {}).get("attempt-text") == "Recovered closed-book answer",
+            timeout=5000,
+        )
 
         active = state_get(page, "activeRetrieval", "current")
         check(active and active["status"] == "active", "Active session was not saved in IndexedDB")
@@ -209,7 +213,6 @@ def main() -> None:
             print("errors", browser_errors, flush=True)
             print("buttons", frame.locator('[data-action="rate"]').count(), [frame.locator('[data-action="rate"]').nth(i).is_disabled() for i in range(frame.locator('[data-action="rate"]').count())], flush=True)
             raise
-        frame.wait_for_timeout(350)
         after = state_all(page, "evidenceEvents")
         check(len(after) == before + 1, "Double rating created duplicate evidence")
         check(len({event["id"] for event in after}) == len(after), "Evidence identifiers are not unique")
@@ -220,7 +223,12 @@ def main() -> None:
         wait_until(frame, lambda: frame.locator(".review-card").count() == 1)
         check("2 / 2" in frame.locator("#review-content").inner_text(), "Next queue target did not recover after committed transition")
         frame.locator('[data-action="end-session"]').click()
-        frame.wait_for_timeout(500)
+        wait_until(
+            frame,
+            lambda: frame.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") is None
+            and state_get(page, "activeRetrieval", "current") is None,
+            timeout=5000,
+        )
         check(frame.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") is None, "Manual end did not clear emergency recovery")
         check(state_get(page, "activeRetrieval", "current") is None, "Manual end did not clear IndexedDB active session")
         check(not browser_errors, f"Browser errors: {browser_errors}")
