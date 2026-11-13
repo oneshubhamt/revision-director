@@ -1,6 +1,6 @@
 import {
  HOLDOUT_STRATEGY,MIN_HOLDOUT_CARDS,MIN_HOLDOUT_ITEMS,MIN_TRAIN_ITEMS,
- OPTIMIZER_CHRONOLOGY,OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,OPTIMIZER_ROLLOVER_HOUR,
+ OPTIMIZER_CONTRACT,OPTIMIZER_CHRONOLOGY,OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,OPTIMIZER_ROLLOVER_HOUR,
  assertChronologicalCsv,evaluateHoldoutGate,splitChronologicalHoldout
 } from "./optimizer-policy.mjs";
 
@@ -47,7 +47,7 @@ export async function convertFsrsEvidence({binding,csv,sourceSha256}){
   throw Error("Optimizer source checksum is invalid");
 
  const converted=await Promise.resolve(binding.convertCsvToFsrsItemsWithCardIds(
-  bytes,OPTIMIZER_ROLLOVER_HOUR,OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,"FSRS-7"
+  bytes,OPTIMIZER_ROLLOVER_HOUR,OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,OPTIMIZER_CONTRACT.model
  ));
  const {items,cardIds}=converted;
  if(!Array.isArray(items)||!Array.isArray(cardIds)||items.length<1||items.length!==cardIds.length)
@@ -125,9 +125,9 @@ export async function optimizeFsrsProfile({
  return {
   rawRows,
   profile:{
-   schema:"revision-director-fsrs-profile/v1",
-   model:"FSRS-7",
-   bindingVersion:"0.6.1",
+   schema:OPTIMIZER_CONTRACT.profileSchema,
+   model:OPTIMIZER_CONTRACT.model,
+   bindingVersion:OPTIMIZER_CONTRACT.bindingVersion,
    trainedAt:new Date().toISOString(),
    sourceSha256:checksum,
    evidenceItems:items.length,
@@ -149,14 +149,14 @@ export async function optimizeFsrsProfile({
     }
    },
    training:{
-    enableShortTerm:true,
-    enableSchedPenalties:true,
-    numRelearningSteps:1,
+    enableShortTerm:OPTIMIZER_CONTRACT.enableShortTerm,
+    enableSchedPenalties:OPTIMIZER_CONTRACT.enableSchedPenalties,
+    numRelearningSteps:OPTIMIZER_CONTRACT.numRelearningSteps,
     chronology:OPTIMIZER_CHRONOLOGY,
     converterFixedUtcOffsetMinutes:OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,
     converterRolloverHour:OPTIMIZER_ROLLOVER_HOUR,
-    runtimeLearningSteps:["1d"],
-    runtimeRelearningSteps:["1d"],
+    runtimeLearningSteps:[...OPTIMIZER_CONTRACT.runtimeLearningSteps],
+    runtimeRelearningSteps:[...OPTIMIZER_CONTRACT.runtimeRelearningSteps],
     validationCandidateTrainedItems:split.trainCount,
     finalRetrainedOnAllEvidence:true
    }
