@@ -1,6 +1,5 @@
 from __future__ import annotations
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import importlib.util
 import json
 import shutil
@@ -84,24 +83,7 @@ def state_all(page, store: str):
 
 
 def restore_fixture_d2(page, frame, fixture) -> None:
-    frame.locator("#import-backup").set_input_files([])
-    frame.locator("#import-backup").set_input_files(str(fixture))
-    frame.wait_for_timeout(900)
-    if not frame.locator("#restore-dialog").is_visible():
-        raise AssertionError("Restore preview did not open")
-    with TemporaryDirectory() as tmpdir:
-        with page.expect_download() as info:
-            frame.locator('[data-action="create-restore-safety"]').click()
-        path=Path(tmpdir)/info.value.suggested_filename
-        info.value.save_as(str(path))
-        if not path.exists() or path.stat().st_size <= 0:
-            raise AssertionError("Safety copy was not downloaded")
-    if frame.locator('input[name="restore-active-treatment"]').count():
-        frame.locator('input[name="restore-active-treatment"][value="discard"]').check()
-    frame.locator("#restore-safety-saved").check()
-    frame.locator("#restore-replace-confirm").check()
-    frame.locator("#restore-final-button").click()
-    frame.wait_for_timeout(1100)
+    module.restore_fixture_d2(page, frame, fixture)
 
 def main() -> None:
     chromium = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
