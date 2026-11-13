@@ -373,7 +373,7 @@ def scenario_bridge(browser) -> None:
             interval=40,
             message=f"Profile suspension did not persist: {profile_id}",
         )
-    wait_until(page, lambda: page.evaluate("RevisionDirector.records.getDueSummary().dueCount") == 0, timeout=5000, interval=40, message="Paused profiles remained due")
+    wait_until(page, lambda: page.evaluate("async()=> (await RevisionDirector.records.getDueSummary()).dueCount") == 0, timeout=5000, interval=40, message="Paused profiles remained due")
     summary = page.evaluate("RevisionDirector.records.getDueSummary()")
     check(summary["dueCount"] == 0, f"Paused profiles remained in bridge due summary: {summary}")
     check(not errors, f"Browser errors: {errors}")
