@@ -151,7 +151,7 @@ def scenario_hostile_planning_import(browser):
         check(valid['dailyPlans'],'Expected persisted daily plan')
         hostile=json.loads(json.dumps(valid)); hostile['dailyPlans'][0]['studyDayKey']='2026-02-31'
         hp=Path(tmp)/'hostile.rdbackup'; hp.write_bytes(encode_payload(hostile))
-        page.locator('[data-pane="settings"]').click()
+        open_rendered_pane(page, 'settings')
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files(str(hp))
         result=wait_for_backup_import_result(page, timeout=8000)
