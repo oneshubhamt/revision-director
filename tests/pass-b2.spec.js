@@ -98,6 +98,12 @@ const activeSession = api.canonicalActiveRetrievalSession({
   startedAt:new Date(t0).toISOString(),updatedAt:new Date(t0+130000).toISOString(),
 });
 check(activeSession.elapsedMs === 0 && activeSession.timeRuntime.pendingGap, 'Current active-session timing was not preserved');
+const backwardTimestampSession = api.canonicalActiveRetrievalSession({
+  ...activeSession,
+  revision:2,
+  updatedAt:new Date(t0-5000).toISOString(),
+});
+check(backwardTimestampSession.revision===2 && backwardTimestampSession.updatedAt<backwardTimestampSession.startedAt, 'A later active-session revision must survive legitimate backward wall-clock movement');
 
 const obligation = { id:'o1', unitId:'u1', workflow:{kind:'recall'}, expectedMinutes:10 };
 const unreliableObservation = api.durationObservationFor(obligation, [], 10*60_000, false);
