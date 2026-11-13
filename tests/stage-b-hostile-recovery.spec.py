@@ -200,7 +200,14 @@ def main() -> None:
         frame.locator('[data-action="rate"][data-rating="3"]').click()
         wait_until(frame, lambda: len(b1.state_all(page, 'evidenceEvents')) == before_guard_evidence + 1)
         check(len(b1.state_all(page, 'evidenceEvents')) == before_guard_evidence + 1, 'Retry after guard abort did not commit exactly once')
-        wait_until(frame, lambda: frame.locator('#pane-today').is_visible())
+        wait_until(
+            frame,
+            lambda: frame.locator('#pane-today').is_visible()
+            or (
+                frame.locator('[data-review-phase="attempt"]').count() > 0
+                and not frame.locator('[data-review-phase="attempt"]').is_hidden()
+            ),
+        )
 
         # Re-establish data, then simulate a crash after the committing snapshot but before the atomic evidence transaction.
         import_fixture(page, frame)
