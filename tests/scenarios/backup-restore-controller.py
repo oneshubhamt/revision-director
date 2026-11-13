@@ -63,13 +63,26 @@ def main():
         page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
         page.locator('[data-action="start-due"]').click(); page.locator('#review-content').wait_for(state='visible')
         attempt=page.locator('#attempt-text')
-        if attempt.count(): attempt.fill('Durable active retrieval text')
+        if attempt.count():
+            attempt.fill('Durable active retrieval text')
+            wait_until(
+                page,
+                lambda: 'Durable active retrieval text' in (page.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") or ''),
+                timeout=5000,
+                interval=40,
+                message='Active retrieval draft did not reach recovery storage before export',
+            )
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
         with page.expect_download() as active_info:
             page.locator('[data-action="export-backup"]').click()
         active_file=tmp/active_info.value.suggested_filename;active_info.value.save_as(str(active_file))
         # Reinspect active backup: preview must require explicit treatment.
-        page.locator('#import-backup').set_input_files(str(active_file)); page.locator('#restore-dialog').wait_for(state='visible')
+        page.locator('#import-backup').set_input_files([])
+        page.locator('#import-backup').set_input_files(str(active_file))
+        try:
+            page.locator('#restore-dialog').wait_for(state='visible', timeout=8000)
+        except Exception as error:
+            raise AssertionError(f"Active-session backup inspection failed · toast={page.locator('#toast').inner_text()!r}") from error
         check(page.locator('input[name="restore-active-treatment"]').count()==2,'Active-session treatment choices missing')
         check(page.locator('#restore-final-button').is_disabled(),'Restore enabled before active-session treatment')
         restore_selected(page,tmp,'restore')
