@@ -1,5 +1,8 @@
 'use strict';
-const { createAppRuntime, memoryLocalStorage } = require('./helpers/runtime-harness');
+const fs = require('fs');
+const path = require('path');
+const { ROOT, createAppRuntime, memoryLocalStorage } = require('./helpers/runtime-harness');
+const root = ROOT;
 
 const memory = memoryLocalStorage();
 const memoryStorage = memory.values;
