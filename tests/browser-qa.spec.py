@@ -393,19 +393,6 @@ def scenario_bridge(browser) -> None:
 
 
 
-def persisted_scheduling_policy(page):
-    return page.evaluate("""() => new Promise((resolve,reject)=>{
-      const request=indexedDB.open('revision-director');
-      request.onerror=()=>reject(request.error);
-      request.onsuccess=()=>{
-        const db=request.result;
-        const get=db.transaction('settings','readonly').objectStore('settings').get('app');
-        get.onerror=()=>reject(get.error);
-        get.onsuccess=()=>{ resolve(get.result?.fsrsScheduling?.policy ?? null); db.close(); };
-      };
-    })""")
-
-
 def scenario_cost_adr_settings(browser) -> None:
     page, errors = open_page(browser, {"width": 1365, "height": 950}, baseline=True)
     page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
@@ -419,8 +406,6 @@ def scenario_cost_adr_settings(browser) -> None:
     settings.locator('button[type="submit"]').click()
     wait_until(page, lambda: bool(page.locator("#toast").inner_text().strip()), timeout=8000, interval=40, message="Cost-ADR settings submit did not finish")
     check(not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Cost-ADR settings submit failed: " + page.locator("#toast").inner_text())
-    saved = persisted_scheduling_policy(page) or {}
-    check(saved.get("kind") == "cost-adr", f"Cost-ADR policy did not persist: {saved}")
     wait_until(page, lambda: page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "cost-adr", timeout=3000, interval=40, message="Cost-ADR settings did not rerender")
     check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
     settings_text = page.locator("#settings-content").inner_text()
@@ -445,10 +430,17 @@ def scenario_cost_adr_settings(browser) -> None:
     settings.locator('button[type="submit"]').click()
     wait_until(page, lambda: bool(page.locator("#toast").inner_text().strip()), timeout=8000, interval=40, message="Fixed-retention settings submit did not finish")
     check(not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Fixed-retention settings submit failed: " + page.locator("#toast").inner_text())
-    saved = persisted_scheduling_policy(page) or {}
-    check(saved.get("kind") == "fixed-retention" and abs(float(saved.get("desiredRetention", 0)) - 0.90) < 1e-12, f"Fixed-retention policy did not persist: {saved}")
     wait_until(page, lambda: page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "fixed-retention", timeout=3000, interval=40, message="Fixed-retention settings did not rerender")
     check("Fixed · 90%" in page.locator("#settings-content").inner_text(), "Return from Cost-ADR to fixed retention did not complete")
+    with TemporaryDirectory() as tmp:
+        backup_path = str(Path(tmp) / "fixed-retention-settings.rdbackup")
+        with page.expect_download() as download_info:
+            page.locator('[data-action="export-backup"]').click()
+        download_info.value.save_as(backup_path)
+        payload = decode_file(Path(backup_path))
+        saved_policy = payload["settings"]["fsrsScheduling"]["policy"]
+        check(saved_policy["kind"] == "fixed-retention", f"Fixed-retention policy did not persist: {saved_policy}")
+        check(abs(float(saved_policy["desiredRetention"]) - 0.90) < 1e-12, "Fixed-retention target did not persist at 90%")
     check(not errors, f"Cost-ADR Settings browser errors: {errors}")
     page.close()
 
