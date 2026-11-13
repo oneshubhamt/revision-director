@@ -1,0 +1,74 @@
+'use strict';
+const { createAppRuntime } = require('../helpers/runtime-harness');
+
+const { api } = createAppRuntime({
+  globalName: '__RD_D1_TEST__',
+  expose: ["APP_VERSION","RevisionService","BackupCodec","validateBackupPayload","BACKUP_ARCHIVE_FORMAT","BACKUP_ARCHIVE_VERSION","BACKUP_ARCHIVE_MAX_FILE_BYTES","BACKUP_ARCHIVE_MAX_EXPANDED_BYTES","BACKUP_ARCHIVE_CHUNK_MAX_ITEMS","sha256FallbackHex"],
+  requireFsrs: false,
+});
+
+let checks=0;
+function check(v,m){checks++; if(!v) throw new Error(m)}
+async function mustFail(fn,m){checks++; try{await fn()}catch{return} throw new Error(m)}
+const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-07-28T00:00:00.000Z',appVersion:'va7.1-pass-f1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}},activeRetrieval:null};
+(async()=>{
+ check(api.APP_VERSION==='va7.1-pass-f1','D1 version wrong');
+ check(api.BACKUP_ARCHIVE_FORMAT==='revision-director-backup-archive'&&api.BACKUP_ARCHIVE_VERSION===2,'Archive identity wrong');
+ check(api.sha256FallbackHex(new TextEncoder().encode('abc'))==='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','Pure SHA-256 fallback is incorrect');
+ const uncompressed=await api.BackupCodec.create(api.validateBackupPayload(empty),false);
+ check(uncompressed.inspection.verified&&uncompressed.inspection.compression==='none','Uncompressed create failed');
+ const uncompressedLines=new TextDecoder().decode(uncompressed.bytes).trimEnd().split('\n').map(JSON.parse);
+ check(uncompressedLines[0].hashAlgorithm==='sha256','Backup archive must use SHA-256 only');
+ check(uncompressed.inspection.counts.settings===1&&uncompressed.inspection.totalDocuments===1,'Inspection counts wrong');
+ const decoded=await api.BackupCodec.decode(uncompressed.bytes,x=>api.validateBackupPayload(x));
+ check(decoded.payload.settings.dailyCapacityMinutes===60,'Round trip failed');
+ check(decoded.inspection.expandedBytes===uncompressed.bytes.byteLength,'Expanded byte metadata wrong');
+ const priorRelease={...structuredClone(empty),appVersion:'va7.0-compatible-release'};
+ const priorArchive=await api.BackupCodec.create(api.validateBackupPayload(priorRelease),false);
+ const priorDecoded=await api.BackupCodec.decode(priorArchive.bytes,x=>api.validateBackupPayload(x));
+ check(priorDecoded.payload.appVersion===priorRelease.appVersion&&priorDecoded.inspection.appVersion===priorRelease.appVersion,'Compatible backup schema was incorrectly coupled to application release');
+ const gzip=await api.BackupCodec.create(api.validateBackupPayload(empty),true);
+ check(['gzip','none'].includes(gzip.inspection.compression),'Compression selection invalid');
+ const gzipDecoded=await api.BackupCodec.decode(gzip.bytes,x=>api.validateBackupPayload(x));
+ check(gzipDecoded.inspection.verified,'Compressed round trip failed');
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(JSON.stringify(empty)),x=>api.validateBackupPayload(x)),'Raw JSON was accepted');
+ const lines=uncompressedLines;
+ const tampered=structuredClone(lines); tampered[1].items[0].dailyCapacityMinutes=61;
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(tampered.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Tampered chunk was accepted');
+ const badVersion=structuredClone(lines); badVersion[0].version=99;
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(badVersion.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Unsupported archive version accepted');
+ const badHash=structuredClone(lines); badHash[0].hashAlgorithm='fnv1a64';
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(badHash.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Non-SHA-256 archive accepted');
+ const shortStateHash=structuredClone(lines); shortStateHash[0].stateChecksum='a'.repeat(16);
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(shortStateHash.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Short pseudo-SHA-256 state checksum accepted');
+ const extraManifest=structuredClone(lines); extraManifest[0].legacyField=true;
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(extraManifest.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Unknown manifest fields were accepted');
+ const badCompression=structuredClone(lines); badCompression[0].compression='gzip';
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(badCompression.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Compression mismatch accepted');
+ const badCount=structuredClone(lines); badCount[0].counts.settings=2;
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(badCount.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Manifest count mismatch accepted');
+ const malformedCounts=structuredClone(lines); malformedCounts[0].counts=null;
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(malformedCounts.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Malformed manifest counts accepted');
+ const malformedChunk=structuredClone(lines); malformedChunk[1].entityType='unknown';
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(malformedChunk.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Unknown chunk entity type accepted');
+ const extraChunk=structuredClone(lines); extraChunk[1].legacyField=true;
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(extraChunk.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Unknown backup chunk fields were accepted');
+ const extraCounts=structuredClone(lines); extraCounts[0].counts.legacy=0;
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(extraCounts.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Unknown backup count fields were accepted');
+ const badFinal=structuredClone(lines); badFinal.at(-1).checksum='0'.repeat(badFinal.at(-1).checksum.length);
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(badFinal.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Final checksum tampering accepted');
+ const extraCompletion=structuredClone(lines); extraCompletion.at(-1).legacyField=true;
+ await mustFail(()=>api.BackupCodec.decode(new TextEncoder().encode(extraCompletion.map(JSON.stringify).join('\n')+'\n'),x=>api.validateBackupPayload(x)),'Unknown completion-proof fields were accepted');
+ const invalidRel=structuredClone(empty); invalidRel.settings.activeProfileId='missing';
+ const invalidArchive=await api.BackupCodec.create(invalidRel,false);
+ await mustFail(()=>api.BackupCodec.decode(invalidArchive.bytes,x=>api.validateBackupPayload(x)),'Relationally invalid archive accepted');
+ const huge=structuredClone(empty); huge.settings.extra='x'.repeat(1024*1024+20);
+ await mustFail(()=>api.BackupCodec.create(huge,false),'Oversized document accepted');
+ const profiles=[]; for(let i=0;i<205;i++) profiles.push({schemaVersion:1,id:`p${i}`,name:`Exam ${i}`,examDate:'',status:'active',createdAt:empty.exportedAt,updatedAt:empty.exportedAt});
+ const many={...empty,profiles,settings:{...empty.settings,activeProfileId:'p0'}};
+ const chunked=await api.BackupCodec.create(api.validateBackupPayload(many),false);
+ check(chunked.inspection.chunkCount>=4,'Bounded chunking did not split records');
+ const chunkLines=new TextDecoder().decode(chunked.bytes).trimEnd().split('\n').map(JSON.parse).filter(x=>x.kind==='chunk'&&x.entityType==='profiles');
+ check(chunkLines.every(x=>x.count<=api.BACKUP_ARCHIVE_CHUNK_MAX_ITEMS),'Chunk item limit exceeded');
+ console.log(`PASS ${checks} Pass D1 backup-codec checks`);
+})().catch(e=>{console.error(e);process.exitCode=1});

@@ -61,7 +61,7 @@
       const raw = safeLocalStorageGet(ACTIVE_RETRIEVAL_RECOVERY_KEY);
       if (!raw) return undefined;
       try {
-        const parsed = JSON.parse(raw) as ActiveRetrievalRecoveryEnvelope;
+        const parsed: unknown = JSON.parse(raw);
         return canonicalActiveRetrievalEnvelope(parsed).session;
       } catch (error) {
         this.data.recordDiagnostic("active-retrieval.local.invalid", "read emergency recovery", error);
@@ -126,7 +126,7 @@
       const local = this.readLocal();
       let indexed: ActiveRetrievalSession | undefined;
       try {
-        indexed = await this.data.get<ActiveRetrievalSession>(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID);
+        indexed = await this.data.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID);
       } catch (error) {
         this.data.recordDiagnostic("active-retrieval.indexeddb.read", "read active retrieval", error);
       }

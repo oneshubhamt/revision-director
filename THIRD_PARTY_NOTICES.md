@@ -21,3 +21,18 @@ browser UMD artifact.
 - Package: `@open-spaced-repetition/srs-kit@1.0.0`
 - Licence: BSD-3-Clause
 - Licence text: `licences/srs-kit-BSD-3-Clause.txt`
+
+
+## Hosted local FSRS optimizer runtime
+
+The `Revision_Director_Hosted/` distribution additionally contains the browser-targeted optimizer runtime. These packages are not embedded in the normal root `index.html`.
+
+- `@open-spaced-repetition/binding-wasm32-wasip1@0.6.1` — MIT · pinned WASM SHA-256 `498d916b2d92180d8547f4d41ad204d63a488e6e0a1fe8c2ab330cf4ff5b8c05` · 1,396,770 bytes
+- `@emnapi/core@2.0.0-beta.3` — MIT
+- `@emnapi/runtime@2.0.0-beta.3` — MIT
+- `@emnapi/wasi-threads@2.2.0` — MIT
+- `@napi-rs/wasm-runtime@1.2.6` — MIT · npm package omits the repository-level licence file; verified upstream text retained at `licences/napi-rs-wasm-runtime-MIT.txt` · SHA-256 `3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215`
+- `@tybys/wasm-util@0.10.4` — MIT
+- `tslib@2.9.1` — 0BSD
+
+The hosted build copies installed package licence texts into `licenses/optimizer/` beside the Worker/WASM distribution. For `@napi-rs/wasm-runtime@1.2.6`, whose npm `files` whitelist omits the repository-level licence, the build uses only the version- and checksum-pinned upstream fallback retained above.

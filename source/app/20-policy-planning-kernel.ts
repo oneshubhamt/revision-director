@@ -1,102 +1,139 @@
+  const MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD = 2 as const;
+
+  const MEMORY_DIFFICULTY_ACTION_LABELS = {
+    "scope-review": "reconsider the scope",
+    "split-scope": "split oversized material",
+    "prerequisite-review": "revisit prerequisites",
+    "source-revisit": "revisit source material",
+    "representation-change": "change retrieval representation",
+    "deliberate-intervention": "flag for deliberate intervention",
+  } satisfies Record<MemoryDifficultyAction, string>;
+
+  function defaultMemoryDifficultyPolicy(): MemoryDifficultyPolicy {
+    return {
+      remediationLapses: 2,
+      persistentDifficultyLapses: 4,
+      automaticHold: { enabled: false, lapseThreshold: 8 },
+    };
+  }
+
+  function canonicalMemoryDifficultyPolicy(value: unknown): MemoryDifficultyPolicy {
+    const record = requireRecord(value, "Memory difficulty policy");
+    const allowed = new Set(["remediationLapses", "persistentDifficultyLapses", "automaticHold"]);
+    assert(Object.keys(record).every((key) => allowed.has(key)), "Memory difficulty policy contains unexpected fields.");
+    const remediationLapses = requiredSafeInteger(record["remediationLapses"], "Memory remediation lapse threshold");
+    const persistentDifficultyLapses = requiredSafeInteger(record["persistentDifficultyLapses"], "Persistent-difficulty lapse threshold");
+    assert(remediationLapses >= 2 && remediationLapses <= 99, "Memory remediation lapse threshold is invalid.");
+    assert(persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
+    const automaticHoldRecord = requireRecord(record["automaticHold"], "Memory automatic-hold policy");
+    const holdAllowed = new Set(["enabled", "lapseThreshold"]);
+    assert(Object.keys(automaticHoldRecord).every((key) => holdAllowed.has(key)), "Memory automatic-hold policy contains unexpected fields.");
+    const enabled = automaticHoldRecord["enabled"];
+    const lapseThreshold = requiredSafeInteger(automaticHoldRecord["lapseThreshold"], "Memory automatic-hold lapse threshold");
+    assert(typeof enabled === "boolean", "Memory automatic-hold flag is invalid.");
+    assert(lapseThreshold > persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold must be later than persistent difficulty.");
+    return {
+      remediationLapses,
+      persistentDifficultyLapses,
+      automaticHold: { enabled, lapseThreshold },
+    };
+  }
+
+  function memoryDifficultyActionLabel(action: MemoryDifficultyAction): string {
+    return MEMORY_DIFFICULTY_ACTION_LABELS[action];
+  }
+
+  function memoryDifficultyAssessment(
+    obligation: RevisionObligation,
+    policy: MemoryDifficultyPolicy,
+    memoryReviews: readonly MemoryReviewObservation[] = [],
+  ): MemoryDifficultyAssessment {
+    assert(obligation.type === "memory-recall", "Persistent-difficulty assessment is only valid for memory recall.");
+    const canonicalPolicy = canonicalMemoryDifficultyPolicy(policy);
+    assert(obligation.policyState.fsrsCard, "Memory obligation has no FSRS card for difficulty assessment.");
+
+    // Host difficulty semantics derive only from canonical review evidence.
+    // The materialized FSRS card is a scheduling projection, not a second
+    // history source.
+    let established = false;
+    let earlyLearningFailures = 0;
+    let establishedLapses = 0;
+    for (const review of memoryReviews) {
+      if (review.rating === Rating.Again) {
+        if (established) establishedLapses += 1;
+        else earlyLearningFailures += 1;
+      } else if (review.rating >= Rating.Good) {
+        established = true;
+      }
+    }
+    const level: MemoryDifficultyLevel =
+      establishedLapses >= canonicalPolicy.persistentDifficultyLapses ? "persistent-difficulty"
+        : establishedLapses >= canonicalPolicy.remediationLapses ? "remediation"
+          : !established && earlyLearningFailures >= MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD ? "learning-difficulty"
+            : "normal";
+    const recommendedActions: MemoryDifficultyAction[] = [];
+    if (level === "learning-difficulty" || level === "remediation") {
+      recommendedActions.push("source-revisit", "representation-change");
+    } else if (level === "persistent-difficulty") {
+      recommendedActions.push("scope-review");
+      if (obligation.expectedMinutes > 45 || obligation.chunking !== undefined) recommendedActions.push("split-scope");
+      recommendedActions.push("prerequisite-review", "source-revisit", "representation-change", "deliberate-intervention");
+    }
+    return {
+      level,
+      establishedLapses,
+      earlyLearningFailures,
+      recommendedActions,
+      automaticHoldEligible:
+        level === "persistent-difficulty" &&
+        canonicalPolicy.automaticHold.enabled &&
+        establishedLapses >= canonicalPolicy.automaticHold.lapseThreshold,
+    };
+  }
+
+  function memoryDifficultyRemediationPlan(
+    assessment: MemoryDifficultyAssessment,
+  ): { priorityBoost: number; guidance: string } {
+    if (assessment.level === "normal") return { priorityBoost: 2, guidance: "" };
+    const actions = assessment.recommendedActions.map(memoryDifficultyActionLabel).join("; ");
+    if (assessment.level === "learning-difficulty") {
+      return {
+        priorityBoost: 3,
+        guidance: `Early learning difficulty (${assessment.earlyLearningFailures} failed learning recalls): ${actions}. `,
+      };
+    }
+    if (assessment.level === "remediation") {
+      return {
+        priorityBoost: 3,
+        guidance: `Repeated established-memory failure remediation (${assessment.establishedLapses} established recall failures): ${actions}. `,
+      };
+    }
+    return {
+      priorityBoost: 4,
+      guidance: `Persistent established-memory difficulty (${assessment.establishedLapses} established recall failures): ${actions}. `,
+    };
+  }
+
+  function memoryDifficultyWeaknessFloor(level: MemoryDifficultyLevel): number {
+    return level === "persistent-difficulty" ? 0.9 : level === "remediation" ? 0.72 : level === "learning-difficulty" ? 0.68 : 0;
+  }
+
+  interface SchedulerPolicyContext {
+    readonly memoryReviews?: readonly MemoryReviewObservation[];
+  }
+
   interface SchedulerPolicy {
     readonly id: string;
     readonly type: ObligationType;
     createInitialState(firstDueAt: ISODateTime, cardId: string): PolicyState;
-    preview(obligation: RevisionObligation, now: Date): SchedulePreview[];
-    complete(obligation: RevisionObligation, rating: Rating, evidence: ObjectiveEvidence, now: Date): PolicyCompletion;
-  }
-
-  function requiredFsrs7StabilityFast(value: number): number {
-    assert(Number.isFinite(value), "FSRS-7 memory state is missing fast stability.");
-    return value;
-  }
-
-  function serializeFsrsCard(card: FsrsCardRuntime): StoredFsrsCard {
-    const stored: StoredFsrsCard = {
-      model: FSRS_MODEL,
-      cardId: card.cardId,
-      dueAt: card.dueAt.toISOString(),
-      stability: card.stability,
-      stabilityFast: requiredFsrs7StabilityFast(card.stabilityFast),
-      difficulty: card.difficulty,
-      scheduledDays: card.scheduledDays,
-      learningStep: card.learningStep,
-      reps: card.reps,
-      lapses: card.lapses,
-      state: card.state,
-      scheduleStatus: card.scheduleStatus,
-    };
-    if (card.lastReviewAt) stored.lastReviewAt = card.lastReviewAt.toISOString();
-    return stored;
-  }
-
-  function hydrateFsrsCard(card: StoredFsrsCard, obligationId: string): FsrsCardRuntime {
-    assert(card.model === FSRS_MODEL, "Memory obligation does not use the current FSRS-7 model.");
-    assert(card.cardId === obligationId, "FSRS card identity does not match its obligation.");
-    return {
-      cardId: card.cardId,
-      dueAt: new Date(card.dueAt),
-      lastReviewAt: card.lastReviewAt ? new Date(card.lastReviewAt) : null,
-      stability: card.stability,
-      stabilityFast: requiredFsrs7StabilityFast(card.stabilityFast),
-      difficulty: card.difficulty,
-      scheduledDays: card.scheduledDays,
-      learningStep: card.learningStep,
-      reps: card.reps,
-      lapses: card.lapses,
-      state: card.state,
-      scheduleStatus: card.scheduleStatus,
-    };
-  }
-
-  function fsrsConfigSnapshot(desiredRetention: number): FsrsConfigSnapshot {
-    return {
-      model: FSRS_MODEL,
-      desiredRetention,
-      fractionalDays: true,
-      enableFuzz: false,
-      enableShortTerm: true,
-      learningSteps: ["1d"],
-      relearningSteps: ["1d"],
-      graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
-      allowModelOverride: true,
-      maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
-      clearStatsOnForget: false,
-      weightsSource: "ts-fsrs-package-default",
-    };
-  }
-
-  const FSRS_SCHEDULER_CACHE = new Map<string, FsrsSchedulerRuntime>();
-
-  function fsrsSchedulerCacheKey(desiredRetention: number): string {
-    return desiredRetention.toFixed(6);
-  }
-
-  async function prepareFsrsScheduler(desiredRetention: number): Promise<void> {
-    assert(Number.isFinite(desiredRetention) && desiredRetention > 0 && desiredRetention < 1, "Desired retention is invalid.");
-    const key = fsrsSchedulerCacheKey(desiredRetention);
-    if (FSRS_SCHEDULER_CACHE.has(key)) return;
-    const scheduler = await runtimeFsrs().DefaultScheduler({
-      version: FSRS_MODEL,
-      desiredRetention,
-      enableShortTerm: true,
-      learningSteps: FSRS_LEARNING_STEPS,
-      relearningSteps: FSRS_RELEARNING_STEPS,
-      graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
-      allowModelOverride: true,
-      enableFuzz: false,
-      maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
-      clearStatsOnForget: false,
-    });
-    const probe = scheduler.newCard({ cardId: "revision-director-fsrs7-probe" });
-    requiredFsrs7StabilityFast(probe.stabilityFast);
-    FSRS_SCHEDULER_CACHE.set(key, scheduler);
-  }
-
-  function fsrsScheduler(desiredRetention: number): FsrsSchedulerRuntime {
-    const scheduler = FSRS_SCHEDULER_CACHE.get(fsrsSchedulerCacheKey(desiredRetention));
-    assert(scheduler, "FSRS-7 scheduler has not been initialized for the current retention setting.");
-    return scheduler;
+    preview(obligation: RevisionObligation, now: Date, context?: SchedulerPolicyContext): SchedulePreview[];
+    complete(
+      obligation: RevisionObligation,
+      rating: Rating,
+      evidence: ObjectiveEvidence,
+      now: Date,
+      context?: SchedulerPolicyContext,
+    ): PolicyCompletion;
   }
 
   const PLANNER_WEIGHTS = Object.freeze({
@@ -106,7 +143,7 @@
     reviewDuration: 0.07,
     examinationProximity: 0.15,
     weeklyBalance: 0.10,
-  });
+  } satisfies Record<keyof PlanningFactors, number>);
 
   function examDateTime(profile: ExamProfile): Date | undefined {
     if (!profile.examDate) return undefined;
@@ -120,6 +157,13 @@
     const examDay = Date.UTC(exam.getFullYear(), exam.getMonth(), exam.getDate());
     const referenceDay = Date.UTC(reference.getFullYear(), reference.getMonth(), reference.getDate());
     return Math.round((examDay - referenceDay) / DAY_MS);
+  }
+
+  function correctiveRelearnDueAt(profile: ExamProfile, reviewedAt: Date): ISODateTime {
+    const ordinaryDue = addDays(reviewedAt, 1);
+    const exam = examDateTime(profile);
+    if (!exam) return ordinaryDue.toISOString();
+    return new Date(Math.max(reviewedAt.getTime(), Math.min(ordinaryDue.getTime(), exam.getTime()))).toISOString();
   }
 
   function examinationProximityScore(daysToExam: number): number {
@@ -149,17 +193,17 @@
     return clamp(1 - proportion * 0.45, 0.55, 1);
   }
 
-  function evidenceWeaknessScore(events: EvidenceEvent[], neutral = 0.55): number {
+  function evidenceWeaknessScore(events: readonly EvidenceEvent[], neutral = 0.55): number {
     const recent = [...events]
       .sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt))
       .slice(0, 5);
     if (recent.length === 0) return neutral;
-    const ratingWeakness: Record<Rating, number> = {
+    const ratingWeakness = {
       [Rating.Again]: 1,
       [Rating.Hard]: 0.68,
       [Rating.Good]: 0.26,
       [Rating.Easy]: 0,
-    };
+    } satisfies Record<Rating, number>;
     let weightedRating = 0;
     let weightedEvidence = 0;
     let weightedErrors = 0;
@@ -180,12 +224,50 @@
     );
   }
 
-  function obligationWeaknessScore(item: JoinedObligation, evidenceEvents: EvidenceEvent[]): number {
-    const obligationEvidence = evidenceEvents.filter((event) => event.obligationId === item.obligation.id);
-    const unitEvidence = evidenceEvents.filter((event) => event.unitId === item.unit.id);
-    const unitContext = evidenceWeaknessScore(unitEvidence);
-    if (obligationEvidence.length === 0) return unitContext;
-    const obligationSignal = evidenceWeaknessScore(obligationEvidence);
+  interface PlanningEvidenceIndex {
+    readonly all: readonly EvidenceEvent[];
+    readonly weaknessByObligation: ReadonlyMap<string, number>;
+    readonly weaknessByUnit: ReadonlyMap<string, number>;
+  }
+
+  type PlanningEvidenceSource = readonly EvidenceEvent[] | PlanningEvidenceIndex;
+
+  function planningEvidenceIndex(evidenceEvents: readonly EvidenceEvent[]): PlanningEvidenceIndex {
+    const byObligation = new Map<string, EvidenceEvent[]>();
+    const byUnit = new Map<string, EvidenceEvent[]>();
+    const append = (map: Map<string, EvidenceEvent[]>, key: string, event: EvidenceEvent): void => {
+      const events = map.get(key);
+      if (events) events.push(event);
+      else map.set(key, [event]);
+    };
+    for (const event of evidenceEvents) {
+      append(byObligation, event.obligationId, event);
+      append(byUnit, event.unitId, event);
+    }
+    const weakness = (groups: ReadonlyMap<string, readonly EvidenceEvent[]>): ReadonlyMap<string, number> =>
+      new Map([...groups].map(([key, events]) => [key, evidenceWeaknessScore(events)]));
+    return {
+      all: evidenceEvents,
+      weaknessByObligation: weakness(byObligation),
+      weaknessByUnit: weakness(byUnit),
+    };
+  }
+
+  function isPlanningEvidenceIndex(value: PlanningEvidenceSource): value is PlanningEvidenceIndex {
+    return !Array.isArray(value);
+  }
+
+  function obligationWeaknessScore(item: JoinedObligation, evidence: PlanningEvidenceSource): number {
+    const unitContext = isPlanningEvidenceIndex(evidence)
+      ? evidence.weaknessByUnit.get(item.unit.id) ?? 0.55
+      : evidenceWeaknessScore(evidence.filter((event) => event.unitId === item.unit.id));
+    const obligationSignal = isPlanningEvidenceIndex(evidence)
+      ? evidence.weaknessByObligation.get(item.obligation.id)
+      : (() => {
+          const events = evidence.filter((event) => event.obligationId === item.obligation.id);
+          return events.length ? evidenceWeaknessScore(events) : undefined;
+        })();
+    if (obligationSignal === undefined) return unitContext;
     const obligationFailureBurden = clamp(item.obligation.policyState.failureCount / 3, 0, 1);
     const unitLapseContext = clamp(item.unit.lapseCount / 4, 0, 1);
     return clamp(
@@ -331,8 +413,12 @@
     return result;
   }
 
+  function plannedQueueStableKey(item: PlannedQueueItem): string {
+    return planItemKey(item.joined.obligation.id, item.chunk?.id);
+  }
+
   function interleaveSelected(items: PlannedQueueItem[]): PlannedQueueItem[] {
-    const remaining = [...items].sort((a, b) => b.score - a.score);
+    const remaining = [...items].sort((a, b) => b.score - a.score || plannedQueueStableKey(a).localeCompare(plannedQueueStableKey(b)));
     const ordered: PlannedQueueItem[] = [];
     while (remaining.length) {
       const top = remaining[0]!;
@@ -345,7 +431,7 @@
         const sameSubject = (left: PlannedQueueItem, right: PlannedQueueItem): boolean => left.joined.profile.id === right.joined.profile.id && normalizeName(left.joined.subject) === normalizeName(right.joined.subject);
         const aPenalty = (last && sameSubject(last, a) ? 2 : 0) + (last?.joined.obligation.workflow?.kind === a.joined.obligation.workflow?.kind ? 1 : 0);
         const bPenalty = (last && sameSubject(last, b) ? 2 : 0) + (last?.joined.obligation.workflow?.kind === b.joined.obligation.workflow?.kind ? 1 : 0);
-        return aPenalty - bPenalty || b.score - a.score;
+        return aPenalty - bPenalty || b.score - a.score || plannedQueueStableKey(a).localeCompare(plannedQueueStableKey(b));
       })[0] ?? top;
       ordered.push(best);
       remaining.splice(remaining.indexOf(best), 1);
@@ -408,20 +494,17 @@
     };
   }
 
-  function fsrsRetrievability(obligation: RevisionObligation, reference: Date, desiredRetention: number): number | undefined {
+  function fsrsRetrievability(
+    obligation: RevisionObligation,
+    reference: Date,
+    schedulingPolicy: FsrsSchedulingPolicy,
+    reviews: readonly MemoryReviewObservation[] = [],
+    profile: FsrsOptimizerProfile | null = null,
+  ): number | undefined {
     if (obligation.type !== "memory-recall" || !obligation.policyState.fsrsCard) return undefined;
-    const stored = obligation.policyState.fsrsCard;
-    if (stored.reps === 0 || !stored.lastReviewAt) return undefined;
-    const elapsedDays = Math.max(0, (reference.getTime() - new Date(stored.lastReviewAt).getTime()) / DAY_MS);
-    const retrievability = fsrsScheduler(desiredRetention).model.forgettingCurve(
-      {
-        stability: stored.stability,
-        stabilityFast: requiredFsrs7StabilityFast(stored.stabilityFast),
-        difficulty: stored.difficulty,
-      },
-      elapsedDays,
-    );
-    return clamp(Number(retrievability), 0, 1);
+    const projection = obligation.policyState.fsrsCard;
+    if (projection.reps === 0 || !projection.lastReviewAt) return undefined;
+    return revisionSchedulerPort(schedulingPolicy, profile).retrievability(projection, reviews, reference);
   }
 
   function finalMemoryExamDeadline(item: JoinedObligation): Date | undefined {
@@ -474,7 +557,16 @@
     return reasons.slice(0, 5);
   }
 
-  function buildPlanningCandidate(item: JoinedObligation, evidenceEvents: EvidenceEvent[], settings: AppSettings, reference: Date, weeklyBalance = 0.5, chunk?: ObligationChunk): PlannedQueueItem | undefined {
+  function buildPlanningCandidate(
+    item: JoinedObligation,
+    evidence: PlanningEvidenceSource,
+    settings: AppSettings,
+    reference: Date,
+    weeklyBalance = 0.5,
+    chunk?: ObligationChunk,
+    memoryReviews?: MemoryReviewObservationIndex,
+  ): PlannedQueueItem | undefined {
+    const evidenceEvents = isPlanningEvidenceIndex(evidence) ? evidence.all : evidence;
     if (item.profile.status !== "active") return undefined;
     const dayStart = studyDayStart(reference, settings.studyDayBoundaryHour);
     const dayEnd = studyDayEnd(reference, settings.studyDayBoundaryHour);
@@ -488,13 +580,30 @@
     const synthesisReady = item.obligation.chunking?.status === "synthesis-ready";
     if (!synthesisReady && planningDueAt.getTime() > dayEnd.getTime() + lookaheadDays * DAY_MS) return undefined;
     const temporalRisk = temporalDueRisk(planningDueAt, dayStart, dayEnd, lookaheadDays);
-    const retrievability = fsrsRetrievability(item.obligation, reference, settings.desiredRetention);
-    const memoryRisk = retrievability === undefined ? 0 : clamp((settings.desiredRetention - retrievability) / Math.max(settings.desiredRetention - 0.5, 0.1), 0, 1);
+    const memoryHistory = item.obligation.type === "memory-recall"
+      ? memoryReviews?.get(item.obligation.id) ?? memoryReviewObservationsFor(item.obligation.id, evidenceEvents)
+      : [];
+    const retrievability = fsrsRetrievability(
+      item.obligation,
+      reference,
+      settings.fsrsScheduling.policy,
+      memoryHistory,
+      activeFsrsOptimizerProfile(settings),
+    );
+    const schedulingPolicy = settings.fsrsScheduling.policy;
+    const memoryRisk = retrievability === undefined || schedulingPolicy.kind === "cost-adr"
+      ? 0
+      : clamp((schedulingPolicy.desiredRetention - retrievability) / Math.max(schedulingPolicy.desiredRetention - 0.5, 0.1), 0, 1);
+    // Cost-ADR has a state-dependent retention target. Its dueAt already encodes
+    // that adaptive target, so the planner must not invent a second approximation.
     const dueRisk = retrievability === undefined ? temporalRisk : Math.max(temporalRisk, memoryRisk);
+    const difficulty = item.obligation.type === "memory-recall"
+      ? memoryDifficultyAssessment(item.obligation, settings.memoryDifficultyPolicy, memoryHistory)
+      : undefined;
     const factors: PlanningFactors = {
       dueRisk,
       examImportance: examImportanceScore(item.unit.importance),
-      weakness: obligationWeaknessScore(item, evidenceEvents),
+      weakness: Math.max(obligationWeaknessScore(item, evidence), memoryDifficultyWeaknessFloor(difficulty?.level ?? "normal")),
       reviewDuration: reviewDurationScore(chunk?.expectedMinutes ?? (item.obligation.chunking?.status === "synthesis-ready" ? item.obligation.chunking.synthesisMinutes : item.obligation.expectedMinutes), settings.dailyCapacityMinutes),
       examinationProximity: examinationProximityScore(daysToExam),
       weeklyBalance,
@@ -513,6 +622,13 @@
       reasons: [
         ...(chunk ? [`split scope: ${chunk.scope}`] : item.obligation.chunking?.status === "synthesis-ready" ? ["final synthesis after split work"] : []),
         ...(examBoundMemory ? ["final memory review before exam"] : []),
+        ...(difficulty?.level === "persistent-difficulty"
+          ? [`persistent difficulty · ${difficulty.establishedLapses} established recall failures`]
+          : difficulty?.level === "remediation"
+            ? [`remediation · ${difficulty.establishedLapses} established recall failures`]
+            : difficulty?.level === "learning-difficulty"
+              ? [`early learning difficulty · ${difficulty.earlyLearningFailures} failed learning recalls`]
+              : []),
         ...planningReasons(item, factors, dueState, daysFromDue, daysToExam),
         ...(weeklyBalance >= 0.7 ? ["subject underrepresented this week"] : []),
       ].slice(0, 6),
@@ -522,7 +638,11 @@
   }
 
   function choosePlanItems(candidates: PlannedQueueItem[], capacityMinutes: number): { selected: PlannedQueueItem[]; requiredOverrun: PlannedQueueItem[]; mustSplit: PlannedQueueItem[]; deferred: PlannedQueueItem[] } {
-    const ordered = [...candidates].sort((a, b) => b.score - a.score || a.joined.obligation.dueAt.localeCompare(b.joined.obligation.dueAt) || a.joined.obligation.expectedMinutes - b.joined.obligation.expectedMinutes);
+    const ordered = [...candidates].sort((a, b) =>
+      b.score - a.score
+      || a.joined.obligation.dueAt.localeCompare(b.joined.obligation.dueAt)
+      || a.joined.obligation.expectedMinutes - b.joined.obligation.expectedMinutes
+      || plannedQueueStableKey(a).localeCompare(plannedQueueStableKey(b)));
     if (ordered.length === 0) return { selected: [], requiredOverrun: [], mustSplit: [], deferred: [] };
     const durationOf = (item: PlannedQueueItem): number => Math.max(1, Math.ceil(item.executionMinutes ?? item.joined.obligation.expectedMinutes));
     const solve = (items: PlannedQueueItem[], capacity: number): PlannedQueueItem[] => {

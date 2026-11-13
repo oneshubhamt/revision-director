@@ -1,0 +1,167 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - working
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: revision-director-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CI: "true"
+
+jobs:
+  core:
+    name: Core / TypeScript 7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install locked Node toolchain
+        run: npm ci
+
+      - name: Core QA
+        run: npm run qa:core
+
+      - name: Require committed generated artifacts elsewhere
+        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/working') }}
+        run: git diff --exit-code -- dist/app.js index.html CHECKSUMS.sha256
+
+  sync-generated:
+    name: Sync generated artifacts
+    needs: core
+    if: github.event_name == 'push' && github.ref == 'refs/heads/working'
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install locked Node toolchain
+        run: npm ci
+
+      - name: Build with pinned TypeScript 7
+        run: npm run build
+
+      - name: Refresh tracked checksums
+        run: python3 build/checksums.py --write
+
+      - name: Commit generated artifacts
+        run: |
+          if ! git diff --quiet -- dist/app.js index.html CHECKSUMS.sha256; then
+            git config user.name "revision-director-ci"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add dist/app.js index.html CHECKSUMS.sha256
+            git commit -m "build: synchronize generated artifacts [skip ci]"
+            git push origin HEAD:working
+          fi
+
+  optimizer-runtime:
+    name: External FSRS optimizer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: tools/fsrs-optimizer/package-lock.json
+
+      - name: Install isolated optimizer binding
+        run: npm ci --prefix tools/fsrs-optimizer --no-audit --no-fund
+
+      - name: Verify isolated dependency graph
+        run: npm ls --prefix tools/fsrs-optimizer --all --parseable > /dev/null
+
+      - name: Exercise native FSRS-7 optimizer boundary
+        run: npm run qa:optimizer
+
+  browser:
+    name: Browser / durability
+    needs: [core, optimizer-runtime]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install locked Node toolchain
+        run: npm ci
+
+      - name: Build with pinned TypeScript 7
+        run: npm run build
+
+      - name: Install Playwright harness
+        run: |
+          python3 -m pip install --disable-pip-version-check playwright
+          test -x /usr/bin/chromium
+
+      - name: Durability gate
+        run: npm run qa:browser:durability
+
+      - name: Browser / durability matrix
+        run: npm run qa:browser

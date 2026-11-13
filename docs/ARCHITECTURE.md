@@ -2,16 +2,18 @@
 
 ## Deployment model
 
-Revision Director builds to one self-contained `index.html`. The maintained source is split by ownership under `source/`; `source/app/source-manifest.json` is the authoritative ordering contract for the nineteen TypeScript parts.
+Revision Director builds to one self-contained `index.html`. The maintained source is split by ownership under `source/`; `source/app/source-manifest.json` is the authoritative ordering contract for the TypeScript source parts.
 
 The build:
 
-1. validates the presentation contract;
-2. assembles an ephemeral TypeScript entry from the ownership manifest;
-3. compiles it with the project-local TypeScript compiler;
-4. emits `dist/app.js`;
+1. validates the source-ownership and presentation contracts;
+2. gives all manifest-owned maintained `source/app/*.ts` files directly to the pinned TypeScript 7 compiler as one project;
+3. verifies that TypeScript emitted exactly the manifest-owned JavaScript files;
+4. assembles those emitted files deterministically in manifest order inside one strict outer IIFE and emits `dist/app.js`;
 5. embeds the runtime, CSS and presentation state into `index.html`;
-6. removes ephemeral generated sources.
+6. removes ephemeral compiler output.
+
+There is no synthetic combined TypeScript source. The maintained files share one compile-time script namespace; the build, rather than any individual source file, owns the runtime IIFE boundary. This lets TypeScript 7 parse and check the real source graph while preserving the single sealed offline runtime.
 
 There is no runtime module loader, framework, CDN or network dependency.
 
@@ -28,6 +30,7 @@ The manifest separates the application into these logical layers:
 - runtime boundary and FSRS contract;
 - presentation kernel;
 - domain model and canonical contracts;
+- FSRS scheduling-policy, personalization and optimizer-evidence contracts;
 - scheduling and planning;
 - IndexedDB and storage facade;
 - active-retrieval persistence;
@@ -45,13 +48,17 @@ The manifest, rather than this prose, is authoritative for exact filenames and o
 
 `source/presentation/revision-director.presentation.json` is the canonical presentation contract. The build validates it and embeds the same state for pre-paint and runtime use.
 
-The built-in `revision-current` profile owns independent typography, shape, material, depth, density, responsive, motion and chart axes. Semantic `--rd-` tokens expose the stable presentation vocabulary. Invalid stored presentation state falls back to the immutable built-in profile.
+The built-in `revision-current` profile owns independent typography, shape, material, depth, density, responsive, motion and chart axes. The CSS consumes the semantic `--rd-` token vocabulary directly; there is no legacy primitive-token alias layer. Invalid stored presentation state falls back to the immutable built-in profile.
 
 ## Application services and commit integrity
 
-`RevisionService` owns domain use cases. Durable review completion is transaction-bound: evidence, scheduler state, obligation state, plan outcomes and active-session transitions are committed together.
+`RevisionService` owns domain use cases. Durable review completion is transaction-bound: evidence, scheduler state, obligation state, plan outcomes and active-session transitions are committed together. Settings changes that must reconcile domain obligation status use the same generic atomic settings+obligations persistence boundary as scheduler reprojection. Startup and backup export consume one multi-store readonly IndexedDB snapshot rather than assembling state through separate reads.
 
-Evidence Events are append-only audit records. Scheduler transitions that affect memory obligations are recorded with before/after state and exact scheduler provenance.
+In-memory settings are published only after their durable write succeeds. Scheduler rebases are fully validated before the atomic settings+obligations replacement is attempted, and failed writes leave the service on the previously durable configuration.
+
+Evidence Events are append-only audit records and the canonical review history for memory obligations. The stored FSRS card is a verified materialized projection, while the scheduler port owns replay, scheduler identity and explicit reprojection across scheduling-policy or weight changes. Host difficulty uses the same review history rather than treating the card lapse counter as an alternate history source.
+
+Scheduling policy and personalization are orthogonal application-owned configuration axes. Persistent-difficulty management is a separate host lifecycle policy derived from FSRS lapses: it may alter remediation or the domain obligation status, but it never mutates FSRS `scheduleStatus`. Personalization remains behind the profile/evidence boundary. Native and optional Worker/WASM optimization share one tool-owned optimizer core; the principal browser runtime contains only the small client boundary and never imports the binding. Detailed scheduler, replay, optimizer-gate, difficulty and rebase semantics live in `SCHEDULING_AND_PLANNING.md`.
 
 ## Active retrieval and timing
 
@@ -70,6 +77,10 @@ Ownership/storage failures are fail-closed rather than guessed.
 `ExtensionRuntime` owns the public capability surface and plugin lifecycle. Plugins negotiate minimum capabilities and are isolated as registered, inactive, incompatible or failed.
 
 Settings may load explicitly selected local JavaScript plugin files. They are trusted executable code, bounded in count and size, session-only and never included in application backups. The capability API narrows supported integration; it is not a sandbox for arbitrary local code.
+
+## Release and schema identity
+
+Application release identity is provenance, not a persistence-compatibility key. IndexedDB layout version, durable document schemas and backup/archive schemas own compatibility. A compatible release may refresh release provenance after opening; failure of that informational refresh is diagnostic rather than a data-access lockout. An incompatible schema fails closed without rewriting or deleting stored data. Backup restoration has one verified controller path; there is no direct service-level import bypass.
 
 ## Design principles
 

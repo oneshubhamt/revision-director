@@ -11,7 +11,21 @@
     Metadata: "metadata",
     ActiveRetrieval: "activeRetrieval",
   } as const);
-  type StoreName = typeof Store[keyof typeof Store];
+  interface StoreValueMap {
+    [Store.Profiles]: ExamProfile;
+    [Store.Nodes]: KnowledgeNode;
+    [Store.Units]: KnowledgeUnit;
+    [Store.StudyEvents]: StudyEvent;
+    [Store.Obligations]: RevisionObligation;
+    [Store.EvidenceEvents]: EvidenceEvent;
+    [Store.Chunks]: ObligationChunk;
+    [Store.DailyPlans]: DailyPlanRecord;
+    [Store.Settings]: AppSettings;
+    [Store.Metadata]: AppMetadata;
+    [Store.ActiveRetrieval]: ActiveRetrievalSession;
+  }
+  type StoreName = keyof StoreValueMap;
+  type StoreValue<S extends StoreName> = StoreValueMap[S];
 
   function requestResult<T>(request: IDBRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -28,13 +42,45 @@
     });
   }
 
+  type RevisionWriteDurability = "default" | "strict";
+
+  function storeWriteDurability(store: StoreName): RevisionWriteDurability {
+    return store === Store.ActiveRetrieval || store === Store.Metadata ? "default" : "strict";
+  }
+
+  function readwriteTransaction(
+    db: IDBDatabase,
+    stores: StoreName | StoreName[],
+    durability: RevisionWriteDurability = "default",
+  ): IDBTransaction {
+    if (durability === "default") return db.transaction(stores, "readwrite");
+    try {
+      return db.transaction(stores, "readwrite", { durability: "strict" });
+    } catch (error) {
+      if (error instanceof TypeError || (isRecord(error) && error["name"] === "TypeError")) {
+        return db.transaction(stores, "readwrite");
+      }
+      throw error;
+    }
+  }
+
+  async function rootKnowledgeNodeId(profileId: string, normalizedName: string): Promise<string> {
+    const digest = await sha256Hex(utf8Bytes(`${profileId}\u0000subject\u0000${normalizedName}`));
+    return `subject_${digest.slice(0, 32)}`;
+  }
+
   class IndexedDbRepository {
     private constructor(private readonly db: IDBDatabase) {}
 
     static async open(): Promise<IndexedDbRepository> {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
+      let upgradeError: Error | undefined;
       request.onupgradeneeded = (event) => {
-        assert(event.oldVersion === 0, "Existing Revision Director database schema is unsupported. Clear site data before opening this build.");
+        if (event.oldVersion !== 0) {
+          upgradeError = new Error("Existing Revision Director database schema is unsupported by this build. Existing data was not modified; open it with a compatible build and export a backup before changing schema.");
+          request.transaction?.abort();
+          return;
+        }
         const db = request.result;
           const profiles = db.createObjectStore(Store.Profiles, { keyPath: "id" });
           profiles.createIndex("status", "status");
@@ -74,51 +120,83 @@
           plans.createIndex("studyDayKey", "studyDayKey", { unique: true });
           plans.createIndex("updatedAt", "updatedAt");
 
-          db.createObjectStore(Store.Settings, { keyPath: "key" });
-          db.createObjectStore(Store.Metadata, { keyPath: "key" });
+          const settings = db.createObjectStore(Store.Settings, { keyPath: "key" });
+          const metadata = db.createObjectStore(Store.Metadata, { keyPath: "key" });
           db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
+
+          const createdAt = nowIso();
+          settings.add(defaultSettings());
+          metadata.add({
+            schemaVersion: DOCUMENT_SCHEMA_VERSION,
+            key: "database",
+            databaseName: DB_NAME,
+            databaseVersion: DB_VERSION,
+            applicationVersion: APP_VERSION,
+            createdAt,
+            updatedAt: createdAt,
+          } satisfies AppMetadata);
       };
-      const db = await requestResult(request);
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => {
+          if (upgradeError) reject(upgradeError);
+          else if (request.error?.name === "VersionError") reject(new Error("Existing Revision Director database schema is newer than this build. Existing data was not modified; open it with a compatible build and export a backup before using an older schema."));
+          else reject(request.error ?? new Error("IndexedDB open failed."));
+        };
+      });
       db.onversionchange = () => db.close();
       return new IndexedDbRepository(db);
     }
 
-    async get<T>(store: StoreName, key: IDBValidKey): Promise<T | undefined> {
+    async get<S extends StoreName>(store: S, key: IDBValidKey): Promise<StoreValue<S> | undefined> {
       const tx = this.db.transaction(store, "readonly");
       const value = await requestResult(tx.objectStore(store).get(key));
       await transactionDone(tx);
-      return value as T | undefined;
+      return value as StoreValue<S> | undefined;
     }
 
-    async getAll<T>(store: StoreName): Promise<T[]> {
+    async getAll<S extends StoreName>(store: S): Promise<StoreValue<S>[]> {
       const tx = this.db.transaction(store, "readonly");
       const values = await requestResult(tx.objectStore(store).getAll());
       await transactionDone(tx);
-      return values as T[];
+      return values as StoreValue<S>[];
     }
 
-    async put<T>(store: StoreName, value: T): Promise<void> {
-      const tx = this.db.transaction(store, "readwrite");
+    async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
+      const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
       tx.objectStore(store).put(value);
       await transactionDone(tx);
     }
 
-    async putMany<T>(store: StoreName, values: T[]): Promise<void> {
-      const tx = this.db.transaction(store, "readwrite");
+    async add<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
+      const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
+      tx.objectStore(store).add(value);
+      await transactionDone(tx);
+    }
+
+    async putMany<S extends StoreName>(store: S, values: StoreValue<S>[]): Promise<void> {
+      const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
       const target = tx.objectStore(store);
       for (const value of values) target.put(value);
       await transactionDone(tx);
     }
 
+    async putProfileAndSettings(profile: ExamProfile, settings: AppSettings): Promise<void> {
+      const tx = readwriteTransaction(this.db, [Store.Profiles, Store.Settings], "strict");
+      tx.objectStore(Store.Profiles).put(profile);
+      tx.objectStore(Store.Settings).put(settings);
+      await transactionDone(tx);
+    }
+
     async createUnitWithObligation(unit: KnowledgeUnit, obligation: RevisionObligation): Promise<void> {
-      const tx = this.db.transaction([Store.Units, Store.Obligations], "readwrite");
+      const tx = readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict");
       tx.objectStore(Store.Units).add(unit);
       tx.objectStore(Store.Obligations).add(obligation);
       await transactionDone(tx);
     }
 
     async updateUnitWithObligations(unit: KnowledgeUnit, obligations: RevisionObligation[]): Promise<void> {
-      const tx = this.db.transaction([Store.Units, Store.Obligations], "readwrite");
+      const tx = readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict");
       tx.objectStore(Store.Units).put(unit);
       const target = tx.objectStore(Store.Obligations);
       for (const obligation of obligations) target.put(obligation);
@@ -126,27 +204,56 @@
     }
 
     async delete(store: StoreName, key: IDBValidKey): Promise<void> {
-      const tx = this.db.transaction(store, "readwrite");
+      const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
       tx.objectStore(store).delete(key);
       await transactionDone(tx);
     }
 
 
     async findNode(profileId: string, parentId: string | null, kind: KnowledgeNodeKind, name: string): Promise<KnowledgeNode | undefined> {
-      const candidates = await this.getByIndex<KnowledgeNode>(Store.Nodes, "profileId", profileId);
       const normalized = normalizeName(name);
-      return candidates.find((node) => node.parentId === parentId && node.kind === kind && node.normalizedName === normalized);
+      if (parentId !== null) {
+        return this.getOneByIndex(Store.Nodes, "pathLookup", [profileId, parentId, kind, normalized]);
+      }
+
+      assert(kind === "subject", "Only subject nodes may exist at the hierarchy root.");
+      const deterministic = await this.get(Store.Nodes, await rootKnowledgeNodeId(profileId, normalized));
+      if (deterministic) {
+        assert(
+          deterministic.profileId === profileId
+            && deterministic.parentId === null
+            && deterministic.kind === "subject"
+            && deterministic.normalizedName === normalized,
+          "Deterministic root-subject identity conflicts with stored hierarchy data.",
+        );
+        return deterministic;
+      }
+
+      // Imported current-format backups may legitimately retain non-generated IDs.
+      // The validator enforces semantic uniqueness, so this is an import-fidelity fallback,
+      // not a second uniqueness policy.
+      const roots = (await this.getByIndex(Store.Nodes, "profileId", profileId))
+        .filter((node) => node.parentId === null && node.kind === kind && node.normalizedName === normalized);
+      assert(roots.length <= 1, "Knowledge hierarchy contains duplicate root subjects.");
+      return roots[0];
     }
 
-    async getByIndex<T>(store: StoreName, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<T[]> {
+    async getOneByIndex<S extends StoreName>(store: S, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<StoreValue<S> | undefined> {
+      const tx = this.db.transaction(store, "readonly");
+      const result = await requestResult(tx.objectStore(store).index(indexName).get(query));
+      await transactionDone(tx);
+      return result as StoreValue<S> | undefined;
+    }
+
+    async getByIndex<S extends StoreName>(store: S, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<StoreValue<S>[]> {
       const tx = this.db.transaction(store, "readonly");
       const result = await requestResult(tx.objectStore(store).index(indexName).getAll(query));
       await transactionDone(tx);
-      return result as T[];
+      return result as StoreValue<S>[];
     }
 
     async putObligationWithChunks(obligation: RevisionObligation, chunks: ObligationChunk[]): Promise<void> {
-      const tx = this.db.transaction([Store.Obligations, Store.Chunks], "readwrite");
+      const tx = readwriteTransaction(this.db, [Store.Obligations, Store.Chunks], "strict");
       tx.objectStore(Store.Obligations).put(obligation);
       const target = tx.objectStore(Store.Chunks);
       for (const chunk of chunks) target.put(chunk);
@@ -163,21 +270,14 @@
       const stores: StoreName[] = [Store.Obligations, Store.Chunks];
       if (dailyPlan) stores.push(Store.DailyPlans);
       if (commitGuard) stores.push(Store.ActiveRetrieval);
-      const tx = this.db.transaction(stores, "readwrite");
+      const tx = readwriteTransaction(this.db, stores, "strict");
       const apply = () => {
         tx.objectStore(Store.Obligations).put(obligation);
         tx.objectStore(Store.Chunks).put(chunk);
         if (dailyPlan) tx.objectStore(Store.DailyPlans).put(dailyPlan);
         if (commitGuard && postCommitSession) tx.objectStore(Store.ActiveRetrieval).put(postCommitSession);
       };
-      if (commitGuard) {
-        const request = tx.objectStore(Store.ActiveRetrieval).get(commitGuard.sessionId);
-        request.onsuccess = () => {
-          const current = request.result as ActiveRetrievalSession | undefined;
-          if (!current || current.status !== "committing" || current.revision !== commitGuard.expectedRevision || current.activeTargetId !== commitGuard.targetId || current.commitToken !== commitGuard.commitToken) { tx.abort(); return; }
-          apply();
-        };
-      } else apply();
+      this.applyWithCommitGuard(tx, commitGuard, apply);
       await transactionDone(tx);
     }
 
@@ -202,7 +302,7 @@
       const stores: StoreName[] = [Store.Units, Store.Obligations, Store.EvidenceEvents, Store.Chunks];
       if (dailyPlan) stores.push(Store.DailyPlans);
       if (commitGuard) stores.push(Store.ActiveRetrieval);
-      const tx = this.db.transaction(stores, "readwrite");
+      const tx = readwriteTransaction(this.db, stores, "strict");
       const apply = () => {
         const obligationStore = tx.objectStore(Store.Obligations);
         tx.objectStore(Store.Units).put(unit);
@@ -215,27 +315,55 @@
         if (dailyPlan) tx.objectStore(Store.DailyPlans).put(dailyPlan);
         if (commitGuard && postCommitSession) tx.objectStore(Store.ActiveRetrieval).put(postCommitSession);
       };
-      if (commitGuard) {
-        const request = tx.objectStore(Store.ActiveRetrieval).get(commitGuard.sessionId);
-        request.onsuccess = () => {
-          const current = request.result as ActiveRetrievalSession | undefined;
-          if (!current || current.status !== "committing" || current.revision !== commitGuard.expectedRevision || current.activeTargetId !== commitGuard.targetId || current.commitToken !== commitGuard.commitToken) { tx.abort(); return; }
-          apply();
-        };
-      } else apply();
+      this.applyWithCommitGuard(tx, commitGuard, apply);
+      await transactionDone(tx);
+    }
+
+    private applyWithCommitGuard(tx: IDBTransaction, commitGuard: ActiveCommitGuard | undefined, apply: () => void): void {
+      if (!commitGuard) {
+        apply();
+        return;
+      }
+      const request = tx.objectStore(Store.ActiveRetrieval).get(commitGuard.sessionId);
+      request.onsuccess = () => {
+        const current = request.result as ActiveRetrievalSession | undefined;
+        const matches = Boolean(
+          current
+          && current.status === "committing"
+          && current.revision === commitGuard.expectedRevision
+          && current.activeTargetId === commitGuard.targetId
+          && current.commitToken === commitGuard.commitToken
+        );
+        if (!matches) {
+          tx.abort();
+          return;
+        }
+        apply();
+      };
+    }
+
+    async replaceSettingsAndObligations(settings: AppSettings, obligations: RevisionObligation[]): Promise<void> {
+      const tx = readwriteTransaction(this.db, [Store.Settings, Store.Obligations], "strict");
+      tx.objectStore(Store.Settings).put(settings);
+      const obligationStore = tx.objectStore(Store.Obligations);
+      for (const obligation of obligations) obligationStore.put(obligation);
       await transactionDone(tx);
     }
 
     async rawDump(): Promise<Record<StoreName, unknown[]>> {
       const stores = Object.values(Store) as StoreName[];
+      const tx = this.db.transaction(stores, "readonly");
+      const requests = stores.map((store) => requestResult(tx.objectStore(store).getAll()));
+      const values = await Promise.all(requests);
+      await transactionDone(tx);
       const dump = {} as Record<StoreName, unknown[]>;
-      for (const store of stores) dump[store] = await this.getAll<unknown>(store);
+      stores.forEach((store, index) => { dump[store] = values[index] ?? []; });
       return dump;
     }
 
     async replaceFromBackup(payload: BackupPayload, activeTreatment: BackupActiveSessionTreatment): Promise<void> {
       const stores: StoreName[] = [Store.Profiles, Store.Nodes, Store.Units, Store.StudyEvents, Store.Obligations, Store.EvidenceEvents, Store.Chunks, Store.DailyPlans, Store.Settings, Store.ActiveRetrieval];
-      const tx = this.db.transaction(stores, "readwrite");
+      const tx = readwriteTransaction(this.db, stores, "strict");
       for (const store of stores) tx.objectStore(store).clear();
       for (const value of payload.profiles) tx.objectStore(Store.Profiles).put(value);
       for (const value of payload.nodes) tx.objectStore(Store.Nodes).put(value);
@@ -251,7 +379,4 @@
     }
   }
 
-  /* ========================================================================== 
-     APPLICATION SERVICES
-     ========================================================================== */
 

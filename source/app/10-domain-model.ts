@@ -13,7 +13,7 @@
     | "relearn"
     | "freshness-review";
   type ObligationStatus = "active" | "completed" | "suspended" | "archived";
-  type SuspensionReason = "unit" | "relearning";
+  type SuspensionReason = "unit" | "relearning" | "persistent-difficulty";
   type ChunkStatus = "pending" | "completed" | "archived";
   type PlanItemStatus = "planned" | "started" | "completed" | "skipped";
   type RetrievalWorkflow = "recall" | "reconstruction" | "questions" | "diagram" | "answer-writing" | "relearning";
@@ -104,8 +104,23 @@
     reps: number;
     lapses: number;
     state: number;
-    scheduleStatus: FsrsScheduleStatus;
+    scheduleStatus: StoredFsrsScheduleStatus;
     lastReviewAt?: ISODateTime;
+  }
+
+  type MemoryMaterializedProjection = StoredFsrsCard;
+
+  type MemoryReviewSource = "direct-memory" | "relearning-verification";
+
+  interface MemoryReviewObservation {
+    evidenceEventId: string;
+    reviewedAt: ISODateTime;
+    rating: Rating;
+    source: MemoryReviewSource;
+    beforeCard: StoredFsrsCard;
+    afterCard: StoredFsrsCard;
+    schedulerConfig: FsrsConfigSnapshot;
+    configFingerprint: string;
   }
 
   interface PolicyState {
@@ -262,9 +277,140 @@
     correctionNote: string;
   }
 
+  interface FsrsEvaluationMetrics {
+    logLoss: number;
+    rmseBins: number;
+  }
+
+  interface FsrsHoldoutDiagnostics {
+    logLossImprovement: {
+      absolute: number;
+      relative: number;
+      required: number;
+    };
+    calibration: {
+      metric: "rmse-bins";
+      delta: number;
+      relativeDelta: number;
+      status: "improved" | "unchanged" | "regressed";
+    };
+  }
+
+  interface FsrsOptimizerProfile {
+    schema: "revision-director-fsrs-profile/v1";
+    model: "FSRS-7";
+    bindingVersion: "0.6.1";
+    trainedAt: ISODateTime;
+    sourceSha256: string;
+    evidenceItems: number;
+    weights: number[];
+    evaluation: {
+      crossValidation: FsrsEvaluationMetrics;
+      holdout: {
+        strategy: "final-sixth";
+        trainItems: number;
+        holdoutItems: number;
+        holdoutCards: number;
+        minimumTrainItems: 64;
+        minimumHoldoutItems: 64;
+        minimumHoldoutCards: 16;
+        stock: FsrsEvaluationMetrics;
+        personalized: FsrsEvaluationMetrics;
+        incumbent?: {
+          sourceSha256: string;
+          weightsFingerprint: string;
+          metrics: FsrsEvaluationMetrics;
+        };
+        gate: "passed";
+      };
+    };
+    training: {
+      enableShortTerm: true;
+      enableSchedPenalties: true;
+      numRelearningSteps: 1;
+      chronology: "elapsed-24h";
+      converterFixedUtcOffsetMinutes: 0;
+      converterRolloverHour: 0;
+      runtimeLearningSteps: ["1d"];
+      runtimeRelearningSteps: ["1d"];
+      validationCandidateTrainedItems: number;
+      finalRetrainedOnAllEvidence: true;
+    };
+  }
+
+  interface FsrsCostAdrPolicy {
+    coefficients: number[];
+    costWeightMin: number;
+    costWeightMax: number;
+    retentionMin: number;
+    retentionMax: number;
+    bounds: {
+      sMin: number;
+      sMax: number;
+      dMin: number;
+      dMax: number;
+    };
+  }
+
+  type FsrsSchedulingPolicy =
+    | {
+        kind: "fixed-retention";
+        desiredRetention: number;
+      }
+    | {
+        kind: "cost-adr";
+        goalCostWeight: number;
+        costAdrPolicy: FsrsCostAdrPolicy;
+      };
+
+  interface FsrsSchedulerRebase {
+    at: ISODateTime;
+    reason: "scheduler-policy-change" | "activate-profile" | "replace-profile" | "deactivate-profile";
+    fromConfigFingerprint: string;
+    toConfigFingerprint: string;
+    rescheduledObligations: number;
+  }
+
+  interface FsrsSchedulingSettings {
+    policy: FsrsSchedulingPolicy;
+    lastRebase?: FsrsSchedulerRebase;
+  }
+
+  interface FsrsPersonalizationSettings {
+    profile: FsrsOptimizerProfile | null;
+    active: boolean;
+    replayProfiles: FsrsOptimizerProfile[];
+  }
+
+  type MemoryDifficultyLevel = "normal" | "learning-difficulty" | "remediation" | "persistent-difficulty";
+  type MemoryDifficultyAction =
+    | "scope-review"
+    | "split-scope"
+    | "prerequisite-review"
+    | "source-revisit"
+    | "representation-change"
+    | "deliberate-intervention";
+
+  interface MemoryDifficultyPolicy {
+    remediationLapses: number;
+    persistentDifficultyLapses: number;
+    automaticHold: {
+      enabled: boolean;
+      lapseThreshold: number;
+    };
+  }
+
+  interface MemoryDifficultyAssessment {
+    level: MemoryDifficultyLevel;
+    establishedLapses: number;
+    earlyLearningFailures: number;
+    recommendedActions: MemoryDifficultyAction[];
+    automaticHoldEligible: boolean;
+  }
+
   interface FsrsConfigSnapshot {
     model: FsrsModelVersion;
-    desiredRetention: number;
+    schedulingPolicy: FsrsSchedulingPolicy;
     fractionalDays: true;
     enableFuzz: false;
     enableShortTerm: true;
@@ -274,7 +420,10 @@
     allowModelOverride: true;
     maximumInterval: number;
     clearStatsOnForget: false;
-    weightsSource: "ts-fsrs-package-default";
+    weightsSource: "ts-fsrs-package-default" | "optimizer-profile";
+    weightsFingerprint: string;
+    optimizerProfileSourceSha256?: string;
+    fingerprint: string;
   }
 
   interface DurationObservation {
@@ -289,9 +438,9 @@
     globalWorkflowSamples: number;
   }
 
-  interface ReturnedMemoryTransition {
+  interface CorrectiveMemoryTransition {
     obligationId: string;
-    rating: 3;
+    rating: Rating;
     beforeDueAt: ISODateTime;
     afterDueAt: ISODateTime;
     beforePolicyState: PolicyState;
@@ -331,7 +480,7 @@
     durationObservation: DurationObservation;
     timing: TimingEvidenceSummary;
     followUpObligationId?: string;
-    returnedMemoryTransition?: ReturnedMemoryTransition;
+    correctiveMemoryTransition?: CorrectiveMemoryTransition;
     createdAt: ISODateTime;
   }
 
@@ -339,9 +488,11 @@
     schemaVersion: DocumentSchemaVersion;
     key: "app";
     activeProfileId: string;
-    desiredRetention: number;
+    fsrsScheduling: FsrsSchedulingSettings;
+    memoryDifficultyPolicy: MemoryDifficultyPolicy;
     dailyCapacityMinutes: number;
     studyDayBoundaryHour: number;
+    fsrsPersonalization: FsrsPersonalizationSettings;
   }
 
   interface AppMetadata {

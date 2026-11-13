@@ -18,7 +18,7 @@
       await ui.start();
       extensions.announceReady();
     } catch (error) {
-      const fatal = requiredElement<HTMLDivElement>("#fatal-error");
+      const fatal = requiredElement("#fatal-error", HTMLDivElement);
       fatal.hidden = false;
       fatal.textContent = `Revision Director could not start: ${error instanceof Error ? error.message : String(error)}`;
       console.error(error);
@@ -26,4 +26,3 @@
   }
 
   void boot();
-})();

@@ -44,9 +44,17 @@
         const parsed: unknown = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
         return parsed.filter((entry): entry is DiagnosticRecord => {
-          if (typeof entry !== "object" || entry === null) return false;
-          const value = entry as Partial<DiagnosticRecord>;
-          return typeof value.id === "string" && typeof value.code === "string" && typeof value.message === "string" && typeof value.operation === "string" && typeof value.firstAt === "string" && typeof value.lastAt === "string" && Number.isInteger(value.count) && (value.count ?? 0) >= 1;
+          if (!isRecord(entry)) return false;
+          const count = entry["count"];
+          return typeof entry["id"] === "string"
+            && typeof entry["code"] === "string"
+            && typeof entry["message"] === "string"
+            && typeof entry["operation"] === "string"
+            && typeof entry["firstAt"] === "string"
+            && typeof entry["lastAt"] === "string"
+            && typeof count === "number"
+            && Number.isInteger(count)
+            && count >= 1;
         }).slice(-50);
       } catch {
         return [];
@@ -158,24 +166,21 @@
     }
 
     private async ensureMetadata(): Promise<void> {
-      const existing = await this.repository.get<AppMetadata>(Store.Metadata, "database");
-      if (existing) {
-        const canonical = canonicalAppMetadata(existing);
-        assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
-        assert(canonical.applicationVersion === APP_VERSION, "Database metadata belongs to a different Revision Director build. Clear site data before opening this build.");
-        return;
+      const existing = await this.repository.get(Store.Metadata, "database");
+      assert(existing, "Database metadata is missing from this Revision Director database. Existing data was not modified.");
+      const canonical = canonicalAppMetadata(existing);
+      assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
+      if (canonical.applicationVersion !== APP_VERSION) {
+        try {
+          await this.repository.put(Store.Metadata, canonicalAppMetadata({
+            ...canonical,
+            applicationVersion: APP_VERSION,
+            updatedAt: nowIso(),
+          }));
+        } catch (error) {
+          this.diagnosticsJournal.record("storage.metadata.release-refresh", "refresh database release provenance", error);
+        }
       }
-      const time = nowIso();
-      const metadata: AppMetadata = {
-        schemaVersion: DOCUMENT_SCHEMA_VERSION,
-        key: "database",
-        databaseName: DB_NAME,
-        databaseVersion: DB_VERSION,
-        applicationVersion: APP_VERSION,
-        createdAt: time,
-        updatedAt: time,
-      };
-      await this.repository.put(Store.Metadata, canonicalAppMetadata(metadata));
     }
 
     private async operation<T>(name: string, action: () => Promise<T>): Promise<T> {
@@ -188,27 +193,38 @@
       }
     }
 
-    private normalize<T>(store: StoreName, value: T): T {
-      return canonicalDocument(documentKindForStore(store), value as DurableDocument) as T;
+    private normalize<S extends StoreName>(store: S, value: StoreValue<S>): StoreValue<S> {
+      return canonicalDocument(documentKindForStore(store), value) as StoreValue<S>;
     }
 
-    async get<T>(store: StoreName, key: IDBValidKey): Promise<T | undefined> {
+    async get<S extends StoreName>(store: S, key: IDBValidKey): Promise<StoreValue<S> | undefined> {
       return this.operation(`get.${store}`, async () => {
-        const value = await this.repository.get<T>(store, key);
+        const value = await this.repository.get(store, key);
         return value === undefined ? undefined : this.normalize(store, value);
       });
     }
 
-    async getAll<T>(store: StoreName): Promise<T[]> {
-      return this.operation(`getAll.${store}`, async () => (await this.repository.getAll<T>(store)).map((value) => this.normalize(store, value)));
+    async getAll<S extends StoreName>(store: S): Promise<StoreValue<S>[]> {
+      return this.operation(`getAll.${store}`, async () => (await this.repository.getAll(store)).map((value) => this.normalize(store, value)));
     }
 
-    async put<T>(store: StoreName, value: T): Promise<void> {
+    async put<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
       await this.operation(`put.${store}`, () => this.repository.put(store, this.normalize(store, value)));
     }
 
-    async putMany<T>(store: StoreName, values: T[]): Promise<void> {
+    async add<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
+      await this.operation(`add.${store}`, () => this.repository.add(store, this.normalize(store, value)));
+    }
+
+    async putMany<S extends StoreName>(store: S, values: StoreValue<S>[]): Promise<void> {
       await this.operation(`putMany.${store}`, () => this.repository.putMany(store, values.map((value) => this.normalize(store, value))));
+    }
+
+    async putProfileAndSettings(profile: ExamProfile, settings: AppSettings): Promise<void> {
+      await this.operation("putProfileAndSettings", () => this.repository.putProfileAndSettings(
+        canonicalExamProfile(profile),
+        canonicalAppSettings(settings),
+      ));
     }
 
     async createUnitWithObligation(unit: KnowledgeUnit, obligation: RevisionObligation): Promise<void> {
@@ -224,13 +240,14 @@
     }
 
     async findNode(profileId: string, parentId: string | null, kind: KnowledgeNodeKind, name: string): Promise<KnowledgeNode | undefined> {
-      const candidates = await this.getByIndex<KnowledgeNode>(Store.Nodes, "profileId", profileId);
-      const normalized = normalizeName(name);
-      return candidates.find((node) => node.parentId === parentId && node.kind === kind && node.normalizedName === normalized);
+      return this.operation("findNode", async () => {
+        const value = await this.repository.findNode(profileId, parentId, kind, name);
+        return value === undefined ? undefined : canonicalKnowledgeNode(value);
+      });
     }
 
-    async getByIndex<T>(store: StoreName, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<T[]> {
-      return this.operation(`index.${store}.${indexName}`, async () => (await this.repository.getByIndex<T>(store, indexName, query)).map((value) => this.normalize(store, value)));
+    async getByIndex<S extends StoreName>(store: S, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<StoreValue<S>[]> {
+      return this.operation(`index.${store}.${indexName}`, async () => (await this.repository.getByIndex(store, indexName, query)).map((value) => this.normalize(store, value)));
     }
 
     async putObligationWithChunks(obligation: RevisionObligation, chunks: ObligationChunk[]): Promise<void> {
@@ -282,6 +299,41 @@
         commitGuard,
         postCommitSession ? canonicalActiveRetrievalSession(postCommitSession) : undefined,
       ));
+    }
+
+    async replaceSettingsAndObligations(settings: AppSettings, obligations: RevisionObligation[]): Promise<void> {
+      await this.operation("replaceSettingsAndObligations", () => this.repository.replaceSettingsAndObligations(
+        canonicalAppSettings(settings),
+        obligations.map(canonicalRevisionObligation),
+      ));
+    }
+
+    async backupState(activeRetrievalMode: "validate" | "ignore" = "validate"): Promise<Pick<BackupPayload, "profiles" | "nodes" | "units" | "studyEvents" | "obligations" | "evidenceEvents" | "chunks" | "dailyPlans" | "settings" | "activeRetrieval">> {
+      return this.operation("backupState", async () => {
+        const raw = await this.repository.rawDump();
+        const settings = raw[Store.Settings];
+        const metadata = raw[Store.Metadata];
+        const activeRetrieval = raw[Store.ActiveRetrieval];
+        assert(settings.length === 1, "Canonical storage must contain exactly one application-settings document.");
+        assert(metadata.length === 1, "Canonical storage must contain exactly one database-metadata document.");
+        const canonicalMetadata = canonicalDocument("metadata", metadata[0]);
+        assert(canonicalMetadata.databaseName === DB_NAME && canonicalMetadata.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
+        if (activeRetrievalMode === "validate") assert(activeRetrieval.length <= 1, "Canonical storage may contain at most one active retrieval session.");
+        return {
+          profiles: canonicalDocumentArray("profile", raw[Store.Profiles], "Stored exam profiles"),
+          nodes: canonicalDocumentArray("node", raw[Store.Nodes], "Stored knowledge nodes"),
+          units: canonicalDocumentArray("unit", raw[Store.Units], "Stored knowledge units"),
+          studyEvents: canonicalDocumentArray("study-event", raw[Store.StudyEvents], "Stored study events"),
+          obligations: canonicalDocumentArray("obligation", raw[Store.Obligations], "Stored revision obligations"),
+          evidenceEvents: canonicalDocumentArray("evidence-event", raw[Store.EvidenceEvents], "Stored evidence events"),
+          chunks: canonicalDocumentArray("chunk", raw[Store.Chunks], "Stored obligation chunks"),
+          dailyPlans: canonicalDocumentArray("daily-plan", raw[Store.DailyPlans], "Stored daily plans"),
+          settings: canonicalDocument("settings", settings[0]),
+          activeRetrieval: activeRetrievalMode === "validate" && activeRetrieval.length === 1
+            ? canonicalDocument("active-retrieval", activeRetrieval[0])
+            : null,
+        };
+      });
     }
 
     async rawDump(): Promise<Record<string, unknown[]>> {

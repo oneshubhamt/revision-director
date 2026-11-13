@@ -2,18 +2,21 @@
     readonly id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`;
     readonly type: ObligationType = "memory-recall";
 
-    constructor(private readonly desiredRetention: () => number) {}
+    constructor(
+      private readonly schedulingPolicy: () => FsrsSchedulingPolicy,
+      private readonly optimizerProfile: () => FsrsOptimizerProfile | null = () => null,
+    ) {}
 
-    private config(): FsrsConfigSnapshot {
-      return fsrsConfigSnapshot(this.desiredRetention());
+    private scheduler(): RevisionSchedulerPort {
+      return revisionSchedulerPort(this.schedulingPolicy(), this.optimizerProfile());
     }
 
-    private scheduler(): FsrsSchedulerRuntime {
-      return fsrsScheduler(this.desiredRetention());
+    private reviews(context?: SchedulerPolicyContext): readonly MemoryReviewObservation[] {
+      return context?.memoryReviews ?? [];
     }
 
     createInitialState(firstDueAt: ISODateTime, cardId: string): PolicyState {
-      const card = this.scheduler().newCard({ now: new Date(firstDueAt), cardId });
+      const card = this.scheduler().newCard(firstDueAt, cardId);
       return {
         engine: "ts-fsrs",
         version: FSRS_PACKAGE_VERSION,
@@ -21,58 +24,43 @@
         successStreak: 0,
         failureCount: 0,
         lastIntervalDays: 0,
-        fsrsCard: serializeFsrsCard(card),
+        fsrsCard: card,
       };
     }
 
-    preview(obligation: RevisionObligation, now: Date): SchedulePreview[] {
+    preview(obligation: RevisionObligation, now: Date, context?: SchedulerPolicyContext): SchedulePreview[] {
       const card = obligation.policyState.fsrsCard;
       assert(card, "Memory obligation has no FSRS-7 card state.");
-      const previews: SchedulePreview[] = [];
-      for (const candidate of this.scheduler().preview({ card: hydrateFsrsCard(card, obligation.id), now })) {
-        const rating = validateRating(candidate.grade);
-        const dueAt = candidate.card.dueAt.toISOString();
-        previews.push({ rating, dueAt, intervalDays: daysBetween(candidate.card.dueAt, now), label: intervalLabel(dueAt, now) });
-      }
-      return previews.sort((a, b) => a.rating - b.rating);
+      return this.scheduler().preview(card, this.reviews(context), now);
     }
 
-    complete(obligation: RevisionObligation, rating: Rating, evidence: ObjectiveEvidence, now: Date): PolicyCompletion {
+    complete(
+      obligation: RevisionObligation,
+      rating: Rating,
+      _evidence: ObjectiveEvidence,
+      now: Date,
+      context?: SchedulerPolicyContext,
+    ): PolicyCompletion {
       const card = obligation.policyState.fsrsCard;
       assert(card, "Memory obligation has no FSRS-7 card state.");
-      const api = runtimeFsrs();
-      const grade = rating === Rating.Again ? api.Rating.Again : rating === Rating.Hard ? api.Rating.Hard : rating === Rating.Good ? api.Rating.Good : api.Rating.Easy;
-      const result = this.scheduler().review({ card: hydrateFsrsCard(card, obligation.id), now, grade });
-      const next = serializeFsrsCard(result.card);
+      const scheduler = this.scheduler();
+      const result = scheduler.review(card, this.reviews(context), rating, now);
+      const next = result.card;
       const state: PolicyState = {
         engine: "ts-fsrs",
         version: FSRS_PACKAGE_VERSION,
-        stage: result.card.state,
+        stage: next.state,
         successStreak: rating >= Rating.Good ? obligation.policyState.successStreak + 1 : 0,
         failureCount: obligation.policyState.failureCount + (rating === Rating.Again ? 1 : 0),
-        lastIntervalDays: result.card.scheduledDays,
+        lastIntervalDays: next.scheduledDays,
         fsrsCard: next,
       };
-      const log: Record<string, unknown> = {
-        model: FSRS_MODEL,
-        rating: result.revlog.rating,
-        state: result.revlog.state,
-        dueAt: result.revlog.dueAt.toISOString(),
-        lastReviewAt: result.revlog.lastReviewAt?.toISOString() ?? null,
-        reviewTime: result.revlog.reviewTime.toISOString(),
-        stability: result.revlog.stability,
-        stabilityFast: requiredFsrs7StabilityFast(result.revlog.stabilityFast),
-        difficulty: result.revlog.difficulty,
-        scheduledDays: result.revlog.scheduledDays,
-        learningStep: result.revlog.learningStep,
-      };
-      if (result.revlog.scheduleStatus !== undefined) log.scheduleStatus = result.revlog.scheduleStatus;
       const completion: PolicyCompletion = {
         dueAt: next.dueAt,
         policyState: state,
-        policyId: `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`,
-        reviewLog: log,
-        schedulerConfig: this.config(),
+        policyId: this.id,
+        reviewLog: result.reviewLog,
+        schedulerConfig: clone(scheduler.configuration),
       };
       if (rating === Rating.Again) completion.followUpType = "relearn";
       return completion;
@@ -192,9 +180,12 @@
   class SchedulerPolicyRouter {
     private readonly policies = new Map<ObligationType, SchedulerPolicy>();
 
-    constructor(desiredRetention: () => number) {
+    constructor(
+      schedulingPolicy: () => FsrsSchedulingPolicy,
+      optimizerProfile: () => FsrsOptimizerProfile | null = () => null,
+    ) {
       const all: SchedulerPolicy[] = [
-        new FsrsMemoryPolicy(desiredRetention),
+        new FsrsMemoryPolicy(schedulingPolicy, optimizerProfile),
         new MasteryPolicy(),
         new ApplicationPolicy(),
         new PerformancePolicy(),

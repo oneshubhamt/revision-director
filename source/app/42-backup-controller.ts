@@ -163,7 +163,7 @@
 
     private async verifyCurrentStateStillMatches(proof: BackupSafetyProofRecord): Promise<void> {
       if (proof.kind === "verified-backup") {
-        const payload = this.service.validateBackup(await this.service.exportBackup());
+        const payload = validateBackupPayload(await this.service.exportBackup());
         const current = await BackupCodec.stateFingerprint(payload, "sha256");
         assert(current === proof.currentStateFingerprint, "Current application data changed after the safety copy was created. Create a new safety copy.");
         return;

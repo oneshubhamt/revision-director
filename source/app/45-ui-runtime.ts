@@ -2,12 +2,60 @@
      PASS C2 · UI RUNTIME, RENDER COORDINATION AND ACCESSIBILITY
      ========================================================================== */
 
+  interface ElementConstructor<T extends Element> {
+    new(): T;
+  }
+
+  function formText(data: FormData, name: string, fallback = ""): string {
+    const value = data.get(name);
+    if (value === null) return fallback;
+    assert(typeof value === "string", `${name} must be text.`);
+    return value;
+  }
+
+  function formNumber(data: FormData, name: string): number {
+    const value = Number(formText(data, name));
+    assert(Number.isFinite(value), `${name} must be a finite number.`);
+    return value;
+  }
+
+  function requiredNamedFormControl<T extends Element>(
+    form: HTMLFormElement,
+    name: string,
+    constructor: ElementConstructor<T>,
+  ): T {
+    const control = form.elements.namedItem(name);
+    assert(control instanceof constructor, `Missing or invalid form control: ${name}.`);
+    return control;
+  }
+
+  function formInput(form: HTMLFormElement, name: string): HTMLInputElement {
+    return requiredNamedFormControl(form, name, HTMLInputElement);
+  }
+
+  function formSelect(form: HTMLFormElement, name: string): HTMLSelectElement {
+    return requiredNamedFormControl(form, name, HTMLSelectElement);
+  }
+
+  function formTextarea(form: HTMLFormElement, name: string): HTMLTextAreaElement {
+    return requiredNamedFormControl(form, name, HTMLTextAreaElement);
+  }
+
+  function escapeHtml(value: unknown): string {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
   type PaneId = "today" | "review" | "library" | "study" | "history" | "settings";
-  type RenderDomain = PaneId | "sidebar" | "ownership" | "storage";
+  type RenderDomain = PaneId | "plan" | "sidebar" | "ownership" | "storage";
   type RenderCallback = () => void | Promise<void>;
 
   const RENDER_DOMAIN_ORDER: readonly RenderDomain[] = Object.freeze([
-    "today", "review", "library", "study", "history", "settings", "sidebar", "ownership", "storage",
+    "plan", "today", "review", "library", "study", "history", "settings", "sidebar", "ownership", "storage",
   ]);
 
   interface DocumentFocusSnapshot {
@@ -24,14 +72,14 @@
 
   function focusSelector(element: HTMLElement): string {
     if (element.id) return `#${CSS.escape(element.id)}`;
-    const pane = element.dataset.pane;
+    const pane = element.dataset["pane"];
     if (pane) return `[data-pane="${attributeSelectorValue(pane)}"]`;
-    const focusKey = element.dataset.focusKey;
+    const focusKey = element.dataset["focusKey"];
     if (focusKey) return `[data-focus-key="${attributeSelectorValue(focusKey)}"]`;
-    const action = element.dataset.action;
+    const action = element.dataset["action"];
     if (action) {
-      const id = element.dataset.id;
-      const rating = element.dataset.rating;
+      const id = element.dataset["id"];
+      const rating = element.dataset["rating"];
       return `[data-action="${attributeSelectorValue(action)}"]${id ? `[data-id="${attributeSelectorValue(id)}"]` : ""}${rating ? `[data-rating="${attributeSelectorValue(rating)}"]` : ""}`;
     }
     const name = element.getAttribute("name");
@@ -169,8 +217,8 @@
       private readonly onActivate: (pane: PaneId) => void | Promise<void>,
     ) {
       this.entries = Object.freeze(panes.map((pane) => {
-        const tab = requiredElement<HTMLButtonElement>(`[data-pane="${pane}"]`);
-        const panel = requiredElement<HTMLElement>(`#pane-${pane}`);
+        const tab = requiredElement(`[data-pane="${pane}"]`, HTMLButtonElement);
+        const panel = requiredElement(`#pane-${pane}`, HTMLElement);
         return Object.freeze({ pane, tab, panel });
       }));
     }

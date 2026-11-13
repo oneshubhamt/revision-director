@@ -1,9 +1,8 @@
-(() => {
-  "use strict";
 
   /* Revision Director VA7.1 Pass E1 extension runtime.
-   * One sealed TypeScript monolith with private domain, policy, persistence,
-   * application and UI layers. Only the frozen, capability-versioned RevisionDirector API is public.
+   * Maintained as independently compilable TypeScript source parts sharing one
+   * script namespace. The build seals their emitted JavaScript inside one IIFE.
+   * Only the frozen, capability-versioned RevisionDirector API is public.
    */
 
   /* ==========================================================================
@@ -11,7 +10,8 @@
      ========================================================================== */
 
   type FsrsModelVersion = "FSRS-7";
-  type FsrsScheduleStatus = "new" | "learning" | "review" | "suspended";
+  type FsrsRuntimeScheduleStatus = "new" | "learning" | "review" | "suspended";
+  type StoredFsrsScheduleStatus = Exclude<FsrsRuntimeScheduleStatus, "suspended">;
 
   interface FsrsMemoryStateRuntime {
     stability: number;
@@ -28,7 +28,7 @@
     reps: number;
     lapses: number;
     state: number;
-    scheduleStatus: FsrsScheduleStatus;
+    scheduleStatus: FsrsRuntimeScheduleStatus;
   }
 
   interface FsrsReviewLogRuntime extends FsrsMemoryStateRuntime {
@@ -39,7 +39,7 @@
     reviewTime: Date;
     scheduledDays: number;
     learningStep: number;
-    scheduleStatus?: FsrsScheduleStatus;
+    scheduleStatus?: FsrsRuntimeScheduleStatus;
   }
 
   interface FsrsRecordRuntime {
@@ -51,13 +51,37 @@
     grade: number;
   }
 
+  interface FsrsHistoryReviewRuntime {
+    rating: number;
+    reviewTime: Date;
+  }
+
+  interface FsrsSchedulerDefinitionRuntime {
+    readonly model: unknown;
+    readonly chrono: unknown;
+  }
+
+  interface FsrsSchedulerFactoryRuntime {
+    use(...middlewares: unknown[]): FsrsSchedulerFactoryRuntime;
+    create(input: { config: Record<string, unknown> }): FsrsSchedulerRuntime;
+  }
+
   interface FsrsSchedulerRuntime {
+    readonly definition: FsrsSchedulerDefinitionRuntime;
     readonly model: {
       forgettingCurve(state: FsrsMemoryStateRuntime, elapsedDays: number): number;
+    };
+    readonly chrono: {
+      difference(from: Date, to: Date): number;
+      compare?(left: Date, right: Date): number;
     };
     newCard(input: { now?: Date; cardId?: string }): FsrsCardRuntime;
     preview(input: { card: FsrsCardRuntime; now: Date }): Iterable<FsrsPreviewRuntime>;
     review(input: { card: FsrsCardRuntime; now: Date; grade: number }): FsrsRecordRuntime;
+    forward(input: {
+      history: readonly FsrsHistoryReviewRuntime[];
+      initialCard?: FsrsCardRuntime;
+    }): FsrsRecordRuntime[];
   }
 
   interface FsrsDefaultSchedulerOptions {
@@ -71,12 +95,21 @@
     enableFuzz: false;
     maximumInterval: number;
     clearStatsOnForget: false;
+    weights?: readonly number[];
   }
 
   interface FsrsUmdRuntime {
     Rating: Readonly<{ Again: number; Hard: number; Good: number; Easy: number }>;
     State: Readonly<{ New: number; Learning: number; Review: number; Relearning: number }>;
     DefaultScheduler(options: FsrsDefaultSchedulerOptions): Promise<FsrsSchedulerRuntime>;
+    defineScheduler(definition: FsrsSchedulerDefinitionRuntime): FsrsSchedulerFactoryRuntime;
+    schedulerCostAdrMiddleware: unknown;
+    schedulerFuzzingMiddleware: unknown;
+    schedulerStatsMiddleware: unknown;
+    schedulerScheduledDaysMiddleware: unknown;
+    schedulerLearningStepsMiddleware: unknown;
+    schedulerMaximumIntervalMiddleware: unknown;
+    schedulerMonotonicIntervalMiddleware: unknown;
   }
 
   const FSRS = (window as Window & { FSRS?: FsrsUmdRuntime }).FSRS;

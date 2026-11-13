@@ -1,5 +1,5 @@
   type BackupArchiveCompression = "none" | "gzip";
-  type BackupArchiveHashAlgorithm = "sha256" | "fnv1a64";
+  type BackupArchiveHashAlgorithm = "sha256";
   type BackupArchiveEntityType = "profiles" | "nodes" | "units" | "studyEvents" | "obligations" | "evidenceEvents" | "chunks" | "dailyPlans" | "settings" | "activeRetrieval";
 
   interface BackupArchiveCounts {
@@ -108,23 +108,14 @@
 
   class BackupCodec {
     private static encode(value: string): Uint8Array {
-      if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(value);
-      const bytes: number[] = [];
-      for (const symbol of value) {
-        const point = symbol.codePointAt(0)!;
-        if (point <= 0x7f) bytes.push(point);
-        else if (point <= 0x7ff) bytes.push(0xc0 | (point >> 6), 0x80 | (point & 0x3f));
-        else if (point <= 0xffff) bytes.push(0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f));
-        else bytes.push(0xf0 | (point >> 18), 0x80 | ((point >> 12) & 0x3f), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f));
-      }
-      return new Uint8Array(bytes);
+      return utf8Bytes(value);
     }
 
     static async create(payload: BackupPayload, preferCompression = true): Promise<BackupArchiveArtifact> {
       const collections = this.payloadCollections(payload);
       const counts = this.countCollections(collections);
       this.assertCountsWithinLimits(counts);
-      const hashAlgorithm = this.bestHashAlgorithm();
+      const hashAlgorithm: BackupArchiveHashAlgorithm = "sha256";
       const compression: BackupArchiveCompression = preferCompression && typeof CompressionStream !== "undefined" ? "gzip" : "none";
       const chunkBodies: Omit<BackupArchiveChunk, "checksum">[] = [];
       for (const entityType of BACKUP_ENTITY_ORDER) {
@@ -233,25 +224,24 @@
       const expectedCompletion = await this.hashJson({ manifest, ...completionBody }, manifest.hashAlgorithm);
       assert(completion.checksum === expectedCompletion, "Backup final checksum failed verification.");
       assert(collections.settings.length === 1, "Backup must contain exactly one settings document.");
-      const candidate: BackupPayload = {
+      const candidate = {
         format: manifest.payloadFormat,
         schemaVersion: manifest.payloadSchemaVersion,
         exportedAt: manifest.exportedAt,
         appVersion: manifest.appVersion,
-        profiles: collections.profiles as ExamProfile[],
-        nodes: collections.nodes as KnowledgeNode[],
-        units: collections.units as KnowledgeUnit[],
-        studyEvents: collections.studyEvents as StudyEvent[],
-        obligations: collections.obligations as RevisionObligation[],
-        evidenceEvents: collections.evidenceEvents as EvidenceEvent[],
-        chunks: collections.chunks as ObligationChunk[],
-        dailyPlans: collections.dailyPlans as DailyPlanRecord[],
-        settings: collections.settings[0] as AppSettings,
-        activeRetrieval: (collections.activeRetrieval[0] as ActiveRetrievalSession | undefined) ?? null,
+        profiles: collections.profiles,
+        nodes: collections.nodes,
+        units: collections.units,
+        studyEvents: collections.studyEvents,
+        obligations: collections.obligations,
+        evidenceEvents: collections.evidenceEvents,
+        chunks: collections.chunks,
+        dailyPlans: collections.dailyPlans,
+        settings: collections.settings[0],
+        activeRetrieval: collections.activeRetrieval[0] ?? null,
       };
       const payload = validate(candidate);
       const warnings: string[] = [];
-      if (manifest.hashAlgorithm === "fnv1a64") warnings.push("Integrity uses the local-runtime fallback hash because Web Crypto was unavailable when the backup was created.");
       const stateChecksum = await this.stateFingerprint(payload, manifest.hashAlgorithm);
       assert(stateChecksum === manifest.stateChecksum, "Backup state checksum failed verification.");
       return { payload, inspection: this.inspection(manifest, completion.checksum, payload.activeRetrieval?.status ?? "none", bytes.byteLength, expanded.byteLength, warnings) };
@@ -299,57 +289,72 @@
     }
 
     private static parseManifest(input: unknown): BackupArchiveManifest {
-      assert(typeof input === "object" && input !== null, "Backup manifest is missing.");
-      const value = input as Partial<BackupArchiveManifest>;
-      assert(value.kind === "manifest" && value.format === BACKUP_ARCHIVE_FORMAT && value.version === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
-      assert(value.appVersion === APP_VERSION, "This backup archive was not created by the current Revision Director build.");
-      assert(value.payloadFormat === BACKUP_FORMAT && value.payloadSchemaVersion === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
-      assert(value.compression === "none" || value.compression === "gzip", "Backup compression metadata is invalid.");
-      assert(value.hashAlgorithm === "sha256" || value.hashAlgorithm === "fnv1a64", "Backup hash algorithm is unsupported.");
-      assert(value.chunkTargetBytes === BACKUP_ARCHIVE_CHUNK_TARGET_BYTES && value.chunkMaxItems === BACKUP_ARCHIVE_CHUNK_MAX_ITEMS, "Backup chunk contract is unsupported.");
-      assert(Number.isInteger(value.chunkCount) && (value.chunkCount ?? -1) >= 0, "Backup manifest chunk count is invalid.");
-      assert(typeof value.counts === "object" && value.counts !== null, "Backup manifest counts are missing.");
-      assert(typeof value.stateChecksum === "string" && /^[0-9a-f]{16,64}$/.test(value.stateChecksum), "Backup state checksum is invalid.");
+      const value = requireRecord(input, "Backup manifest");
+      assertExactKeys(value, "Backup manifest", ["kind", "format", "version", "exportedAt", "appVersion", "payloadFormat", "payloadSchemaVersion", "compression", "hashAlgorithm", "chunkTargetBytes", "chunkMaxItems", "chunkCount", "counts", "stateChecksum"]);
+      assert(value["kind"] === "manifest" && value["format"] === BACKUP_ARCHIVE_FORMAT && value["version"] === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
+      const appVersion = canonicalId(requiredString(value["appVersion"], "Backup application version"), "Backup application version");
+      assert(value["payloadFormat"] === BACKUP_FORMAT && value["payloadSchemaVersion"] === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
+      const compression = literalChoice(value["compression"], ["none", "gzip"] as const, "Backup compression metadata");
+      const hashAlgorithm = literalChoice(value["hashAlgorithm"], ["sha256"] as const, "Backup hash algorithm");
+      assert(value["chunkTargetBytes"] === BACKUP_ARCHIVE_CHUNK_TARGET_BYTES && value["chunkMaxItems"] === BACKUP_ARCHIVE_CHUNK_MAX_ITEMS, "Backup chunk contract is unsupported.");
+      const chunkCount = value["chunkCount"];
+      assert(typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup manifest chunk count is invalid.");
+      const stateChecksum = value["stateChecksum"];
+      assert(typeof stateChecksum === "string" && /^[0-9a-f]{64}$/.test(stateChecksum), "Backup state checksum is invalid.");
       return {
-        kind: "manifest", format: BACKUP_ARCHIVE_FORMAT, version: BACKUP_ARCHIVE_VERSION,
-        exportedAt: canonicalIso(value.exportedAt as ISODateTime, "Backup export date"),
-        appVersion: canonicalId(value.appVersion as string, "Backup application version"),
-        payloadFormat: BACKUP_FORMAT, payloadSchemaVersion: BACKUP_SCHEMA_VERSION,
-        compression: value.compression, hashAlgorithm: value.hashAlgorithm,
-        chunkTargetBytes: BACKUP_ARCHIVE_CHUNK_TARGET_BYTES, chunkMaxItems: BACKUP_ARCHIVE_CHUNK_MAX_ITEMS,
-        chunkCount: value.chunkCount!, counts: this.parseCounts(value.counts), stateChecksum: value.stateChecksum,
+        kind: "manifest",
+        format: BACKUP_ARCHIVE_FORMAT,
+        version: BACKUP_ARCHIVE_VERSION,
+        exportedAt: canonicalIso(requiredString(value["exportedAt"], "Backup export date"), "Backup export date"),
+        appVersion,
+        payloadFormat: BACKUP_FORMAT,
+        payloadSchemaVersion: BACKUP_SCHEMA_VERSION,
+        compression,
+        hashAlgorithm,
+        chunkTargetBytes: BACKUP_ARCHIVE_CHUNK_TARGET_BYTES,
+        chunkMaxItems: BACKUP_ARCHIVE_CHUNK_MAX_ITEMS,
+        chunkCount,
+        counts: this.parseCounts(value["counts"]),
+        stateChecksum,
       };
     }
 
     private static parseCounts(input: unknown): BackupArchiveCounts {
-      assert(typeof input === "object" && input !== null, "Backup counts are invalid.");
-      const value = input as Partial<BackupArchiveCounts>;
+      const value = requireRecord(input, "Backup counts");
+      assertExactKeys(value, "Backup counts", BACKUP_ENTITY_ORDER);
       const counts = this.zeroCounts();
       for (const key of BACKUP_ENTITY_ORDER) {
         const count = value[key];
-        assert(Number.isInteger(count) && (count ?? -1) >= 0, `Backup ${key} count is invalid.`);
-        counts[key] = count!;
+        assert(typeof count === "number" && Number.isInteger(count) && count >= 0, `Backup ${key} count is invalid.`);
+        counts[key] = count;
       }
       return counts;
     }
 
     private static parseChunk(input: unknown): BackupArchiveChunk {
-      assert(typeof input === "object" && input !== null, "Backup chunk is invalid.");
-      const value = input as Partial<BackupArchiveChunk>;
-      assert(value.kind === "chunk" && Number.isInteger(value.sequence) && (value.sequence ?? -1) >= 0, "Backup chunk sequence is invalid.");
-      assert(typeof value.entityType === "string" && BACKUP_ENTITY_ORDER.includes(value.entityType as BackupArchiveEntityType), "Backup chunk entity type is invalid.");
-      assert(Number.isInteger(value.count) && Array.isArray(value.items), "Backup chunk contents are invalid.");
-      assert(typeof value.checksum === "string" && /^[0-9a-f]{16,64}$/.test(value.checksum), "Backup chunk checksum is invalid.");
-      return { kind: "chunk", sequence: value.sequence!, entityType: value.entityType as BackupArchiveEntityType, count: value.count!, items: value.items, checksum: value.checksum };
+      const value = requireRecord(input, "Backup chunk");
+      assertExactKeys(value, "Backup chunk", ["kind", "sequence", "entityType", "count", "items", "checksum"]);
+      const sequence = value["sequence"];
+      assert(value["kind"] === "chunk" && typeof sequence === "number" && Number.isInteger(sequence) && sequence >= 0, "Backup chunk sequence is invalid.");
+      const entityType = literalChoice(value["entityType"], BACKUP_ENTITY_ORDER, "Backup chunk entity type");
+      const count = value["count"];
+      const items = value["items"];
+      assert(typeof count === "number" && Number.isInteger(count) && Array.isArray(items), "Backup chunk contents are invalid.");
+      const checksum = value["checksum"];
+      assert(typeof checksum === "string" && /^[0-9a-f]{64}$/.test(checksum), "Backup chunk checksum is invalid.");
+      return { kind: "chunk", sequence, entityType, count, items, checksum };
     }
 
     private static parseCompletion(input: unknown): BackupArchiveCompletion {
-      assert(typeof input === "object" && input !== null, "Backup completion proof is missing.");
-      const value = input as Partial<BackupArchiveCompletion>;
-      assert(value.kind === "complete" && Number.isInteger(value.chunkCount) && (value.chunkCount ?? -1) >= 0, "Backup completion proof is invalid.");
-      assert(Array.isArray(value.chunkHashes) && value.chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{16,64}$/.test(hash)), "Backup completion hashes are invalid.");
-      assert(typeof value.checksum === "string" && /^[0-9a-f]{16,64}$/.test(value.checksum), "Backup final checksum is invalid.");
-      return { kind: "complete", chunkCount: value.chunkCount!, counts: this.parseCounts(value.counts), chunkHashes: value.chunkHashes, checksum: value.checksum };
+      const value = requireRecord(input, "Backup completion proof");
+      assertExactKeys(value, "Backup completion proof", ["kind", "chunkCount", "counts", "chunkHashes", "checksum"]);
+      const chunkCount = value["chunkCount"];
+      assert(value["kind"] === "complete" && typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup completion proof is invalid.");
+      const chunkHashes = value["chunkHashes"];
+      assert(Array.isArray(chunkHashes) && chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)), "Backup completion hashes are invalid.");
+      const checksum = value["checksum"];
+      assert(typeof checksum === "string" && /^[0-9a-f]{64}$/.test(checksum), "Backup final checksum is invalid.");
+      return { kind: "complete", chunkCount, counts: this.parseCounts(value["counts"]), chunkHashes, checksum };
     }
 
     private static inspection(manifest: BackupArchiveManifest, archiveChecksum: string, activeRetrievalStatus: ActiveRetrievalStatus | "none", compressedBytes: number, expandedBytes: number, warnings: string[]): BackupInspectionMetadata {
@@ -385,73 +390,12 @@
       return this.hashJson(value, "sha256");
     }
 
-    private static bestHashAlgorithm(): BackupArchiveHashAlgorithm {
-      return globalThis.crypto?.subtle ? "sha256" : "fnv1a64";
-    }
-
     private static async hashJson(value: unknown, algorithm: BackupArchiveHashAlgorithm): Promise<string> {
       return this.hashBytes(this.encode(JSON.stringify(value)), algorithm);
     }
 
-    private static async hashBytes(bytes: Uint8Array, algorithm: BackupArchiveHashAlgorithm): Promise<string> {
-      if (algorithm === "sha256") {
-        if (globalThis.crypto?.subtle) {
-          const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
-          return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
-        }
-        return this.sha256Fallback(bytes);
-      }
-      let hash = 0xcbf29ce484222325n;
-      for (const value of bytes) { hash ^= BigInt(value); hash = BigInt.asUintN(64, hash * 0x100000001b3n); }
-      return hash.toString(16).padStart(16, "0");
-    }
-
-
-    private static sha256Fallback(input: Uint8Array): string {
-      const constants = new Uint32Array([
-        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
-        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
-        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
-        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
-        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
-        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
-        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
-        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
-      ]);
-      const bitLength = BigInt(input.byteLength) * 8n;
-      const paddedLength = Math.ceil((input.byteLength + 9) / 64) * 64;
-      const bytes = new Uint8Array(paddedLength);
-      bytes.set(input);
-      bytes[input.byteLength] = 0x80;
-      for (let index = 0; index < 8; index += 1) bytes[paddedLength - 1 - index] = Number((bitLength >> BigInt(index * 8)) & 0xffn);
-      const state = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
-      const words = new Uint32Array(64);
-      const rotate = (value: number, amount: number): number => (value >>> amount) | (value << (32 - amount));
-      for (let offset = 0; offset < bytes.length; offset += 64) {
-        for (let index = 0; index < 16; index += 1) {
-          const base = offset + index * 4;
-          words[index] = ((bytes[base]! << 24) | (bytes[base + 1]! << 16) | (bytes[base + 2]! << 8) | bytes[base + 3]!) >>> 0;
-        }
-        for (let index = 16; index < 64; index += 1) {
-          const x = words[index - 15]!, y = words[index - 2]!;
-          const s0 = rotate(x, 7) ^ rotate(x, 18) ^ (x >>> 3);
-          const s1 = rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10);
-          words[index] = (words[index - 16]! + s0 + words[index - 7]! + s1) >>> 0;
-        }
-        let a=state[0]!, b=state[1]!, c=state[2]!, d=state[3]!, e=state[4]!, f=state[5]!, g=state[6]!, h=state[7]!;
-        for (let index = 0; index < 64; index += 1) {
-          const sum1 = rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25);
-          const choice = (e & f) ^ (~e & g);
-          const temp1 = (h + sum1 + choice + constants[index]! + words[index]!) >>> 0;
-          const sum0 = rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22);
-          const majority = (a & b) ^ (a & c) ^ (b & c);
-          const temp2 = (sum0 + majority) >>> 0;
-          h=g; g=f; f=e; e=(d + temp1) >>> 0; d=c; c=b; b=a; a=(temp1 + temp2) >>> 0;
-        }
-        state[0]=(state[0]!+a)>>>0; state[1]=(state[1]!+b)>>>0; state[2]=(state[2]!+c)>>>0; state[3]=(state[3]!+d)>>>0;
-        state[4]=(state[4]!+e)>>>0; state[5]=(state[5]!+f)>>>0; state[6]=(state[6]!+g)>>>0; state[7]=(state[7]!+h)>>>0;
-      }
-      return [...state].map((value) => value.toString(16).padStart(8, "0")).join("");
+    private static async hashBytes(bytes: Uint8Array, _algorithm: BackupArchiveHashAlgorithm): Promise<string> {
+      return sha256Hex(bytes);
     }
 
     private static async compress(bytes: Uint8Array): Promise<Uint8Array> {

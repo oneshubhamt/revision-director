@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "preserve",
+    "moduleDetection": "legacy",
     "lib": [
       "ES2022",
       "DOM",
@@ -14,11 +15,20 @@
     "useUnknownInCatchVariables": true,
     "skipLibCheck": true,
     "removeComments": false,
-    "rootDir": "../build/generated",
+    "noEmitOnError": true,
+    "rootDir": ".",
     "outDir": "../build/generated-js",
-    "types": []
+    "types": [],
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true
   },
-  "files": [
-    "../build/generated/revision-director.combined.ts"
+  "include": [
+    "app/*.ts"
   ]
 }

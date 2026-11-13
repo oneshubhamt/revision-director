@@ -6,6 +6,7 @@ import os
 import json
 from backup_fixture_codec import decode_file, encode_payload
 from playwright.sync_api import sync_playwright
+from helpers.browser_harness import launch_chromium
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,7 @@ INDEXEDDB_SHIM = r"""
     index(name){const cfg=this.data.indices.get(name);if(!cfg)throw new Error('missing index '+name);return new Index(this.tx,this.data,cfg)}
     get(key){return asyncReq(this.tx,()=>{const v=this.data.records.get(JSON.stringify(key));return v===undefined?undefined:structuredClone(v)})}
     getAll(){return asyncReq(this.tx,()=>[...this.data.records.values()].map(v=>structuredClone(v)))}
+    count(){return asyncReq(this.tx,()=>this.data.records.size)}
     put(v){return asyncReq(this.tx,()=>{const key=keyFrom(v,this.data.keyPath);if(key===undefined)throw new Error('missing key');this.data.records.set(JSON.stringify(key),structuredClone(v));return key})}
     add(v){return asyncReq(this.tx,()=>{const key=keyFrom(v,this.data.keyPath);const sk=JSON.stringify(key);if(this.data.records.has(sk))throw new Error('ConstraintError');for(const cfg of this.data.indices.values()){if(cfg.unique){const nk=JSON.stringify(keyFrom(v,cfg.keyPath));for(const old of this.data.records.values())if(JSON.stringify(keyFrom(old,cfg.keyPath))===nk)throw new Error('ConstraintError')}}this.data.records.set(sk,structuredClone(v));return key})}
     delete(key){return asyncReq(this.tx,()=>{this.data.records.delete(JSON.stringify(key));return undefined})}
@@ -83,8 +85,12 @@ def check_all_checkpoints(page) -> None:
 
 def restore_selected_backup(page, backup_path: str | Path, treatment: str = "discard", wait_ms: int = 900, download_page=None) -> None:
     page.locator("#import-backup").set_input_files(str(backup_path))
-    page.wait_for_timeout(wait_ms)
-    check(page.locator("#restore-dialog").is_visible(), "Restore preview did not open")
+    deadline = time.monotonic() + max(5.0, wait_ms / 1000)
+    while time.monotonic() < deadline and not page.locator("#restore-dialog").is_visible():
+        page.wait_for_timeout(80)
+    if not page.locator("#restore-dialog").is_visible():
+        toast = page.locator("#toast").inner_text().strip()
+        raise AssertionError(f"Restore preview did not open; toast={toast!r}")
     with TemporaryDirectory() as tmpdir:
         download_surface = download_page or page
         with download_surface.expect_download() as download_info:
@@ -151,6 +157,8 @@ def scenario_basic(browser) -> None:
     page.wait_for_timeout(120)
     settings_text = page.locator("#settings-content").inner_text()
     check("Storage health" in settings_text and "IndexedDB" in settings_text, "Storage-health contract is not visible")
+    check(page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "fixed-retention", "Clean installations must default to measured fixed-retention scheduling")
+    check("Fixed · 90%" in settings_text, "Clean-install Settings must expose the measured fixed-90% default policy")
     page.locator("#new-profile-name").fill("IFoS Production Test")
     page.locator("#new-profile-date").fill("2027-11-01")
     page.locator('[data-action="add-profile"]').click()
@@ -330,6 +338,43 @@ def scenario_bridge(browser) -> None:
 
 
 
+def scenario_cost_adr_settings(browser) -> None:
+    page, errors = open_page(browser, {"width": 1365, "height": 950}, baseline=True)
+    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
+    settings = page.locator('#settings-form')
+    policy = settings.locator('[name="memorySchedulingPolicy"]')
+    check(policy.count() == 1, "Memory scheduling policy selector missing")
+    check(policy.input_value() == "fixed-retention", "Restored fixed-retention settings must be preserved instead of being silently migrated to the new default")
+
+    policy.select_option("cost-adr")
+    settings.locator('button[type="submit"]').click()
+    page.wait_for_timeout(900)
+    check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
+    settings_text = page.locator("#settings-content").inner_text()
+    check("Cost-ADR · cost weight 1024" in settings_text, "Optional Cost-ADR preset did not become active in Settings")
+
+    with TemporaryDirectory() as tmp:
+        backup_path = str(Path(tmp) / "cost-adr-settings.rdbackup")
+        with page.expect_download() as download_info:
+            page.locator('[data-action="export-backup"]').click()
+        download_info.value.save_as(backup_path)
+        payload = decode_file(Path(backup_path))
+        saved_policy = payload["settings"]["fsrsScheduling"]["policy"]
+        check(saved_policy["kind"] == "cost-adr", "Cost-ADR policy was not persisted in backup state")
+        check(saved_policy["goalCostWeight"] == 1024, "Persisted Cost-ADR goal cost weight is not the bounded preset")
+        check(len(saved_policy["costAdrPolicy"]["coefficients"]) == 15, "Persisted Cost-ADR policy lost upstream coefficient provenance")
+
+    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
+    settings = page.locator('#settings-form')
+    settings.locator('[name="memorySchedulingPolicy"]').select_option("fixed-retention")
+    settings.locator('[name="desiredRetention"]').fill("0.90")
+    settings.locator('button[type="submit"]').click()
+    page.wait_for_timeout(900)
+    check("Fixed · 90%" in page.locator("#settings-content").inner_text(), "Return from Cost-ADR to fixed retention did not complete")
+    check(not errors, f"Cost-ADR Settings browser errors: {errors}")
+    page.close()
+
+
 def scenario_pass_d(browser) -> None:
     page, errors = open_page(browser, {"width": 1365, "height": 1000}, baseline=True)
     page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
@@ -402,22 +447,17 @@ def scenario_plan_execution_states(browser) -> None:
 
 def main() -> None:
     with sync_playwright() as playwright:
-        executable = os.environ.get("CHROMIUM_EXECUTABLE")
-        if not executable and Path("/usr/bin/chromium").exists():
-            executable = "/usr/bin/chromium"
-        launch_options = {"headless": True, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
-        if executable:
-            launch_options["executable_path"] = executable
-        browser = playwright.chromium.launch(**launch_options)
+        browser = launch_chromium(playwright)
         scenario_basic(browser)
         scenario_backups(browser)
         scenario_workflows(browser)
         scenario_keyboard_accessibility(browser)
         scenario_bridge(browser)
+        scenario_cost_adr_settings(browser)
         scenario_pass_d(browser)
         scenario_plan_execution_states(browser)
         browser.close()
-    print("PASS 7 Chromium browser QA scenarios")
+    print("PASS 8 Chromium browser QA scenarios")
 
 
 if __name__ == "__main__":

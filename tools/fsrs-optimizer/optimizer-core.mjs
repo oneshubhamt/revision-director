@@ -1,0 +1,165 @@
+import {
+ HOLDOUT_STRATEGY,MIN_HOLDOUT_CARDS,MIN_HOLDOUT_ITEMS,MIN_TRAIN_ITEMS,
+ OPTIMIZER_CONTRACT,OPTIMIZER_CHRONOLOGY,OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,OPTIMIZER_ROLLOVER_HOUR,
+ assertChronologicalCsv,evaluateHoldoutGate,splitChronologicalHoldout
+} from "./optimizer-policy.mjs";
+
+export class OptimizerGateRejectedError extends Error{
+ constructor(reasons){
+  super(reasons.join("; "));
+  this.name="OptimizerGateRejectedError";
+  this.reasons=[...reasons];
+ }
+}
+
+export const optimizerMetrics=(value,label)=>{
+ if(!value||!Number.isFinite(value.logLoss)||value.logLoss<0||
+   !Number.isFinite(value.rmseBins)||value.rmseBins<0)
+  throw Error(label+" returned invalid evaluation metrics");
+ return {logLoss:value.logLoss,rmseBins:value.rmseBins};
+};
+
+const ensureWeights=(weights,label)=>{
+ if(!Array.isArray(weights)||weights.length!==34||weights.some(value=>!Number.isFinite(value)))
+  throw Error(label+" did not return exactly 34 finite FSRS-7 weights");
+ return weights;
+};
+
+export const optimizerWeightsFingerprint=weights=>{
+ const values=ensureWeights([...weights],"Weights fingerprint input");
+ let hash=0xcbf29ce484222325n;
+ const canonical=values.map(value=>Number(value).toString()).join(",");
+ for(let index=0;index<canonical.length;index++){
+  hash^=BigInt(canonical.charCodeAt(index));
+  hash=BigInt.asUintN(64,hash*0x100000001b3n);
+ }
+ return "fnv1a64:"+hash.toString(16).padStart(16,"0");
+};
+
+export async function convertFsrsEvidence({binding,csv,sourceSha256}){
+ if(typeof csv!=="string"||!csv.trim())throw Error("Optimizer evidence is empty");
+ const rawRows=assertChronologicalCsv(csv);
+ if(rawRows<1)throw Error("Review evidence is empty");
+
+ const bytes=new TextEncoder().encode(csv);
+ const checksum=await sourceSha256(bytes);
+ if(typeof checksum!=="string"||!/^[a-f0-9]{64}$/.test(checksum))
+  throw Error("Optimizer source checksum is invalid");
+
+ const converted=await Promise.resolve(binding.convertCsvToFsrsItemsWithCardIds(
+  bytes,OPTIMIZER_ROLLOVER_HOUR,OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,OPTIMIZER_CONTRACT.model
+ ));
+ const {items,cardIds}=converted;
+ if(!Array.isArray(items)||!Array.isArray(cardIds)||items.length<1||items.length!==cardIds.length)
+  throw Error("Review evidence did not produce aligned FSRS-7 optimizer items");
+ return {rawRows,sourceSha256:checksum,items,cardIds};
+}
+
+export async function optimizeFsrsProfile({
+ binding,csv,sourceSha256,optimizerOptions,checkpoint=()=>undefined,incumbentProfile=null
+}){
+ const converted=await convertFsrsEvidence({binding,csv,sourceSha256});
+ const {rawRows,sourceSha256:checksum,items,cardIds}=converted;
+ const split=splitChronologicalHoldout(items,cardIds);
+ if(split.trainCount<MIN_TRAIN_ITEMS||split.holdoutCount<MIN_HOLDOUT_ITEMS||split.holdoutCards<MIN_HOLDOUT_CARDS){
+  throw new OptimizerGateRejectedError([
+   "Need at least "+MIN_TRAIN_ITEMS+" historical optimizer items, "+MIN_HOLDOUT_ITEMS+
+   " later holdout items and "+MIN_HOLDOUT_CARDS+" distinct holdout cards; observed "+
+   split.trainCount+", "+split.holdoutCount+" and "+split.holdoutCards+"."
+  ]);
+ }
+
+ const validationWeights=ensureWeights(
+  await binding.computeParameters(
+   split.trainItems,
+   optimizerOptions(split.trainCardIds,"Train validation candidate")
+  ),
+  "Validation training"
+ );
+ await checkpoint("after-validation-training");
+
+ const stock=optimizerMetrics(
+  new binding.FSRSBinding().evaluate(split.holdoutItems,split.holdoutCardIds),
+  "Stock FSRS-7"
+ );
+ const personalized=optimizerMetrics(
+  new binding.FSRSBinding(validationWeights).evaluate(split.holdoutItems,split.holdoutCardIds),
+  "Personalized FSRS-7"
+ );
+ let incumbentComparison=null;
+ if(incumbentProfile!==null){
+  if(!incumbentProfile||typeof incumbentProfile!=="object")throw Error("Incumbent FSRS profile is invalid");
+  const incumbentWeights=ensureWeights(incumbentProfile.weights,"Incumbent FSRS-7 profile");
+  if(typeof incumbentProfile.sourceSha256!=="string"||!/^[a-f0-9]{64}$/.test(incumbentProfile.sourceSha256))
+   throw Error("Incumbent FSRS profile source checksum is invalid");
+  incumbentComparison={
+   sourceSha256:incumbentProfile.sourceSha256,
+   weightsFingerprint:optimizerWeightsFingerprint(incumbentWeights),
+   metrics:optimizerMetrics(
+    new binding.FSRSBinding(incumbentWeights).evaluate(split.holdoutItems,split.holdoutCardIds),
+    "Active personalized FSRS-7"
+   )
+  };
+ }
+ const gate=evaluateHoldoutGate(stock,personalized,split,incumbentComparison);
+ if(!gate.passed)throw new OptimizerGateRejectedError(gate.reasons);
+ await checkpoint("after-holdout-gate");
+
+ const weights=ensureWeights(
+  await binding.computeParameters(
+   items,
+   optimizerOptions(cardIds,"Retrain final profile on all evidence")
+  ),
+  "Final training"
+ );
+
+ const crossValidation=optimizerMetrics(
+  await binding.evaluateWithTimeSeriesSplits(
+   items,
+   optimizerOptions(cardIds,"Time-series cross-validation")
+  ),
+  "Time-series cross-validation"
+ );
+ await checkpoint("before-profile-result");
+
+ return {
+  rawRows,
+  profile:{
+   schema:OPTIMIZER_CONTRACT.profileSchema,
+   model:OPTIMIZER_CONTRACT.model,
+   bindingVersion:OPTIMIZER_CONTRACT.bindingVersion,
+   trainedAt:new Date().toISOString(),
+   sourceSha256:checksum,
+   evidenceItems:items.length,
+   weights,
+   evaluation:{
+    crossValidation,
+    holdout:{
+     strategy:HOLDOUT_STRATEGY,
+     trainItems:split.trainCount,
+     holdoutItems:split.holdoutCount,
+     holdoutCards:split.holdoutCards,
+     minimumTrainItems:MIN_TRAIN_ITEMS,
+     minimumHoldoutItems:MIN_HOLDOUT_ITEMS,
+     minimumHoldoutCards:MIN_HOLDOUT_CARDS,
+     stock:gate.stock,
+     personalized:gate.personalized,
+     ...(gate.incumbent?{incumbent:gate.incumbent}:{}),
+     gate:"passed"
+    }
+   },
+   training:{
+    enableShortTerm:OPTIMIZER_CONTRACT.enableShortTerm,
+    enableSchedPenalties:OPTIMIZER_CONTRACT.enableSchedPenalties,
+    numRelearningSteps:OPTIMIZER_CONTRACT.numRelearningSteps,
+    chronology:OPTIMIZER_CHRONOLOGY,
+    converterFixedUtcOffsetMinutes:OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,
+    converterRolloverHour:OPTIMIZER_ROLLOVER_HOUR,
+    runtimeLearningSteps:[...OPTIMIZER_CONTRACT.runtimeLearningSteps],
+    runtimeRelearningSteps:[...OPTIMIZER_CONTRACT.runtimeRelearningSteps],
+    validationCandidateTrainedItems:split.trainCount,
+    finalRetrainedOnAllEvidence:true
+   }
+  }
+ };
+}

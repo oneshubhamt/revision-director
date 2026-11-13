@@ -1,19 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-import importlib.util
 
 from playwright.sync_api import Browser, Page, sync_playwright
+from helpers.browser_harness import load_browser_qa, launch_chromium
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location(
-    "revision_director_browser_qa",
-    ROOT / "tests/browser-qa.spec.py",
-)
-if SPEC is None or SPEC.loader is None:
-    raise RuntimeError("Unable to load the canonical browser QA fixture")
-MAIN_QA = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MAIN_QA)
+MAIN_QA = load_browser_qa("revision_director_browser_qa_supplement")
 
 CHECKS = 0
 
@@ -167,11 +160,7 @@ def verify_keyboard_and_names(page: Page) -> None:
 
 def main() -> None:
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(
-            headless=True,
-            executable_path="/usr/bin/chromium",
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
+        browser = launch_chromium(playwright)
         page, errors = open_page(browser)
         check(page.title() == "Revision Director · VA7.1 Pass E1", "Release title mismatch")
         restore_fixture(page)

@@ -1,22 +1,17 @@
 'use strict';
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
-const { webcrypto } = require('crypto');
-const root = path.resolve(__dirname, '..');
-let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_PLAN_TEST__ = { Rating, FsrsMemoryPolicy, RevisionService, buildPlanningCandidate, choosePlanItems, fsrsRetrievability, prepareFsrsScheduler, daysToExamination, examinationProximityScore, planningLookaheadDays, obligationWeaknessScore, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey };';
-if (!source.includes('void boot();')) throw new Error('Boot marker missing');
-source = source.replace('void boot();', hook);
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
-const context = { crypto: webcrypto, structuredClone, console, Date, Intl, URL, Blob, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array };
-context.window = context; context.self = context; context.globalThis = context;
-vm.createContext(context); vm.runInContext(vendor, context); vm.runInContext(source, context);
-const api = context.__RD_PLAN_TEST__;
-let checks = 0;
+const { createAppRuntime } = require('./helpers/runtime-harness');
+
+const { api } = createAppRuntime({
+  globalName: '__RD_PLAN_TEST__',
+  expose: ["Rating","FsrsMemoryPolicy","RevisionService","buildPlanningCandidate","planningEvidenceIndex","choosePlanItems","prepareFsrsScheduler","daysToExamination","examinationProximityScore","planningLookaheadDays","obligationWeaknessScore","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","memoryDifficultyAssessment","correctiveRelearnDueAt"],
+  requireFsrs: false,
+});
+
+let checks=0;
+const fixed=desiredRetention=>({kind:'fixed-retention',desiredRetention});
 function check(condition, message) { checks++; if (!condition) throw new Error(message); }
 const ref = new Date('2026-07-25T04:00:00Z');
-const settings = { schemaVersion:1,key:'app',activeProfileId:'p',desiredRetention:.9,dailyCapacityMinutes:60,studyDayBoundaryHour:4 };
+const settings = { schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]} };
 const profile = (id, days, status='active') => ({id,name:id,examDate:new Date(ref.getTime()+days*86400000).toISOString().slice(0,10),status,createdAt:ref.toISOString(),updatedAt:ref.toISOString()});
 const unit = (id, importance=3, lapseCount=0) => ({id,profileId:'p',topicNodeId:'t',title:id,scope:'scope',source:'',importance,status:'active',createdAt:ref.toISOString(),updatedAt:ref.toISOString(),evidenceCount:0,lapseCount});
 const policyState = {engine:'mastery',version:'1',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0};
@@ -50,6 +45,46 @@ const sharedEvidence = [evidence('shared','shared-recall',1,1),evidence('shared'
 const weakSpecific = api.buildPlanningCandidate({obligation:weakObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},sharedEvidence,settings,ref);
 const strongSpecific = api.buildPlanningCandidate({obligation:strongObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},sharedEvidence,settings,ref);
 check(weakSpecific.factors.weakness > strongSpecific.factors.weakness + .25, 'Weakness must be obligation-specific rather than shared across all workflows in a unit');
+const indexedSharedEvidence = api.planningEvidenceIndex(sharedEvidence);
+const weakIndexed = api.buildPlanningCandidate({obligation:weakObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},indexedSharedEvidence,settings,ref);
+const strongIndexed = api.buildPlanningCandidate({obligation:strongObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},indexedSharedEvidence,settings,ref);
+check(weakIndexed.factors.weakness === weakSpecific.factors.weakness && strongIndexed.factors.weakness === strongSpecific.factors.weakness, 'Pre-indexed planning evidence must preserve weakness semantics exactly');
+const persistentObligation=structuredClone(weakObligation);
+persistentObligation.expectedMinutes=60;
+persistentObligation.policyState=structuredClone(weakObligation.policyState);
+persistentObligation.policyState.fsrsCard.lapses=99;
+const persistentReviews=new Map([['shared-recall',[
+  {rating:api.Rating.Good},
+  ...Array.from({length:4},()=>({rating:api.Rating.Again}))
+]]]);
+const persistentCandidate=api.buildPlanningCandidate({obligation:persistentObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},[],settings,ref,.5,undefined,persistentReviews);
+check(persistentCandidate&&persistentCandidate.factors.weakness>=.9&&persistentCandidate.reasons.some(reason=>reason.includes('persistent difficulty')),'Persistent review-evidence burden must surface as a strong planner weakness signal without using the materialized FSRS lapse counter as history');
+
+const earlyLearningObligation=structuredClone(weakObligation);
+earlyLearningObligation.policyState=structuredClone(weakObligation.policyState);
+earlyLearningObligation.policyState.fsrsCard.state=1;
+earlyLearningObligation.policyState.fsrsCard.scheduleStatus='learning';
+const earlyReviews=[
+  {rating:api.Rating.Again,beforeCard:{state:0}},
+  {rating:api.Rating.Again,beforeCard:{state:1}}
+];
+const earlyAssessment=api.memoryDifficultyAssessment(earlyLearningObligation,settings.memoryDifficultyPolicy,earlyReviews);
+check(earlyAssessment.level==='learning-difficulty'&&earlyAssessment.establishedLapses===0&&earlyAssessment.earlyLearningFailures===2,'Repeated failures during initial learning must be diagnosed separately from established-memory lapses');
+check(earlyAssessment.automaticHoldEligible===false,'Initial-learning difficulty must never trigger the established-memory automatic-hold policy');
+const earlyIndex=new Map([[earlyLearningObligation.id,earlyReviews]]);
+const earlyCandidate=api.buildPlanningCandidate(
+  {obligation:earlyLearningObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},
+  [],settings,ref,.5,undefined,earlyIndex
+);
+check(earlyCandidate&&earlyCandidate.factors.weakness>=.68&&earlyCandidate.reasons.some(reason=>reason.includes('early learning difficulty')),'Early-learning difficulty must become a planner weakness signal without inventing an FSRS lapse');
+
+const persistentNearJoined={obligation:structuredClone(persistentObligation),unit:sharedUnit,profile:profile('shared-profile',3),subject:'S',section:'C',topic:'T'};
+const persistentFarJoined={obligation:structuredClone(persistentObligation),unit:sharedUnit,profile:profile('shared-profile',120),subject:'S',section:'C',topic:'T'};
+const persistentDueBefore=persistentNearJoined.obligation.dueAt;
+const persistentNear=api.buildPlanningCandidate(persistentNearJoined,[],settings,ref);
+const persistentFar=api.buildPlanningCandidate(persistentFarJoined,[],settings,ref);
+check(persistentNear&&persistentFar&&persistentNear.score>persistentFar.score,'Exam proximity must increase corrective priority for otherwise identical difficult memory');
+check(persistentNearJoined.obligation.dueAt===persistentDueBefore,'Exam-proximity corrective planning must not rewrite the FSRS due date');
 const short = api.buildPlanningCandidate(joined('short',0,10,3,60),[],settings,ref);
 const long = api.buildPlanningCandidate(joined('long',0,60,3,60),[],settings,ref);
 check(short.score > long.score, 'Duration fit must affect rank without dominating it');
@@ -67,36 +102,50 @@ const synthesisCandidate = api.buildPlanningCandidate(synthesisReady,[],settings
 check(synthesisCandidate && synthesisCandidate.executionMinutes === 5, 'Synthesis-ready work must be immediately plannable without rewriting the policy due date');
 check(synthesisReady.obligation.dueAt === new Date(ref.getTime()+3*86400000).toISOString(), 'Planning synthesis readiness must not mutate the policy due date');
 
-async function testFsrsPlanning() {
-  await api.prepareFsrsScheduler(.9);
-  const memoryPolicy = new api.FsrsMemoryPolicy(() => .9);
+async function testMemoryExamHorizon() {
+  await api.prepareFsrsScheduler(fixed(.9));
+  const memoryPolicy = new api.FsrsMemoryPolicy(() => fixed(.9));
   const memoryState = memoryPolicy.createInitialState(ref.toISOString(), 'memory');
   const memoryObligation = { ...obligation('memory',0,12,'memory-recall'), type:'memory-recall', workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'}, policyState:memoryState };
-  check(api.fsrsRetrievability(memoryObligation, ref, .9) === undefined, 'New FSRS obligations must not claim measured retrievability');
-  const completion = memoryPolicy.complete(memoryObligation, api.Rating.Good, {completeness:4,independence:4,application:3,errorTypes:[],correctionNote:''}, ref);
-  memoryObligation.policyState = completion.policyState;
-  const later = new Date(ref.getTime()+3*86400000);
-  const r = api.fsrsRetrievability(memoryObligation, later, .9);
-  check(typeof r === 'number' && r > 0 && r < 1, 'Reviewed memory obligations must use FSRS-7 retrievability');
-  check(memoryObligation.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(memoryObligation.policyState.fsrsCard.stabilityFast), 'Planning must consume persisted FSRS-7 dual-trace state');
 
-  const easy = memoryPolicy.complete({...memoryObligation, policyState:memoryState}, api.Rating.Easy, {completeness:4,independence:4,application:4,errorTypes:[],correctionNote:''}, ref);
-  const examBoundObligation = {...memoryObligation, dueAt:easy.dueAt, policyState:easy.policyState};
-  delete examBoundObligation.policyState.fsrsCard.lastReviewAt;
-  examBoundObligation.policyState.fsrsCard.reps = 0;
+  const easyEvidence = {completeness:4,independence:4,application:4,errorTypes:[],correctionNote:''};
+  const easy = memoryPolicy.complete(memoryObligation, api.Rating.Easy, easyEvidence, ref);
+  const unreviewedExamState = memoryPolicy.createInitialState(easy.dueAt, 'memory-exam');
+  const examBoundObligation = {
+    ...obligation('memory-exam',0,12,'memory-recall'),
+    id:'memory-exam',unitId:'memory-unit',type:'memory-recall',dueAt:easy.dueAt,
+    workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'},
+    policyState:unreviewedExamState
+  };
   const examBoundJoined = {
     obligation:examBoundObligation,
     unit:{...unit('memory-exam'),id:'memory-unit',profileId:'memory-profile'},
     profile:profile('memory-profile',2),
     subject:'S',section:'C',topic:'T'
   };
-  examBoundJoined.obligation.unitId='memory-unit';
   const examCandidate = api.buildPlanningCandidate(examBoundJoined,[],settings,ref);
   check(examCandidate && examCandidate.reasons.includes('final memory review before exam'), 'FSRS due dates beyond a known exam must create one final pre-exam memory opportunity');
   check(examBoundJoined.obligation.dueAt === easy.dueAt, 'Exam-horizon planning must not rewrite the FSRS policy due date');
-  examBoundJoined.obligation.policyState.fsrsCard.lastReviewAt = ref.toISOString();
-  examBoundJoined.obligation.policyState.fsrsCard.reps = 1;
-  check(api.buildPlanningCandidate(examBoundJoined,[],settings,ref) === undefined, 'A memory review already completed inside the final exam window must not be forced again');
+
+  const reviewedExamObligation = {
+    ...examBoundObligation,id:'memory',dueAt:easy.dueAt,policyState:structuredClone(easy.policyState)
+  };
+  reviewedExamObligation.policyState.fsrsCard.cardId='memory';
+  const easyEvent = {
+    id:'memory-easy',unitId:'memory-unit',obligationId:'memory',obligationType:'memory-recall',
+    reviewedAt:ref.toISOString(),confirmedRating:api.Rating.Easy,evidence:easyEvidence,
+    beforePolicyState:structuredClone(memoryState),afterPolicyState:structuredClone(easy.policyState),
+    schedulerConfig:structuredClone(easy.schedulerConfig)
+  };
+  const reviewedExamJoined = {...examBoundJoined,obligation:reviewedExamObligation};
+  check(api.buildPlanningCandidate(reviewedExamJoined,[easyEvent],settings,ref) === undefined, 'A memory review already completed inside the final exam window must not be forced again');
+
+  const sameDayExam=profile('same-day-exam',0);
+  const sameDayCorrective=api.correctiveRelearnDueAt(sameDayExam,ref);
+  const examDeadline=new Date(`${sameDayExam.examDate}T23:59:59`);
+  check(new Date(sameDayCorrective).getTime()>=ref.getTime()&&new Date(sameDayCorrective).getTime()<=examDeadline.getTime(),'Corrective relearning created on exam day must remain schedulable before the examination deadline');
+  const distantExam=profile('distant-exam',10);
+  check(api.correctiveRelearnDueAt(distantExam,ref)===new Date(ref.getTime()+86400000).toISOString(),'Corrective relearning should retain its ordinary one-day delay when the exam horizon does not constrain it');
 }
 
 const item = (id, score, mins, type='concept-reconstruction', dueState='due') => ({joined:{obligation:{id,type,dueAt:ref.toISOString(),expectedMinutes:mins},unit:{},profile:{}},score,dueState,executionMinutes:mins,factors:{dueRisk:.8,examImportance:1,weakness:.5,reviewDuration:.8,examinationProximity:.7,weeklyBalance:.5}});
@@ -112,18 +161,32 @@ packed = api.choosePlanItems([item('critical-fit-top',99,30,'relearn','overdue')
 check(packed.selected.some(i=>i.joined.obligation.id==='critical-fit-top') && packed.mustSplit.some(i=>i.joined.obligation.id==='oversized-lower'), 'A lower-ranked oversized critical item must be separated as must-split, not ordinary deferral');
 
 (async () => {
-  await testFsrsPlanning();
-  const service = new api.RevisionService({});
+  await testMemoryExamHorizon();
+  const service = new api.RevisionService({ dailyPlanByStudyDay: async () => undefined });
   service.settings = settings;
   service.joinedObligations = async () => [joined('a',-1,40,3,20),joined('b',0,20,2,100),joined('c',0,30,1,200)];
   service.evidenceEvents = async () => [];
   service.dailyPlanHistory = async () => [];
-  service.ensureAutomaticChunking = async () => new Map();
-  service.persistDailyPlan = async () => ({id:'plan',version:1});
-  const plan = await service.dailyPlan(ref);
+  let ensureChunkCalls = 0;
+  let existingChunkCalls = 0;
+  let persistCalls = 0;
+  const regenerationFlags = [];
+  service.ensureAutomaticChunking = async () => { ensureChunkCalls += 1; return new Map(); };
+  service.existingPendingChunks = async () => { existingChunkCalls += 1; return new Map(); };
+  service.persistDailyPlan = async (_plan, regenerate) => { persistCalls += 1; regenerationFlags.push(regenerate); return {id:'plan',version:persistCalls}; };
+
+  const preview = await service.calculateDailyPlan(ref);
+  check(existingChunkCalls === 1 && ensureChunkCalls === 0 && persistCalls === 0, 'Read-only plan calculation must not create chunks or persist plan state');
+  check(preview.planRecordId === '' && preview.versionNumber === 0, 'Read-only plan calculation must report absence of persisted plan state');
+
+  const plan = await service.ensureDailyPlan(ref);
+  check(ensureChunkCalls === 1 && persistCalls === 1 && regenerationFlags[0] === false, 'Plan ensure must own automatic chunking and ordinary persistence');
   check(plan.plannedMinutes <= 60, 'Service daily plan must respect configured capacity');
   check(plan.selected.length > 0 && plan.deferred.length > 0 && Array.isArray(plan.requiredOverrun) && Array.isArray(plan.mustSplit), 'Service daily plan must separate selected, exceptions and deferred work');
   check(plan.selected.every(i => Array.isArray(i.reasons) && i.reasons.length > 0), 'Every planned item must explain its inclusion');
   check(plan.studyDayKey === '2026-07-25', 'Daily plan must use the Study Director day boundary');
+
+  await service.regenerateDailyPlan(ref);
+  check(ensureChunkCalls === 2 && persistCalls === 2 && regenerationFlags[1] === true, 'Manual regeneration must remain an explicit mutating command');
   console.log(`PASS ${checks} Pass C planning scenario checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

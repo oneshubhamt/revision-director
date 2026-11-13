@@ -33,6 +33,145 @@
     if (!condition) throw new Error(message);
   }
 
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  function requireRecord(value: unknown, label: string): Record<string, unknown> {
+    assert(isRecord(value), `${label} must be an object.`);
+    return value;
+  }
+
+  function literalChoice<const Values extends readonly (string | number)[]>(
+    value: unknown,
+    allowed: Values,
+    label: string,
+  ): Values[number] {
+    assert(allowed.some((candidate) => candidate === value), `${label} is invalid.`);
+    return value as Values[number];
+  }
+
+  function literalChoiceOrUndefined<const Values extends readonly (string | number)[]>(
+    value: unknown,
+    allowed: Values,
+  ): Values[number] | undefined {
+    return allowed.some((candidate) => candidate === value) ? value as Values[number] : undefined;
+  }
+
+  function requiredString(value: unknown, label: string): string {
+    assert(typeof value === "string", `${label} must be a string.`);
+    return value;
+  }
+
+  function requiredFiniteNumber(value: unknown, label: string): number {
+    assert(typeof value === "number" && Number.isFinite(value), `${label} must be a finite number.`);
+    return value;
+  }
+
+  function requiredSafeInteger(value: unknown, label: string): number {
+    assert(typeof value === "number" && Number.isSafeInteger(value), `${label} must be a safe integer.`);
+    return value;
+  }
+
+  function requiredArray(value: unknown, label: string): unknown[] {
+    assert(Array.isArray(value), `${label} must be an array.`);
+    return value;
+  }
+
+  const ENTITY_STATUSES = ["active", "suspended", "archived"] as const satisfies readonly EntityStatus[];
+  const ACTIVITY_MODES = ["learn", "review", "practice", "test"] as const satisfies readonly ActivityMode[];
+  const STUDY_ORIGINS = ["manual", "study-director"] as const satisfies readonly StudyOrigin[];
+  const OBLIGATION_TYPES = ["memory-recall", "concept-reconstruction", "application-practice", "performance-practice", "relearn", "freshness-review"] as const satisfies readonly ObligationType[];
+  const RETRIEVAL_WORKFLOWS = ["recall", "reconstruction", "questions", "diagram", "answer-writing", "relearning"] as const satisfies readonly RetrievalWorkflow[];
+  const RESPONSE_MEDIA = ["in-app", "paper", "oral"] as const satisfies readonly ResponseMedium[];
+  const CUE_LEVELS = ["none", "minor", "major", "source"] as const satisfies readonly CueLevel[];
+  const RECONSTRUCTION_SHAPES = ["outline", "table", "flow", "concept-map", "sequence"] as const satisfies readonly ReconstructionShape[];
+  const ANSWER_MODES = ["outline", "full-answer"] as const satisfies readonly AnswerMode[];
+  const DIAGRAM_SURFACES = ["canvas", "paper"] as const satisfies readonly DiagramSurface[];
+  const ERROR_TYPE_VALUES = ["factual-omission", "conceptual-misunderstanding", "confusion-interference", "application-failure", "answer-structure", "diagram-reconstruction", "slow-retrieval"] as const satisfies readonly ErrorType[];
+  const INACTIVE_GAP_CLASSIFICATIONS = ["focus", "break", "split", "ignore"] as const satisfies readonly InactiveGapClassification[];
+  const BACKUP_ACTIVE_SESSION_TREATMENTS = ["restore", "discard"] as const satisfies readonly BackupActiveSessionTreatment[];
+  const RUBRIC_SCORES = [0, 1, 2, 3, 4] as const;
+  const IMPORTANCE_LEVELS = [1, 2, 3] as const;
+  const UNDERSTANDING_LEVELS = [1, 2, 3, 4] as const;
+
+  type NonEmptyReadonlyArray<T> = readonly [T, ...T[]];
+
+  const RATING_LABELS = {
+    [Rating.Again]: "Again",
+    [Rating.Hard]: "Hard",
+    [Rating.Good]: "Good",
+    [Rating.Easy]: "Easy",
+  } as const satisfies Record<Rating, string>;
+
+  const OBLIGATION_LABELS = {
+    "memory-recall": "Memory recall",
+    "concept-reconstruction": "Concept reconstruction",
+    "application-practice": "Application practice",
+    "performance-practice": "Performance practice",
+    relearn: "Relearn",
+    "freshness-review": "Freshness review",
+  } as const satisfies Record<ObligationType, string>;
+
+  const OBLIGATION_CHIPS = {
+    "memory-recall": "memory",
+    "concept-reconstruction": "concept",
+    "application-practice": "application",
+    "performance-practice": "performance",
+    relearn: "relearn",
+    "freshness-review": "freshness",
+  } as const satisfies Record<ObligationType, string>;
+
+  const WORKFLOW_LABELS = {
+    recall: "Recall",
+    reconstruction: "Reconstruction",
+    questions: "Questions / application",
+    diagram: "Diagram practice",
+    "answer-writing": "Answer writing",
+    relearning: "Relearning",
+  } as const satisfies Record<RetrievalWorkflow, string>;
+
+  const RESPONSE_MEDIUM_LABELS = {
+    "in-app": "In-app workspace",
+    paper: "Paper / external workspace",
+    oral: "Oral recall",
+  } as const satisfies Record<ResponseMedium, string>;
+
+  const CUE_LEVEL_SCORES = {
+    none: 4,
+    minor: 3,
+    major: 1,
+    source: 0,
+  } as const satisfies Record<CueLevel, 0 | 1 | 3 | 4>;
+
+  const WORKFLOWS_BY_OBLIGATION = {
+    "memory-recall": ["recall"],
+    "concept-reconstruction": ["reconstruction", "diagram"],
+    "application-practice": ["questions"],
+    "performance-practice": ["answer-writing", "diagram", "questions"],
+    relearn: ["relearning"],
+    "freshness-review": ["recall", "reconstruction"],
+  } as const satisfies Record<ObligationType, NonEmptyReadonlyArray<RetrievalWorkflow>>;
+
+  const ERROR_LABELS = {
+    "factual-omission": "Factual omission",
+    "conceptual-misunderstanding": "Conceptual misunderstanding",
+    "confusion-interference": "Confusion / interference",
+    "application-failure": "Application failure",
+    "answer-structure": "Answer structure",
+    "diagram-reconstruction": "Diagram reconstruction",
+    "slow-retrieval": "Slow retrieval",
+  } as const satisfies Record<ErrorType, string>;
+
+  const POLICY_ENGINE_BY_OBLIGATION = {
+    "memory-recall": "ts-fsrs",
+    "concept-reconstruction": "mastery",
+    "application-practice": "application",
+    "performance-practice": "performance",
+    relearn: "relearn",
+    "freshness-review": "freshness",
+  } as const satisfies Record<ObligationType, PolicyState["engine"]>;
+
   function nowIso(): ISODateTime {
     return new Date().toISOString();
   }
@@ -52,6 +191,74 @@
     return copy.buffer;
   }
 
+  function utf8Bytes(value: string): Uint8Array {
+    if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(value);
+    const bytes: number[] = [];
+    for (const symbol of value) {
+      const point = symbol.codePointAt(0)!;
+      if (point <= 0x7f) bytes.push(point);
+      else if (point <= 0x7ff) bytes.push(0xc0 | (point >> 6), 0x80 | (point & 0x3f));
+      else if (point <= 0xffff) bytes.push(0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f));
+      else bytes.push(0xf0 | (point >> 18), 0x80 | ((point >> 12) & 0x3f), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f));
+    }
+    return new Uint8Array(bytes);
+  }
+
+  function sha256FallbackHex(input: Uint8Array): string {
+    const constants = new Uint32Array([
+      0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+      0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+      0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+      0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+      0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+      0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+      0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+      0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+    ]);
+    const bitLength = BigInt(input.byteLength) * 8n;
+    const paddedLength = Math.ceil((input.byteLength + 9) / 64) * 64;
+    const bytes = new Uint8Array(paddedLength);
+    bytes.set(input);
+    bytes[input.byteLength] = 0x80;
+    for (let index = 0; index < 8; index += 1) bytes[paddedLength - 1 - index] = Number((bitLength >> BigInt(index * 8)) & 0xffn);
+    const state = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+    const words = new Uint32Array(64);
+    const rotate = (value: number, amount: number): number => (value >>> amount) | (value << (32 - amount));
+    for (let offset = 0; offset < bytes.length; offset += 64) {
+      for (let index = 0; index < 16; index += 1) {
+        const base = offset + index * 4;
+        words[index] = ((bytes[base]! << 24) | (bytes[base + 1]! << 16) | (bytes[base + 2]! << 8) | bytes[base + 3]!) >>> 0;
+      }
+      for (let index = 16; index < 64; index += 1) {
+        const x = words[index - 15]!, y = words[index - 2]!;
+        const s0 = rotate(x, 7) ^ rotate(x, 18) ^ (x >>> 3);
+        const s1 = rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10);
+        words[index] = (words[index - 16]! + s0 + words[index - 7]! + s1) >>> 0;
+      }
+      let a=state[0]!, b=state[1]!, c=state[2]!, d=state[3]!, e=state[4]!, f=state[5]!, g=state[6]!, h=state[7]!;
+      for (let index = 0; index < 64; index += 1) {
+        const sum1 = rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25);
+        const choice = (e & f) ^ (~e & g);
+        const temp1 = (h + sum1 + choice + constants[index]! + words[index]!) >>> 0;
+        const sum0 = rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22);
+        const majority = (a & b) ^ (a & c) ^ (b & c);
+        const temp2 = (sum0 + majority) >>> 0;
+        h=g; g=f; f=e; e=(d + temp1) >>> 0; d=c; c=b; b=a; a=(temp1 + temp2) >>> 0;
+      }
+      state[0]=(state[0]!+a)>>>0; state[1]=(state[1]!+b)>>>0; state[2]=(state[2]!+c)>>>0; state[3]=(state[3]!+d)>>>0;
+      state[4]=(state[4]!+e)>>>0; state[5]=(state[5]!+f)>>>0; state[6]=(state[6]!+g)>>>0; state[7]=(state[7]!+h)>>>0;
+    }
+    return [...state].map((value) => value.toString(16).padStart(8, "0")).join("");
+  }
+
+  async function sha256Hex(bytes: Uint8Array): Promise<string> {
+    if (globalThis.crypto?.subtle) {
+      const digest = await globalThis.crypto.subtle.digest("SHA-256", ownedArrayBuffer(bytes));
+      return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+    }
+    return sha256FallbackHex(bytes);
+  }
+
   function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
   }
@@ -63,15 +270,6 @@
 
   function normalizeName(value: string): string {
     return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-IN");
-  }
-
-  function escapeHtml(value: unknown): string {
-    return String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
   }
 
   function parseDate(value: ISODateTime): Date {
@@ -118,61 +316,44 @@
   }
 
   function ratingName(rating: Rating): string {
-    return rating === Rating.Again ? "Again" : rating === Rating.Hard ? "Hard" : rating === Rating.Good ? "Good" : "Easy";
+    return RATING_LABELS[rating];
   }
 
   function obligationLabel(type: ObligationType): string {
-    const labels: Record<ObligationType, string> = {
-      "memory-recall": "Memory recall",
-      "concept-reconstruction": "Concept reconstruction",
-      "application-practice": "Application practice",
-      "performance-practice": "Performance practice",
-      relearn: "Relearn",
-      "freshness-review": "Freshness review",
-    };
-    return labels[type];
+    return OBLIGATION_LABELS[type];
   }
 
   function obligationChip(type: ObligationType): string {
-    if (type === "memory-recall") return "memory";
-    if (type === "concept-reconstruction") return "concept";
-    if (type === "application-practice") return "application";
-    if (type === "performance-practice") return "performance";
-    if (type === "relearn") return "relearn";
-    return "freshness";
+    return OBLIGATION_CHIPS[type];
   }
 
   function workflowLabel(kind: RetrievalWorkflow): string {
-    const labels: Record<RetrievalWorkflow, string> = {
-      recall: "Recall",
-      reconstruction: "Reconstruction",
-      questions: "Questions / application",
-      diagram: "Diagram practice",
-      "answer-writing": "Answer writing",
-      relearning: "Relearning",
-    };
-    return labels[kind];
+    return WORKFLOW_LABELS[kind];
   }
 
   function responseMediumLabel(value: ResponseMedium): string {
-    return value === "in-app" ? "In-app workspace" : value === "paper" ? "Paper / external workspace" : "Oral recall";
+    return RESPONSE_MEDIUM_LABELS[value];
   }
 
   function cueLevelScore(value: CueLevel): 0 | 1 | 3 | 4 {
-    return value === "none" ? 4 : value === "minor" ? 3 : value === "major" ? 1 : 0;
+    return CUE_LEVEL_SCORES[value];
   }
 
-  function compatibleWorkflows(type: ObligationType): readonly RetrievalWorkflow[] {
-    if (type === "memory-recall") return ["recall"];
-    if (type === "concept-reconstruction") return ["reconstruction", "diagram"];
-    if (type === "application-practice") return ["questions"];
-    if (type === "performance-practice") return ["answer-writing", "diagram", "questions"];
-    if (type === "freshness-review") return ["recall", "reconstruction"];
-    return ["relearning"];
+  function compatibleWorkflows(type: ObligationType): NonEmptyReadonlyArray<RetrievalWorkflow> {
+    return WORKFLOWS_BY_OBLIGATION[type];
+  }
+
+  function assertActiveProfileSelection(profiles: readonly ExamProfile[], settings: AppSettings): void {
+    const active = profiles.filter((profile) => profile.status === "active");
+    if (active.length === 0) {
+      assert(settings.activeProfileId === "", "Default exam profile must be empty when no active exam profile exists.");
+      return;
+    }
+    assert(active.some((profile) => profile.id === settings.activeProfileId), "Default exam profile must reference an active exam profile.");
   }
 
   function defaultWorkflowForType(type: ObligationType): RetrievalWorkflow {
-    return compatibleWorkflows(type)[0]!;
+    return WORKFLOWS_BY_OBLIGATION[type][0];
   }
 
   function defaultWorkflowSpec(type: ObligationType, protocol: string, successCriteria: string): WorkflowSpec {
@@ -196,8 +377,7 @@
   }
 
   function validateWorkflowSpec(spec: WorkflowSpec, type: ObligationType): void {
-    const kinds = new Set<RetrievalWorkflow>(["recall", "reconstruction", "questions", "diagram", "answer-writing", "relearning"]);
-    assert(kinds.has(spec.kind), "Retrieval workflow is invalid.");
+    assert(RETRIEVAL_WORKFLOWS.includes(spec.kind), "Retrieval workflow is invalid.");
     assert(spec.prompt.trim().length >= 3, "Retrieval workflow prompt is required.");
     assert(Array.isArray(spec.checkpoints) && spec.checkpoints.length >= 1 && spec.checkpoints.length <= 20, "Add between 1 and 20 observable checkpoints.");
     assert(spec.checkpoints.every((item) => typeof item === "string" && item.trim().length >= 2 && item.trim().length <= 300), "Workflow checkpoints are invalid.");
@@ -218,66 +398,6 @@
       assert(spec.wordLimit !== undefined, "Answer writing requires a word limit.");
     }
     assert(compatibleWorkflows(type).includes(spec.kind), `${workflowLabel(spec.kind)} is not appropriate for ${obligationLabel(type)}.`);
-  }
-
-  function workflowSpecFromForm(form: HTMLFormElement, type: ObligationType): WorkflowSpec {
-    const data = new FormData(form);
-    const kind = String(data.get("workflowKind") ?? defaultWorkflowForType(type)) as RetrievalWorkflow;
-    const spec: WorkflowSpec = {
-      kind,
-      prompt: String(data.get("workflowPrompt") ?? "").trim(),
-      checkpoints: String(data.get("workflowCheckpoints") ?? "").split(/\n/).map((item) => item.trim()).filter(Boolean),
-      responseMedium: String(data.get("responseMedium") ?? "in-app") as ResponseMedium,
-    };
-    if (kind === "questions") {
-      spec.targetCount = Number(data.get("targetCount"));
-      spec.questionSetRef = String(data.get("questionSetRef") ?? "").trim();
-    }
-    if (kind === "reconstruction") spec.reconstructionShape = String(data.get("reconstructionShape") ?? "outline") as ReconstructionShape;
-    if (kind === "diagram") spec.diagramSurface = String(data.get("diagramSurface") ?? "canvas") as DiagramSurface;
-    if (kind === "answer-writing") {
-      spec.answerMode = String(data.get("answerMode") ?? "full-answer") as AnswerMode;
-      spec.timeLimitMinutes = Number(data.get("timeLimitMinutes"));
-      spec.wordLimit = Number(data.get("wordLimit"));
-    }
-    validateWorkflowSpec(spec, type);
-    return spec;
-  }
-
-  function populateWorkflowOptions(form: HTMLFormElement, type: ObligationType, selected?: RetrievalWorkflow): void {
-    const select = form.elements.namedItem("workflowKind") as HTMLSelectElement;
-    const allowed = compatibleWorkflows(type);
-    select.innerHTML = allowed.map((kind) => `<option value="${kind}">${escapeHtml(workflowLabel(kind))}</option>`).join("");
-    select.value = selected && allowed.includes(selected) ? selected : allowed[0]!;
-  }
-
-  function populateWorkflowForm(form: HTMLFormElement, spec: WorkflowSpec, type: ObligationType): void {
-    populateWorkflowOptions(form, type, spec.kind);
-    (form.elements.namedItem("workflowKind") as HTMLSelectElement).value = spec.kind;
-    (form.elements.namedItem("responseMedium") as HTMLSelectElement).value = spec.responseMedium;
-    (form.elements.namedItem("workflowPrompt") as HTMLTextAreaElement).value = spec.prompt;
-    (form.elements.namedItem("workflowCheckpoints") as HTMLTextAreaElement).value = spec.checkpoints.join("\n");
-    (form.elements.namedItem("targetCount") as HTMLInputElement).value = String(spec.targetCount ?? 10);
-    (form.elements.namedItem("questionSetRef") as HTMLInputElement).value = spec.questionSetRef ?? "External question set";
-    (form.elements.namedItem("reconstructionShape") as HTMLSelectElement).value = spec.reconstructionShape ?? "outline";
-    (form.elements.namedItem("diagramSurface") as HTMLSelectElement).value = spec.diagramSurface ?? "canvas";
-    (form.elements.namedItem("answerMode") as HTMLSelectElement).value = spec.answerMode ?? "full-answer";
-    (form.elements.namedItem("timeLimitMinutes") as HTMLInputElement).value = String(spec.timeLimitMinutes ?? 10);
-    (form.elements.namedItem("wordLimit") as HTMLInputElement).value = String(spec.wordLimit ?? 150);
-    updateWorkflowFields(form);
-  }
-
-  function updateWorkflowFields(form: HTMLFormElement): void {
-    const kind = (form.elements.namedItem("workflowKind") as HTMLSelectElement).value as RetrievalWorkflow;
-    form.querySelectorAll<HTMLElement>("[data-workflow-field]").forEach((field) => {
-      field.hidden = field.dataset.workflowField !== kind;
-    });
-  }
-
-  function applyDefaultWorkflowToForm(form: HTMLFormElement, type: ObligationType): void {
-    const protocol = (form.elements.namedItem("protocol") as HTMLTextAreaElement | null)?.value ?? "";
-    const success = (form.elements.namedItem("successCriteria") as HTMLTextAreaElement | null)?.value ?? "";
-    populateWorkflowForm(form, defaultWorkflowSpec(type, protocol, success), type);
   }
 
   function checkpointScore(met: number, total: number): 0 | 1 | 2 | 3 | 4 {
@@ -354,10 +474,8 @@
     assert(result.kind === expected, "Workflow result does not match the obligation workflow.");
     const integer = (value: number, min: number, max: number, label: string) => assert(Number.isInteger(value) && value >= min && value <= max, `${label} is invalid.`);
     const rubric = (value: number, label: string) => integer(value, 0, 4, label);
-    const media = new Set<ResponseMedium>(["in-app", "paper", "oral"]);
-    const cues = new Set<CueLevel>(["none", "minor", "major", "source"]);
-    if ("cueLevel" in result) assert(cues.has(result.cueLevel), "Cue level is invalid.");
-    if ("responseMedium" in result) assert(media.has(result.responseMedium), "Response medium is invalid.");
+    if ("cueLevel" in result) assert(CUE_LEVELS.includes(result.cueLevel), "Cue level is invalid.");
+    if ("responseMedium" in result) assert(RESPONSE_MEDIA.includes(result.responseMedium), "Response medium is invalid.");
     if (result.kind === "recall") {
       integer(result.checkpointTotal, 1, 20, "Recall checkpoint total");
       integer(result.checkpointsMet, 0, result.checkpointTotal, "Recall checkpoints met");
@@ -398,16 +516,7 @@
   }
 
   function errorLabel(type: ErrorType): string {
-    const labels: Record<ErrorType, string> = {
-      "factual-omission": "Factual omission",
-      "conceptual-misunderstanding": "Conceptual misunderstanding",
-      "confusion-interference": "Confusion / interference",
-      "application-failure": "Application failure",
-      "answer-structure": "Answer structure",
-      "diagram-reconstruction": "Diagram reconstruction",
-      "slow-retrieval": "Slow retrieval",
-    };
-    return labels[type];
+    return ERROR_LABELS[type];
   }
 
   function addDays(from: Date, days: number): Date {
@@ -441,6 +550,12 @@
     return end;
   }
 
+  function latestPlanVersion(record: DailyPlanRecord): DailyPlanVersion {
+    const latest = record.versions.at(-1);
+    assert(latest, "Daily plan has no versions.");
+    return latest;
+  }
+
   function studyDayKey(now: Date, boundaryHour: number): string {
     const start = studyDayStart(now, boundaryHour);
     const year = start.getFullYear();
@@ -456,9 +571,11 @@
       schemaVersion: DOCUMENT_SCHEMA_VERSION,
       key: "app",
       activeProfileId: "",
-      desiredRetention: 0.9,
+      fsrsScheduling: defaultFsrsSchedulingSettings(),
+      memoryDifficultyPolicy: defaultMemoryDifficultyPolicy(),
       dailyCapacityMinutes: 60,
       studyDayBoundaryHour: 4,
+      fsrsPersonalization: defaultFsrsPersonalizationSettings(),
     };
   }
 
@@ -467,10 +584,7 @@
     return value;
   }
 
-  const ERROR_TYPES = new Set<ErrorType>([
-    "factual-omission", "conceptual-misunderstanding", "confusion-interference",
-    "application-failure", "answer-structure", "diagram-reconstruction", "slow-retrieval",
-  ]);
+  const ERROR_TYPES = new Set<ErrorType>(ERROR_TYPE_VALUES);
 
   function objectiveScore(type: ObligationType, evidence: ObjectiveEvidence): number {
     const accuracyScore = evidence.accuracyPercent === undefined ? null : clamp(evidence.accuracyPercent / 25, 0, 4);
@@ -501,9 +615,20 @@
     }
     const score = objectiveScore(type, evidence);
     if (score < 1.45) return Rating.Again;
+    if (type === "relearn") {
+      if (score < 2.7) return Rating.Hard;
+      if (score < 3.45) return Rating.Good;
+      return Rating.Easy;
+    }
     if (score < 2.45) return Rating.Hard;
     if (score < 3.45) return Rating.Good;
     return Rating.Easy;
+  }
+
+  function correctiveMemoryRating(confirmedRating: Rating, evidence: ObjectiveEvidence): Rating {
+    const confirmed = validateRating(confirmedRating);
+    if (confirmed === Rating.Again) return Rating.Again;
+    return suggestRating("relearn", evidence) >= Rating.Good ? confirmed : Rating.Hard;
   }
 
   function validateEvidence(evidence: ObjectiveEvidence): void {
@@ -518,14 +643,3 @@
     for (const errorType of evidence.errorTypes) assert(ERROR_TYPES.has(errorType), "Evidence contains an invalid error type.");
     assert(typeof evidence.correctionNote === "string", "Evidence correction note is invalid.");
   }
-
-  function runtimeFsrs(): FsrsUmdRuntime {
-    assert(typeof FSRS === "object" && FSRS !== null, "Embedded ts-fsrs 6.0.0 failed to initialize. The deployment file may be damaged.");
-    assert(typeof FSRS.DefaultScheduler === "function", "Invalid ts-fsrs v6 scheduler runtime.");
-    return FSRS;
-  }
-
-  /* ========================================================================== 
-     SCHEDULER-POLICY ROUTER
-     ========================================================================== */
-
