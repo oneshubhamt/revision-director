@@ -19,6 +19,7 @@ from helpers.persistent_browser import (
     PERSISTENT_BROWSER_SHIM,
     create_persistent_frame,
     host_state_all as state_all,
+    host_state_get as state_get,
     restore_backup_with_safety_copy,
 )
 FIXTURE = baseline_backup_path()
@@ -94,7 +95,10 @@ def main() -> None:
         row.locator('[data-action="review-unit"]').click()
         wait_until(first, lambda: first.locator("#attempt-text").count() == 1)
         first.locator("#attempt-text").fill("Canonical answer before handoff")
-        first.wait_for_timeout(600)
+        wait_until(
+            first,
+            lambda: (state_get(page, "activeRetrieval", "current") or {}).get("draft", {}).get("values", {}).get("attempt-text") == "Canonical answer before handoff",
+        )
 
         second = boot_frame(page, "second")
         check(second.evaluate("document.documentElement.dataset.reviewOwnership") == "secondary", "Second document was not read-only")
@@ -124,7 +128,10 @@ def main() -> None:
 
         # A lifecycle exit releases ownership and the remaining document safely reacquires after release broadcast.
         second.locator("#attempt-text").fill("Draft preserved across exit handoff")
-        second.wait_for_timeout(500)
+        wait_until(
+            second,
+            lambda: (state_get(page, "activeRetrieval", "current") or {}).get("draft", {}).get("values", {}).get("attempt-text") == "Draft preserved across exit handoff",
+        )
         second.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
         wait_until(first, lambda: first.evaluate("document.documentElement.dataset.reviewOwnership") == "primary", timeout=12000)
         wait_until(first, lambda: first.locator("#attempt-text").count() == 1, timeout=12000)
