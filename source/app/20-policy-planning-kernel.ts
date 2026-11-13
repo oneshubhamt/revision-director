@@ -225,7 +225,6 @@
   }
 
   interface PlanningEvidenceIndex {
-    readonly all: readonly EvidenceEvent[];
     readonly weaknessByObligation: ReadonlyMap<string, number>;
     readonly weaknessByUnit: ReadonlyMap<string, number>;
   }
@@ -247,7 +246,6 @@
     const weakness = (groups: ReadonlyMap<string, readonly EvidenceEvent[]>): ReadonlyMap<string, number> =>
       new Map([...groups].map(([key, events]) => [key, evidenceWeaknessScore(events)]));
     return {
-      all: evidenceEvents,
       weaknessByObligation: weakness(byObligation),
       weaknessByUnit: weakness(byUnit),
     };

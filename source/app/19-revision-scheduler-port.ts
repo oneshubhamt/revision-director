@@ -601,6 +601,22 @@
 
   const FSRS_SCHEDULER_CACHE = new Map<string, RevisionSchedulerPort>();
 
+  type FsrsSharedSchedulerOptions = Omit<FsrsDefaultSchedulerOptions, "version" | "desiredRetention">;
+
+  function fsrsSharedSchedulerOptions(weights?: readonly number[]): FsrsSharedSchedulerOptions {
+    return {
+      enableShortTerm: true,
+      learningSteps: [...FSRS_LEARNING_STEPS],
+      relearningSteps: [...FSRS_RELEARNING_STEPS],
+      graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
+      allowModelOverride: true,
+      enableFuzz: false,
+      maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
+      clearStatsOnForget: false,
+      ...(weights ? { weights: [...weights] } : {}),
+    };
+  }
+
   function fsrsBaseSchedulerOptions(
     desiredRetention: number,
     weights?: readonly number[],
@@ -608,15 +624,7 @@
     return {
       version: FSRS_MODEL,
       desiredRetention,
-      enableShortTerm: true,
-      learningSteps: FSRS_LEARNING_STEPS,
-      relearningSteps: FSRS_RELEARNING_STEPS,
-      graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
-      allowModelOverride: true,
-      enableFuzz: false,
-      maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
-      clearStatsOnForget: false,
-      ...(weights ? { weights: [...weights] } : {}),
+      ...fsrsSharedSchedulerOptions(weights),
     };
   }
 
@@ -640,18 +648,10 @@
       )
       .create({
         config: {
-          weights: [...weights],
+          ...fsrsSharedSchedulerOptions(weights),
           fractionalDays: true,
           costAdrPolicy: clone(policy.costAdrPolicy),
           goalCostWeight: policy.goalCostWeight,
-          enableFuzz: false,
-          clearStatsOnForget: false,
-          enableShortTerm: true,
-          learningSteps: [...FSRS_LEARNING_STEPS],
-          relearningSteps: [...FSRS_RELEARNING_STEPS],
-          graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
-          allowModelOverride: true,
-          maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
         },
       });
   }
