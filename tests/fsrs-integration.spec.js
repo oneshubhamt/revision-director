@@ -4,11 +4,13 @@ const path = require('path');
 const { ROOT, createAppRuntime } = require('./helpers/runtime-harness');
 const root = ROOT;
 
-const { api, context } = createAppRuntime({
+const runtimeOptions = {
   globalName: '__RD_FSRS_VERIFY__',
   expose: ["FsrsMemoryPolicy","RevisionService","Rating","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsOptimizerProfile","validateFsrsConfigSnapshot","fsrsConfigSnapshot","canonicalFsrsSchedulingPolicy","costAdrPresetSchedulingPolicy","defaultFsrsSchedulingSettings","FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT","FSRS7_DEFAULT_WEIGHTS","buildPlanningCandidate","activeFsrsOptimizerProfile","fsrsOptimizerEvidenceRows","fsrsOptimizerEvidenceSnapshot","fsrsHoldoutDiagnostics","fsrsWeightsFingerprint","fsrsPersonalizationProfileCatalog","verifyHistoricalMemorySchedulerConfigurations"],
   requireFsrs: true,
-});
+};
+const createVerificationApi = () => createAppRuntime(runtimeOptions).api;
+const api = createVerificationApi();
 
 let checks=0;
 const clone=value=>structuredClone(value);
