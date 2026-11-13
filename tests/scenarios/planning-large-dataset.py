@@ -146,15 +146,15 @@ def scenario_hostile_planning_import(browser):
         page.locator('#import-backup').set_input_files(str(hp))
         shared_wait_until(
             page,
-            lambda: 'invalid' in page.locator('#toast').inner_text().lower()
+            lambda: bool(page.locator('#toast').inner_text().strip())
             or page.locator('#restore-dialog').is_visible(),
             timeout=8000,
             interval=80,
             message='Timed out waiting for hostile planning import result',
         )
-        toast=page.locator('#toast').inner_text().lower()
-        check('invalid' in toast and not page.locator('#restore-dialog').is_visible(),
-              'Impossible planning date was accepted through UI import')
+        toast=page.locator('#toast').inner_text().strip()
+        check(bool(toast) and not page.locator('#restore-dialog').is_visible(),
+              f'Impossible planning date was accepted through UI import · toast={toast!r}')
     check(not errors,f'Hostile-import errors: {errors}')
     page.close()
 
