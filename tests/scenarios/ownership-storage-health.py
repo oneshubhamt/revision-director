@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
-sys.path.insert(0, str(TESTS))
+sys.path.insert(0, str(TESTS))\nfrom backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import (
     ROOT,
     accept_dialogs,
@@ -20,7 +20,7 @@ from helpers.persistent_browser import (
     host_state_all as state_all,
     restore_backup_with_safety_copy,
 )
-FIXTURE = ROOT / "tests/fixtures/browser-baseline.rdbackup"
+FIXTURE = baseline_backup_path()
 
 B3_SHARED_SHIM = r"""
 <script>
