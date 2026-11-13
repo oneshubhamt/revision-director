@@ -5,7 +5,7 @@ const { mulberry32, integer } = require('./helpers/seeded');
 
 const { api } = createAppRuntime({
   globalName: '__RD_FSRS_REFERENCE_PARITY__',
-  expose: ['prepareFsrsScheduler','revisionSchedulerPort','fsrsBaseSchedulerOptions','Rating'],
+  expose: ['prepareFsrsScheduler','revisionSchedulerPort','Rating'],
   requireFsrs: true,
 });
 const vendor = createVendorRuntime();
@@ -41,8 +41,18 @@ function observation(index, beforeCard, afterCard, rating, reviewedAt, configura
 }
 
 async function referenceScheduler() {
-  const options = JSON.parse(JSON.stringify(api.fsrsBaseSchedulerOptions(0.9)));
-  return upstream.DefaultScheduler(options);
+  return upstream.DefaultScheduler({
+    version:'FSRS-7',
+    desiredRetention:0.9,
+    enableShortTerm:true,
+    learningSteps:['1d'],
+    relearningSteps:['1d'],
+    graduatingInterval:1,
+    allowModelOverride:true,
+    enableFuzz:false,
+    maximumInterval:36500,
+    clearStatsOnForget:false,
+  });
 }
 
 async function explicitTransitionBoundary() {
