@@ -35,9 +35,15 @@
     async initialize(): Promise<void> {
       this.invalidateMemoryReviewAnalysis();
       const state = await this.repo.backupState("ignore");
-      this.settings = clone(state.settings);
-      assertActiveProfileSelection(state.profiles, this.settings);
-      await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);
+      const validated = validateBackupPayload({
+        format: BACKUP_FORMAT,
+        schemaVersion: BACKUP_SCHEMA_VERSION,
+        exportedAt: nowIso(),
+        appVersion: APP_VERSION,
+        ...state,
+      });
+      this.settings = clone(validated.settings);
+      await this.verifyMemoryProjectionIntegrity(validated.obligations, validated.evidenceEvents, this.settings);
     }
 
     private async verifyMemoryProjectionIntegrity(
@@ -581,12 +587,16 @@
       for (const obligation of obligations) {
         if (status !== "all" && obligation.status !== status) continue;
         const unit = unitMap.get(obligation.unitId);
-        if (!unit || unit.status !== "active") continue;
+        assert(unit, "Revision obligation references a missing knowledge unit.");
         const profile = profileMap.get(unit.profileId);
+        assert(profile, "Knowledge unit references a missing exam profile.");
         const topicNode = nodeMap.get(unit.topicNodeId);
-        const sectionNode = topicNode?.parentId ? nodeMap.get(topicNode.parentId) : undefined;
-        const subjectNode = sectionNode?.parentId ? nodeMap.get(sectionNode.parentId) : undefined;
-        if (!profile || !topicNode || !sectionNode || !subjectNode) continue;
+        assert(topicNode?.kind === "topic" && topicNode.profileId === unit.profileId, "Knowledge unit references an invalid topic node.");
+        const sectionNode = topicNode.parentId ? nodeMap.get(topicNode.parentId) : undefined;
+        assert(sectionNode?.kind === "section" && sectionNode.profileId === unit.profileId, "Topic node references an invalid section node.");
+        const subjectNode = sectionNode.parentId ? nodeMap.get(sectionNode.parentId) : undefined;
+        assert(subjectNode?.kind === "subject" && subjectNode.profileId === unit.profileId && subjectNode.parentId === null, "Section node references an invalid subject node.");
+        if (unit.status !== "active") continue;
         joined.push({ obligation, unit, profile, subject: subjectNode.name, section: sectionNode.name, topic: topicNode.name });
       }
       return joined.sort((a, b) => {
