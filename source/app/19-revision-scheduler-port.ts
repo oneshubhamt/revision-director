@@ -601,10 +601,13 @@
 
   const FSRS_SCHEDULER_CACHE = new Map<string, RevisionSchedulerPort>();
 
-  type FsrsSharedSchedulerOptions = Omit<FsrsDefaultSchedulerOptions, "version" | "desiredRetention">;
-
-  function fsrsSharedSchedulerOptions(weights?: readonly number[]): FsrsSharedSchedulerOptions {
+  function fsrsBaseSchedulerOptions(
+    desiredRetention: number,
+    weights?: readonly number[],
+  ): FsrsDefaultSchedulerOptions {
     return {
+      version: FSRS_MODEL,
+      desiredRetention,
       enableShortTerm: true,
       learningSteps: [...FSRS_LEARNING_STEPS],
       relearningSteps: [...FSRS_RELEARNING_STEPS],
@@ -617,24 +620,15 @@
     };
   }
 
-  function fsrsBaseSchedulerOptions(
-    desiredRetention: number,
-    weights?: readonly number[],
-  ): FsrsDefaultSchedulerOptions {
-    return {
-      version: FSRS_MODEL,
-      desiredRetention,
-      ...fsrsSharedSchedulerOptions(weights),
-    };
-  }
-
   async function createCostAdrFsrsScheduler(
     runtime: FsrsUmdRuntime,
     policy: Extract<FsrsSchedulingPolicy, { kind: "cost-adr" }>,
     profile: FsrsOptimizerProfile | null,
   ): Promise<FsrsSchedulerRuntime> {
     const weights = profile ? [...profile.weights] : [...FSRS7_DEFAULT_WEIGHTS];
-    const reference = await runtime.DefaultScheduler(fsrsBaseSchedulerOptions(0.9, weights));
+    const referenceOptions = fsrsBaseSchedulerOptions(0.9, weights);
+    const reference = await runtime.DefaultScheduler(referenceOptions);
+    const { version: _version, desiredRetention: _desiredRetention, ...costAdrBase } = referenceOptions;
     assert(typeof runtime.defineScheduler === "function", "Embedded ts-fsrs runtime does not expose scheduler composition.");
     return runtime.defineScheduler(reference.definition)
       .use(
@@ -648,7 +642,7 @@
       )
       .create({
         config: {
-          ...fsrsSharedSchedulerOptions(weights),
+          ...costAdrBase,
           fractionalDays: true,
           costAdrPolicy: clone(policy.costAdrPolicy),
           goalCostWeight: policy.goalCostWeight,
