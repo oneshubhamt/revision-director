@@ -113,11 +113,12 @@ function session(revision, overrides = {}) {
   check(!memoryStorage.has(api.ACTIVE_RETRIEVAL_RECOVERY_KEY) && !db.has(`${api.Store.ActiveRetrieval}:current`), 'Completed tombstone was not cleared from both stores');
 
   const ts = fs.readFileSync(path.join(root, 'source/app/50-ui-controller.ts'), 'utf8');
+  const workspace = fs.readFileSync(path.join(root, 'source/app/47-active-retrieval-workspace.ts'), 'utf8');
   const repo = fs.readFileSync(path.join(root, 'source/app/30-indexeddb-repository.ts'), 'utf8');
   const service = fs.readFileSync(path.join(root, 'source/app/40-application-services.ts'), 'utf8');
   const evidenceTransition = fs.readFileSync(path.join(root, 'source/app/23-evidence-transition.ts'), 'utf8');
   check(ts.includes('document.addEventListener("visibilitychange"') && ts.includes('window.addEventListener("pagehide"') && ts.includes('window.addEventListener("beforeunload"'), 'Forced lifecycle save hooks are incomplete');
-  check(ts.includes('if (this.commitInFlight) return;') && ts.includes('button.disabled = true'), 'UI duplicate-commit guard is missing');
+  check(workspace.includes('if (this.commitInFlight) return;') && workspace.includes('button.disabled = true') && !ts.includes('private commitInFlight'), 'Active-retrieval duplicate-commit guard is not workspace-owned');
   check(repo.includes('private applyWithCommitGuard(')
     && (repo.match(/this\.applyWithCommitGuard\(/g) || []).length === 2
     && (repo.match(/current\.commitToken === commitGuard\.commitToken/g) || []).length === 1,
