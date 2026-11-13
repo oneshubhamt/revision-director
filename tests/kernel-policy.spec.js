@@ -159,13 +159,13 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   mustFail(()=>api.validateStoredFsrsCard({...difficultyProbe.policyState.fsrsCard,scheduleStatus:'suspended'}),'FSRS scheduleStatus must not become a second suspension truth');
   check(memoryObligation.policyState.fsrsCard.cardId === 'o', 'FSRS cards must retain stable obligation identity');
 
-  const previews = memory.preview(memoryObligation, new Date(due));
+  const previews = memory.preview(memoryObligation, new Date(due), {memoryReviews:[]});
   check(previews.length === 4 && previews.map(item => item.rating).join(',') === '1,2,3,4', 'FSRS-7 must preview all four ratings');
   check(Math.abs(previews[0].intervalDays - 1) < .001, 'Again must use the one-day corrective learning step');
   check(previews[1].intervalDays > 1 && previews[1].intervalDays < 2, 'Hard must use the FSRS-7/model-override learning interval');
   check(previews[2].intervalDays > previews[1].intervalDays && previews[3].intervalDays > previews[2].intervalDays, 'Good and Easy must preserve monotonic FSRS-7 model intervals');
 
-  const again = memory.complete(memoryObligation, api.Rating.Again, evidence(4,4,4), new Date(due));
+  const again = memory.complete(memoryObligation, api.Rating.Again, evidence(4,4,4), new Date(due), {memoryReviews:[]});
   check(again.followUpType === 'relearn', 'Again must route through corrective relearning');
   check(Math.abs((new Date(again.dueAt) - new Date(due)) / 86400000 - 1) < .001, 'Again must persist the one-day scheduler due date');
   check(again.schedulerConfig.enableShortTerm === true && again.schedulerConfig.learningSteps.join(',') === '1d' && again.schedulerConfig.relearningSteps.join(',') === '1d', 'Revision Director must use one-day FSRS learning/relearning middleware');
@@ -186,7 +186,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   const repairedDays = (new Date(repaired.dueAt) - nextDay) / 86400000;
   check(repairedDays >= 2.9 && repairedDays <= 3.1, 'Successful next-day repair must return to FSRS-7 at about a three-day interval');
 
-  const good = memory.complete(memoryObligation, api.Rating.Good, evidence(3,3,1), new Date(due));
+  const good = memory.complete(memoryObligation, api.Rating.Good, evidence(3,3,1), new Date(due), {memoryReviews:[]});
   check(good.policyId === 'memory/ts-fsrs@6.0.0/fsrs-7', 'FSRS-7 policy provenance must be explicit');
   check(good.policyState.fsrsCard.model === 'FSRS-7' && Number.isFinite(good.policyState.fsrsCard.stabilityFast), 'Reviewed FSRS-7 state must preserve both traces');
   check(good.schedulerConfig.model === 'FSRS-7' && good.schedulerConfig.schedulingPolicy.kind === 'fixed-retention' && good.schedulerConfig.schedulingPolicy.desiredRetention === .9 && good.schedulerConfig.fractionalDays === true, 'FSRS-7 configuration provenance must include the scheduling-policy discriminant');
@@ -233,7 +233,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
 
   const invalid = structuredClone(memoryObligation);
   delete invalid.policyState.fsrsCard.stabilityFast;
-  mustFail(() => memory.preview(invalid, new Date(due)), 'Non-current FSRS card shapes must be rejected rather than transformed');
+  mustFail(() => memory.preview(invalid, new Date(due), {memoryReviews:[]}), 'Non-current FSRS card shapes must be rejected rather than transformed');
 }
 
 // Pass C planning factors and capacity selection.
