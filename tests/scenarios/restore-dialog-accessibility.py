@@ -6,7 +6,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready
 sys.path.insert(0,str(ROOT/'tests'))
 base=load_browser_qa("revision_director_restore_dialog")
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base.INDEXEDDB_SHIM,1)
@@ -26,8 +26,8 @@ def main():
             page=browser.new_page(viewport={'width':width,'height':height})
             errors=capture_browser_errors(page)
             accept_dialogs(page)
-            page.set_content(HTML,wait_until='load');page.wait_for_timeout(1200)
-            page.locator('[data-pane="settings"]').click();page.wait_for_timeout(180)
+            page.set_content(HTML,wait_until='load');wait_for_app_ready(page)
+            page.locator('[data-pane="settings"]').click();page.locator('#pane-settings').wait_for(state='visible')
             page.locator('#import-backup').set_input_files(str(FIXTURE))
             dialog=page.locator('#restore-dialog')
             dialog.wait_for(state='visible',timeout=8000)
@@ -51,13 +51,13 @@ def main():
             for _ in range(12):
                 page.keyboard.press('Tab')
                 check(page.evaluate('e=>e.contains(document.activeElement)',dialog.element_handle()),f'Focus escaped restore dialog at {width}x{height}')
-            page.keyboard.press('Escape');page.wait_for_timeout(180)
+            page.keyboard.press('Escape');dialog.wait_for(state='hidden')
             check(not dialog.is_visible(),f'Escape did not cancel restore at {width}x{height}')
             # File input is reset, so reselecting the same file must reopen the preview.
             page.locator('#import-backup').set_input_files(str(FIXTURE))
             dialog.wait_for(state='visible',timeout=8000)
             check(dialog.is_visible(),f'Same-file reselection failed at {width}x{height}')
-            page.get_by_role('button',name='CANCEL',exact=True).click();page.wait_for_timeout(120)
+            page.get_by_role('button',name='CANCEL',exact=True).click();dialog.wait_for(state='hidden')
             check(not errors,f'Browser errors at {width}x{height}: {errors}')
             page.close()
         browser.close()
