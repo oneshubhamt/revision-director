@@ -18,7 +18,7 @@
   interface BackupArchiveManifest {
     kind: "manifest";
     format: "revision-director-backup-archive";
-    version: 2;
+    version: 3;
     exportedAt: ISODateTime;
     appVersion: string;
     payloadFormat: typeof BACKUP_FORMAT;
@@ -52,7 +52,7 @@
   interface BackupInspectionMetadata {
     verified: true;
     format: BackupArchiveManifest["format"];
-    version: 2;
+    version: 3;
     exportedAt: ISODateTime;
     appVersion: string;
     payloadFormat: typeof BACKUP_FORMAT;
@@ -81,7 +81,7 @@
   }
 
   const BACKUP_ARCHIVE_FORMAT = "revision-director-backup-archive" as const;
-  const BACKUP_ARCHIVE_VERSION = 2 as const;
+  const BACKUP_ARCHIVE_VERSION = 3 as const;
   const BACKUP_ARCHIVE_MIME = "application/x-revision-director-backup";
   const BACKUP_ARCHIVE_MAX_FILE_BYTES = 64 * 1024 * 1024;
   const BACKUP_ARCHIVE_MAX_EXPANDED_BYTES = 256 * 1024 * 1024;
@@ -383,11 +383,27 @@
         settings: payload.settings,
         activeRetrieval: payload.activeRetrieval,
       };
-      return this.hashJson(stable, algorithm);
+      return this.hashStableJson(stable, algorithm);
     }
 
     static async opaqueFingerprint(value: unknown): Promise<string> {
-      return this.hashJson(value, "sha256");
+      return this.hashStableJson(value, "sha256");
+    }
+
+    private static stableJsonValue(value: unknown): unknown {
+      if (Array.isArray(value)) return value.map((item) => this.stableJsonValue(item));
+      if (value instanceof Date) return value.toJSON();
+      if (value && typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        const sorted: Record<string, unknown> = {};
+        for (const key of Object.keys(record).sort()) sorted[key] = this.stableJsonValue(record[key]);
+        return sorted;
+      }
+      return value;
+    }
+
+    private static async hashStableJson(value: unknown, algorithm: BackupArchiveHashAlgorithm): Promise<string> {
+      return this.hashBytes(this.encode(JSON.stringify(this.stableJsonValue(value))), algorithm);
     }
 
     private static async hashJson(value: unknown, algorithm: BackupArchiveHashAlgorithm): Promise<string> {
