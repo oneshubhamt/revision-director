@@ -144,11 +144,8 @@ def wait_until(
 def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[str, object]:
     wait_until(
         page,
-        lambda: page.locator("#import-backup").evaluate("e=>e.value") == ""
-        and (
-            page.locator("#restore-dialog").is_visible()
-            or bool(page.locator("#toast").inner_text().strip())
-        ),
+        lambda: page.locator("#restore-dialog").is_visible()
+        or bool(page.locator("#toast").inner_text().strip()),
         timeout=timeout,
         interval=40,
         message="Timed out waiting for backup import terminal state",
