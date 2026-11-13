@@ -20,7 +20,7 @@ const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-
 const service=new api.RevisionService({});
 (async()=>{
  check(api.APP_VERSION==='va7.1-pass-f1','D1 version wrong');
- check(api.BACKUP_ARCHIVE_FORMAT==='revision-director-backup-archive'&&api.BACKUP_ARCHIVE_VERSION===2,'Archive identity wrong');
+ check(api.BACKUP_ARCHIVE_FORMAT==='revision-director-backup-archive'&&api.BACKUP_ARCHIVE_VERSION===3,'Archive identity wrong');
  check(api.sha256FallbackHex(new TextEncoder().encode('abc'))==='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','Pure SHA-256 fallback is incorrect');
  const uncompressed=await api.BackupCodec.create(service.validateBackup(empty),false);
  check(uncompressed.inspection.verified&&uncompressed.inspection.compression==='none','Uncompressed create failed');
