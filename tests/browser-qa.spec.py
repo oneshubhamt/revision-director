@@ -353,7 +353,15 @@ def scenario_bridge(browser) -> None:
         profile_id = row.get_attribute("data-profile-editor")
         check(bool(profile_id), "Profile editor is missing durable identity")
         row.locator("[data-profile-status]").select_option("suspended")
+        page.evaluate("document.querySelector('#toast').textContent=''")
         row.locator('[data-action="save-profile"]').click()
+        wait_until(
+            page,
+            lambda: "exam horizon updated" in page.locator("#toast").inner_text().lower(),
+            timeout=8_000,
+            interval=40,
+            message=f"Profile save did not complete: {profile_id}",
+        )
         wait_until(
             page,
             lambda profile_id=profile_id: page.evaluate(
