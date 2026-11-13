@@ -86,7 +86,7 @@ edffb49ca1daa45de19f7063c6b40d86bbc01dc82d558e98d70819b7cf880cf0  ./tests/scenar
 ead45e616ed570e5fb56714b7f78970b39f29abff54084be6fbc4c5e11c5b041  ./tests/scenarios/ownership-storage-health.js
 a6bf805dd4588e973fb79675a16f424dc836e8fb248a52a30f68117bc52cd6d9  ./tests/scenarios/presentation-kernel.py
 5e6cc1bcab191a9a9368578df40b791868486ed9204b1a3939659db9b6301082  ./tests/scenarios/presentation-kernel.js
-99a489cce3ddb71a6e7c316229b5a7ba3c14997f7d6e2bd9440b2031a5fd9f46  ./tests/scenarios/ui-runtime-accessibility.py
+93e2aa6604da03852e75739e8282f0fe958cd18a6e995d53e1337ac49cc2d591  ./tests/scenarios/ui-runtime-accessibility.py
 7b319987d8af39fc59208f9bf40ca9853abbcc3a7cc610e7576ae61d2483e5d1  ./tests/scenarios/ui-runtime-accessibility.js
 4a73ac58cb9cb6a7d942faeec2654e5f194baed43e1cbd41da7142b76c2e14cd  ./tests/scenarios/planning-large-dataset.py
 3bc2cc28b9d5c8a0590074ed76581ddb9d3daf92c75d2dbbbb5648e66bee64c4  ./tests/scenarios/planning-persistence-validation.js
@@ -103,11 +103,11 @@ d021d6343f33dcb0bc85d151c4bed0b9768042f3aeb7f5233971df7d9a91ff36  ./tests/planni
 376ce85d5fb84ab84028772726893f9e2877732744911a56d7b37d7c3b190dc3  ./tests/runtime-harness-ownership.spec.js
 c1984bc40dc15daf18184fda10b33f654ef8ed34411308845e4d24f00ee51f6b  ./tests/source-ownership.spec.py
 a6e9f0095d6341b1c305b410abbf317a716613cba3ddd571c5cbbfb69d7a78a9  ./tests/scenarios/hostile-recovery.py
-5b595ddd90023a5bff969992c08a777e660fc2d52963694d0c2bf4145aad2fbb  ./tests/scenarios/ui-behaviour.py
-04191e3e6c851fee70ae9dc25df230b504ad5f320a1c8ab1ea282089df7d0f44  ./tests/scenarios/responsive-layout.py
+5d5a261bedc4ff8b0ee231bd5befdd0a7be40e07a0679a4af17c1bfadd521be7  ./tests/scenarios/ui-behaviour.py
+45ad596f0c2bdab461dffbe3964ce007a4a5b3a90b59d5d0d713b00482500734  ./tests/scenarios/responsive-layout.py
 42cdb42dd4b06099e27fc8864c3a5c46af7c92eaa3b0a5517effcc49b13851bb  ./tests/scenarios/data-safety.py
 7114557e003fcd5b5af1e19b4924fcf2c710e2e5be53beee3b1376456164a30d  ./tests/scenarios/data-safety-controller.js
-fdb53162057c7536009f151f9b3ee74299ecf67830ce31c8c502632dbe4eeb36  ./tests/scenarios/restore-dialog-accessibility.py
+79efddad3941c81efd5b59317684dfacdad69c0c9532b2549b424dbf377792e1  ./tests/scenarios/restore-dialog-accessibility.py
 343d9ab023869793266a3b210f646a96fb3fa17ded6e3fa136c0291205c43e00  ./THIRD_PARTY_NOTICES.md
 bee5e5a0c353bf009d485222174127430f143f37dcce6f0ac78e339a9152575f  ./tools/fsrs-optimizer/browser-worker.mjs
 7106fba722817b9d06257cae359bb75a297b3217ddfd195517b0a7bdbb44b296  ./tools/fsrs-optimizer/optimize.mjs
