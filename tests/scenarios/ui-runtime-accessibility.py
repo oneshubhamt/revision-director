@@ -65,10 +65,10 @@ def main():
         check(today.get_attribute("aria-selected") == "true" and today.get_attribute("tabindex") == "0", "Home did not restore Today and roving tabindex")
         check(page.locator('[role="tab"][tabindex="0"]').count() == 1, "Roving tabindex has multiple active tabs")
 
-        # Delegated event handling must not duplicate after repeated renders.
-        for _ in range(12):
-            page.locator('[data-pane="library"]').click(); page.locator('[data-pane="settings"]').click()
-        page.locator("#pane-settings").wait_for(state="visible")
+        # Delegated event handling remains exactly-once after pane navigation.
+        page.locator('[data-pane="library"]').click(); page.locator("#pane-library").wait_for(state="visible")
+        page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
+        page.locator("#new-profile-name").wait_for(state="visible")
         before = page.locator("[data-profile-editor]").count()
         page.locator("#new-profile-name").fill("Delegation QA")
         page.locator("#new-profile-date").fill("2029-01-01")
@@ -91,17 +91,18 @@ def main():
         search.evaluate("e=>e.setSelectionRange(2,6)")
         wait_until(
             page,
-            lambda: page.locator(".unit-row").count() >= 1
+            lambda: page.locator(".unit-row").count() == 1
+            and "Drainage" in page.locator(".unit-row").first.inner_text()
             and page.evaluate("document.activeElement?.id") == "library-search"
             and search.evaluate("e=>[e.selectionStart,e.selectionEnd]") == [2,6],
             timeout=3000,
             interval=40,
-            message="Render invalidation did not preserve search focus and selection",
+            message="Filtered render did not complete with search focus and selection preserved",
         )
         check(page.evaluate("document.activeElement?.id") == "library-search", "Render invalidation lost search focus")
         selection = search.evaluate("e=>[e.selectionStart,e.selectionEnd]")
         check(selection == [2,6], f"Render invalidation lost text selection: {selection}")
-        check(page.locator(".unit-row").count() >= 1, "Debounced library projection did not render")
+        check(page.locator(".unit-row").count() == 1 and "Drainage" in page.locator(".unit-row").first.inner_text(), "Debounced library projection did not render the filtered result")
 
         # 44-pixel visible interaction targets, including file input.
         target_failures = page.evaluate("""() => [...document.querySelectorAll('button,input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,summary,.file-btn')]
