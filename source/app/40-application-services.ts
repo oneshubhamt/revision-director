@@ -1857,6 +1857,21 @@
       assert(settings.key === "app", "Backup settings key is invalid.");
       this.assertActiveProfileSelection(profiles, settings);
       canonicalFsrsSchedulingSettings(settings.fsrsScheduling);
+      const personalization = effectiveFsrsPersonalization(settings);
+      const currentFsrsConfig = fsrsConfigSnapshot(
+        settings.fsrsScheduling.policy,
+        personalization.active ? personalization.profile : null,
+      );
+      const lastRebase = settings.fsrsScheduling.lastRebase;
+      if (lastRebase) {
+        assert(lastRebase.toConfigFingerprint === currentFsrsConfig.fingerprint, "FSRS last-rebase target does not match the current scheduler configuration.");
+        if (lastRebase.reason === "activate-profile" || lastRebase.reason === "replace-profile") {
+          assert(personalization.active && personalization.profile, "FSRS profile-activation rebase provenance disagrees with current personalization state.");
+        }
+        if (lastRebase.reason === "deactivate-profile") {
+          assert(!personalization.active, "FSRS profile-deactivation rebase provenance disagrees with current personalization state.");
+        }
+      }
       const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(settings.memoryDifficultyPolicy);
       for (const obligation of obligations) {
         if (obligation.suspensionReason !== "persistent-difficulty") continue;
