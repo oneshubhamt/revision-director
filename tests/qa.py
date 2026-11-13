@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import subprocess
 import sys
 
@@ -15,7 +16,10 @@ STATIC_PYTHON = {
 
 def run(*command: str) -> None:
     print("==>", " ".join(command), flush=True)
-    subprocess.run(command, cwd=ROOT, check=True)
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(TESTS) + (os.pathsep + existing if existing else "")
+    subprocess.run(command, cwd=ROOT, env=env, check=True)
 
 
 def assert_test_topology() -> None:
