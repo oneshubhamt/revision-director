@@ -365,7 +365,15 @@ async function testRelearningLifecycle() {
   const original = { ...obligation('memory-recall', memory, 'recall'), id:'original', unitId:'u', priority:1 };
   original.policyState.fsrsCard.cardId = 'original';
   const calls = [];
-  const repo = { get: async (_store, key) => key === 'original' ? original : undefined, dailyPlanByStudyDay: async()=>undefined, recordReview: async (...args) => { calls.push(args); } };
+  let storedOriginal = original;
+  const repo = {
+    get: async (_store, key) => key === 'original' ? storedOriginal : undefined,
+    dailyPlanByStudyDay: async()=>undefined,
+    recordReview: async (...args) => {
+      calls.push(args);
+      if (args[4]?.id === 'original') storedOriginal = structuredClone(args[4]);
+    },
+  };
   const lifecycle = new api.RevisionService(repo);
   lifecycle.settings = { ...lifecycle.getSettings(), fsrsScheduling:{ policy:fixed(.9) } };
   lifecycle.obligation = async () => original;
