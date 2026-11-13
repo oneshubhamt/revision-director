@@ -8,7 +8,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_until
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_backup_import_result, wait_until
 sys.path.insert(0,str(ROOT/'tests'))
 base=load_browser_qa('revision_director_backup_restore_controller')
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base.INDEXEDDB_SHIM,1)
@@ -95,10 +95,9 @@ def main():
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files(str(tampered))
-        wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Tampered backup import handler did not finish')
-        msg=page.locator('#toast').inner_text().strip()
-        check(bool(msg) and page.locator('#toast').evaluate("e=>e.classList.contains('error')") and not page.locator('#restore-dialog').is_visible(),
-              f'Tampered backup did not fail through the rejection UI contract · toast={msg!r}')
+        result=wait_for_backup_import_result(page, timeout=5000)
+        check(bool(result['message']) and result['error'] and not result['preview'],
+              f"Tampered backup did not fail through the rejection UI contract · result={result!r}")
         check(not errors,f'Browser errors: {errors}')
         browser.close()
     print(f'PASS {checks} Pass D2 browser restore-controller checks')
