@@ -1,15 +1,14 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { createAppRuntime } = require('./helpers/runtime-harness');
 
 (async () => {
   const root = path.resolve(__dirname, '..');
-  const contractPath = path.join(root, 'tools', 'fsrs-optimizer', 'optimizer-contract.json');
-  const canonical = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
+  const contractModule = await import(pathToFileURL(path.join(root, 'tools', 'fsrs-optimizer', 'optimizer-contract.mjs')).href);
+  const canonical = contractModule.OPTIMIZER_CONTRACT;
   const { api } = createAppRuntime({
     globalName: '__RD_FSRS_CONTRACT_PARITY__',
     expose: ['FSRS_OPTIMIZER_CONTRACT'],
@@ -18,7 +17,7 @@ const { createAppRuntime } = require('./helpers/runtime-harness');
   assert.deepEqual(browserContract, canonical, 'Browser FSRS optimizer contract drifted from canonical static contract');
 
   const policy = await import(pathToFileURL(path.join(root, 'tools', 'fsrs-optimizer', 'optimizer-policy.mjs')).href);
-  assert.deepEqual(policy.OPTIMIZER_CONTRACT, canonical, 'Optimizer tooling did not load the canonical static contract');
+  assert.equal(policy.OPTIMIZER_CONTRACT, canonical, 'Optimizer tooling did not share the canonical static contract module');
   assert.equal(policy.HOLDOUT_SEGMENTS, canonical.holdoutSegments);
   assert.equal(policy.MIN_TRAIN_ITEMS, canonical.minimumTrainItems);
   assert.equal(policy.MIN_HOLDOUT_ITEMS, canonical.minimumHoldoutItems);
