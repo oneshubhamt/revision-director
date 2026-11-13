@@ -354,11 +354,13 @@ def scenario_bridge(browser) -> None:
     result = page.evaluate('async()=>RevisionDirector.intake.importStudyEvent({area:"Geology",task:"Bridge event",measure:"1 topic",durationMinutes:25,activityMode:"review",understanding:3})')
     check(bool(result.get("id")), "Valid bridge Study Event failed")
     page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
-    rows = page.locator("[data-profile-editor]")
-    for index in range(rows.count()):
-        row = rows.nth(index)
-        profile_id = row.get_attribute("data-profile-editor")
-        check(bool(profile_id), "Profile editor is missing durable identity")
+    profile_ids = page.locator("[data-profile-editor]").evaluate_all(
+        "rows => rows.map(row => row.getAttribute('data-profile-editor')).filter(Boolean)"
+    )
+    check(len(profile_ids) == 2, f"Unexpected bridge profile set: {profile_ids}")
+    for profile_id in profile_ids:
+        row = page.locator(f'[data-profile-editor="{profile_id}"]')
+        check(row.count() == 1, f"Profile editor is missing durable identity: {profile_id}")
         row.locator("[data-profile-status]").select_option("suspended")
         page.evaluate("document.querySelector('#toast').textContent=''")
         row.locator('[data-action="save-profile"]').click()
@@ -369,6 +371,13 @@ def scenario_bridge(browser) -> None:
             interval=40,
             message=f"Profile save did not complete: {profile_id}",
         )
+    wait_until(
+        page,
+        lambda: all(profile["status"] == "suspended" for profile in page.evaluate("async()=>await RevisionDirector.records.listProfiles()")),
+        timeout=5000,
+        interval=40,
+        message="Public profile summary did not reflect both suspensions",
+    )
     wait_until(page, lambda: page.evaluate("async()=> (await RevisionDirector.records.getDueSummary()).dueCount") == 0, timeout=5000, interval=40, message="Paused profiles remained due")
     summary = page.evaluate("RevisionDirector.records.getDueSummary()")
     check(summary["dueCount"] == 0, f"Paused profiles remained in bridge due summary: {summary}")
