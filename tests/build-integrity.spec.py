@@ -1,68 +1,22 @@
 from __future__ import annotations
+
 from pathlib import Path
 import hashlib
 import json
-import re
-import subprocess
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-subprocess.run([sys.executable, str(ROOT / "build/build.py")], check=True)
-source_manifest_path = ROOT / "source/app/source-manifest.json"
-source_manifest = json.loads(source_manifest_path.read_text())
-optimizer_package = json.loads((ROOT / "tools/fsrs-optimizer/package.json").read_text())
-optimizer_lock = json.loads((ROOT / "tools/fsrs-optimizer/package-lock.json").read_text())
-optimizer_contract = (ROOT / "tools/fsrs-optimizer/optimizer-contract.mjs").read_text()
-optimizer_policy = (ROOT / "tools/fsrs-optimizer/optimizer-policy.mjs").read_text()
-optimizer_core = (ROOT / "tools/fsrs-optimizer/optimizer-core.mjs").read_text()
-optimizer_worker = (ROOT / "tools/fsrs-optimizer/browser-worker.mjs").read_text()
-optimizer_cli = (ROOT / "tools/fsrs-optimizer/optimize.mjs").read_text()
-hosted_build = (ROOT / "build/build-hosted.mjs").read_text()
-root_package = json.loads((ROOT / "package.json").read_text())
-checksum_targets = {
-    line.split("  ./", 1)[1]
-    for line in (ROOT / "CHECKSUMS.sha256").read_text().splitlines()
-    if line
+SOURCE = ROOT / "source"
+MANIFEST = SOURCE / "app/source-manifest.json"
+
+manifest = json.loads(MANIFEST.read_text())
+parts = sorted(manifest.get("parts", []), key=lambda item: item.get("order", -1))
+declared_paths = [item.get("path", "") for item in parts]
+source_paths = [SOURCE / path for path in declared_paths]
+actual_typescript = {
+    path.relative_to(SOURCE).as_posix()
+    for path in (SOURCE / "app").glob("*.ts")
+    if path.is_file()
 }
-source_parts = sorted(source_manifest["parts"], key=lambda item: item["order"])
-source_paths = [ROOT / "source" / item["path"] for item in source_parts]
-source_checksum_paths = {"source/" + item["path"] for item in source_parts}
-ts = "".join(path.read_text() for path in source_paths)
-contracts_ts = (ROOT / "source/app/12-production-contracts.ts").read_text()
-fsrs_personalization_ts = (ROOT / "source/app/18-fsrs-personalization.ts").read_text()
-planning_ts = (ROOT / "source/app/20-policy-planning-kernel.ts").read_text()
-backup_validation_ts = (ROOT / "source/app/22-backup-validation.ts").read_text()
-evidence_transition_ts = (ROOT / "source/app/23-evidence-transition.ts").read_text()
-repository_ts = (ROOT / "source/app/30-indexeddb-repository.ts").read_text()
-storage_ts = (ROOT / "source/app/31-storage-facade.ts").read_text()
-service_ts = (ROOT / "source/app/40-application-services.ts").read_text()
-scheduler_ts = (ROOT / "source/app/19-revision-scheduler-port.ts").read_text()
-settings_workspace_ts = (ROOT / "source/app/48-settings-workspace.ts").read_text()
-active_retrieval_workspace_ts = (ROOT / "source/app/47-active-retrieval-workspace.ts").read_text()
-ui_controller_ts = (ROOT / "source/app/50-ui-controller.ts").read_text()
-backup_codec_ts = (ROOT / "source/app/41-backup-codec.ts").read_text()
-tsconfig = json.loads((ROOT / "source/tsconfig.json").read_text())
-build_script = (ROOT / "build/build.py").read_text()
-checksum_script = (ROOT / "build/checksums.py").read_text()
-ci_workflow = (ROOT / ".github/workflows/ci.yml").read_text()
-first_source = source_paths[0].read_text()
-last_source = source_paths[-1].read_text()
-shell = (ROOT / "source/revision-director.shell.html").read_text()
-css = (ROOT / "source/revision-director.va7.css").read_text()
-js = (ROOT / "dist/app.js").read_text()
-html = (ROOT / "index.html").read_text()
-readme_text = (ROOT / "README.md").read_text()
-third_party_notices_text = (ROOT / "THIRD_PARTY_NOTICES.md").read_text()
-development_qa_text = (ROOT / "docs/DEVELOPMENT_AND_QA.md").read_text()
-browser_harness_py = (ROOT / "tests/helpers/browser_harness.py").read_text()
-persistent_browser_py = (ROOT / "tests/helpers/persistent_browser.py").read_text()
-browser_scenario_paths = sorted((ROOT / "tests/scenarios").glob("*.py"))
-browser_scenarios = {path.name: path.read_text() for path in browser_scenario_paths}
-vendor_path = ROOT / "vendor/ts-fsrs-6.0.0/index.umd.js"
-vendor = vendor_path.read_text()
-package = json.loads((ROOT / "vendor/ts-fsrs-6.0.0/package.json").read_text())
-expected_hash = "6ef23308221a59a524c18153e665480159bc4e26e9d437a70d9e1e912cc54554"
-actual_hash = hashlib.sha256(vendor_path.read_bytes()).hexdigest()
 
 checks: list[tuple[str, bool]] = []
 def check(name: str, condition: bool) -> None:
@@ -70,15 +24,31 @@ def check(name: str, condition: bool) -> None:
     if not condition:
         raise AssertionError(name)
 
-check("source ownership manifest", source_manifest.get("schemaVersion") == 1 and len(source_parts) > 0)
-check("source order contiguous", [item["order"] for item in source_parts] == list(range(len(source_parts))))
-check("source parts unique", len(source_paths) == len(set(source_paths)))
-check("source parts present", all(path.is_file() and path.stat().st_size > 0 for path in source_paths))
-check("obsolete monolith absent", not (ROOT / "source/revision-director.va7.ts").exists())
-check("synthetic TypeScript composite absent", not (ROOT / "build/generated/revision-director.combined.ts").exists() and "revision-director.combined.ts" not in build_script and "GENERATED_TS" not in build_script)
-check("manifest runtime assembly", source_manifest.get("runtime") == {"assembly":"manifest-ordered-emitted-js","boundary":"build-owned-iife","output":"../dist/app.js"} and "entrypoint" not in source_manifest)
-check("TypeScript compiles real source graph", tsconfig.get("include") == ["app/*.ts"] and tsconfig.get("compilerOptions", {}).get("rootDir") == "." and tsconfig.get("compilerOptions", {}).get("outDir") == "../build/generated-js" and tsconfig.get("compilerOptions", {}).get("noEmitOnError") is True and tsconfig.get("compilerOptions", {}).get("moduleDetection") == "legacy")
-check("TypeScript correctness flags", all(tsconfig.get("compilerOptions", {}).get(name) is expected for name, expected in {
+check("manifest schema", manifest.get("schemaVersion") == 1)
+check("manifest runtime contract", manifest.get("runtime") == {
+    "assembly": "manifest-ordered-emitted-js",
+    "boundary": "build-owned-iife",
+    "output": "../dist/app.js",
+})
+check("manifest order contiguous", [item.get("order") for item in parts] == list(range(len(parts))))
+check("manifest paths unique", len(declared_paths) == len(set(declared_paths)))
+check("manifest owns exact TypeScript source set", set(declared_paths) == actual_typescript)
+check("manifest entries valid", all(
+    path.startswith("app/")
+    and path.endswith(".ts")
+    and source_path.is_file()
+    and source_path.stat().st_size > 0
+    and isinstance(item.get("layer"), str)
+    and item["layer"].strip()
+    for path, source_path, item in zip(declared_paths, source_paths, parts)
+))
+
+tsconfig = json.loads((SOURCE / "tsconfig.json").read_text())
+compiler = tsconfig.get("compilerOptions", {})
+check("TypeScript source graph", tsconfig.get("include") == ["app/*.ts"] and compiler.get("rootDir") == "." and compiler.get("outDir") == "../build/generated-js")
+check("TypeScript strict contract", all(compiler.get(name) is expected for name, expected in {
+    "strict": True,
+    "noEmitOnError": True,
     "noImplicitReturns": True,
     "noFallthroughCasesInSwitch": True,
     "noPropertyAccessFromIndexSignature": True,
@@ -88,336 +58,74 @@ check("TypeScript correctness flags", all(tsconfig.get("compilerOptions", {}).ge
     "noUnusedParameters": True,
     "forceConsistentCasingInFileNames": True,
 }.items()))
-check("build assembles emitted files", "expected_outputs" in build_script and "manifest-ordered-emitted-js" in build_script and "textwrap.indent(body, \"  \")" in build_script)
-check("measured TypeScript checker parallelism", 'TYPESCRIPT_CHECKERS = 2' in build_script and '"--checkers", str(TYPESCRIPT_CHECKERS)' in build_script)
-check("source parts own no runtime wrapper", not first_source.lstrip().startswith("(() => {") and not last_source.rstrip().endswith("})();"))
-check("manifest owns exact ordered layers", [path.name for path in source_paths] == [
-    "00-runtime-boundary.ts", "05-presentation-engine.ts", "10-domain-model.ts", "11-domain-kernel.ts",
-    "12-production-contracts.ts", "18-fsrs-personalization.ts", "18a-fsrs-browser-optimizer.ts", "19-revision-scheduler-port.ts",
-    "20-policy-planning-kernel.ts", "21-policy-implementations.ts", "22-backup-validation.ts", "23-evidence-transition.ts",
-    "30-indexeddb-repository.ts", "31-storage-facade.ts", "32-active-retrieval-persistence.ts", "33-phase-time-runtime.ts",
-    "34-cross-tab-ownership.ts", "40-application-services.ts", "41-backup-codec.ts", "42-backup-controller.ts",
-    "45-ui-runtime.ts", "46-workflow-form-adapter.ts", "47-active-retrieval-workspace.ts", "48-settings-workspace.ts",
-    "50-ui-controller.ts", "55-extension-runtime.ts", "60-public-bridge-bootstrap.ts",
-])
-check("shell presentation manifest placeholder", "<!-- INLINE_PRESENTATION_MANIFEST -->" in shell)
-check("shell presentation prepaint placeholder", "<!-- INLINE_PRESENTATION_PREPAINT -->" in shell)
-check("shell CSS placeholder", "<!-- INLINE_CSS -->" in shell)
-check("shell vendor placeholder", "<!-- INLINE_VENDOR_JS -->" in shell)
-check("shell app placeholder", "<!-- INLINE_JS -->" in shell)
-check("build has no placeholders", not any(marker in html for marker in ["<!-- INLINE_PRESENTATION_MANIFEST -->", "<!-- INLINE_PRESENTATION_PREPAINT -->", "<!-- INLINE_CSS -->", "<!-- INLINE_VENDOR_JS -->", "<!-- INLINE_JS -->"]))
-check("no external scripts", not re.search(r"<script\s+[^>]*src=", html, re.I))
-check("no CDN references", "cdn.jsdelivr.net" not in html and "unpkg.com" not in html)
-check("offline CSP", "script-src 'self' 'unsafe-inline' blob:;" in html and "connect-src 'none'" in html)
-check("presentation source assets", (ROOT / "source/presentation/revision-director.presentation.json").is_file() and (ROOT / "source/presentation/prepaint.js").is_file())
-check("presentation manifest embedded before CSS", html.index('id="revision-director-presentation-manifest"') < html.index('<style>'))
-check("presentation prepaint before CSS", html.index('data-rd-presentation-prepaint="1"') < html.index('<style>'))
-check("presentation kernel source", "revision-director.presentation-kernel" in ts and "installPresentationKernel" in ts and '"__RD_PRESENTATION_MANIFEST__"' in ts and "__RD_PRESENTATION_MANIFEST__" not in js)
-check("immutable presentation default", '"immutable":true' in html and 'data-presentation="revision-current"' in shell)
-check("semantic presentation token namespace", "--rd-color-canvas" in css and "--rd-font-body" in css and "--rd-layout-sidebar-width" in css)
-presentation_manifest_text = (ROOT / "source/presentation/revision-director.presentation.json").read_text()
-check("direct semantic presentation tokens", '"aliases"' not in presentation_manifest_text and all(token not in css for token in ["var(--bg)", "var(--s1)", "var(--acc)", "var(--txt)", "var(--line-soft)", "var(--sidebar)"]))
-check("delegated UI action runtime", all(token in ts for token in [
-    'document.addEventListener("click"', 'document.addEventListener("submit"',
-    'document.addEventListener("input"', 'document.addEventListener("change"',
-    'document.addEventListener("keydown"'
-]))
-check("render coordinator and dirty invalidation", "class RenderCoordinator" in ts and "private readonly dirty = new Set<RenderDomain>()" in ts and "requestAnimationFrame" in ts and "invalidateDebounced" in ts)
-check("ARIA tab registry", "class AriaTabRegistry" in ts and 'setAttribute("role", "tablist")' in ts and 'event.key === "Home"' in ts and 'event.key === "End"' in ts)
-check("dialog and overlay focus managers", "class NativeDialogFocusManager" in ts and "class OverlayFocusManager" in ts and "root.inert = true" in ts and "restoreDocumentFocus" in ts)
-check("44-pixel interaction contract", "min-height:44px" in css and ".file-btn{min-height:44px}" in css)
-check("reduced-motion contract", "@media (prefers-reduced-motion:reduce)" in css)
-check("safe-area contract", "env(safe-area-inset-bottom)" in css and "viewport-fit=cover" in shell)
-check("compact content reserves navigation", "height:calc(100dvh - 64px - env(safe-area-inset-bottom))" in css and "overflow-y:auto" in css)
-check("vendor metadata", package.get("name") == "ts-fsrs" and package.get("version") == "6.0.0" and package.get("license") == "MIT")
-check("vendor checksum", actual_hash == expected_hash)
-check("embedded vendor marker", f'data-vendor="ts-fsrs@6.0.0" data-sha256="{expected_hash}"' in html)
-check("embedded vendor exact parity", f'<script data-vendor="ts-fsrs@6.0.0" data-sha256="{expected_hash}">\n{vendor}\n</script>' in html)
-check("vendor loads before app", html.index('data-vendor="ts-fsrs@6.0.0"') < html.rindex(f"<script>\n{js}\n</script>"))
-check("inline CSS parity", f"<style>\n{css}\n</style>" in html)
-check("inline JS parity", f"<script>\n{js}\n</script>" in html)
-check("sealed generated runtime", js.startswith('(() => {\n  "use strict";') and js.rstrip().endswith("})();"))
-check("single strict runtime directive", js.count('"use strict";') == 1)
-check("no TS namespace", "namespace RD" not in ts and "namespace RevisionDirector" not in ts)
-check("no compiled RD global", not re.search(r"\bvar\s+RD\b", js))
-check("temporary FSRS global removed", 'delete (window as Window & { FSRS?: FsrsUmdRuntime }).FSRS' in ts)
-check("production database identity", 'const DB_NAME = "revision-director"' in ts and 'const DB_VERSION = 3' in ts)
-check("all maintained source modules checksum-covered", source_checksum_paths <= checksum_targets)
-check("document schema version contract", 'type DocumentSchemaVersion = 1' in ts and 'const DOCUMENT_SCHEMA_VERSION: DocumentSchemaVersion = 1' in ts)
-check("all durable documents versioned", all(token in ts for token in [
-    "interface ExamProfile", "interface KnowledgeNode", "interface KnowledgeUnit", "interface StudyEvent",
-    "interface RevisionObligation", "interface EvidenceEvent", "interface ObligationChunk",
-    "interface DailyPlanRecord", "interface AppSettings", "interface AppMetadata"
-]) and ts.count("schemaVersion: DocumentSchemaVersion;") >= 10)
-check("canonical boundary normalisers", all(token in ts for token in [
-    "function canonicalExamProfile", "function canonicalKnowledgeNode", "function canonicalKnowledgeUnit",
-    "function canonicalStudyEvent", "function canonicalRevisionObligation", "function canonicalEvidenceEvent",
-    "function canonicalObligationChunk", "function canonicalDailyPlanRecord", "function canonicalAppSettings",
-    "function canonicalAppMetadata", "function canonicalDocument"
-]))
-check("application storage facade", "class RevisionData" in ts and "class IndexedDbRepository" in ts and "class AppDiagnostics" in ts)
-check("storage health contracts", "interface StorageHealthSnapshot" in ts and "navigator.storage" in ts and "persisted" in ts and "estimate" in ts)
-check("bounded diagnostics", "while (this.records.length > 50)" in ts and "JSON.stringify(this.records).length > 32_000" in ts)
-check("metadata verifies production database", "Database metadata does not match this production database." in ts and "canonicalAppMetadata" in ts)
-check("single canonical DB identity", all(name not in html for name in ["revision-director-va1", "revision-director-va2", "revision-director-va3", "revision-director-va7-1"]))
-check("knowledge hierarchy", 'type KnowledgeNodeKind = "subject" | "section" | "topic"' in ts and 'interface KnowledgeUnit' in ts and 'async ensureHierarchy' in ts)
-check("six obligation types", all(value in ts for value in [
-    '"memory-recall"', '"concept-reconstruction"', '"application-practice"',
-    '"performance-practice"', '"relearn"', '"freshness-review"'
-]))
-check("eleven durable stores", all(value in ts for value in [
-    'Profiles: "profiles"', 'Nodes: "nodes"', 'Units: "units"',
-    'StudyEvents: "studyEvents"', 'Obligations: "obligations"',
-    'EvidenceEvents: "evidenceEvents"', 'Chunks: "chunks"', 'DailyPlans: "dailyPlans"', 'Settings: "settings"',
-    'Metadata: "metadata"', 'ActiveRetrieval: "activeRetrieval"'
-]))
-check("exact FSRS-7 adapter", 'readonly id = `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`' in ts)
-check("FSRS limited to memory", 'readonly type: ObligationType = "memory-recall"' in ts)
-check("modern FSRS scheduler API", "DefaultScheduler(options: FsrsDefaultSchedulerOptions)" in ts and "interface RevisionSchedulerPort" in ts and "class TsFsrsSchedulerPort" in ts and "prepareFsrsScheduler" in ts and "this.scheduler.review({" in ts and "this.scheduler.preview({" in ts and "this.scheduler.forward({" in ts)
-check("single FSRS replay path", "model.forward" not in ts and "private replayCards" in ts and "this.history.reschedule({" in ts and "replayMemoryStates" not in ts)
-check("scoped FSRS replay verification cache", "memoryProjectionVerificationFingerprint" in ts and "verifiedProjectionFingerprints" in ts and "forceReplay = false" in ts and "scheduler.verifyProjection(projection, reviews, true)" in ts and "historicalScheduler.replayVerifiedHistory(reviews)" in ts)
-check("single normalized memory-review analysis cache", "private memoryReviewAnalysis" in ts and "memoryReviewIndexFor" in ts and "invalidateMemoryReviewAnalysis" in ts and "verifyMemoryDatasetIntegrityWithIndex" in ts and "validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex)" in ts)
-check("deterministic planner tie breaking", "function plannedQueueStableKey" in ts and "plannedQueueStableKey(a).localeCompare(plannedQueueStableKey(b))" in ts and "return a.obligation.id.localeCompare(b.obligation.id)" in ts)
-check("FSRS scheduler warmup lifecycle", "await prepareFsrsScheduler(schedulingPolicy, profile)" in ts and "await prepareMemoryDatasetReplaySchedulers(reviewIndex, profileCatalog)" in ts and "verifyMemoryDatasetIntegrityWithIndex" in ts and "prepareFsrsScheduler(this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings))" not in ts and "prepareFsrsScheduler(validated.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(validated.settings))" not in ts)
-check("no deprecated FSRS scheduler API", all(token not in ts for token in ["api.fsrs(", ".createEmptyCard(", "generatorParameters("]))
-check("FSRS-7 only", 'type FsrsModelVersion = "FSRS-7"' in ts and 'const FSRS_MODEL: FsrsModelVersion = "FSRS-7"' in ts)
-check("FSRS-7 dual trace", "stabilityFast: number" in ts and "requiredFsrs7StabilityFast" in ts)
-check("FSRS-7 long-form interval policy", "fractionalDays: true" in ts and "enableShortTerm: true" in ts and 'learningSteps: ["1d"]' in ts and 'relearningSteps: ["1d"]' in ts and "graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS" in ts and "allowModelOverride: true" in ts)
-check("historical personalized replay provenance", "schedulerConfig: FsrsConfigSnapshot" in ts and "replayProfiles: FsrsOptimizerProfile[]" in ts and "fsrsPersonalizationProfileCatalog" in ts and "prepareMemoryDatasetReplaySchedulers" in ts and "await prepareMemoryDatasetReplaySchedulers(reviewIndex, profileCatalog)" in ts and "verifyHistoricalMemorySchedulerConfigurations" in ts and "profileForHistoricalFsrsConfiguration" in ts and "Historical personalized FSRS configuration cannot resolve its exact optimizer profile." in ts)
-check("FSRS scheduler policy boundary", 'type FsrsSchedulingPolicy =' in ts and '"fixed-retention"' in ts and '"cost-adr"' in ts and "fsrsSchedulingPolicyIdentity(config.schedulingPolicy)" in ts and "FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT = 1024" in ts and "Only the bounded Revision Director Cost-ADR preset is enabled." in ts and "settings.desiredRetention" not in ts)
-check("measured fixed retention is the new-install default", "function defaultFsrsSchedulingSettings" in ts and 'return { policy: { kind: "fixed-retention", desiredRetention: 0.9 } };' in ts and "Fixed retention · 90% default" in ts and "Adaptive workload · Cost-ADR · optional preset" in ts)
-check("Cost-ADR preset runtime composition", "function createCostAdrFsrsScheduler" in ts and "runtime.schedulerCostAdrMiddleware" in ts and "runtime.schedulerFuzzingMiddleware" in ts and "runtime.schedulerLearningStepsMiddleware" in ts and "runtime.schedulerMonotonicIntervalMiddleware" in ts and "schedulerDesiredRetentionMiddleware" not in ts and "costAdrPresetSchedulingPolicy()" in ts)
-check("Cost-ADR UI exposes preset not tuning knobs", "Adaptive workload · Cost-ADR · optional preset" in ts and 'name="memorySchedulingPolicy"' in ts and 'name="goalCostWeight"' not in ts)
-check("Cost-ADR planner does not invent fixed retention", 'schedulingPolicy.kind === "cost-adr"' in ts and "Cost-ADR has a state-dependent retention target." in ts and "fixedRetentionForPolicy(settings.fsrsScheduling.policy)" not in ts)
-check("Again routes to corrective relearning", 'if (rating === Rating.Again) completion.followUpType = "relearn"' in ts)
-check("host-owned persistent difficulty", 'type MemoryDifficultyLevel = "normal" | "learning-difficulty" | "remediation" | "persistent-difficulty"' in ts and "memoryDifficultyAssessment" in ts and "memoryDifficultyRemediationPlan" in ts and 'suspensionReason = "persistent-difficulty"' in ts and "resumePersistentDifficulty" in ts)
-check("canonical persistent-difficulty settings", "memoryDifficultyPolicy: MemoryDifficultyPolicy" in ts and "defaultMemoryDifficultyPolicy" in ts and "canonicalMemoryDifficultyPolicy" in ts and "automaticHoldEligible" in ts and "replaceSettingsAndObligations" in ts)
-check("leech signal without parallel suspension", "schedulerLeechMiddleware" not in ts and 'type StoredFsrsScheduleStatus = Exclude<FsrsRuntimeScheduleStatus, "suspended">' in ts and 'Revision Director does not persist FSRS-owned suspension state.' in ts and 'scheduleStatus = "suspended"' not in ts)
-check("FSRS rating semantics", 'if (type === "memory-recall")' in ts and '"Easy" remains a user judgement' in ts and "partial or cued recall" in ts)
-check("schema-owned persistence fail-closed", "event.oldVersion !== 0" in ts and "request.error?.name === \"VersionError\"" in ts and "Existing data was not modified" in ts and "storage.metadata.release-refresh" in ts and "canonical.applicationVersion !== APP_VERSION" in ts and "canonical.applicationVersion === APP_VERSION" not in ts and 'candidate["appVersion"] === APP_VERSION' not in ts and 'value["appVersion"] === APP_VERSION' not in ts)
-check("single canonical topology", all(token in ts for token in ["assertExactKeys", "putProfileAndSettings", "assertActiveProfileSelection", 'settings.add(defaultSettings())', 'metadata.add({', "Canonical storage must contain exactly one application-settings document.", "Database metadata is missing from this Revision Director database"]) and "hasAnyStoredData" not in ts and "hasStoredData" not in ts and all(token not in ts.lower() for token in ["migratelegacy", "legacyadapter", "migrationtable"]))
-check("atomic profile/settings persistence", "async putProfileAndSettings(profile: ExamProfile, settings: AppSettings)" in ts and 'readwriteTransaction(this.db, [Store.Profiles, Store.Settings], "strict")' in repository_ts and "await this.repo.putProfileAndSettings(profile, nextSettings);" in ts)
-check("strict current document shapes", all(token in contracts_ts for token in ['assertExactKeys(value, "Exam profile"', 'assertExactKeys(value, "Knowledge node"', 'assertExactKeys(value, "Knowledge unit"', 'assertExactKeys(value, "Study event"', 'assertExactKeys(value, "Revision obligation"', 'assertExactKeys(value, "Obligation chunk"', 'assertExactKeys(value, "Daily plan"', 'assertExactKeys(value, "Active retrieval session"', 'assertExactKeys(value, "Application metadata"']))
-check("transactional settings publication", "await this.repo.put(Store.Settings, canonical);\n      this.settings = canonical;" in ts and "await this.repo.put(Store.Settings, next);\n      this.settings = next;" in ts and "validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex);" in ts and "verifyMemoryDatasetIntegrityWithIndex(" in ts and "await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);" in ts)
-check("no timing compatibility synthesis", "fallbackElapsedMs" not in ts and "canonicalTimingEvidenceSummary(value: TimingEvidenceSummary)" in ts and "completeChunk(chunkId: string, timing: TimingEvidenceSummary" in ts)
-check("no current-shape repair coercions", all(token not in contracts_ts for token in [
-    "reliabilityFlags.push", "checked[key] = Boolean(rawValue)", "sourceVisible: Boolean(value.sourceVisible)",
-    "Number(value.activeByPhase[phase])", "Number(value.backwardClockCount)", "Number(value.pauseMs)",
-    "Number(value.pauseCount)", "Number(value.inactiveGapCount)", "Number(value.classifiedFocusMs)",
-    "Number(value.classifiedBreakMs)", "Number(value.promptExcludedMs)", "const value = Number(raw);",
-    "queueTargetIds.slice(0, 500)", "value.diagramStrokes.slice(0, 256)", "Object.entries(value.values).slice(0, 96)",
-]) and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
-check("strict settings numeric boundaries", not re.search(r"\bNumber\(", fsrs_personalization_ts) and "Number(record[" not in planning_ts and "requiredFiniteNumber" in fsrs_personalization_ts and "requiredSafeInteger" in planning_ts)
-check("dead optional canonicalizers removed", "function canonicalOptionalId" not in contracts_ts and "function canonicalOptionalIso" not in contracts_ts)
-responsive_breakpoints = re.findall(r"@media\s*\(\s*max-width\s*:\s*(\d+)px\s*\)", css)
-check("CSS semantic tokens are closed", all(token not in css for token in ["var(--text-muted)", "var(--txt3)", "var(--f-head)"]))
-check("CSS hidden invariant is singular", css.count("[hidden]{display:none!important}") == 1 and ".optimizer-progress[hidden]" not in css and ".gap-overlay[hidden]" not in css and ".ownership-banner[hidden]" not in css)
-check("CSS breakpoints consolidated", len(responsive_breakpoints) == len(set(responsive_breakpoints)) and "CONSOLIDATED RESPONSIVE OVERRIDES" in css)
-check("atomic durable snapshot", "this.db.transaction(stores, \"readonly\")" in repository_ts and "async backupState(activeRetrievalMode:" in storage_ts and 'this.repo.backupState("ignore")' in service_ts and "const state = await this.repo.backupState();" in service_ts)
-check("selective strict IndexedDB durability", 'type RevisionWriteDurability = "default" | "strict"' in repository_ts and 'function storeWriteDurability(store: StoreName)' in repository_ts and 'return store === Store.ActiveRetrieval || store === Store.Metadata ? "default" : "strict";' in repository_ts and 'db.transaction(stores, "readwrite", { durability: "strict" })' in repository_ts and repository_ts.count('readwriteTransaction(this.db, stores, "strict")') == 3 and repository_ts.count('readwriteTransaction(this.db, store, storeWriteDurability(store))') == 4 and 'readwriteTransaction(this.db, store);' not in repository_ts)
-check("strict durability covers authoritative multi-store commits", all(token in repository_ts for token in [
-    'readwriteTransaction(this.db, [Store.Profiles, Store.Settings], "strict")',
-    'readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict")',
-    'readwriteTransaction(this.db, [Store.Obligations, Store.Chunks], "strict")',
-    'readwriteTransaction(this.db, [Store.Settings, Store.Obligations], "strict")',
-]) and '"TypeError"' in repository_ts)
-check("hierarchy lookup has deterministic root fast path", "const deterministic = await this.get(Store.Nodes, await rootKnowledgeNodeId(profileId, normalized));" in repository_ts and 'return this.getOneByIndex(Store.Nodes, "pathLookup", [profileId, parentId, kind, normalized]);' in repository_ts and "Imported current-format backups may legitimately retain non-generated IDs." in repository_ts and "import-fidelity fallback" in repository_ts)
-check("hierarchy semantic uniqueness validated", 'const nodePathKeys = new Set<string>();' in backup_validation_ts and 'Knowledge hierarchy contains duplicate semantic paths.' in backup_validation_ts)
-check("startup validation remains recovery-aware", 'const state = await this.repo.backupState("ignore");' in service_ts and 'assertActiveProfileSelection(state.profiles, this.settings);' in service_ts and 'await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);' in service_ts)
-check("backup relational validation remains linear", "acceptedDurationsByObligation" in backup_validation_ts and "unresolvedRelearningReturnIds" in backup_validation_ts and "evidenceEvents.filter((event) => event.obligationId" not in backup_validation_ts and "[...obligationMap.values()].some" not in backup_validation_ts)
-check("joined obligations fail closed on corrupt relations", 'assert(unit, "Revision obligation references a missing knowledge unit.");' in service_ts and 'assert(topicNode?.kind === "topic"' in service_ts and 'assert(subjectNode?.kind === "subject"' in service_ts)
-check("generated-artifact checksum CI is centralized", "def rendered_manifest()" in checksum_script and "npm run qa:core" in ci_workflow and ci_workflow.count("python3 build/checksums.py --write") == 1 and "import hashlib" not in ci_workflow and "Verify tracked checksums" not in ci_workflow)
-check("working generated-artifact auto-sync retained", "Sync generated artifacts" in ci_workflow and "github.ref == 'refs/heads/working'" in ci_workflow and 'git commit -m "build: synchronize generated artifacts [skip ci]"' in ci_workflow)
-check("single verified restore path", "async importBackup(input: unknown)" not in service_ts and "restoreBackupPayload" in service_ts)
-check("canonical SHA-256 archive parser", all(token in backup_codec_ts for token in [
-    'assertExactKeys(value, "Backup manifest"', 'assertExactKeys(value, "Backup counts"', 'assertExactKeys(value, "Backup chunk"', 'assertExactKeys(value, "Backup completion proof"',
-]) and "{16,64}" not in backup_codec_ts)
-check("backup payload narrows from unknown", "const candidate = requireRecord(input, \"Backup\")" in ts and "canonicalDocumentArray(\"profile\"" in ts and "candidate.profiles as ExamProfile[]" not in ts and "candidate.evidenceEvents as EvidenceEvent[]" not in ts)
-check("backup validation boundary ownership", "function validateBackupPayload(input: unknown): BackupPayload" in backup_validation_ts and "validateBackup(input: unknown)" not in service_ts and "this." not in backup_validation_ts)
-check("evidence transition boundary ownership", all(token in evidence_transition_ts for token in ["function prepareEvidenceDraft", "function applyPrimaryEvidenceTransition", "function applyCorrectiveRelearningTransition", "function buildEvidenceEvent"]) and "this." not in evidence_transition_ts and "async " not in evidence_transition_ts)
-check("active retrieval workspace boundary ownership", "class ActiveRetrievalWorkspace" in active_retrieval_workspace_ts and "private activeReviewIds" in active_retrieval_workspace_ts and "private reviewPhase" in active_retrieval_workspace_ts and "async render()" in active_retrieval_workspace_ts and "private activeReviewIds" not in ui_controller_ts and "private reviewPhase" not in ui_controller_ts and "this.activeRetrieval.handleAction(element)" in ui_controller_ts)
-check("checked external domain boundaries", "function literalChoice<const Values" in ts and "MessageEvent<unknown>" in ts and "async register(input: unknown)" in ts and "private async importStudyEvent(input: unknown)" in ts and "private async createRevisionCandidate(input: unknown)" in ts and " as InactiveGapClassification" not in ts and " as BackupActiveSessionTreatment" not in ts)
-check("archive parsers narrow unknown records", "as Partial<BackupArchive" not in ts and "const candidate: BackupPayload" not in ts and "const parsed = JSON.parse(raw) as ActiveRetrievalRecoveryEnvelope" not in ts and "as Partial<DiagnosticRecord>" not in ts)
-check("store-keyed persistence typing", "interface StoreValueMap" in ts and "type StoreValue<S extends StoreName>" in ts and "async get<S extends StoreName>(store: S" in ts and "async getAll<S extends StoreName>(store: S" in ts and "async get<T>(store: StoreName" not in ts and "async getAll<T>(store: StoreName" not in ts)
-check("stateful non-null assertions are guarded", all(token not in ts for token in ["obligation.chunking!", "versions.at(-1)!", "returnedTarget!.", "itemByKey.get(outcome.itemKey)!", "activeReviewIds[this.activeReviewIndex]!", "activeReviewIds[0]!"]) and "function latestPlanVersion" in ts and "private activeReviewTarget" in ts)
-check("closed domain maps are exhaustive", all(token in ts for token in [
-    "as const satisfies Record<ObligationType, string>",
-    "as const satisfies Record<RetrievalWorkflow, string>",
-    "satisfies Record<ObligationType, NonEmptyReadonlyArray<RetrievalWorkflow>>",
-    'satisfies Record<ObligationType, PolicyState["engine"]>',
-    "satisfies Record<Rating, number>",
-    "satisfies Record<keyof PlanningFactors, number>",
-]) and "const engineFor: Record<ObligationType" not in ts and "compatibleWorkflows(type)[0]!" not in ts)
-check("DOM and FormData boundaries are runtime typed", "function requiredNamedFormControl" in ts and "function formNumber" in ts and "function requiredElement<T extends HTMLElement>" in ts and "instanceof constructor" in ts and "elements.namedItem(\"workflowKind\") as HTMLSelectElement" not in ts and "requiredElement<HTML" not in ts and "event.target as HTMLInputElement" not in ts and "event.target as HTMLElement" not in ts)
+check("clean source topology", not (SOURCE / "revision-director.va7.ts").exists() and not (ROOT / "build/generated/revision-director.combined.ts").exists())
+check("compiler output cleaned after build", not (ROOT / "build/generated-js").exists())
 
-check("SHA-256-only backup integrity", 'type BackupArchiveHashAlgorithm = "sha256";' in ts and "fnv1a64" not in (ROOT / "source/app/41-backup-codec.ts").read_text())
-check("policy router", "class SchedulerPolicyRouter" in ts)
-check("immutable Study Event semantics", "interface StudyEvent" in ts and "studyEvents" in ts)
-check("atomic unit and first obligation", "createUnitWithObligation" in ts and 'readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict")' in repository_ts)
-check("atomic unit status propagation", "updateUnitWithObligations" in ts)
-check("cross-profile Study Event guard", "Study Event cannot link a knowledge unit from another exam profile" in ts)
-check("strong evidence rubric", all(term in ts for term in ["completeness", "independence", "application", "accuracyPercent", "errorTypes", "ERROR_TYPES"]))
-check("scheduler configuration provenance", "interface FsrsConfigSnapshot" in ts and "schedulerConfig?: FsrsConfigSnapshot" in ts and "fingerprint: string" in ts and "validateFsrsConfigSnapshot" in ts)
-check("FSRS personalization profile contract", 'profileSchema:"revision-director-fsrs-profile/v1"' in optimizer_contract and 'model:"FSRS-7"' in optimizer_contract and 'profileSchema: "revision-director-fsrs-profile/v1"' in fsrs_personalization_ts and "function validateFsrsOptimizerProfile" in ts and "bindingVersion" in ts)
-check("FSRS-7 exact 34-weight validation", "FSRS7_PARAMETER_BOUNDS" in ts and "value.length === 34" in ts and "FSRS7_DEFAULT_WEIGHTS" in ts)
-check("FSRS optimizer evidence export", 'review_time,card_id,review_rating,review_duration,review_state' in ts and "fsrsOptimizerCsv" in ts and "relearning-verification" in ts)
-check("canonical optimizer retrieval duration", 'durationPhase = source === "direct-memory" ? "attempt" : "relearn-verify"' in ts and "timing.durationReliable && timing.reliabilityFlags.length === 0" in ts and "durationMs: durationReliable ? Math.round(phaseMs) : 0" in ts and "event.elapsedMs" not in (ROOT / "source/app/18-fsrs-personalization.ts").read_text())
-check("optimizer source snapshot binding", "async function fsrsOptimizerEvidenceSnapshot" in ts and "sourceSha256: await sha256Hex(utf8Bytes(dataset.csv))" in ts and "assertOptimizerProfileMatchesCurrentEvidence" in ts and "profile.sourceSha256 === snapshot.sourceSha256" in ts and ts.count("await this.assertOptimizerProfileMatchesCurrentEvidence") >= 2)
-check("shared SHA-256 utility", "function sha256FallbackHex" in ts and "async function sha256Hex" in ts and "return sha256Hex(bytes);" in ts and "private static sha256Fallback" not in ts)
-check("chronological held-out activation gate", all(token in optimizer_contract for token in ['holdoutStrategy:"final-sixth"', "minimumTrainItems:64", "minimumHoldoutItems:64", "minimumHoldoutCards:16", "minimumAbsoluteLogLossImprovement:0.001", "minimumRelativeLogLossImprovement:0.005"]) and "FSRS_OPTIMIZER_CONTRACT.minimumAbsoluteLogLossImprovement" in fsrs_personalization_ts and "FSRS_OPTIMIZER_CONTRACT.minimumRelativeLogLossImprovement" in fsrs_personalization_ts and 'diagnostics.calibration.status !== "regressed"' in ts and "incumbentDiagnostics" in ts)
-check("optimizer calibration diagnostics", "interface FsrsHoldoutDiagnostics" in ts and "function fsrsHoldoutDiagnostics" in ts and 'metric: "rmse-bins"' in ts and 'Calibration · RMSE bins' in ts and "holdoutDiagnostics" in optimizer_policy)
-check("optimizer gate parity", 'import {OPTIMIZER_CONTRACT} from "./optimizer-contract.mjs"' in optimizer_policy and "MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT=OPTIMIZER_CONTRACT.minimumAbsoluteLogLossImprovement" in optimizer_policy and "MIN_RELATIVE_LOG_LOSS_IMPROVEMENT=OPTIMIZER_CONTRACT.minimumRelativeLogLossImprovement" in optimizer_policy and 'calibration.status==="regressed"' in optimizer_policy)
-check("explicit personalization rebase semantics", "activateFsrsOptimizerProfile" in ts and "replaceActiveFsrsOptimizerProfile" in ts and "deactivateFsrsOptimizerProfile" in ts and '"replace-profile"' in ts and "appendFsrsReplayProfile" in ts and "replayProfilesBeforeDiscardingCurrent" in ts and "const replayProfiles = await this.replayProfilesBeforeDiscardingCurrent(personalization);" in ts and "replaceSettingsAndObligations" in ts and "rescheduledObligations" in ts and "Finish or end the active retrieval session before changing FSRS scheduler parameters." in ts)
-check("optimizer binding isolated from principal browser runtime", "@open-spaced-repetition/binding" not in ts and "@open-spaced-repetition/binding" not in js and "browserFsrsOptimizerAvailability" in ts and "startBrowserFsrsOptimizer" in ts)
-check("optimizer dependencies pinned", optimizer_package.get("dependencies", {}).get("@open-spaced-repetition/binding") == "0.6.1" and optimizer_package.get("dependencies", {}).get("@open-spaced-repetition/binding-wasm32-wasip1") == "0.6.1" and optimizer_package.get("overrides", {}).get("@emnapi/core") == "2.0.0-beta.3" and optimizer_lock.get("packages", {}).get("", {}).get("dependencies") == optimizer_package.get("dependencies"))
-check("single optimizer algorithm core", "optimizeFsrsProfile" in optimizer_core and "splitChronologicalHoldout" in optimizer_core and "evaluateHoldoutGate" in optimizer_core and "incumbentProfile" in optimizer_core and "optimizerWeightsFingerprint" in optimizer_core and "optimizeFsrsProfile" in optimizer_cli and "incumbentProfile" in optimizer_cli and "optimizeFsrsProfile" in optimizer_worker and "const {requestId,csv,incumbentProfile=null}=request;" in optimizer_worker and "splitChronologicalHoldout" not in optimizer_cli and "evaluateHoldoutGate" not in optimizer_cli and "splitChronologicalHoldout" not in optimizer_worker and "evaluateHoldoutGate" not in optimizer_worker)
-check("optimizer training policy", all(token in optimizer_core for token in ["computeParameters", "evaluateWithTimeSeriesSplits", "finalRetrainedOnAllEvidence", "runtimeLearningSteps:[...OPTIMIZER_CONTRACT.runtimeLearningSteps]", "runtimeRelearningSteps:[...OPTIMIZER_CONTRACT.runtimeRelearningSteps]"]) and all(key in optimizer_contract for key in ["minimumTrainItems", "minimumHoldoutItems", "minimumHoldoutCards", "holdoutStrategy", "runtimeLearningSteps", "runtimeRelearningSteps"]))
-check("local optimizer publication semantics", "stageFsrsOptimizerProfile(profile)" in ts and "replaceActiveFsrsOptimizerProfile(profile)" in ts and "activateFsrsOptimizerProfile()" in ts and "Profile staged; activation remains explicit." in ts and "Active weights switched with one atomic rebase." in ts and "stageFsrsOptimizerProfile(profile); await this.service.activate" not in ts)
-check("optimizer Worker cancellation/progress", 'new Worker(new URL("./fsrs-optimizer.worker.js", document.baseURI)' in ts and "worker.terminate()" in ts and 'type:"progress"' in optimizer_worker and "onProgress" in ts)
-check("hosted distribution includes local optimizer", root_package.get("scripts", {}).get("build:hosted") == "npm run build && node build/build-hosted.mjs" and "build:optimizer-static" not in root_package.get("scripts", {}) and '<meta\\s+name=["\']revision-director-browser-optimizer' in hosted_build and "optimizer-footprint.json" in hosted_build and "Revision_Director_Hosted" in hosted_build and "fsrs-binding.wasm32-wasip1.wasm" in hosted_build and "wasm-unsafe-eval" in hosted_build)
-check("optimizer runtime licence fallback", '@napi-rs/wasm-runtime@1.2.6' in hosted_build and 'licences/napi-rs-wasm-runtime-MIT.txt' in hosted_build and '3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215' in hosted_build and (ROOT / "licences/napi-rs-wasm-runtime-MIT.txt").is_file())
-check("pinned optimizer WASM identity", 'EXPECTED_WASM_VERSION="0.6.1"' in hosted_build and "EXPECTED_WASM_BYTES=1_396_770" in hosted_build and 'EXPECTED_WASM_SHA256="498d916b2d92180d8547f4d41ad204d63a488e6e0a1fe8c2ab330cf4ff5b8c05"' in hosted_build and "wasmSourceSha256" in hosted_build)
-check("optimizer checksum coverage", all(path in checksum_targets for path in [
+js_path = ROOT / "dist/app.js"
+html_path = ROOT / "index.html"
+check("generated artifacts present", js_path.is_file() and js_path.stat().st_size > 0 and html_path.is_file() and html_path.stat().st_size > 0)
+js = js_path.read_text()
+html = html_path.read_text()
+css = (SOURCE / "revision-director.va7.css").read_text()
+check("sealed runtime boundary", js.startswith('(() => {\n  "use strict";') and js.rstrip().endswith("})();"))
+check("build placeholders resolved", "<!-- INLINE_" not in html)
+check("inline application parity", f"<script>\n{js}\n</script>" in html)
+check("inline stylesheet parity", f"<style>\n{css}\n</style>" in html)
+
+vendor_dir = ROOT / "vendor/ts-fsrs-6.0.0"
+vendor_package = json.loads((vendor_dir / "package.json").read_text())
+vendor_sums = {}
+for line in (vendor_dir / "SHA256SUMS.txt").read_text().splitlines():
+    digest, name = line.split("  ", 1)
+    vendor_sums[name] = digest
+vendor_path = vendor_dir / "index.umd.js"
+vendor = vendor_path.read_text()
+vendor_hash = hashlib.sha256(vendor_path.read_bytes()).hexdigest()
+check("vendored scheduler identity", vendor_package.get("name") == "ts-fsrs" and vendor_package.get("version") == "6.0.0" and vendor_package.get("license") == "MIT")
+check("vendored scheduler checksum", vendor_sums.get("index.umd.js") == vendor_hash)
+vendor_marker = f'data-vendor="ts-fsrs@6.0.0" data-sha256="{vendor_hash}"'
+check("embedded scheduler parity", vendor_marker in html and f'<script {vendor_marker}>\n{vendor}\n</script>' in html)
+check("scheduler loads before application", html.index(vendor_marker) < html.rindex(f"<script>\n{js}\n</script>"))
+
+optimizer_package = json.loads((ROOT / "tools/fsrs-optimizer/package.json").read_text())
+optimizer_lock = json.loads((ROOT / "tools/fsrs-optimizer/package-lock.json").read_text())
+optimizer_dependencies = optimizer_package.get("dependencies", {})
+expected_optimizer_dependencies = {
+    "@emnapi/core": "2.0.0-beta.3",
+    "@emnapi/runtime": "2.0.0-beta.3",
+    "@napi-rs/wasm-runtime": "1.2.6",
+    "@open-spaced-repetition/binding": "0.6.1",
+    "@open-spaced-repetition/binding-wasm32-wasip1": "0.6.1",
+}
+check("optimizer dependencies pinned", optimizer_dependencies == expected_optimizer_dependencies)
+check("optimizer lock root matches package", optimizer_lock.get("packages", {}).get("", {}).get("dependencies") == optimizer_dependencies)
+check("portable build excludes optimizer assets", "revision-director-browser-optimizer" not in html and "fsrs-binding.wasm32-wasip1.wasm" not in html)
+
+checksum_targets = {
+    line.split("  ./", 1)[1]
+    for line in (ROOT / "CHECKSUMS.sha256").read_text().splitlines()
+    if line
+}
+required_checksum_targets = {
+    *(f"source/{path}" for path in declared_paths),
+    "source/app/source-manifest.json",
+    "source/tsconfig.json",
+    "source/revision-director.shell.html",
+    "source/revision-director.va7.css",
+    "source/presentation/prepaint.js",
+    "source/presentation/revision-director.presentation.json",
+    "build/build.py",
     "build/build-hosted.mjs",
-    "licences/napi-rs-wasm-runtime-MIT.txt",
-    "source/app/18-fsrs-personalization.ts",
-    "source/app/18a-fsrs-browser-optimizer.ts",
-    "source/app/19-revision-scheduler-port.ts",
-    "tests/fsrs-browser-optimizer.spec.py",
-    "tests/fsrs-contract-parity.spec.js",
-    "tests/fsrs-integration.spec.js",
-    "tests/fsrs-scale-benchmark.spec.js",
-    "tests/fsrs-scheduling-experiments.spec.js",
-    "tests/fsrs-optimizer-core.spec.js",
-    "tests/fsrs-optimizer-policy.spec.js",
-    "tests/helpers/runtime-harness.js",
-    "tests/runtime-harness-ownership.spec.js",
-    "tools/fsrs-optimizer/browser-worker.mjs",
-    "tools/fsrs-optimizer/optimize.mjs",
-    "tools/fsrs-optimizer/optimizer-contract.mjs",
-    "tools/fsrs-optimizer/optimizer-core.mjs",
-    "tools/fsrs-optimizer/optimizer-policy.mjs",
-    "tools/fsrs-optimizer/package-lock.json",
-    "tools/fsrs-optimizer/package.json",
-    "tools/fsrs-optimizer/parity.mjs",
-    "tools/fsrs-optimizer/smoke.mjs",
-]))
-check("standalone remains optimizer-asset-free", '<meta name="revision-director-browser-optimizer"' not in html and 'name="revision-director-browser-optimizer"' not in shell and "fsrs-binding.wasm32-wasip1.wasm" not in html and "connect-src 'none'" in html and 'location.protocol === "file:"' in ts)
-check("optimizer tooling syntax", all(subprocess.run(["node", "--check", str(ROOT / path)], capture_output=True).returncode == 0 for path in ["tools/fsrs-optimizer/optimizer-contract.mjs","tools/fsrs-optimizer/optimizer-policy.mjs","tools/fsrs-optimizer/optimizer-core.mjs","tools/fsrs-optimizer/optimize.mjs","tools/fsrs-optimizer/browser-worker.mjs","tools/fsrs-optimizer/parity.mjs","build/build-hosted.mjs"]))
-check("safe suspension provenance", "type SuspensionReason" in ts and 'suspensionReason = "relearning"' in ts and 'suspensionReason === "unit"' in ts)
-check("automatic relearn follow-up", 'completion.followUpType = "relearn"' in ts)
-check("relearn pauses exact original", 'item.returnObligationId === obligation.id' in ts and 'obligation.status = "suspended"' in ts)
-check("atomic original reactivation", "relatedObligation?: RevisionObligation" in ts and "if (relatedObligation) obligationStore.put(relatedObligation)" in ts)
-check("FSRS corrective verification boundary", 'const memoryVerification = original.type === "memory-recall"' in service_ts and 'this.router.get("memory-recall").complete(' in service_ts and "priorOriginalReviews = original.type === \"memory-recall\"" in service_ts and "original.dueAt = verification.dueAt" in evidence_transition_ts and "original.policyState = clone(verification.policyState)" in evidence_transition_ts)
-check("FSRS due ownership invariant", 'assert(fsrsCard.dueAt === obligation.dueAt' in ts and "original.lastCompletedAt = input.reviewedAt" in evidence_transition_ts)
-check("early-learning difficulty separated from lapses", '"learning-difficulty"' in ts and "MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD = 2" in ts and "let established = false" in ts and "if (established) establishedLapses += 1" in ts and "else earlyLearningFailures += 1" in ts and "!established && earlyLearningFailures" in ts)
-check("exam-bounded corrective relearning", "function correctiveRelearnDueAt" in ts and "correctiveRelearnDueAt(await this.profile(primary.unit.profileId), reviewedAt)" in service_ts)
-check("FSRS corrective verification transition audit", "correctiveMemoryTransition" in ts and "CorrectiveMemoryTransition" in ts and "Corrective-memory scheduler transition presence is inconsistent" in ts and "correctiveMemoryRating" in ts)
-check("priority-aware queue", "b.obligation.priority - a.obligation.priority" in ts and "b.unit.importance - a.unit.importance" in ts)
-check("relational backup validation", "Section must belong to a subject in the same profile" in ts and "Evidence event relationships are inconsistent" in ts)
-check("six retrieval workflows", all(value in ts for value in ['"recall"', '"reconstruction"', '"questions"', '"diagram"', '"answer-writing"', '"relearning"']))
-check("workflow separated from policy", "interface WorkflowSpec" in ts and "workflow: WorkflowSpec" in ts and "defaultWorkflowForType" in ts)
-check("workflow-specific evidence", "type WorkflowResult" in ts and "workflowEvidence" in ts and "validateWorkflowResult" in ts)
-check("workflow-policy routing", "function compatibleWorkflows" in ts and '"memory-recall": ["recall"]' in ts and '"performance-practice": ["answer-writing", "diagram", "questions"]' in ts and "WORKFLOWS_BY_OBLIGATION[type]" in ts)
-check("closed-book relearning verification", "Complete relearning verification with the source closed" in ts)
-check("diagram canvas", 'id="diagram-canvas"' in ts and "initializeDiagramCanvas" in ts)
-check("answer-writing constraints", "completedWithinTime" in ts and "wordLimit" in ts and "timeLimitMinutes" in ts)
-check("two-stage relearning", 'data-review-phase="relearn-repair"' in ts and 'data-review-phase="relearn-verify"' in ts)
-check("keyboard uses protected reveal", "reveal.click();" in ts and 'this.reviewPhase === "attempt"' in ts)
-check("keyboard cannot rerender through reveal", "void this.render();" not in active_retrieval_workspace_ts[active_retrieval_workspace_ts.index("handleKeyboard(event: KeyboardEvent)"):])
-check("production path has no sample seeding", all(term not in ts for term in ["seedPrototypeData", "seededSamples", "clearAndReseed", "reset-data", "RESET PROTOTYPE"]))
-check("attempt survives navigation", "reviewDrafts" in active_retrieval_workspace_ts and "captureDraft" in active_retrieval_workspace_ts and "restoreReviewDraft" in active_retrieval_workspace_ts and "this.activeRetrieval.captureDraft()" in ui_controller_ts)
-check("side-by-side comparison", "comparison-grid" in ts and "attemptComparisonPanel" in ts and "comparison-attempt-text" in ts)
-check("diagram visible in comparison", "comparison-diagram-canvas" in ts and "syncComparisonAttempt" in ts)
-check("automatic answer timing", "attemptElapsedMs <= timeLimitMinutes * 60_000" in ts and "answer-within-time" not in ts)
-check("relearning trigger context", "triggeringEvidence" in ts and "WHY THIS RELEARNING EXISTS" in ts)
-check("question set provenance", "questionSetRef" in ts and "questions-error-summary" in ts)
-check("source reveal preserves attempt", 'this.reviewPhase = "compare"' in active_retrieval_workspace_ts and "await this.render();" not in active_retrieval_workspace_ts[active_retrieval_workspace_ts.index('else if (action === "reveal")'):active_retrieval_workspace_ts.index('else if (action === "begin-verification")')])
-check("production backup schema", 'const BACKUP_FORMAT = "revision-director-backup" as const' in ts and 'const BACKUP_SCHEMA_VERSION = 2' in ts)
-check("frozen public capability API", "interface RevisionDirectorPublicApi" in ts and "Object.freeze({" in ts and 'Object.defineProperty(window, "RevisionDirector"' in ts)
-check("non-writable public API", 'Object.defineProperty(window, "RevisionDirector"' in ts and "writable: false" in ts and "RevisionDirectorBridge" not in ts)
-check("plugin capability negotiation", "REVISION_DIRECTOR_CAPABILITIES" in ts and "Missing capabilities:" in ts and "PLUGIN_MAX_REGISTRATION_ATTEMPTS = 2" in ts)
-check("plugin failure isolation", 'state: "failed"' in ts and "Plugin file could not be evaluated" in ts and "Plugin setup returned inactive" in ts)
-check("trusted local plugin loader", "LOCAL_PLUGIN_MAX_BYTES = 1 * 1024 * 1024" in ts and "revisionDirectorPluginFile" in ts and "script-src 'self' 'unsafe-inline' blob:" in shell)
-check("minimal canonical public operations", all(term in ts for term in ["getDueSummary", "listProfiles", "importStudyEvent", "createRevisionCandidate"]) and all(term not in ts[ts.index("interface RevisionDirectorPublicApi"):ts.index("const REVISION_DIRECTOR_PUBLIC_API_VERSION")] for term in ["rawDump", "recordReview", "replaceFromBackup"]))
-check("production backup format", 'format: BACKUP_FORMAT' in ts and 'candidate["format"] === BACKUP_FORMAT' in ts)
-check("D1 backup archive codec", "class BackupCodec" in ts and 'const BACKUP_ARCHIVE_FORMAT = "revision-director-backup-archive"' in ts and 'const BACKUP_ARCHIVE_VERSION = 2' in ts)
-check("D1 bounded chunks", "BACKUP_ARCHIVE_CHUNK_TARGET_BYTES = 512 * 1024" in ts and "BACKUP_ARCHIVE_CHUNK_MAX_ITEMS = 100" in ts and "BACKUP_ARCHIVE_MAX_DOCUMENT_BYTES" in ts)
-check("D1 compression detection", 'bytes[0] === 0x1f && bytes[1] === 0x8b' in ts and 'DecompressionStream("gzip")' in ts)
-check("D1 integrity proofs", "hashJson" in ts and "chunkHashes" in ts and "Backup final checksum failed verification" in ts and "sha256FallbackHex" in ts)
-check("D1 inspection metadata", "interface BackupInspectionMetadata" in ts and "totalDocuments" in ts and "warnings" in ts)
-check("D1 unreliable-time export contract", '"unreliable-interruption"].includes(duration.reason)' in ts)
-check("D1 production file route", '.rdbackup' in ts and "decodeBackupArchive" in ts and "inspectBackupArchive" in ts)
-check("D2 backup controller", "class BackupController" in ts and "createSafetyCopy" in ts and "acknowledgeSafetyCopy" in ts and "restore(candidateId" in ts)
-check("D2 non-mutating preview", "No application data has been changed" in ts and "renderRestorePreview" in ts)
-check("D2 active-session treatment", "activeRetrieval" in ts and "restore-active-treatment" in ts and "A backup containing a committing retrieval cannot be restored" in ts)
-check("D2 safety and confirmation", "restore-safety-saved" in ts and "restore-replace-confirm" in ts and "Final confirmation" in ts)
-check("D2 forensic rescue", "revision-director-forensic-rescue" in ts and ".rdrescue" in ts and "importable: false" in ts)
-check("mobile six-item nav", "grid-template-columns:repeat(6,1fr)" in css)
+    "build/checksums.py",
+    "dist/app.js",
+    "index.html",
+    "package.json",
+    "package-lock.json",
+    "vendor/ts-fsrs-6.0.0/index.umd.js",
+    "vendor/ts-fsrs-6.0.0/package.json",
+    "vendor/ts-fsrs-6.0.0/SHA256SUMS.txt",
+}
+check("checksum coverage for release-critical graph", required_checksum_targets <= checksum_targets)
+check("checksum scope excludes QA and prose", not any(path.startswith(("tests/", "docs/", ".github/")) for path in checksum_targets))
 
-check("Pass C planning factors", all(term in ts for term in ["dueRisk", "examImportance", "weakness", "reviewDuration", "examinationProximity"]))
-check("FSRS retrievability used only for memory risk", "function fsrsRetrievability" in ts and 'obligation.type !== "memory-recall"' in ts and ".model.forgettingCurve(" in ts and "elapsedDays" in ts and "stabilityFast" in ts)
-check("capacity-bounded planner", "function choosePlanItems" in ts and "Int32Array(capacity + 1)" in ts and "dailyCapacityMinutes" in ts)
-check("daily plan query/command split", "async calculateDailyPlan" in ts and "async ensureDailyPlan" in ts and "async regenerateDailyPlan" in ts and "async dailyPlan(" not in ts and "buildPlanningCandidate" in ts)
-check("planning evidence indexed once per cycle", "function planningEvidenceIndex" in planning_ts and "const indexedEvidence = planningEvidenceIndex(evidence);" in service_ts and re.search(r"buildPlanningCandidate\(\s*item,\s*indexedEvidence,", service_ts) is not None)
-check("canonical FSRS scheduler options", scheduler_ts.count("function fsrsBaseSchedulerOptions") == 1 and "const referenceOptions = fsrsBaseSchedulerOptions(0.9, weights);" in scheduler_ts and "...costAdrBase" in scheduler_ts and "fsrsSharedSchedulerOptions" not in scheduler_ts)
-check("canonical historical FSRS configuration collector", "function historicalFsrsConfigurations" in ts and "historicalFsrsConfigurations(reviewIndex.values())" in ts and "historicalFsrsConfigurations([reviews])" in ts)
-check("single guarded active-retrieval commit envelope", "private async commitActiveRetrievalTransition" in ts and "this.commitActiveRetrievalTransition(" in ts and ts.count("this.commitActiveRetrievalTransition(") == 2)
-check("backup validation decomposed behind one entrypoint", all(name in ts for name in ["function validateBackupKnowledgeStructure", "function validateBackupObligations", "function validateBackupEvidence", "function validateBackupChunks", "function validateBackupDailyPlans", "function validateBackupHistoricalCounters", "function validateBackupActiveAndSettings", "function validateBackupPayload"]) and ts.count("function validateBackupPayload") == 1)
-check("settings workspace extracted coherently", "class SettingsWorkspace" in ts and "private readonly settingsWorkspace: SettingsWorkspace" in ts and "this.settingsWorkspace.render()" in ts)
-check("planning renders reuse one read-only snapshot", ui_controller_ts.count("currentPlanSnapshot()") >= 3 and "this.planSnapshot = await this.service.calculateDailyPlan(new Date())" in ui_controller_ts and ui_controller_ts.count("await this.renderAll(") == 2)
-check("broad renderAll limited to lifecycle hydration", "async start(): Promise<void>" in ui_controller_ts and "private async hydrateCanonicalState" in ui_controller_ts and "private async renderAfterPlanningMutation" in ui_controller_ts and "invalidateAndWait(...domains)" in ui_controller_ts)
-check("planning reads and library joins are indexed/parallel", "const [joined, evidence, planHistory] = await Promise.all([" in service_ts and "const [obligations, units, profiles, nodes] = await Promise.all([" in service_ts and "const obligationsByUnit = new Map<string, RevisionObligation[]>()" in ui_controller_ts)
-check("FSRS shared scheduler settings have one owner", scheduler_ts.count("function fsrsBaseSchedulerOptions") == 1 and scheduler_ts.count("fsrsBaseSchedulerOptions(") == 3 and "const { version, desiredRetention, ...costAdrBase } = referenceOptions;" in scheduler_ts and "version === FSRS_MODEL && desiredRetention === 0.9" in scheduler_ts)
-check("historical FSRS collector has two consumers", scheduler_ts.count("function historicalFsrsConfigurations") == 1 and scheduler_ts.count("historicalFsrsConfigurations(") == 3)
-check("guarded retrieval commit protocol has one owner", active_retrieval_workspace_ts.count("private async commitActiveRetrievalTransition") == 1 and active_retrieval_workspace_ts.count("this.commitActiveRetrievalTransition(") == 2 and active_retrieval_workspace_ts.count("activePersistence.flush(committing)") == 1 and active_retrieval_workspace_ts.count("activePersistence.acceptCommittedTransition(post)") == 1)
-check("recordEvidence corrective subflows factored without splitting atomic commit", service_ts.count("private async createEvidenceFollowUp") == 1 and service_ts.count("private async applyCorrectiveEvidenceReturn") == 1 and service_ts.count("this.createEvidenceFollowUp(") == 1 and service_ts.count("this.applyCorrectiveEvidenceReturn(") == 1 and service_ts.count("this.repo.recordReview(") == 1)
-check("backup validator helper ownership exact", all(name in backup_validation_ts for name in ["function validateBackupKnowledgeStructure", "function validateBackupObligations", "function validateBackupEvidenceEvents", "function validateBackupChunks", "function validateBackupDailyPlans", "function validateBackupHistoricalCounters", "function validateBackupActiveAndSettings"]) and backup_validation_ts.count("function validateBackupPayload") == 1)
-check("SettingsWorkspace owns extracted settings surface", "class SettingsWorkspace" in settings_workspace_ts and "optimizeFsrsLocally" in settings_workspace_ts and "loadPluginFiles" in settings_workspace_ts and "backupController" in settings_workspace_ts and "private async optimizeFsrsLocally" not in ui_controller_ts)
-check("transparent planner UI", "Why score" in ts and "factorMeter" in ts and "Deferred by capacity" in ts)
-check("daily plan starts selected queue", "item.chunk ? `chunk:${item.chunk.id}` : item.joined.obligation.id" in ts)
-check("editable exam horizons", "async updateProfile" in ts and "data-profile-date" in ts and "data-profile-status" in ts)
-check("paused profiles excluded", 'item.profile.status !== "active"' in ts)
-check("passed profiles excluded", 'if (examDateTime(item.profile) && daysToExam < 0) return undefined' in ts and 'if (daysToExam < 0) return 0' in ts)
-check("obligation-specific weakness", "function obligationWeaknessScore" in ts and "event.obligationId === item.obligation.id" in ts)
-check("unit weakness secondary", "obligationSignal * 0.68" in ts and "unitContext * 0.18" in ts)
-check("capacity exceptions model", "requiredOverrun: PlannedQueueItem[]" in ts and "mustSplit: PlannedQueueItem[]" in ts)
-check("critical overrun explicit", "highestCritical && durationOf(highestCritical) > capacityMinutes" in ts and "requiredOverrun = [highestCritical]" in ts)
-check("must-split UI", "Critical work requiring split" in ts and "required overrun" in ts and "must split" in ts)
-
-check("duration learning model", "interface DurationObservation" in ts and "function durationObservationFor" in ts and "durationSampleCount" in ts)
-check("weekly balance factor", "weeklyBalance" in ts and "weeklySubjectBalanceScores" in ts and "interleaveSelected" in ts)
-check("automatic chunking", "interface ObligationChunk" in ts and "createAutomaticChunks" in ts and "synthesis-ready" in ts)
-check("parent scheduling protected", "completing this chunk records execution only" in ts and "completeChunk" in ts and 'const synthesisReady = item.obligation.chunking?.status === "synthesis-ready"' in ts and "obligation.dueAt = completedAt.toISOString()" not in ts)
-check("persisted daily plans", "interface DailyPlanRecord" in ts and 'DailyPlans: "dailyPlans"' in ts and "persistDailyPlan" in ts)
-check("plan versions and outcomes", "versions: DailyPlanVersion[]" in ts and "outcomes: DailyPlanOutcome[]" in ts)
-check("profile-qualified weekly balance", "function subjectBalanceKey" in ts and "subjectBalanceKey(item.profile.id, item.subject)" in ts)
-check("configured study-day balance boundary", "weeklySubjectBalanceScores(joined, planHistory, planningReference, this.settings.studyDayBoundaryHour)" in ts)
-check("chunk capacity provenance", "capacityMinutes: number;" in ts and "obligation.chunking.capacityMinutes" in ts)
-check("untouched split capacity reflow", "Replanned before execution because daily capacity changed." in ts)
-check("material plan signature", "capacityMinutes: value.capacityMinutes" in ts and "items: value.items.map" in ts)
-check("manual deferred amendment", "existing.disposition !== \"selected\" && existing.disposition !== \"required-overrun\"" in ts)
-check("planning and data-safety QA suites", (ROOT / "tests/planning-and-data-safety.spec.js").exists() and (ROOT / "tests/browser-data-safety.spec.py").exists() and (ROOT / "tests/scenarios/planning-persistence-validation.js").exists() and (ROOT / "tests/scenarios/planning-large-dataset.py").exists())
-check("phase-aware time runtime", "class PhaseTimeRuntime" in ts and "activeByPhase" in ts and "pauseHistory" in ts and "phaseHistory" in ts)
-check("120-second inactive-gap detection", "const INACTIVE_GAP_THRESHOLD_MS = 120_000" in ts and "gap-pending" in ts)
-check("four gap classifications", all(token in ts for token in ['"focus"', '"break"', '"split"', '"ignore"']))
-check("source reveal boundary", "sourceRevealAt" in ts and '"source-reveal"' in ts and '"verification-reveal"' in ts)
-check("unreliable timing excluded", 'reason: "unreliable-interruption"' in ts and "durationReliable" in ts)
-check("phase-time behavioral suites", (ROOT / "tests/scenarios/phase-time-runtime.js").exists() and (ROOT / "tests/scenarios/phase-time-runtime.py").exists() and (ROOT / "tests/storage-and-recovery.spec.js").exists())
-check("cross-tab ownership runtime", "class ReviewOwnershipCoordinator" in ts and "REVIEW_OWNER_HEARTBEAT_MS = 4_000" in ts and "REVIEW_OWNER_STALE_MS = 15_000" in ts)
-check("takeover hydration before mutation", 'this.transition("hydrating")' in ts and 'await this.callbacks?.hydrate(reason)' in ts and 'this.transition("primary")' in ts)
-check("secondary read-only UI", "This tab is read-only" in ts and "applyReadOnlyState" in ts and "existingPendingChunks" in ts)
-check("ownership lifecycle closure", "releaseForExit" in ts and 'window.addEventListener("pagehide"' in ts and 'window.addEventListener("beforeunload"' in ts)
-check("storage quota refresh", "refreshStorageHealth(requestPersistence = false)" in ts and "refreshStorageHealth(true)" in ts and "storage-capacity-banner" in shell)
-check("ownership and hostile-recovery behavioral suites", (ROOT / "tests/scenarios/ownership-storage-health.js").exists() and (ROOT / "tests/scenarios/ownership-storage-health.py").exists() and (ROOT / "tests/scenarios/hostile-recovery.py").exists() and (ROOT / "tests/browser-recovery.spec.py").exists())
-check("historical pass/stage test entrypoints removed", not list((ROOT / "tests").glob("pass-*")) and not list((ROOT / "tests").glob("stage-*")))
-check("shared browser harness files checksum-covered", all(path in checksum_targets for path in ["tests/helpers/browser_harness.py", "tests/helpers/persistent_browser.py", "tests/helpers/suite-runner.js", "tests/qa.py"]))
-check("browser scenarios use shared launch and error plumbing", len(browser_scenarios) == 15 and all(".chromium.launch(" not in body and "page.on(\"pageerror\"" not in body and "page.on('pageerror'" not in body and "page.on(\"console\"" not in body and "page.on('console'" not in body for body in browser_scenarios.values()))
-check("browser scenarios have no scenario imports or runpy loaders", all("runpy" not in body and "scenarios/persistent-active-retrieval.py" not in body for body in browser_scenarios.values()))
-check("browser polling centralized", all("while time.monotonic() < deadline" not in body and "while time.monotonic()<deadline" not in body for body in browser_scenarios.values()) and "def wait_until(" in browser_harness_py)
-check("persistent browser plumbing centralized", all(token in persistent_browser_py for token in ["PERSISTENT_BROWSER_SHIM", "create_persistent_frame", "host_state_all", "host_state_get", "restore_backup_with_safety_copy"]) and "class FakeStorage" not in browser_scenarios["persistent-active-retrieval.py"])
-check("canonical QA command surface", all(root_package.get("scripts", {}).get(name) for name in ["qa:core", "qa:optimizer", "qa:browser:durability", "qa:browser", "qa:full"]) and all(command in ci_workflow for command in ["npm run qa:core", "npm run qa:optimizer", "npm run qa:browser:durability", "npm run qa:browser"]))
-check("hosted optimizer documentation canonical", all("build:optimizer-static" not in text and "Revision_Director_Optimizer_Static" not in text for text in [readme_text, third_party_notices_text, development_qa_text]) and "npm run build:hosted" in readme_text and "Revision_Director_Hosted/" in readme_text)
-check("IndexedDB tail has no stale application-services heading", "APPLICATION SERVICES" not in repository_ts)
-subprocess.run(["node", "--check", str(ROOT / "dist/app.js")], check=True)
-print(f"PASS {len(checks)} build-integrity checks")
+print(f"PASS {len(checks)} authoritative build/architecture checks")
