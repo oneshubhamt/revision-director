@@ -50,29 +50,20 @@
   ): MemoryDifficultyAssessment {
     assert(obligation.type === "memory-recall", "Persistent-difficulty assessment is only valid for memory recall.");
     const canonicalPolicy = canonicalMemoryDifficultyPolicy(policy);
-    const card = obligation.policyState.fsrsCard;
-    assert(card, "Memory obligation has no FSRS card for difficulty assessment.");
+    assert(obligation.policyState.fsrsCard, "Memory obligation has no FSRS card for difficulty assessment.");
 
-    // Revision Director's one-day learning step can move an unsuccessful new card
-    // into FSRS Review state before the learner has ever demonstrated successful
-    // retrieval. Host difficulty semantics therefore follow canonical review
-    // outcomes: failures before the first Good/Easy observation are learning
-    // failures; only failures after establishment count as established lapses.
+    // Host difficulty semantics derive only from canonical review evidence.
+    // The materialized FSRS card is a scheduling projection, not a second
+    // history source.
     let established = false;
     let earlyLearningFailures = 0;
     let establishedLapses = 0;
-    if (memoryReviews.length === 0) {
-      // Integrity/recovery callers may not have history in hand. The materialized
-      // FSRS lapse counter remains a conservative fallback in that narrow case.
-      establishedLapses = card.lapses;
-    } else {
-      for (const review of memoryReviews) {
-        if (review.rating === Rating.Again) {
-          if (established) establishedLapses += 1;
-          else earlyLearningFailures += 1;
-        } else if (review.rating >= Rating.Good) {
-          established = true;
-        }
+    for (const review of memoryReviews) {
+      if (review.rating === Rating.Again) {
+        if (established) establishedLapses += 1;
+        else earlyLearningFailures += 1;
+      } else if (review.rating >= Rating.Good) {
+        established = true;
       }
     }
     const level: MemoryDifficultyLevel =
