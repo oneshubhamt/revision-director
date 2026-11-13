@@ -1609,6 +1609,39 @@
       }
       const canonicalMemoryReviews = memoryReviewObservationIndex(evidenceEvents);
       validateMemoryDatasetProjectionChain(obligations, canonicalMemoryReviews);
+      for (const obligation of obligations) {
+        if (obligation.type !== "memory-recall") continue;
+        const reviews = canonicalMemoryReviews.get(obligation.id) ?? [];
+        let successStreak = 0;
+        let failureCount = 0;
+        for (const review of reviews) {
+          const sourceEvent = evidenceMap.get(review.evidenceEventId);
+          assert(sourceEvent, "Memory review references a missing Evidence Event.");
+          const beforeState = review.source === "direct-memory"
+            ? sourceEvent.beforePolicyState
+            : sourceEvent.correctiveMemoryTransition?.beforePolicyState;
+          const afterState = review.source === "direct-memory"
+            ? sourceEvent.afterPolicyState
+            : sourceEvent.correctiveMemoryTransition?.afterPolicyState;
+          assert(beforeState && afterState, "Memory review lacks host policy state.");
+          assert(
+            beforeState.successStreak === successStreak &&
+            beforeState.failureCount === failureCount &&
+            beforeState.stage === review.beforeCard.state &&
+            beforeState.lastIntervalDays === review.beforeCard.scheduledDays,
+            "Memory review before-policy state does not continue canonical host history.",
+          );
+          successStreak = review.rating >= Rating.Good ? successStreak + 1 : 0;
+          if (review.rating === Rating.Again) failureCount += 1;
+          assert(
+            afterState.successStreak === successStreak &&
+            afterState.failureCount === failureCount &&
+            afterState.stage === review.afterCard.state &&
+            afterState.lastIntervalDays === review.afterCard.scheduledDays,
+            "Memory review after-policy state does not match canonical host history.",
+          );
+        }
+      }
 
       const chunksByObligation = new Map<string, ObligationChunk[]>();
       for (const chunk of chunks) {
