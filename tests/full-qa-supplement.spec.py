@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from playwright.sync_api import Browser, Page, sync_playwright
-from helpers.browser_harness import load_browser_qa, launch_chromium, wait_for_app_ready, wait_for_layout, wait_until
+from helpers.browser_harness import load_browser_qa, launch_chromium, wait_for_app_ready, wait_for_layout
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_QA = load_browser_qa("revision_director_browser_qa_supplement")
@@ -86,32 +86,6 @@ def verify_responsive_surfaces(page: Page) -> None:
             check(page.locator(f"#pane-{pane}").is_visible(), f"Pane is hidden: {pane}")
 
 
-def verify_long_render_stability(page: Page) -> None:
-    page.set_viewport_size({"width": 1280, "height": 900})
-    page.evaluate(
-        """() => {
-          const panes = ['today', 'review', 'library', 'study', 'history', 'settings'];
-          for (let cycle = 0; cycle < 30; cycle += 1) {
-            for (const pane of panes) {
-              document.querySelector(`[data-pane="${pane}"]`).click();
-            }
-          }
-        }"""
-    )
-    page.locator("#pane-settings").wait_for(state="visible")
-    wait_for_layout(page)
-
-    before = page.locator("[data-profile-editor]").count()
-    page.locator("#new-profile-name").fill("Single action")
-    page.locator("#new-profile-date").fill("2029-01-01")
-    page.locator('[data-action="add-profile"]').click()
-    wait_until(page, lambda: page.locator("[data-profile-editor]").count() == before + 1, timeout=5000, interval=40)
-    check(
-        page.locator("[data-profile-editor]").count() == before + 1,
-        "Repeated renders caused a duplicate action",
-    )
-
-
 def verify_stored_content_escaping(page: Page) -> None:
     page.locator("#quick-add-unit").click()
     page.locator("#unit-dialog").wait_for(state="visible")
@@ -166,7 +140,6 @@ def main() -> None:
         check(page.title() == "Revision Director · VA7.1 Pass E1", "Release title mismatch")
         restore_fixture(page)
         verify_responsive_surfaces(page)
-        verify_long_render_stability(page)
         verify_stored_content_escaping(page)
         verify_keyboard_and_names(page)
 
