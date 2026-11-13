@@ -11,7 +11,7 @@ Current identities are:
 - database layout: version `3`;
 - durable document schema: version `1`;
 - backup payload: `revision-director-backup`, schema version `2`;
-- backup archive: version `2`.
+- backup archive: version `3`.
 
 A newer or older Revision Director release may open the database and restore a backup when these schema identities remain compatible. The persisted application-version field is release provenance; a compatible release attempts to refresh it after opening, but a failed provenance-only refresh does not block access to otherwise compatible data. Backup application-version fields record export provenance. Neither release string is a compatibility gate.
 
