@@ -105,7 +105,6 @@ def main() -> None:
         wait_until(first, lambda: "available" in first.locator("#settings-content").inner_text().lower())
         check("available" in first.locator("#settings-content").inner_text().lower(), "Passive startup storage state was not reported")
 
-        first.locator('[data-pane="settings"]').click()
         restore_fixture_d2(page, first, FIXTURE)
         wait_until(first, lambda: "restored" in first.locator("#toast").inner_text().lower())
         first.locator('[data-pane="library"]').click()
