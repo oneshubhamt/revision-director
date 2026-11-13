@@ -3,7 +3,10 @@ from pathlib import Path
 import os, runpy, shutil
 from playwright.sync_api import sync_playwright
 
-ROOT=Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(TESTS))
+from helpers.browser_harness import ROOT, chromium_executable
 base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_stage_c_responsive_base')
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base['INDEXEDDB_SHIM'],1)
 restore_selected_backup=base['restore_selected_backup']
@@ -15,7 +18,7 @@ def check(v,msg):
  if not v: raise AssertionError(msg)
 
 def main():
- executable=os.environ.get('CHROMIUM_EXECUTABLE') or shutil.which('chromium') or '/usr/bin/chromium'
+ executable=chromium_executable() or '/usr/bin/chromium'
  viewports=[(320,568),(360,640),(375,667),(390,844),(412,915),(460,800),(560,800),(700,700),(820,900),(821,900),(1024,768),(1280,800),(1440,1000),(1920,1080)]
  panes=('today','review','library','study','history','settings')
  with sync_playwright() as pw:

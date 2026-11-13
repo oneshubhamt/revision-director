@@ -6,7 +6,10 @@ import json, os, time
 from backup_fixture_codec import decode_file, encode_payload
 from playwright.sync_api import sync_playwright
 
-ROOT = Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(TESTS))
+from helpers.browser_harness import ROOT, chromium_executable
 # Reuse the exact deterministic IndexedDB-compatible HTML fixture from the main browser suite.
 spec = importlib.util.spec_from_file_location('revision_director_main_browser_qa', ROOT / 'tests/browser-qa.spec.py')
 if spec is None or spec.loader is None:

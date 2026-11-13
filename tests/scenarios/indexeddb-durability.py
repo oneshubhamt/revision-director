@@ -5,10 +5,12 @@ import os
 import shutil
 from playwright.sync_api import sync_playwright
 
-ROOT = Path(__file__).resolve().parents[1]
-
+TESTS = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(TESTS))
+from helpers.browser_harness import ROOT, chromium_executable
 def main() -> None:
-    chromium = os.environ.get("CHROMIUM_EXECUTABLE") or shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+    chromium = os.environ.get("CHROMIUM_EXECUTABLE") or chromium_executable()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(
             headless=True,

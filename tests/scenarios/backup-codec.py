@@ -4,7 +4,10 @@ from tempfile import TemporaryDirectory
 import json, os, runpy, shutil
 from playwright.sync_api import sync_playwright
 
-ROOT=Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(TESTS))
+from helpers.browser_harness import ROOT, chromium_executable
 base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_d1_base')
 INDEXEDDB_SHIM=base['INDEXEDDB_SHIM']
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+INDEXEDDB_SHIM,1)
@@ -27,7 +30,7 @@ def complete_restore(page,tmp):
 
 def main():
     global checks
-    exe=os.environ.get('CHROMIUM_EXECUTABLE') or shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
+    exe=chromium_executable()
     with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True,executable_path=exe if exe else None,args=['--no-sandbox','--disable-dev-shm-usage'])
         page=browser.new_page(viewport={'width':1440,'height':1000})

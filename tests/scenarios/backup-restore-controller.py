@@ -4,7 +4,10 @@ from tempfile import TemporaryDirectory
 import os, runpy, shutil, sys
 from playwright.sync_api import sync_playwright
 
-ROOT=Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(TESTS))
+from helpers.browser_harness import ROOT, chromium_executable
 sys.path.insert(0,str(ROOT/'tests'))
 base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_d2_base')
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base['INDEXEDDB_SHIM'],1)
@@ -33,7 +36,7 @@ def restore_selected(page, tmp:Path, treatment:str='discard'):
 
 def main():
     global checks
-    exe=os.environ.get('CHROMIUM_EXECUTABLE') or shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
+    exe=chromium_executable()
     with sync_playwright() as pw, TemporaryDirectory() as td:
         tmp=Path(td)
         browser=pw.chromium.launch(headless=True,executable_path=exe if exe else None,args=['--no-sandbox','--disable-dev-shm-usage'])
