@@ -1,17 +1,9 @@
 const assert = require('assert/strict');
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
-const { webcrypto } = require('crypto');
+const { createVendorRuntime } = require('./helpers/runtime-harness');
 
-const root = path.resolve(__dirname, '..');
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
-const context = { crypto:webcrypto, structuredClone, console, Date, Intl, URL, Blob, TextEncoder, TextDecoder, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array };
-context.window=context; context.self=context; context.globalThis=context;
-vm.createContext(context);
-vm.runInContext(vendor, context, { filename:'ts-fsrs-6.0.0.umd.js' });
-const F=context.FSRS;
-if(!F) throw new Error('Vendored ts-fsrs runtime unavailable');
+const context = createVendorRuntime();
+const F = context.FSRS;
+
 
 const DAY_MS=86_400_000;
 const HOUR_MS=3_600_000;
