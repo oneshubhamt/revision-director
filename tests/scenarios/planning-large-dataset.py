@@ -14,6 +14,7 @@ from helpers.browser_harness import (
     launch_chromium,
     load_browser_qa,
     open_html_page,
+    open_rendered_pane,
     wait_for_backup_import_result,
     wait_for_layout,
     wait_until as shared_wait_until,
