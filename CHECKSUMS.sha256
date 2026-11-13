@@ -3,13 +3,13 @@
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 af876ea5cb9b13c35ab6626f3ba640de3946ffad1329f5c1e6adf4483b67fa81  ./build/checksums.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
-8e4c8f2e69b521d621a181bf52dd02e9283fb3ecf292d64767003097c8489f9b  ./dist/app.js
+6c89def79f8dcd4a1e7b4b7d62387f2adacc23d9e1105c38c8c0e6b96ff34fee  ./dist/app.js
 2aa4507050fcebca069e0874287856820a62a6f4febe7b8acd4de28decf6446d  ./docs/ARCHITECTURE.md
 9af5c8c6dca1d54165e1355a12c8cc24865167752553b87a29a8af3178191604  ./docs/DATA_AND_STORAGE.md
 fd8f5185f6caa63a8404018018bf48938446ea2076c987cf22923085e0973bb9  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ba443230bfdda805284486e5b36639034180a19c288be052d9e329ab4d001404  ./docs/SCHEDULING_AND_PLANNING.md
-1e1523f0aa28ed7f533a383ef1b13869ad9d1496ed4eed29b5b514a4de60825c  ./index.html
+3ba874963159d3ed002a97a1b81b13c7825c1e33a3ae45a6446f9e544c5efe9e  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -40,7 +40,7 @@ db4f20d09fa64fa2b60bd157ef951c8e53859eec54b0e0391ab2d245e356c838  ./source/app/4
 995a2f1a55be2ec3315fb1f228e31c74e2841f9f2d8ba6cb8b9ac0a40ff39015  ./source/app/46-workflow-form-adapter.ts
 3e1d94b2a64682a7f484446ac7a1d0faaa9b8d07b01a1aedf459963c138dcdab  ./source/app/47-active-retrieval-workspace.ts
 5f55de8aa4ef394375347e075a17b9b1464babacfe6d5af3a6e23a76077f3ff5  ./source/app/50-ui-controller.ts
-f9560c8de7e7926321bb71dd697090c98ab34d680b3a4b225d5832f848f51949  ./source/app/55-extension-runtime.ts
+82f5cb4afd81db6ee8a35817e53a56715233024848e7abcbf36875b2c57800d3  ./source/app/55-extension-runtime.ts
 77963fce015a51c7175b7b3b41faefd32600f5cae6c463f19a836e4333aef11b  ./source/app/60-public-bridge-bootstrap.ts
 e30f76f9a4dcb5f47b7decb1b68bf3e369b69864c56320fc41fbabb2225b192c  ./source/app/source-manifest.json
 23dcff5f93497835583522df6857556c8299350450dc2f3acefd569bdc058893  ./source/presentation/prepaint.js
@@ -83,7 +83,7 @@ e72a3be99a936adbb9355432d25b6aaf5ce83d05e1c6c594053041ada61901ca  ./tests/pass-d
 cb2771aefa631ee48dbd3e73ed47dfa1837bbdc6b814f6c4798b8c86f28e4f69  ./tests/pass-d2-browser.spec.py
 5dfeb3f3cf03cd328a6049a23828c82423f22a71178b819340b540c88a71fef8  ./tests/pass-d2-controller.spec.js
 b7c75605881c26a57b75bd0c208ffb07ca474b0c789ecf51b38baf078bde13f8  ./tests/pass-e1-browser.spec.py
-2f4340a450dcb95f9b1a52769fa0cc5d0ecc64d6efc1b6ca68f0f28ad77b839a  ./tests/pass-e1.spec.js
+870693fba2b32503a2923abafc112535e7e28291692e1f5fbae31dfb49182281  ./tests/pass-e1.spec.js
 cfa37c95375f9680ce2eb8383c29a1dba0428d093f7ff27c1822aef8eed3ec78  ./tests/pass-f1-reliability-browser.spec.py
 ea376c42c45dd829aef23d5b709f43ff4494370af73edf924e7590cc893a367d  ./tests/pass-f1-reliability.spec.js
 d021d6343f33dcb0bc85d151c4bed0b9768042f3aeb7f5233971df7d9a91ff36  ./tests/planning.spec.js
