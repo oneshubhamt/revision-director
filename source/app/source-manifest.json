@@ -103,11 +103,16 @@
     },
     {
       "order": 20,
+      "path": "app/46-workflow-form-adapter.ts",
+      "layer": "Workflow-specific DOM form serialization, population and visibility adapter."
+    },
+    {
+      "order": 21,
       "path": "app/50-ui-controller.ts",
       "layer": "DOM helpers and the current UI controller."
     },
     {
-      "order": 21,
+      "order": 22,
       "path": "app/60-public-bridge-bootstrap.ts",
       "layer": "Validated public bridge and boot sequence; the build owns the outer sealed IIFE."
     }
