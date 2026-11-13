@@ -1264,6 +1264,7 @@
       assert(draft.area.trim() && draft.task.trim() && draft.measure.trim(), "Area, task and measure are required.");
       assert(Number.isFinite(draft.durationMinutes) && draft.durationMinutes >= 1 && draft.durationMinutes <= 1440, "Duration is invalid.");
       assert(Array.isArray(draft.linkedUnitIds), "Study Event links are invalid.");
+      assert(new Set(draft.linkedUnitIds).size === draft.linkedUnitIds.length, "Study Event links cannot contain duplicates.");
       for (const unitId of draft.linkedUnitIds) {
         const unit = await this.unit(unitId);
         assert(unit.profileId === draft.profileId, "Study Event cannot link a knowledge unit from another exam profile.");
@@ -1280,7 +1281,7 @@
         source: draft.source.trim(),
         durationMinutes: Math.round(draft.durationMinutes),
         understanding: draft.understanding,
-        linkedUnitIds: [...new Set(draft.linkedUnitIds)],
+        linkedUnitIds: [...draft.linkedUnitIds],
         notes: draft.notes.trim(),
         origin: draft.origin,
         createdAt: nowIso(),
