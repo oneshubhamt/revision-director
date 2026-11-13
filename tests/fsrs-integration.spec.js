@@ -31,7 +31,7 @@ async function mustReject(fn,message){ let failed=false; try{await fn();}catch{f
 
 const recallWorkflow={kind:'recall',prompt:'Recall the target completely before comparison.',checkpoints:['Core fact','Mechanism','Discriminator'],responseMedium:'oral'};
 const timing={totalActiveMs:600000,activeByPhase:{attempt:600000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]};
-const durationObservation={plannedMinutes:15,actualMinutes:10,accepted:true,reason:'accepted',estimateBefore:15,estimateAfter:15,exactSamples:0,unitWorkflowSamples:0,globalWorkflowSamples:0};
+const durationObservation={plannedMinutes:12,actualMinutes:10,accepted:true,reason:'accepted',estimateBefore:12,estimateAfter:12,exactSamples:0,unitWorkflowSamples:0,globalWorkflowSamples:0};
 const ratingEvidence=rating=>rating===api.Rating.Hard
   ? {completeness:3,independence:3,application:2,errorTypes:['slow-retrieval'],correctionNote:'Recovered after a minor cue.'}
   : rating===api.Rating.Again
