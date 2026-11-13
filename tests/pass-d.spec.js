@@ -70,6 +70,8 @@ async function serviceChecks(){
   };
   const service=new api.RevisionService(repo);
   service.settings={schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}};
+  service.unit=async()=>({id:'u',profileId:'p',status:'active'});
+  service.profile=async()=>({id:'p',status:'active'});
   service.manualPlanItem=async(obligationId,chunkId)=>({key:api.planItemKey(obligationId,chunkId),obligationId,...(chunkId?{chunkId}:{}),profileId:'p',unitId:'u',subject:'Geology',workflow:'reconstruction',title:'Manual item',estimatedMinutes:20,score:0,disposition:'selected',reasons:['manual']});
   const queueItem={...item('x','Geology','reconstruction',80),executionMinutes:30};
   const base={generatedAt:now,studyDayKey:'2026-07-25',capacityMinutes:60,candidateMinutes:30,plannedMinutes:30,selected:[queueItem],requiredOverrun:[],mustSplit:[],deferred:[],overdueCount:0,dueCount:1,broughtForwardCount:0};
