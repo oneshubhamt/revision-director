@@ -61,12 +61,15 @@ def main():
             page.evaluate("document.querySelector('#toast').textContent=''")
             page.locator('#import-backup').set_input_files(str(tampered))
             wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Tampered archive import handler did not finish')
-            check('integrity' in page.locator('#toast').inner_text().lower() or 'checksum' in page.locator('#toast').inner_text().lower(),'Tampered archive was not rejected')
+            tampered_message=page.locator('#toast').inner_text().strip()
+            check(bool(tampered_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')") and not page.locator('#restore-dialog').is_visible(),
+                  f'Tampered archive did not fail through the rejection UI contract · toast={tampered_message!r}')
             page.evaluate("document.querySelector('#toast').textContent=''")
             page.locator('#import-backup').set_input_files(str(RAW))
             wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Raw JSON import handler did not finish')
-            raw_message=page.locator('#toast').inner_text().lower()
-            check('supported' in raw_message or 'archive' in raw_message or 'incomplete' in raw_message or 'invalid json lines' in raw_message,'Raw JSON was not rejected')
+            raw_message=page.locator('#toast').inner_text().strip()
+            check(bool(raw_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')") and not page.locator('#restore-dialog').is_visible(),
+                  f'Raw JSON did not fail through the rejection UI contract · toast={raw_message!r}')
         check(not errors,f'Browser errors: {errors}')
         browser.close()
     print(f'PASS {checks} Pass D1 browser codec checks')
