@@ -373,7 +373,7 @@ def scenario_cost_adr_settings(browser) -> None:
 
 def scenario_pass_d(browser) -> None:
     page, errors = open_page(browser, {"width": 1365, "height": 1000}, baseline=True)
-    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
+    page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
     settings = page.locator('#settings-form')
     settings.locator('[name="dailyCapacityMinutes"]').fill('30')
     settings.locator('button[type="submit"]').click()
