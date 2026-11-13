@@ -1,7 +1,7 @@
 'use strict';
 const { createAppRuntime } = require('./helpers/runtime-harness');
 
-const { api, context } = createAppRuntime({
+const { api } = createAppRuntime({
   globalName: '__RD_PLAN_TEST__',
   expose: ["Rating","FsrsMemoryPolicy","RevisionService","buildPlanningCandidate","choosePlanItems","prepareFsrsScheduler","daysToExamination","examinationProximityScore","planningLookaheadDays","obligationWeaknessScore","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","memoryDifficultyAssessment","correctiveRelearnDueAt"],
   requireFsrs: false,
