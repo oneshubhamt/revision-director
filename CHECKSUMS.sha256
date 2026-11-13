@@ -3,13 +3,13 @@ f9cbf5520f98411d1089bff1156271d78747b2addfce4d3316ea29a7cd22074b  ./.github/work
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 af876ea5cb9b13c35ab6626f3ba640de3946ffad1329f5c1e6adf4483b67fa81  ./build/checksums.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
-d1267ff86ee1830fe54e87a3b4f675e6e327acc07dc2f6817096ba51764ee2c6  ./dist/app.js
+bf9c6c0130ab8721dba7d2e5a75662d948110dbb10a08f073aba309b61644cd9  ./dist/app.js
 2aa4507050fcebca069e0874287856820a62a6f4febe7b8acd4de28decf6446d  ./docs/ARCHITECTURE.md
 9af5c8c6dca1d54165e1355a12c8cc24865167752553b87a29a8af3178191604  ./docs/DATA_AND_STORAGE.md
 9ce0a40137f11bbba2543c5587a60ded27531b191adeb633ab48fe94c8d42a34  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ba443230bfdda805284486e5b36639034180a19c288be052d9e329ab4d001404  ./docs/SCHEDULING_AND_PLANNING.md
-f7e6eab50463c3540f8e592b2df335dfee33f658ebb8f5e206fe53886f876a32  ./index.html
+c3659b79af5c364824c135c893c654b118af1d8dc5f02a3ff3df25a687e277eb  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -23,7 +23,7 @@ de8d46d2767a2cb078b3b2aacc097dc86a5e653a01b881fd3dcc43f575842c89  ./source/app/0
 1e943c54bc7363c5237d74e34e8dbd3796fad5fb91c91a8a3899c3cd0d744cae  ./source/app/12-production-contracts.ts
 4a2d2b74c4bb4d0f7940d3c00b000839f268d0f660693cef7d5129f5d725e5a0  ./source/app/18-fsrs-personalization.ts
 2d5512cd296f2137c8de43a858651393681ebfb4a1ae02832de3aa03151db5a0  ./source/app/18a-fsrs-browser-optimizer.ts
-0db2c0096be99e665ba8c8703b1c7422f137d96506aab8e83169ed3b2d3d904f  ./source/app/19-revision-scheduler-port.ts
+5cae383d16a243f5ddd13638945dfb6394016131db4f3af58b41167aa8c937ac  ./source/app/19-revision-scheduler-port.ts
 bd5c4c4fde3af146b49ffba5104edfe01959630b7764e49a711cddd5bbc05ad8  ./source/app/20-policy-planning-kernel.ts
 7d6de3dcba9f7f27b47156e75f02525c64998736ced555e93eb41751d69f4eb8  ./source/app/21-policy-implementations.ts
 eee37753fb8ee7e315d963d75ebf2b4b9c0aeba49e033a7fa81d4fbe27cdf437  ./source/app/22-backup-validation.ts
@@ -51,7 +51,7 @@ e76db9184cee93d11d636df95b06192690481fd144033d327dd8726d476f50f3  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 b8acbd89a7a929b219e091e34a9723ab163d608bebec4a2739d6b62ce8a45acd  ./tests/backup_fixture_codec.py
 0b220cb505467f53f52002b1e39f16d6f50e451a49a0236e7622fe95461705ed  ./tests/browser-qa.spec.py
-1e4f00774f1ade4b1ab80cb5f95e0a6b1622e307e691f031144c50980347902d  ./tests/build-integrity.spec.py
+a1dd764118159875bd8659b8bef0131c2ee26e5fd0e1024d788976a14b6da265  ./tests/build-integrity.spec.py
 cb0c953c10f8a02eb28ccc4fe487eb5e045d364835540d5534bd9779d19f8274  ./tests/fixtures/browser-baseline.json
 909124745204ba2ad8536712f53588bcd3b91422854fa9191c161d13d0b7867b  ./tests/fixtures/browser-baseline.rdbackup
 c0e60f44c36dc1d4de85140a7f8d087382ca30d880506d5ae3bf01218869c9c0  ./tests/fsrs-browser-optimizer.spec.py

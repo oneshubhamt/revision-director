@@ -8682,8 +8682,10 @@ exports.withFuzzing = withFuzzing;
       }
   }
   const FSRS_SCHEDULER_CACHE = new Map();
-  function fsrsSharedSchedulerOptions(weights) {
+  function fsrsBaseSchedulerOptions(desiredRetention, weights) {
       return {
+          version: FSRS_MODEL,
+          desiredRetention,
           enableShortTerm: true,
           learningSteps: [...FSRS_LEARNING_STEPS],
           relearningSteps: [...FSRS_RELEARNING_STEPS],
@@ -8695,22 +8697,18 @@ exports.withFuzzing = withFuzzing;
           ...(weights ? { weights: [...weights] } : {}),
       };
   }
-  function fsrsBaseSchedulerOptions(desiredRetention, weights) {
-      return {
-          version: FSRS_MODEL,
-          desiredRetention,
-          ...fsrsSharedSchedulerOptions(weights),
-      };
-  }
   async function createCostAdrFsrsScheduler(runtime, policy, profile) {
       const weights = profile ? [...profile.weights] : [...FSRS7_DEFAULT_WEIGHTS];
-      const reference = await runtime.DefaultScheduler(fsrsBaseSchedulerOptions(0.9, weights));
+      const referenceOptions = fsrsBaseSchedulerOptions(0.9, weights);
+      const reference = await runtime.DefaultScheduler(referenceOptions);
+      const { version, desiredRetention, ...costAdrBase } = referenceOptions;
+      assert(version === FSRS_MODEL && desiredRetention === 0.9, "Cost-ADR reference scheduler options are invalid.");
       assert(typeof runtime.defineScheduler === "function", "Embedded ts-fsrs runtime does not expose scheduler composition.");
       return runtime.defineScheduler(reference.definition)
           .use(runtime.schedulerCostAdrMiddleware, runtime.schedulerFuzzingMiddleware, runtime.schedulerStatsMiddleware, runtime.schedulerScheduledDaysMiddleware, runtime.schedulerLearningStepsMiddleware, runtime.schedulerMaximumIntervalMiddleware, runtime.schedulerMonotonicIntervalMiddleware)
           .create({
           config: {
-              ...fsrsSharedSchedulerOptions(weights),
+              ...costAdrBase,
               fractionalDays: true,
               costAdrPolicy: clone(policy.costAdrPolicy),
               goalCostWeight: policy.goalCostWeight,
