@@ -64,8 +64,12 @@ const clone=value=>structuredClone(value);
   for(let cardIndex=0;cardIndex<CARD_COUNT;cardIndex+=1){
     const cardId=`scale-card-${String(cardIndex).padStart(3,'0')}`;
     let finalCard;
+    let successStreak=0;
+    let failureCount=0;
     for(let reviewIndex=0;reviewIndex<templateReviews.length;reviewIndex+=1){
       const review=templateReviews[reviewIndex];
+      if(review.rating>=api.Rating.Good) successStreak+=1; else successStreak=0;
+      if(review.rating===api.Rating.Again) failureCount+=1;
       const before={...clone(review.beforeCard),cardId};
       const after={...clone(review.afterCard),cardId};
       finalCard=after;
@@ -80,7 +84,19 @@ const clone=value=>structuredClone(value);
         schedulerConfig:clone(scheduler.configuration),
       });
     }
-    obligations.push({id:cardId,type:'memory-recall',policyState:{fsrsCard:clone(finalCard)}});
+    obligations.push({
+      id:cardId,
+      type:'memory-recall',
+      policyState:{
+        engine:'ts-fsrs',
+        version:'6.0.0',
+        stage:finalCard.state,
+        successStreak,
+        failureCount,
+        lastIntervalDays:finalCard.scheduledDays,
+        fsrsCard:clone(finalCard),
+      },
+    });
   }
 
   const indexStart=performance.now();
