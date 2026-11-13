@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-off, read-only QA baseline profiler. Linux /proc; not a test gate."""
+"""Reproducible QA profiler. Linux /proc; QA commands may regenerate artifacts."""
 from __future__ import annotations
 import json
 import os
