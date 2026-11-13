@@ -16,6 +16,7 @@ STATIC_PYTHON = (
 CORE_NODE_PLAN = (
     "tests/scenarios/public-plugin-runtime.js",
     "tests/fsrs-contract-parity.spec.js",
+    "tests/fsrs-reference-parity.spec.js",
     "tests/fsrs-integration.spec.js",
     "tests/fsrs-optimizer-core.spec.js",
     "tests/fsrs-optimizer-policy.spec.js",
@@ -29,6 +30,7 @@ CORE_NODE_PLAN = (
     "tests/scenarios/backup-controller.js",
     "tests/scenarios/data-safety-controller.js",
     "tests/planning.spec.js",
+    "tests/planner-properties.spec.js",
     "tests/runtime-harness-ownership.spec.js",
     "tests/scenarios/production-contracts-storage.js",
     "tests/scenarios/active-retrieval-persistence.js",
