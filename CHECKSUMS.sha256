@@ -5,8 +5,8 @@ af876ea5cb9b13c35ab6626f3ba640de3946ffad1329f5c1e6adf4483b67fa81  ./build/checks
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
 49f092b02e8e5e2194360594f6cdfbf2ea269db7929d497aa3720c36d16cea4c  ./dist/app.js
 2aa4507050fcebca069e0874287856820a62a6f4febe7b8acd4de28decf6446d  ./docs/ARCHITECTURE.md
-99180d571c00fa3022b45f0a64432deef138bb95cfb55a29ca0813021e99f0fd  ./docs/DATA_AND_STORAGE.md
-e1fce6fd7391d4f04537001ab9cb3a77a75bae9c08fef6862ec056724f71b896  ./docs/DEVELOPMENT_AND_QA.md
+6d08249a24b1842964764244440d7100cc94dd5cf6f45d56ae54578b5ccda9e3  ./docs/DATA_AND_STORAGE.md
+fd8f5185f6caa63a8404018018bf48938446ea2076c987cf22923085e0973bb9  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ba443230bfdda805284486e5b36639034180a19c288be052d9e329ab4d001404  ./docs/SCHEDULING_AND_PLANNING.md
 eec0fa7833dc95217f6d95992910d24dda8d27d1002d92ffcd3352db8e1c9a86  ./index.html
@@ -80,7 +80,7 @@ cb2771aefa631ee48dbd3e73ed47dfa1837bbdc6b814f6c4798b8c86f28e4f69  ./tests/pass-d
 5dfeb3f3cf03cd328a6049a23828c82423f22a71178b819340b540c88a71fef8  ./tests/pass-d2-controller.spec.js
 b7c75605881c26a57b75bd0c208ffb07ca474b0c789ecf51b38baf078bde13f8  ./tests/pass-e1-browser.spec.py
 2f4340a450dcb95f9b1a52769fa0cc5d0ecc64d6efc1b6ca68f0f28ad77b839a  ./tests/pass-e1.spec.js
-d3ebbfb75bde6d1949310dd49b3a65b270962ac5e2a36d69391d08237604f05b  ./tests/pass-f1-reliability-browser.spec.py
+cfa37c95375f9680ce2eb8383c29a1dba0428d093f7ff27c1822aef8eed3ec78  ./tests/pass-f1-reliability-browser.spec.py
 ce18680e8f59ddb57a2b837f9c928dedccac2057ffa773b22d08a72198156a6e  ./tests/pass-f1-reliability.spec.js
 f1d340a422f31693dc396c4bfff39edd06e13d5529a3392b8bfe01df97e59440  ./tests/planning.spec.js
 95e40fcffebd727171a210fb86eb7fadc311e3ec8e0ccac4d1b3894198a8f330  ./tests/runtime-harness-ownership.spec.js
