@@ -17,7 +17,7 @@ let checks=0;
 const fixed=desiredRetention=>({kind:'fixed-retention',desiredRetention});
 function check(condition, message) { checks++; if (!condition) throw new Error(message); }
 const ref = new Date('2026-07-25T04:00:00Z');
-const settings = { schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false} };
+const settings = { schemaVersion:1,key:'app',activeProfileId:'p',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]} };
 const profile = (id, days, status='active') => ({id,name:id,examDate:new Date(ref.getTime()+days*86400000).toISOString().slice(0,10),status,createdAt:ref.toISOString(),updatedAt:ref.toISOString()});
 const unit = (id, importance=3, lapseCount=0) => ({id,profileId:'p',topicNodeId:'t',title:id,scope:'scope',source:'',importance,status:'active',createdAt:ref.toISOString(),updatedAt:ref.toISOString(),evidenceCount:0,lapseCount});
 const policyState = {engine:'mastery',version:'1',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0};
