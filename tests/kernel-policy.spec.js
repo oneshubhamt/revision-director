@@ -366,11 +366,13 @@ async function testRelearningLifecycle() {
   original.policyState.fsrsCard.cardId = 'original';
   const calls = [];
   let storedOriginal = original;
+  let storedRelearn;
   const repo = {
     get: async (_store, key) => key === 'original' ? storedOriginal : undefined,
     dailyPlanByStudyDay: async()=>undefined,
     recordReview: async (...args) => {
       calls.push(args);
+      if (args[1]?.id === 'relearn') storedRelearn = structuredClone(args[1]);
       if (args[4]?.id === 'original') storedOriginal = structuredClone(args[4]);
     },
   };
@@ -395,9 +397,10 @@ async function testRelearningLifecycle() {
   const relearnPolicy = new api.RelearnPolicy();
   const nextDay = new Date(new Date(due).getTime() + 86400000);
   const relearn = { ...obligation('relearn', relearnPolicy, 'relearning'), id:'relearn', unitId:'u', returnObligationId:'original', policyState:relearnPolicy.createInitialState(nextDay.toISOString()) };
+  storedRelearn = relearn;
   original.status = 'suspended'; original.suspensionReason='relearning';
-  lifecycle.obligation = async () => relearn;
-  lifecycle.obligationsForUnit = async () => [relearn];
+  lifecycle.obligation = async () => storedRelearn;
+  lifecycle.obligationsForUnit = async () => [storedRelearn];
 
   calls.length = 0;
   lifecycle.evidenceEvents = async () => [failedMemoryEvent];
@@ -414,7 +417,7 @@ async function testRelearningLifecycle() {
   check(learningDifficulty.level === 'learning-difficulty' && learningDifficulty.earlyLearningFailures === 2 && learningDifficulty.establishedLapses === 0, 'Two pre-establishment failures must be learning difficulty even when the one-day FSRS step has entered Review state');
 
   calls.length = 0;
-  const successfulAt = new Date(relearn.dueAt);
+  const successfulAt = new Date(storedRelearn.dueAt);
   lifecycle.evidenceEvents = async () => [failedMemoryEvent, failedVerificationEvent];
   await lifecycle.recordEvidence('relearn', { ...evidence(4,4,3), workflowResult:relearnResult, elapsedMs:1000, timing:{totalActiveMs:1000,activeByPhase:{attempt:0,compare:0,'relearn-repair':600,'relearn-verify':400},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}, confirmedRating:3 }, successfulAt);
   check(calls[0][1].status === 'completed', 'One successful closed-book corrective verification must complete relearning without a duplicate success cycle');
