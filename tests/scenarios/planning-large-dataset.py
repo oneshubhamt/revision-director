@@ -15,6 +15,7 @@ from helpers.browser_harness import (
     load_browser_qa,
     open_html_page,
     open_rendered_pane,
+    wait_for_app_ready,
     wait_for_backup_import_result,
     wait_for_layout,
     wait_until as shared_wait_until,
@@ -22,6 +23,11 @@ from helpers.browser_harness import (
 # Reuse the exact deterministic IndexedDB-compatible HTML fixture from the main browser suite.
 main_qa = load_browser_qa("revision_director_planning_large_dataset")
 HTML = main_qa.HTML
+PERFORMANCE_HTML = HTML.replace(
+    "void boot();",
+    "window.__RD_PERF_QA__={RevisionData,Store,boot};",
+    1,
+)
 
 def check(value: bool, message: str) -> None:
     if not value:
@@ -175,31 +181,49 @@ def large_backup(count: int):
     return {'format':'revision-director-backup','schemaVersion':2,'exportedAt':now,'appVersion':current_app_version,'profiles':[profile],'nodes':nodes,'units':units,'studyEvents':[],'obligations':obligations,'evidenceEvents':[],'chunks':[],'dailyPlans':[],'activeRetrieval':None,'settings':{'schemaVersion':1,'key':'app','activeProfileId':'p','fsrsScheduling':{'policy':{'kind':'fixed-retention','desiredRetention':.9}},'memoryDifficultyPolicy':{'remediationLapses':2,'persistentDifficultyLapses':4,'automaticHold':{'enabled':False,'lapseThreshold':8}},'dailyCapacityMinutes':120,'studyDayBoundaryHour':4,'fsrsPersonalization':{'profile':None,'active':False}}}
 
 def scenario_large_dataset(browser):
-    page, errors=open_page(browser,{'width':1440,'height':1000},baseline=False)
-    with TemporaryDirectory() as tmp:
-        payload=large_backup(1000); p=Path(tmp)/'large.rdbackup'; p.write_bytes(encode_payload(payload))
-        start=time.monotonic(); page.locator('[data-pane="settings"]').click(); main_qa.restore_selected_backup(page, p, wait_ms=45_000)
-        shared_wait_until(
-            page,
-            lambda: page.locator('#sb-units').inner_text().strip() == '1000',
-            timeout=45_000,
-            interval=100,
-            message='Timed out waiting for large syllabus render',
-        )
-        elapsed=time.monotonic()-start
-        check(page.locator('#sb-units').inner_text().strip()=='1000','Large syllabus import did not complete')
-        # Regression envelope, not a microbenchmark. Pass A measured this journey at
-        # ~19.5s on a hosted runner; allow runner variance while still catching a
-        # material end-to-end regression.
-        check(elapsed<35,f'Large syllabus import/render exceeded 35s regression envelope: {elapsed:.1f}s')
-        page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
-        check(page.locator('#today-content .deferred-list .planner-row').count() <= 20, 'Deferred backlog display exceeded its intentional 20-row cap')
-        check(page.locator('#today-content .planner-row').count() <= 40, 'Today rendered an unexpectedly large actionable surface')
-        page.locator('[data-pane="library"]').click(); page.locator('#pane-library').wait_for(state='visible')
-        shared_wait_until(page, lambda: page.locator('#library-content .unit-row').count()==1000, timeout=10000, interval=50, message='Large library did not finish rendering')
-        check(page.locator('#library-content .unit-row').count()==1000,'Large library lost records')
-        page.set_viewport_size({'width':390,'height':844}); wait_for_layout(page)
-        check(not page.evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth'),'Large dataset caused mobile horizontal overflow')
+    payload=large_backup(1000)
+    page=browser.new_page(viewport={'width':1440,'height':1000})
+    errors=[]
+    page.on("console", lambda message: errors.append((message.type,message.text)) if message.type in ("error","warning") else None)
+    page.on("pageerror", lambda error: errors.append(("pageerror",str(error))))
+    page.on("dialog", lambda dialog: dialog.accept())
+    page.set_content(PERFORMANCE_HTML, wait_until='load')
+    page.evaluate(
+        """async payload=>{
+          const api=window.__RD_PERF_QA__;
+          if(!api) throw new Error('Performance QA boot hook is unavailable');
+          const repo=await api.RevisionData.open();
+          await repo.putMany(api.Store.Profiles,payload.profiles);
+          await repo.putMany(api.Store.Nodes,payload.nodes);
+          await repo.putMany(api.Store.Units,payload.units);
+          await repo.putMany(api.Store.Obligations,payload.obligations);
+          await repo.put(api.Store.Settings,payload.settings);
+        }""",
+        payload,
+    )
+    start=time.monotonic()
+    page.evaluate("async()=>await window.__RD_PERF_QA__.boot()")
+    wait_for_app_ready(page, timeout=25_000)
+    shared_wait_until(
+        page,
+        lambda: page.locator('#sb-units').inner_text().strip() == '1000',
+        timeout=25_000,
+        interval=100,
+        message='Timed out waiting for 1,000-unit planner/render boot',
+    )
+    elapsed=time.monotonic()-start
+    check(page.locator('#sb-units').inner_text().strip()=='1000','Large syllabus boot lost records')
+    # Hosted-runner regression envelope for initialization + planning + initial UI
+    # projection. Backup codec/restore performance is tested independently.
+    check(elapsed<25,f'1,000-unit planner/render boot exceeded 25s regression envelope: {elapsed:.1f}s')
+    page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
+    check(page.locator('#today-content .deferred-list .planner-row').count() <= 20, 'Deferred backlog display exceeded its intentional 20-row cap')
+    check(page.locator('#today-content .planner-row').count() <= 40, 'Today rendered an unexpectedly large actionable surface')
+    page.locator('[data-pane="library"]').click(); page.locator('#pane-library').wait_for(state='visible')
+    shared_wait_until(page, lambda: page.locator('#library-content .unit-row').count()==1000, timeout=10000, interval=50, message='Large library did not finish rendering')
+    check(page.locator('#library-content .unit-row').count()==1000,'Large library lost records')
+    page.set_viewport_size({'width':390,'height':844}); wait_for_layout(page)
+    check(not page.evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth'),'Large dataset caused mobile horizontal overflow')
     check(not errors,f'Large-dataset errors: {errors}')
     page.close()
 
