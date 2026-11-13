@@ -4,12 +4,11 @@ const path = require('path');
 const { ROOT, createAppRuntime } = require('./helpers/runtime-harness');
 const root = ROOT;
 
-const { api, context } = createAppRuntime({
+const { api, fsrs: F } = createAppRuntime({
   globalName: '__RD_FSRS_CLOSURE__',
   expose: ["RevisionService","Rating","memoryReviewObservationsFor","memoryDifficultyAssessment","defaultMemoryDifficultyPolicy","revisionSchedulerPort","costAdrPresetSchedulingPolicy","buildPlanningCandidate","fsrsOptimizerEvidenceSnapshot","validateFsrsOptimizerProfile","FSRS7_DEFAULT_WEIGHTS","fsrsWeightsFingerprint","activeFsrsOptimizerProfile","fsrsPersonalizationProfileCatalog"],
   requireFsrs: true,
 });
-const F = context.FSRS;
 
 let checks=0;
 const clone=value=>structuredClone(value);
