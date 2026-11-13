@@ -3616,6 +3616,7 @@
       const chunkMap = uniqueMap(chunks, "Obligation chunks");
       uniqueMap(dailyPlans, "Daily plans");
       const studyDayKeys = new Set();
+      const nodePathKeys = new Set();
       for (const profile of profiles)
           assertDocumentSchema(profile, "Backup exam profile");
       for (const node of nodes)
@@ -3643,6 +3644,9 @@
           const profile = profileMap.get(node.profileId);
           assert(profile, "Knowledge node references a missing profile.");
           assert(node.name.trim().length > 0 && node.normalizedName === normalizeName(node.name), "Knowledge node name is invalid.");
+          const pathKey = [node.profileId, node.parentId ?? "<root>", node.kind, node.normalizedName].join("\u0000");
+          assert(!nodePathKeys.has(pathKey), "Knowledge hierarchy contains duplicate semantic paths.");
+          nodePathKeys.add(pathKey);
           if (node.kind === "subject")
               assert(node.parentId === null, "Subject nodes cannot have parents.");
           if (node.kind === "section") {
@@ -4249,6 +4253,9 @@
           tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed."));
       });
   }
+  function storeWriteDurability(store) {
+      return store === Store.ActiveRetrieval || store === Store.Metadata ? "default" : "strict";
+  }
   function readwriteTransaction(db, stores, durability = "default") {
       if (durability === "default")
           return db.transaction(stores, "readwrite");
@@ -4353,17 +4360,17 @@
           return values;
       }
       async put(store, value) {
-          const tx = readwriteTransaction(this.db, store);
+          const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
           tx.objectStore(store).put(value);
           await transactionDone(tx);
       }
       async add(store, value) {
-          const tx = readwriteTransaction(this.db, store);
+          const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
           tx.objectStore(store).add(value);
           await transactionDone(tx);
       }
       async putMany(store, values) {
-          const tx = readwriteTransaction(this.db, store);
+          const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
           const target = tx.objectStore(store);
           for (const value of values)
               target.put(value);
@@ -4390,7 +4397,7 @@
           await transactionDone(tx);
       }
       async delete(store, key) {
-          const tx = readwriteTransaction(this.db, store);
+          const tx = readwriteTransaction(this.db, store, storeWriteDurability(store));
           tx.objectStore(store).delete(key);
           await transactionDone(tx);
       }
@@ -4400,6 +4407,17 @@
               return this.getOneByIndex(Store.Nodes, "pathLookup", [profileId, parentId, kind, normalized]);
           }
           assert(kind === "subject", "Only subject nodes may exist at the hierarchy root.");
+          const deterministic = await this.get(Store.Nodes, await rootKnowledgeNodeId(profileId, normalized));
+          if (deterministic) {
+              assert(deterministic.profileId === profileId
+                  && deterministic.parentId === null
+                  && deterministic.kind === "subject"
+                  && deterministic.normalizedName === normalized, "Deterministic root-subject identity conflicts with stored hierarchy data.");
+              return deterministic;
+          }
+          // Imported current-format backups may legitimately retain non-generated IDs.
+          // The validator enforces semantic uniqueness, so this is a bounded compatibility lookup,
+          // not a second uniqueness policy.
           const roots = (await this.getByIndex(Store.Nodes, "profileId", profileId))
               .filter((node) => node.parentId === null && node.kind === kind && node.normalizedName === normalized);
           assert(roots.length <= 1, "Knowledge hierarchy contains duplicate root subjects.");
@@ -5587,9 +5605,15 @@
       async initialize() {
           this.invalidateMemoryReviewAnalysis();
           const state = await this.repo.backupState("ignore");
-          this.settings = clone(state.settings);
-          assertActiveProfileSelection(state.profiles, this.settings);
-          await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);
+          const validated = validateBackupPayload({
+              format: BACKUP_FORMAT,
+              schemaVersion: BACKUP_SCHEMA_VERSION,
+              exportedAt: nowIso(),
+              appVersion: APP_VERSION,
+              ...state,
+          });
+          this.settings = clone(validated.settings);
+          await this.verifyMemoryProjectionIntegrity(validated.obligations, validated.evidenceEvents, this.settings);
       }
       async verifyMemoryProjectionIntegrity(obligations, evidenceEvents, settings) {
           await verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(settings), fsrsPersonalizationProfileCatalog(settings));
@@ -6053,13 +6077,16 @@
               if (status !== "all" && obligation.status !== status)
                   continue;
               const unit = unitMap.get(obligation.unitId);
-              if (!unit || unit.status !== "active")
-                  continue;
+              assert(unit, "Revision obligation references a missing knowledge unit.");
               const profile = profileMap.get(unit.profileId);
+              assert(profile, "Knowledge unit references a missing exam profile.");
               const topicNode = nodeMap.get(unit.topicNodeId);
-              const sectionNode = topicNode?.parentId ? nodeMap.get(topicNode.parentId) : undefined;
-              const subjectNode = sectionNode?.parentId ? nodeMap.get(sectionNode.parentId) : undefined;
-              if (!profile || !topicNode || !sectionNode || !subjectNode)
+              assert(topicNode?.kind === "topic" && topicNode.profileId === unit.profileId, "Knowledge unit references an invalid topic node.");
+              const sectionNode = topicNode.parentId ? nodeMap.get(topicNode.parentId) : undefined;
+              assert(sectionNode?.kind === "section" && sectionNode.profileId === unit.profileId, "Topic node references an invalid section node.");
+              const subjectNode = sectionNode.parentId ? nodeMap.get(sectionNode.parentId) : undefined;
+              assert(subjectNode?.kind === "subject" && subjectNode.profileId === unit.profileId && subjectNode.parentId === null, "Section node references an invalid subject node.");
+              if (unit.status !== "active")
                   continue;
               joined.push({ obligation, unit, profile, subject: subjectNode.name, section: sectionNode.name, topic: topicNode.name });
           }
