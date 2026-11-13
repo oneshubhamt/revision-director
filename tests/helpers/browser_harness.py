@@ -7,14 +7,14 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Callable, Iterable
+from typing import Callable
 
 from playwright.sync_api import Browser, Page, Playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 TESTS = ROOT / "tests"
 SCENARIOS = TESTS / "scenarios"
-BASELINE_BACKUP = TESTS / "fixtures/browser-baseline.rdbackup"
+BASELINE_BACKUP = baseline_backup_path()
 DEFAULT_CHROMIUM_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"]
 
 
