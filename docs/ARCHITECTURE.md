@@ -52,11 +52,11 @@ The built-in `revision-current` profile owns independent typography, shape, mate
 
 ## Application services and commit integrity
 
-`RevisionService` owns domain use cases. Durable review completion is transaction-bound: evidence, scheduler state, obligation state, plan outcomes and active-session transitions are committed together. Settings changes that must reconcile domain obligation status use the same generic atomic settings+obligations persistence boundary as scheduler reprojection.
+`RevisionService` owns domain use cases. Durable review completion is transaction-bound: evidence, scheduler state, obligation state, plan outcomes and active-session transitions are committed together. Settings changes that must reconcile domain obligation status use the same generic atomic settings+obligations persistence boundary as scheduler reprojection. Startup and backup export consume one multi-store readonly IndexedDB snapshot rather than assembling state through separate reads.
 
 In-memory settings are published only after their durable write succeeds. Scheduler rebases are fully validated before the atomic settings+obligations replacement is attempted, and failed writes leave the service on the previously durable configuration.
 
-Evidence Events are append-only audit records and the canonical review history for memory obligations. The stored FSRS card is a verified materialized projection, while the scheduler port owns replay, scheduler identity and explicit reprojection across scheduling-policy or weight changes.
+Evidence Events are append-only audit records and the canonical review history for memory obligations. The stored FSRS card is a verified materialized projection, while the scheduler port owns replay, scheduler identity and explicit reprojection across scheduling-policy or weight changes. Host difficulty uses the same review history rather than treating the card lapse counter as an alternate history source.
 
 Scheduling policy and personalization are orthogonal application-owned configuration axes. Persistent-difficulty management is a separate host lifecycle policy derived from FSRS lapses: it may alter remediation or the domain obligation status, but it never mutates FSRS `scheduleStatus`. Personalization remains behind the profile/evidence boundary. Native and optional Worker/WASM optimization share one tool-owned optimizer core; the principal browser runtime contains only the small client boundary and never imports the binding. Detailed scheduler, replay, optimizer-gate, difficulty and rebase semantics live in `SCHEDULING_AND_PLANNING.md`.
 
@@ -80,7 +80,7 @@ Settings may load explicitly selected local JavaScript plugin files. They are tr
 
 ## Release and schema identity
 
-Application release identity is provenance, not a persistence-compatibility key. IndexedDB layout version, durable document schemas and backup/archive schemas own compatibility. A compatible release may refresh release provenance after opening; failure of that informational refresh is diagnostic rather than a data-access lockout. An incompatible schema fails closed without rewriting or deleting stored data.
+Application release identity is provenance, not a persistence-compatibility key. IndexedDB layout version, durable document schemas and backup/archive schemas own compatibility. A compatible release may refresh release provenance after opening; failure of that informational refresh is diagnostic rather than a data-access lockout. An incompatible schema fails closed without rewriting or deleting stored data. Backup restoration has one verified controller path; there is no direct service-level import bypass.
 
 ## Design principles
 
