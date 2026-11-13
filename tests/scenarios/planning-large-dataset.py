@@ -177,8 +177,12 @@ def large_backup(count: int):
         uid=f'u{i}'; oid=f'o{i}'
         units.append({'schemaVersion':1,'id':uid,'profileId':'p','topicNodeId':'t','title':f'Unit {i:04d}','scope':'Scope','source':'Source','importance':1+(i%3),'status':'active','createdAt':now,'updatedAt':now,'evidenceCount':0,'lapseCount':0})
         obligations.append({'schemaVersion':1,'id':oid,'unitId':uid,'type':'concept-reconstruction','status':'active','dueAt':now,'expectedMinutes':10+(i%20),'baselineMinutes':10+(i%20),'durationSampleCount':0,'protocol':'Reconstruct properly','successCriteria':'Alpha; Beta','workflow':workflow,'freshnessDays':30,'priority':0,'policyState':policy,'createdAt':now,'updatedAt':now})
-    current_app_version=json.loads((ROOT/'tests/fixtures/browser-baseline.json').read_text())['appVersion']
-    return {'format':'revision-director-backup','schemaVersion':2,'exportedAt':now,'appVersion':current_app_version,'profiles':[profile],'nodes':nodes,'units':units,'studyEvents':[],'obligations':obligations,'evidenceEvents':[],'chunks':[],'dailyPlans':[],'activeRetrieval':None,'settings':{'schemaVersion':1,'key':'app','activeProfileId':'p','fsrsScheduling':{'policy':{'kind':'fixed-retention','desiredRetention':.9}},'memoryDifficultyPolicy':{'remediationLapses':2,'persistentDifficultyLapses':4,'automaticHold':{'enabled':False,'lapseThreshold':8}},'dailyCapacityMinutes':120,'studyDayBoundaryHour':4,'fsrsPersonalization':{'profile':None,'active':False}}}
+    baseline=json.loads((ROOT/'tests/fixtures/browser-baseline.json').read_text())
+    settings=json.loads(json.dumps(baseline['settings']))
+    settings['activeProfileId']='p'
+    settings['dailyCapacityMinutes']=120
+    settings['fsrsScheduling']['policy']={'kind':'fixed-retention','desiredRetention':.9}
+    return {'format':'revision-director-backup','schemaVersion':2,'exportedAt':now,'appVersion':baseline['appVersion'],'profiles':[profile],'nodes':nodes,'units':units,'studyEvents':[],'obligations':obligations,'evidenceEvents':[],'chunks':[],'dailyPlans':[],'activeRetrieval':None,'settings':settings}
 
 def scenario_large_dataset(browser):
     payload=large_backup(1000)
