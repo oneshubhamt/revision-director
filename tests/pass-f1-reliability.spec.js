@@ -4,7 +4,7 @@ const { createAppRuntime } = require('./helpers/runtime-harness');
 
 const { api, source } = createAppRuntime({
   globalName: '__RD_F1_RELIABILITY__',
-  expose: ['readwriteTransaction'],
+  expose: ['readwriteTransaction','storeWriteDurability','rootKnowledgeNodeId','IndexedDbRepository','RevisionService','Store'],
 });
 
 let checks = 0;
@@ -12,6 +12,11 @@ function check(value, message) { checks += 1; if (!value) throw new Error(messag
 function mustThrow(fn, message) {
   checks += 1;
   try { fn(); } catch { return; }
+  throw new Error(message);
+}
+async function mustReject(fn, message) {
+  checks += 1;
+  try { await fn(); } catch { return; }
   throw new Error(message);
 }
 
@@ -57,6 +62,22 @@ mustThrow(() => api.readwriteTransaction({
   },
 }, ['units', 'obligations'], 'strict'), 'Non-compatibility IndexedDB failure was incorrectly swallowed.');
 
+for (const store of [
+  api.Store.Profiles,
+  api.Store.Nodes,
+  api.Store.Units,
+  api.Store.StudyEvents,
+  api.Store.Obligations,
+  api.Store.EvidenceEvents,
+  api.Store.Chunks,
+  api.Store.DailyPlans,
+  api.Store.Settings,
+]) {
+  check(api.storeWriteDurability(store) === 'strict', `Authoritative user-state store is not strict: ${store}`);
+}
+check(api.storeWriteDurability(api.Store.ActiveRetrieval) === 'default', 'Active-retrieval autosave must remain default durability.');
+check(api.storeWriteDurability(api.Store.Metadata) === 'default', 'Release metadata refresh must remain default durability.');
+
 for (const signature of [
   'readwriteTransaction(this.db, [Store.Profiles, Store.Settings], "strict")',
   'readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict")',
@@ -68,9 +89,106 @@ for (const signature of [
 }
 check((source.match(/readwriteTransaction\(this\.db, stores, "strict"\)/g) || []).length === 3,
   'Dynamic authoritative strict transaction count changed.');
-check(source.includes('readwriteTransaction(this.db, store)'),
-  'Ordinary single-store writes no longer use default durability.');
-check(!source.includes('readwriteTransaction(this.db, store, "strict")'),
-  'Single-store writes were incorrectly promoted to strict durability.');
+check((source.match(/readwriteTransaction\(this\.db, store, storeWriteDurability\(store\)\)/g) || []).length === 4,
+  'Generic single-store writes do not consistently use the store durability policy.');
+check(!source.includes('readwriteTransaction(this.db, store);'),
+  'A generic single-store write bypasses the durability policy.');
 
-console.log(`PASS ${checks} selective durability reliability checks`);
+check(source.includes('const deterministic = await this.get(Store.Nodes, await rootKnowledgeNodeId(profileId, normalized));'),
+  'Root hierarchy lookup does not use deterministic primary-key fast lookup.');
+check(source.includes('return this.getOneByIndex(Store.Nodes, "pathLookup", [profileId, parentId, kind, normalized]);'),
+  'Child hierarchy lookup no longer uses the canonical pathLookup index.');
+check(source.includes('const validated = validateBackupPayload({') && source.includes('const state = await this.repo.backupState("ignore");'),
+  'Startup does not run full relational validation over the canonical durable snapshot.');
+check(source.includes('assert(unit, "Revision obligation references a missing knowledge unit.");')
+  && source.includes('assert(topicNode?.kind === "topic"'),
+  'Joined obligation materialization can still silently hide broken durable relationships.');
+
+(async () => {
+  const rootId = await api.rootKnowledgeNodeId('p', 'public administration');
+  const rootNode = {
+    schemaVersion: 1,
+    id: rootId,
+    profileId: 'p',
+    parentId: null,
+    kind: 'subject',
+    name: 'Public Administration',
+    normalizedName: 'public administration',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+  let indexReads = 0;
+  const fakeDb = {
+    transaction() {
+      const tx = {
+        objectStore() {
+          return {
+            get(key) {
+              const request = {};
+              setTimeout(() => {
+                request.result = key === rootId ? structuredClone(rootNode) : undefined;
+                request.onsuccess?.();
+                setTimeout(() => tx.oncomplete?.(), 0);
+              }, 0);
+              return request;
+            },
+            index() {
+              indexReads += 1;
+              throw new Error('Root deterministic lookup should not touch an index.');
+            },
+          };
+        },
+      };
+      return tx;
+    },
+  };
+  const repository = new api.IndexedDbRepository(fakeDb);
+  const found = await repository.findNode('p', null, 'subject', 'Public Administration');
+  check(found?.id === rootId && indexReads === 0, 'Deterministic root lookup did not use its primary-key fast path.');
+
+  const corruptState = {
+    profiles: [],
+    nodes: [{
+      schemaVersion: 1,
+      id: 'node_orphan',
+      profileId: 'missing_profile',
+      parentId: null,
+      kind: 'subject',
+      name: 'Orphan',
+      normalizedName: 'orphan',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }],
+    units: [],
+    studyEvents: [],
+    obligations: [],
+    evidenceEvents: [],
+    chunks: [],
+    dailyPlans: [],
+    settings: {
+      schemaVersion: 1,
+      key: 'app',
+      activeProfileId: '',
+      fsrsScheduling: { policy: { kind: 'fixed-retention', desiredRetention: 0.9 } },
+      memoryDifficultyPolicy: { remediationLapses: 2, persistentDifficultyLapses: 4, automaticHold: { enabled: false, lapseThreshold: 8 } },
+      dailyCapacityMinutes: 60,
+      studyDayBoundaryHour: 4,
+      fsrsPersonalization: { profile: null, active: false, replayProfiles: [] },
+    },
+    activeRetrieval: null,
+  };
+  const corruptService = new api.RevisionService({
+    backupState: async () => structuredClone(corruptState),
+  });
+  await mustReject(() => corruptService.initialize(), 'Startup accepted a relationally corrupt durable snapshot.');
+
+  const joinedService = new api.RevisionService({
+    getAll: async (store) => {
+      if (store === api.Store.Obligations) return [{ id:'o', unitId:'missing', status:'active', dueAt:'2026-01-01T00:00:00.000Z', priority:0 }];
+      return [];
+    },
+  });
+  await mustReject(() => joinedService.joinedObligations('active'), 'Joined obligations silently hid a missing knowledge unit.');
+
+  console.log(`PASS ${checks} CLEER reliability-closure checks`);
+})().catch((error) => { console.error(error); process.exitCode = 1; });
