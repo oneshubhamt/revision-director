@@ -35,7 +35,7 @@ The current database contains:
 
 The database creation path creates stores only for a fresh database (`oldVersion === 0`). Existing databases open normally when their IndexedDB layout version and metadata database identity match the current schema. An attempted unsupported layout upgrade is aborted before schema mutation; a database created by a newer layout also fails closed. Both cases direct the user toward a compatible-build backup path rather than destructive clearing.
 
-Metadata and settings are initialization records, not reconstruction hints. A genuinely empty fresh database may create them. If metadata or settings are missing while other durable state already exists, startup fails closed without synthesizing replacements or mutating the surviving records.
+Metadata and settings are initialization records, not reconstruction hints. A fresh database creates both inside the same `oldVersion === 0` versionchange transaction that creates the object stores. Once database creation completes, either record being absent is treated as corruption: startup fails closed without synthesizing replacements or mutating surviving records.
 
 ## Durable documents
 
@@ -51,7 +51,7 @@ Durable data follows:
 capture → sanitise → validate → canonicalise → transact → derive → render
 ```
 
-Canonicalizers reject non-finite values, invalid ranges, impossible relations, malformed timing state, invalid workflow combinations, inconsistent scheduler provenance and unknown current-document fields. Required current-schema fields must be present; numeric fields are not string-coerced; canonicalization may normalize valid values, but it does not synthesize missing fields or repair older shapes.
+Canonicalizers reject non-finite values, invalid ranges, malformed timing state, invalid workflow combinations, inconsistent scheduler provenance and unknown current-document fields. Fixed-shape nested runtime and Daily Plan records are also closed to unexpected fields. Required current-schema fields must be present; numeric fields are not string-coerced; over-limit recovery state is rejected rather than silently truncated, deduplicated or clamped. Canonicalization may normalize valid values, but it does not synthesize missing fields or repair older shapes.
 
 Cross-document invariants are also canonical. If one or more exam profiles are active, `settings.activeProfileId` must identify an active profile. If no profile is active, it must be the empty string. Profile lifecycle changes that can alter this invariant commit the profile and settings together in one IndexedDB transaction. Startup validates the invariant and fails closed rather than silently repairing it.
 
@@ -70,7 +70,7 @@ Only active operational state is duplicated locally. Historical evidence, schedu
 
 ## FSRS durable state
 
-Memory review truth is append-only Evidence Events, including every closed-book corrective verification linked to memory, whether it fails or succeeds. Source-assisted repair is not memory evidence. The obligation's current FSRS card is a verified materialized projection.
+Memory review truth is append-only Evidence Events, including every closed-book corrective verification linked to memory, whether it fails or succeeds. Source-assisted repair is not memory evidence. The obligation's current FSRS card is a verified materialized projection. Host difficulty classification is derived from the canonical review history; the card lapse counter is not used as a fallback history source.
 
 Settings persist the canonical scheduling policy, persistent-difficulty host policy, stock/staged/active personalization state and the last explicit scheduler rebase. Configuration fingerprints cover the complete FSRS scheduling policy and weight provenance; the host difficulty policy is intentionally outside that fingerprint because it does not rewrite the FSRS schedule. Policy changes, activation and deactivation replace settings plus reviewed memory projections transactionally; historical Evidence Events are never rewritten.
 
@@ -92,13 +92,17 @@ canonical payload
 → optional gzip
 ```
 
-Reading performs bounded decompression, manifest/chunk/checksum verification, reconstruction and then domain-level relational validation.
+Reading performs bounded decompression, manifest/chunk/checksum verification, reconstruction and then domain-level relational validation. Manifest, counts, chunk and completion records have closed current shapes, and SHA-256 fields are exactly 64 hexadecimal characters.
 
 A backup may contain zero or one stable active retrieval. Committing/completed active-session states are not valid backup payloads.
 
+## Atomic state snapshots
+
+Backup export and startup initialization read all durable stores through one multi-store readonly IndexedDB transaction. This prevents a concurrent atomic write from producing a torn mixture of pre-commit and post-commit records.
+
 ## Destructive restore
 
-Restore is deliberately ceremonial:
+Restore is deliberately ceremonial. The verified restore controller is the only application restore path:
 
 1. inspect candidate without mutation;
 2. validate and preview it;
