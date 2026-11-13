@@ -1,23 +1,13 @@
+'use strict';
 const assert = require('assert/strict');
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
 const { performance } = require('perf_hooks');
-const { webcrypto } = require('crypto');
+const { createAppRuntime } = require('./helpers/runtime-harness');
 
-const root = path.resolve(__dirname, '..');
-let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_PASS4_VERIFY__ = { Rating, Reschedule, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationIndex, verifyMemoryDatasetIntegrityWithIndex, choosePlanItems };';
-if (!source.includes('void boot();')) throw new Error('Boot marker missing');
-source = source.replace('void boot();', hook);
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
-const context = { crypto:webcrypto, structuredClone, console, Date, Intl, URL, Blob, TextEncoder, TextDecoder, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array };
-context.window=context; context.self=context; context.globalThis=context;
-vm.createContext(context);
-vm.runInContext(vendor, context, { filename:'ts-fsrs-6.0.0.umd.js' });
-vm.runInContext(source, context, { filename:'app.js' });
-const api=context.__RD_PASS4_VERIFY__;
-if (!api) throw new Error('Pass 4 verification API unavailable');
+const { api, context } = createAppRuntime({
+  globalName: '__RD_PASS4_VERIFY__',
+  expose: ["Rating","Reschedule","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationIndex","verifyMemoryDatasetIntegrityWithIndex","choosePlanItems"],
+  requireFsrs: true,
+});
 
 const DAY_MS=86_400_000;
 const CARD_COUNT=96;
