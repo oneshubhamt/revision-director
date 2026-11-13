@@ -83,8 +83,9 @@ def main():
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files(str(tampered))
         wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Tampered backup import handler did not finish')
-        msg=page.locator('#toast').inner_text().lower()
-        check('checksum' in msg or 'integrity' in msg or 'json' in msg,'Tampered backup was not rejected')
+        msg=page.locator('#toast').inner_text().strip()
+        check(bool(msg) and page.locator('#toast').evaluate("e=>e.classList.contains('error')") and not page.locator('#restore-dialog').is_visible(),
+              f'Tampered backup did not fail through the rejection UI contract · toast={msg!r}')
         check(not errors,f'Browser errors: {errors}')
         browser.close()
     print(f'PASS {checks} Pass D2 browser restore-controller checks')
