@@ -570,10 +570,12 @@
     }
 
     async joinedObligations(status: ObligationStatus | "all" = "active"): Promise<JoinedObligation[]> {
-      const obligations = await this.obligations();
-      const units = await this.units();
-      const profiles = await this.profiles();
-      const nodes = await this.nodes();
+      const [obligations, units, profiles, nodes] = await Promise.all([
+        this.obligations(),
+        this.units(),
+        this.profiles(),
+        this.nodes(),
+      ]);
       const unitMap = new Map(units.map((unit) => [unit.id, unit]));
       const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
       const nodeMap = new Map(nodes.map((node) => [node.id, node]));
@@ -889,21 +891,26 @@
       return chunk;
     }
 
-    async dailyPlan(now = new Date(), regenerate = false, persist = true): Promise<DailyRevisionPlan> {
-      assert(!regenerate || persist, "A read-only plan cannot be manually regenerated.");
+    private async buildDailyPlan(
+      now: Date,
+      chunkMode: "existing" | "ensure",
+    ): Promise<Omit<DailyRevisionPlan, "planRecordId" | "versionNumber">> {
       const planningReference = studyDayStart(now, this.settings.studyDayBoundaryHour);
-      const joined = await this.joinedObligations("active");
-      const evidence = await this.evidenceEvents();
-      const memoryReviews = this.memoryReviewIndexFor(evidence);
-      const planHistory = await this.dailyPlanHistory();
+      const [joined, evidence, planHistory] = await Promise.all([
+        this.joinedObligations("active"),
+        this.evidenceEvents(),
+        this.dailyPlanHistory(),
+      ]);
       const balance = weeklySubjectBalanceScores(joined, planHistory, planningReference, this.settings.studyDayBoundaryHour);
-      const pendingChunks = persist
+      const pendingChunks = chunkMode === "ensure"
         ? await this.ensureAutomaticChunking(joined, this.settings.dailyCapacityMinutes, planningReference)
         : await this.existingPendingChunks(joined);
+      const indexedEvidence = planningEvidenceIndex(evidence);
+      const memoryReviews = this.memoryReviewIndexFor(evidence);
       const candidates = joined
         .map((item) => buildPlanningCandidate(
           item,
-          evidence,
+          indexedEvidence,
           this.settings,
           planningReference,
           balance.get(subjectBalanceKey(item.profile.id, item.subject)) ?? 0.5,
@@ -913,7 +920,7 @@
         .filter((item): item is PlannedQueueItem => Boolean(item));
       const packed = choosePlanItems(candidates, this.settings.dailyCapacityMinutes);
       const plannedMinutes = packed.selected.reduce((sum, item) => sum + item.executionMinutes, 0);
-      const base = {
+      return {
         generatedAt: now.toISOString(),
         studyDayKey: studyDayKey(now, this.settings.studyDayBoundaryHour),
         capacityMinutes: this.settings.dailyCapacityMinutes,
@@ -927,12 +934,28 @@
         dueCount: packed.selected.filter((item) => item.dueState !== "brought-forward").length,
         broughtForwardCount: packed.selected.filter((item) => item.dueState === "brought-forward").length,
       };
-      if (!persist) {
-        const existing = await this.repo.dailyPlanByStudyDay(base.studyDayKey);
-        return { ...base, planRecordId: existing?.id ?? "", versionNumber: existing?.versions.at(-1)?.version ?? 0 };
-      }
-      const persisted = await this.persistDailyPlan(base, regenerate);
-      return { ...base, planRecordId: persisted.id, versionNumber: persisted.version };
+    }
+
+    async calculateDailyPlan(now = new Date()): Promise<DailyRevisionPlan> {
+      const plan = await this.buildDailyPlan(now, "existing");
+      const existing = await this.repo.dailyPlanByStudyDay(plan.studyDayKey);
+      return {
+        ...plan,
+        planRecordId: existing?.id ?? "",
+        versionNumber: existing?.versions.at(-1)?.version ?? 0,
+      };
+    }
+
+    async ensureDailyPlan(now = new Date()): Promise<DailyRevisionPlan> {
+      const plan = await this.buildDailyPlan(now, "ensure");
+      const persisted = await this.persistDailyPlan(plan, false);
+      return { ...plan, planRecordId: persisted.id, versionNumber: persisted.version };
+    }
+
+    async regenerateDailyPlan(now = new Date()): Promise<DailyRevisionPlan> {
+      const plan = await this.buildDailyPlan(now, "ensure");
+      const persisted = await this.persistDailyPlan(plan, true);
+      return { ...plan, planRecordId: persisted.id, versionNumber: persisted.version };
     }
 
     async memoryReviewHistory(obligationId: string): Promise<MemoryReviewObservation[]> {

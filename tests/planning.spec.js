@@ -3,7 +3,7 @@ const { createAppRuntime } = require('./helpers/runtime-harness');
 
 const { api } = createAppRuntime({
   globalName: '__RD_PLAN_TEST__',
-  expose: ["Rating","FsrsMemoryPolicy","RevisionService","buildPlanningCandidate","choosePlanItems","prepareFsrsScheduler","daysToExamination","examinationProximityScore","planningLookaheadDays","obligationWeaknessScore","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","memoryDifficultyAssessment","correctiveRelearnDueAt"],
+  expose: ["Rating","FsrsMemoryPolicy","RevisionService","buildPlanningCandidate","planningEvidenceIndex","choosePlanItems","prepareFsrsScheduler","daysToExamination","examinationProximityScore","planningLookaheadDays","obligationWeaknessScore","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","memoryDifficultyAssessment","correctiveRelearnDueAt"],
   requireFsrs: false,
 });
 
@@ -45,6 +45,10 @@ const sharedEvidence = [evidence('shared','shared-recall',1,1),evidence('shared'
 const weakSpecific = api.buildPlanningCandidate({obligation:weakObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},sharedEvidence,settings,ref);
 const strongSpecific = api.buildPlanningCandidate({obligation:strongObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},sharedEvidence,settings,ref);
 check(weakSpecific.factors.weakness > strongSpecific.factors.weakness + .25, 'Weakness must be obligation-specific rather than shared across all workflows in a unit');
+const indexedSharedEvidence = api.planningEvidenceIndex(sharedEvidence);
+const weakIndexed = api.buildPlanningCandidate({obligation:weakObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},indexedSharedEvidence,settings,ref);
+const strongIndexed = api.buildPlanningCandidate({obligation:strongObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},indexedSharedEvidence,settings,ref);
+check(weakIndexed.factors.weakness === weakSpecific.factors.weakness && strongIndexed.factors.weakness === strongSpecific.factors.weakness, 'Pre-indexed planning evidence must preserve weakness semantics exactly');
 const persistentObligation=structuredClone(weakObligation);
 persistentObligation.expectedMinutes=60;
 persistentObligation.policyState=structuredClone(weakObligation.policyState);
@@ -158,17 +162,31 @@ check(packed.selected.some(i=>i.joined.obligation.id==='critical-fit-top') && pa
 
 (async () => {
   await testMemoryExamHorizon();
-  const service = new api.RevisionService({});
+  const service = new api.RevisionService({ dailyPlanByStudyDay: async () => undefined });
   service.settings = settings;
   service.joinedObligations = async () => [joined('a',-1,40,3,20),joined('b',0,20,2,100),joined('c',0,30,1,200)];
   service.evidenceEvents = async () => [];
   service.dailyPlanHistory = async () => [];
-  service.ensureAutomaticChunking = async () => new Map();
-  service.persistDailyPlan = async () => ({id:'plan',version:1});
-  const plan = await service.dailyPlan(ref);
+  let ensureChunkCalls = 0;
+  let existingChunkCalls = 0;
+  let persistCalls = 0;
+  const regenerationFlags = [];
+  service.ensureAutomaticChunking = async () => { ensureChunkCalls += 1; return new Map(); };
+  service.existingPendingChunks = async () => { existingChunkCalls += 1; return new Map(); };
+  service.persistDailyPlan = async (_plan, regenerate) => { persistCalls += 1; regenerationFlags.push(regenerate); return {id:'plan',version:persistCalls}; };
+
+  const preview = await service.calculateDailyPlan(ref);
+  check(existingChunkCalls === 1 && ensureChunkCalls === 0 && persistCalls === 0, 'Read-only plan calculation must not create chunks or persist plan state');
+  check(preview.planRecordId === '' && preview.versionNumber === 0, 'Read-only plan calculation must report absence of persisted plan state');
+
+  const plan = await service.ensureDailyPlan(ref);
+  check(ensureChunkCalls === 1 && persistCalls === 1 && regenerationFlags[0] === false, 'Plan ensure must own automatic chunking and ordinary persistence');
   check(plan.plannedMinutes <= 60, 'Service daily plan must respect configured capacity');
   check(plan.selected.length > 0 && plan.deferred.length > 0 && Array.isArray(plan.requiredOverrun) && Array.isArray(plan.mustSplit), 'Service daily plan must separate selected, exceptions and deferred work');
   check(plan.selected.every(i => Array.isArray(i.reasons) && i.reasons.length > 0), 'Every planned item must explain its inclusion');
   check(plan.studyDayKey === '2026-07-25', 'Daily plan must use the Study Director day boundary');
+
+  await service.regenerateDailyPlan(ref);
+  check(ensureChunkCalls === 2 && persistCalls === 2 && regenerationFlags[1] === true, 'Manual regeneration must remain an explicit mutating command');
   console.log(`PASS ${checks} Pass C planning scenario checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

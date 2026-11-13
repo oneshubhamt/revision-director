@@ -193,7 +193,7 @@
     return clamp(1 - proportion * 0.45, 0.55, 1);
   }
 
-  function evidenceWeaknessScore(events: EvidenceEvent[], neutral = 0.55): number {
+  function evidenceWeaknessScore(events: readonly EvidenceEvent[], neutral = 0.55): number {
     const recent = [...events]
       .sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt))
       .slice(0, 5);
@@ -224,12 +224,50 @@
     );
   }
 
-  function obligationWeaknessScore(item: JoinedObligation, evidenceEvents: EvidenceEvent[]): number {
-    const obligationEvidence = evidenceEvents.filter((event) => event.obligationId === item.obligation.id);
-    const unitEvidence = evidenceEvents.filter((event) => event.unitId === item.unit.id);
-    const unitContext = evidenceWeaknessScore(unitEvidence);
-    if (obligationEvidence.length === 0) return unitContext;
-    const obligationSignal = evidenceWeaknessScore(obligationEvidence);
+  interface PlanningEvidenceIndex {
+    readonly all: readonly EvidenceEvent[];
+    readonly weaknessByObligation: ReadonlyMap<string, number>;
+    readonly weaknessByUnit: ReadonlyMap<string, number>;
+  }
+
+  type PlanningEvidenceSource = readonly EvidenceEvent[] | PlanningEvidenceIndex;
+
+  function planningEvidenceIndex(evidenceEvents: readonly EvidenceEvent[]): PlanningEvidenceIndex {
+    const byObligation = new Map<string, EvidenceEvent[]>();
+    const byUnit = new Map<string, EvidenceEvent[]>();
+    const append = (map: Map<string, EvidenceEvent[]>, key: string, event: EvidenceEvent): void => {
+      const events = map.get(key);
+      if (events) events.push(event);
+      else map.set(key, [event]);
+    };
+    for (const event of evidenceEvents) {
+      append(byObligation, event.obligationId, event);
+      append(byUnit, event.unitId, event);
+    }
+    const weakness = (groups: ReadonlyMap<string, readonly EvidenceEvent[]>): ReadonlyMap<string, number> =>
+      new Map([...groups].map(([key, events]) => [key, evidenceWeaknessScore(events)]));
+    return {
+      all: evidenceEvents,
+      weaknessByObligation: weakness(byObligation),
+      weaknessByUnit: weakness(byUnit),
+    };
+  }
+
+  function isPlanningEvidenceIndex(value: PlanningEvidenceSource): value is PlanningEvidenceIndex {
+    return !Array.isArray(value);
+  }
+
+  function obligationWeaknessScore(item: JoinedObligation, evidence: PlanningEvidenceSource): number {
+    const unitContext = isPlanningEvidenceIndex(evidence)
+      ? evidence.weaknessByUnit.get(item.unit.id) ?? 0.55
+      : evidenceWeaknessScore(evidence.filter((event) => event.unitId === item.unit.id));
+    const obligationSignal = isPlanningEvidenceIndex(evidence)
+      ? evidence.weaknessByObligation.get(item.obligation.id)
+      : (() => {
+          const events = evidence.filter((event) => event.obligationId === item.obligation.id);
+          return events.length ? evidenceWeaknessScore(events) : undefined;
+        })();
+    if (obligationSignal === undefined) return unitContext;
     const obligationFailureBurden = clamp(item.obligation.policyState.failureCount / 3, 0, 1);
     const unitLapseContext = clamp(item.unit.lapseCount / 4, 0, 1);
     return clamp(
@@ -521,13 +559,14 @@
 
   function buildPlanningCandidate(
     item: JoinedObligation,
-    evidenceEvents: EvidenceEvent[],
+    evidence: PlanningEvidenceSource,
     settings: AppSettings,
     reference: Date,
     weeklyBalance = 0.5,
     chunk?: ObligationChunk,
     memoryReviews?: MemoryReviewObservationIndex,
   ): PlannedQueueItem | undefined {
+    const evidenceEvents = isPlanningEvidenceIndex(evidence) ? evidence.all : evidence;
     if (item.profile.status !== "active") return undefined;
     const dayStart = studyDayStart(reference, settings.studyDayBoundaryHour);
     const dayEnd = studyDayEnd(reference, settings.studyDayBoundaryHour);
@@ -564,7 +603,7 @@
     const factors: PlanningFactors = {
       dueRisk,
       examImportance: examImportanceScore(item.unit.importance),
-      weakness: Math.max(obligationWeaknessScore(item, evidenceEvents), memoryDifficultyWeaknessFloor(difficulty?.level ?? "normal")),
+      weakness: Math.max(obligationWeaknessScore(item, evidence), memoryDifficultyWeaknessFloor(difficulty?.level ?? "normal")),
       reviewDuration: reviewDurationScore(chunk?.expectedMinutes ?? (item.obligation.chunking?.status === "synthesis-ready" ? item.obligation.chunking.synthesisMinutes : item.obligation.expectedMinutes), settings.dailyCapacityMinutes),
       examinationProximity: examinationProximityScore(daysToExam),
       weeklyBalance,

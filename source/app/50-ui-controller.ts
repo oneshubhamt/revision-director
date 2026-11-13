@@ -33,6 +33,7 @@
     private restoreSafetyProofId = "";
     private fsrsOptimizerRun: BrowserFsrsOptimizerRun | undefined;
     private fsrsOptimizerProgress: BrowserFsrsOptimizerProgress | undefined;
+    private planSnapshot: DailyRevisionPlan | undefined;
 
     private readonly todayContent = requiredElement("#today-content", HTMLDivElement);
     private readonly reviewContent = requiredElement("#review-content", HTMLDivElement);
@@ -102,7 +103,7 @@
           requireMutable: (reason) => this.requireMutable(reason),
           openPane: (pane) => this.openPane(pane),
           renderIdleReview: () => this.renderIdleReview(),
-          invalidateAfterCommit: () => this.renderCoordinator.invalidateAndWait("review", "sidebar", "ownership", "storage"),
+          invalidateAfterCommit: () => this.ensurePlanningAndRender("review", "library", "history"),
           toast: (message, error) => this.toast(message, error),
         },
       );
@@ -124,6 +125,7 @@
 
 
     private registerRenderDomains(): void {
+      this.renderCoordinator.register("plan", () => this.refreshPlanSnapshot());
       this.renderCoordinator.register("today", () => this.renderToday());
       this.renderCoordinator.register("review", () => this.activeRetrieval.render());
       this.renderCoordinator.register("library", () => this.renderLibrary());
@@ -322,8 +324,7 @@
           : snapshot.state === "acquiring" || snapshot.state === "releasing"
             ? "A safe flush and ownership handoff is in progress."
             : "Another tab owns all Revision Director mutations. You may browse and export here.";
-      if (!wasPrimary && snapshot.canMutate) void this.renderAll();
-      else this.renderCoordinator.invalidate("ownership", "storage");
+      this.renderCoordinator.invalidate("ownership", "storage");
     }
 
     private applyReadOnlyState(): void {
@@ -374,7 +375,8 @@
     private async hydrateCanonicalState(reason: ReviewOwnershipHydrationReason): Promise<void> {
       this.activeRetrieval.resetLocalState();
       await this.service.initialize();
-      await this.renderAll();
+      this.planSnapshot = await this.service.ensureDailyPlan(new Date());
+      await this.renderAll(false);
       await this.activeRetrieval.recoverUnfinishedSession(reason === "startup");
       await this.renderCoordinator.invalidateAndWait("storage", "ownership");
     }
@@ -394,18 +396,45 @@
       await this.renderPane(pane);
     }
 
-    private async renderAll(): Promise<void> {
-      await this.renderCoordinator.invalidateAndWait(
+    private async renderAll(refreshPlan = true): Promise<void> {
+      const domains: RenderDomain[] = [
         "today", "review", "library", "study", "history", "settings", "sidebar", "ownership", "storage",
-      );
+      ];
+      if (refreshPlan) domains.unshift("plan");
+      await this.renderCoordinator.invalidateAndWait(...domains);
     }
 
     private async renderPane(pane: PaneId): Promise<void> {
-      await this.renderCoordinator.invalidateAndWait(pane, "sidebar", "ownership", "storage");
+      await this.renderCoordinator.invalidateAndWait("plan", pane, "sidebar", "ownership", "storage");
+    }
+
+    private async refreshPlanSnapshot(): Promise<void> {
+      this.planSnapshot = await this.service.calculateDailyPlan(new Date());
+    }
+
+    private currentPlanSnapshot(): DailyRevisionPlan {
+      assert(this.planSnapshot, "Daily plan snapshot is unavailable.");
+      return this.planSnapshot;
+    }
+
+    private async renderAfterPlanningMutation(...extraDomains: RenderDomain[]): Promise<void> {
+      const domains = new Set<RenderDomain>(["sidebar", ...extraDomains]);
+      if (this.currentPane === "today" || this.currentPane === "review") domains.add(this.currentPane);
+      await this.renderCoordinator.invalidateAndWait(...domains);
+    }
+
+    private async ensurePlanningAndRender(...extraDomains: RenderDomain[]): Promise<void> {
+      this.planSnapshot = await this.service.ensureDailyPlan(new Date());
+      await this.renderAfterPlanningMutation(...extraDomains);
+    }
+
+    private async regeneratePlanningAndRender(...extraDomains: RenderDomain[]): Promise<void> {
+      this.planSnapshot = await this.service.regenerateDailyPlan(new Date());
+      await this.renderAfterPlanningMutation(...extraDomains);
     }
 
     private async renderSidebar(): Promise<void> {
-      const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
+      const plan = this.currentPlanSnapshot();
       const units = (await this.service.units()).filter((unit) => unit.status === "active");
       requiredElement("#sb-due", HTMLElement).textContent = String(plan.selected.length);
       requiredElement("#sb-units", HTMLElement).textContent = String(units.length);
@@ -417,7 +446,7 @@
     }
 
     private async renderToday(): Promise<void> {
-      const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
+      const plan = this.currentPlanSnapshot();
       const capacityDifference = plan.capacityMinutes - plan.plannedMinutes;
       const capacityStatus = capacityDifference >= 0 ? `${capacityDifference}m reserve` : `${Math.abs(capacityDifference)}m necessary overrun`;
       const deferredMinutes = plan.deferred.reduce((sum, item) => sum + item.executionMinutes, 0);
@@ -476,14 +505,23 @@
 
     private async renderLibrary(): Promise<void> {
       const settings = this.service.getSettings();
-      const profiles = await this.service.profiles();
-      const units = (await this.service.units()).filter((unit) => unit.status !== "archived");
-      const nodes = await this.service.nodes();
-      const obligations = await this.service.obligations();
-      const evidenceEvents = await this.service.evidenceEvents();
+      const [profiles, allUnits, nodes, obligations, evidenceEvents] = await Promise.all([
+        this.service.profiles(),
+        this.service.units(),
+        this.service.nodes(),
+        this.service.obligations(),
+        this.service.evidenceEvents(),
+      ]);
+      const units = allUnits.filter((unit) => unit.status !== "archived");
       const memoryReviews = memoryReviewObservationIndex(evidenceEvents);
       const nodeMap = new Map(nodes.map((node) => [node.id, node]));
       const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
+      const obligationsByUnit = new Map<string, RevisionObligation[]>();
+      for (const obligation of obligations) {
+        const list = obligationsByUnit.get(obligation.unitId);
+        if (list) list.push(obligation);
+        else obligationsByUnit.set(obligation.unitId, [obligation]);
+      }
       const filtered = units.filter((unit) => {
         if (!this.libraryFilter) return true;
         const topic = nodeMap.get(unit.topicNodeId);
@@ -502,8 +540,9 @@
             const topic = nodeMap.get(unit.topicNodeId);
             const section = topic?.parentId ? nodeMap.get(topic.parentId) : undefined;
             const subject = section?.parentId ? nodeMap.get(section.parentId) : undefined;
-            const unitObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.status === "active");
-            const memoryObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.type === "memory-recall" && obligation.status !== "archived");
+            const allUnitObligations = obligationsByUnit.get(unit.id) ?? [];
+            const unitObligations = allUnitObligations.filter((obligation) => obligation.status === "active");
+            const memoryObligations = allUnitObligations.filter((obligation) => obligation.type === "memory-recall" && obligation.status !== "archived");
             const difficultyPanels = memoryObligations.map((obligation) => {
               const assessment = memoryDifficultyAssessment(
                 obligation,
@@ -529,8 +568,10 @@
     }
 
     private async renderStudy(): Promise<void> {
-      const events = await this.service.studyEvents();
-      const profiles = await this.service.profiles();
+      const [events, profiles] = await Promise.all([
+        this.service.studyEvents(),
+        this.service.profiles(),
+      ]);
       const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
       const recentMinutes = events.filter((event) => new Date(event.occurredAt).getTime() > Date.now() - 7 * DAY_MS).reduce((sum, event) => sum + event.durationMinutes, 0);
       const linkedCount = events.filter((event) => event.linkedUnitIds.length > 0).length;
@@ -552,11 +593,13 @@
     }
 
     private async renderHistory(): Promise<void> {
-      const evidence = await this.service.evidenceEvents();
-      const study = await this.service.studyEvents();
-      const units = await this.service.units();
-      const profiles = await this.service.profiles();
-      const plans = await this.service.dailyPlanHistory();
+      const [evidence, study, units, profiles, plans] = await Promise.all([
+        this.service.evidenceEvents(),
+        this.service.studyEvents(),
+        this.service.units(),
+        this.service.profiles(),
+        this.service.dailyPlanHistory(),
+      ]);
       const unitMap = new Map(units.map((unit) => [unit.id, unit]));
       const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
       const content = this.historyTab === "evidence"
@@ -659,7 +702,7 @@
       }
     }
     private async renderIdleReview(): Promise<void> {
-      const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
+      const plan = this.currentPlanSnapshot();
       this.reviewContent.innerHTML = `
         ${this.pageHead("ACTIVE RETRIEVAL", "Review", "Each workflow requires an attempt, comparison, modality-specific evidence and a confirmed outcome.")}
         ${plan.selected.length ? `<div class="queue-list planner-list">${plan.selected.map((item, index) => this.plannerRow(item, index + 1, "selected")).join("")}</div>` : this.emptyState("No active review session", "Start the daily plan from Today or select a unit from the Library.")}`;
@@ -706,15 +749,15 @@
         if (!nonMutating && !this.requireMutable("change Revision Director data")) return;
         if (action === "add-unit") await this.openUnitDialog();
         else if (action === "log-study") await this.openStudyDialog();
-        else if (action === "regenerate-plan") { await this.service.dailyPlan(new Date(), true); await this.renderAll(); this.toast("Daily plan regenerated and previous version preserved."); }
+        else if (action === "regenerate-plan") { await this.regeneratePlanningAndRender("history"); this.toast("Daily plan regenerated and previous version preserved."); }
         else if (action === "add-obligation") await this.openObligationDialog(element.dataset["id"] ?? "");
         else if (action === "resume-persistent-difficulty") {
           await this.service.resumePersistentDifficulty(element.dataset["id"] ?? "");
-          await this.renderAll();
+          await this.ensurePlanningAndRender("library");
           this.toast("Memory obligation returned to the normal queue.");
         } else if (action === "toggle-unit") {
           await this.service.updateUnitStatus(element.dataset["id"] ?? "", literalChoice(element.dataset["status"], ENTITY_STATUSES, "Unit status"));
-          await this.renderAll();
+          await this.ensurePlanningAndRender("library");
           this.toast("Knowledge-unit status updated.");
         } else if (action === "derive-unit") await this.deriveUnitFromStudy(element.dataset["id"] ?? "");
         else if (action === "add-profile") await this.addProfileFromSettings();
@@ -723,9 +766,9 @@
         else if (action === "export-fsrs-evidence") await this.exportFsrsOptimizerEvidence();
         else if (action === "optimize-fsrs-locally") await this.optimizeFsrsLocally();
         else if (action === "cancel-fsrs-optimization") this.fsrsOptimizerRun?.cancel();
-        else if (action === "activate-fsrs-profile") { await this.service.activateFsrsOptimizerProfile(); await this.renderAll(); this.toast("Personalized FSRS-7 activated and memory schedules reprojected."); }
-        else if (action === "deactivate-fsrs-profile") { await this.service.deactivateFsrsOptimizerProfile(); await this.renderAll(); this.toast("Returned to stock FSRS-7 and memory schedules reprojected."); }
-        else if (action === "clear-fsrs-profile") { await this.service.clearFsrsOptimizerProfile(); await this.renderAll(); this.toast("Staged FSRS optimizer profile removed."); }
+        else if (action === "activate-fsrs-profile") { await this.service.activateFsrsOptimizerProfile(); await this.ensurePlanningAndRender("settings"); this.toast("Personalized FSRS-7 activated and memory schedules reprojected."); }
+        else if (action === "deactivate-fsrs-profile") { await this.service.deactivateFsrsOptimizerProfile(); await this.ensurePlanningAndRender("settings"); this.toast("Returned to stock FSRS-7 and memory schedules reprojected."); }
+        else if (action === "clear-fsrs-profile") { await this.service.clearFsrsOptimizerProfile(); await this.renderCoordinator.invalidateAndWait("settings"); this.toast("Staged FSRS optimizer profile removed."); }
         else if (action === "export-backup") await this.exportBackup();
         else if (action === "create-restore-safety") await this.createRestoreSafetyCopy();
         else if (action === "perform-restore") await this.performRestore();
@@ -786,7 +829,7 @@
           workflow,
         });
         this.dialogFocus.close(this.unitDialog);
-        await this.renderAll();
+        await this.ensurePlanningAndRender("library");
         this.toast("Knowledge unit and initial obligation created.");
       } catch (error) {
         this.toast(error instanceof Error ? error.message : "Could not save the unit.", true);
@@ -836,7 +879,7 @@
           origin: literalChoice(formText(data, "origin"), STUDY_ORIGINS, "Study origin"),
         });
         this.dialogFocus.close(this.studyDialog);
-        await this.renderAll();
+        await this.renderCoordinator.invalidateAndWait("study", "history");
         this.toast("Study Event recorded.");
       } catch (error) {
         this.toast(error instanceof Error ? error.message : "Could not save the Study Event.", true);
@@ -874,7 +917,7 @@
           workflow,
         });
         this.dialogFocus.close(this.obligationDialog);
-        await this.renderAll();
+        await this.ensurePlanningAndRender("library");
         this.toast("Revision obligation added.");
       } catch (error) {
         this.toast(error instanceof Error ? error.message : "Could not add the obligation.", true);
@@ -940,7 +983,7 @@
           dailyCapacityMinutes: formNumber(data, "dailyCapacityMinutes"),
           studyDayBoundaryHour: formNumber(data, "studyDayBoundaryHour"),
         });
-        await this.renderAll();
+        await this.ensurePlanningAndRender("settings", "library");
         this.toast("Settings saved.");
       } catch (error) {
         this.toast(error instanceof Error ? error.message : "Could not save settings.", true);
@@ -959,7 +1002,7 @@
       const examDate = dateInput.value;
       const status = statusInput.value === "suspended" ? "suspended" : "active";
       await this.service.updateProfile(profileId, name, examDate, status);
-      await this.renderAll();
+      await this.ensurePlanningAndRender("settings", "library", "study", "history");
       this.toast("Exam horizon updated; today’s plan recalculated.");
     }
 
@@ -968,7 +1011,7 @@
       const name = this.settingsContent.querySelector<HTMLInputElement>("#new-profile-name")?.value ?? "";
       const date = this.settingsContent.querySelector<HTMLInputElement>("#new-profile-date")?.value ?? "";
       await this.service.createProfile(name, date);
-      await this.renderAll();
+      await this.renderCoordinator.invalidateAndWait("settings");
       this.toast("Exam profile created.");
     }
 
@@ -1014,7 +1057,7 @@
         assert(this.requireMutable("publish the locally optimized FSRS-7 profile"), "Review control changed before optimizer publication.");
         if (incumbentProfile) {
           const activated = await this.service.replaceActiveFsrsOptimizerProfile(profile);
-          await this.renderAll();
+          await this.ensurePlanningAndRender();
           this.toast(`FSRS-7 candidate beat stock and the active profile on the same holdout · ${activated.evidenceItems} optimizer items. Active weights switched with one atomic rebase.`);
         } else {
           const staged = await this.service.stageFsrsOptimizerProfile(profile);
@@ -1053,11 +1096,12 @@
         const personalization = effectiveFsrsPersonalization(this.service.getSettings());
         if (personalization.active) {
           const profile = await this.service.replaceActiveFsrsOptimizerProfile(parsed);
-          await this.renderAll();
+          await this.ensurePlanningAndRender();
+          await this.refreshFsrsPersonalizationCard();
           this.toast(`Validated FSRS-7 replacement activated · ${profile.evidenceItems} optimizer items. Active weights switched with one atomic rebase.`);
         } else {
           const profile = await this.service.stageFsrsOptimizerProfile(parsed);
-          await this.renderAll();
+          await this.refreshFsrsPersonalizationCard();
           this.toast(`Validated FSRS-7 profile staged · ${profile.evidenceItems} optimizer items. Activation remains explicit.`);
         }
       } catch (error) {

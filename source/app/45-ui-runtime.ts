@@ -51,11 +51,11 @@
   }
 
   type PaneId = "today" | "review" | "library" | "study" | "history" | "settings";
-  type RenderDomain = PaneId | "sidebar" | "ownership" | "storage";
+  type RenderDomain = PaneId | "plan" | "sidebar" | "ownership" | "storage";
   type RenderCallback = () => void | Promise<void>;
 
   const RENDER_DOMAIN_ORDER: readonly RenderDomain[] = Object.freeze([
-    "today", "review", "library", "study", "history", "settings", "sidebar", "ownership", "storage",
+    "plan", "today", "review", "library", "study", "history", "settings", "sidebar", "ownership", "storage",
   ]);
 
   interface DocumentFocusSnapshot {

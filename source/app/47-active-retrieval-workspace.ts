@@ -813,7 +813,7 @@
 
     private async startDueSession(): Promise<void> {
       assert(this.host.requireMutable("start the daily review"), "This tab is read-only.");
-      const plan = await this.service.dailyPlan(new Date(), false, true);
+      const plan = await this.service.ensureDailyPlan(new Date());
       await this.startReviewSession(plan.selected.map((item) => item.chunk ? `chunk:${item.chunk.id}` : item.joined.obligation.id));
     }
 
