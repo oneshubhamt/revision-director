@@ -628,7 +628,8 @@
     const weights = profile ? [...profile.weights] : [...FSRS7_DEFAULT_WEIGHTS];
     const referenceOptions = fsrsBaseSchedulerOptions(0.9, weights);
     const reference = await runtime.DefaultScheduler(referenceOptions);
-    const { version: _version, desiredRetention: _desiredRetention, ...costAdrBase } = referenceOptions;
+    const { version, desiredRetention, ...costAdrBase } = referenceOptions;
+    assert(version === FSRS_MODEL && desiredRetention === 0.9, "Cost-ADR reference scheduler options are invalid.");
     assert(typeof runtime.defineScheduler === "function", "Embedded ts-fsrs runtime does not expose scheduler composition.");
     return runtime.defineScheduler(reference.definition)
       .use(
