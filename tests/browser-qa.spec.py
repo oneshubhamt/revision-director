@@ -393,6 +393,19 @@ def scenario_bridge(browser) -> None:
 
 
 
+def persisted_scheduling_policy(page):
+    return page.evaluate("""() => new Promise((resolve,reject)=>{
+      const request=indexedDB.open('revision-director');
+      request.onerror=()=>reject(request.error);
+      request.onsuccess=()=>{
+        const db=request.result;
+        const get=db.transaction('settings','readonly').objectStore('settings').get('app');
+        get.onerror=()=>reject(get.error);
+        get.onsuccess=()=>{ resolve(get.result?.fsrsScheduling?.policy ?? null); db.close(); };
+      };
+    })""")
+
+
 def scenario_cost_adr_settings(browser) -> None:
     page, errors = open_page(browser, {"width": 1365, "height": 950}, baseline=True)
     page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
@@ -403,7 +416,14 @@ def scenario_cost_adr_settings(browser) -> None:
 
     policy.select_option("cost-adr")
     settings.locator('button[type="submit"]').click()
-    wait_until(page, lambda: "Cost-ADR · cost weight 1024" in page.locator("#settings-content").inner_text(), timeout=8000, interval=50, message="Cost-ADR activation did not complete")
+    wait_until(
+        page,
+        lambda: (persisted_scheduling_policy(page) or {}).get("kind") == "cost-adr"
+        and page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "cost-adr",
+        timeout=8000,
+        interval=50,
+        message="Cost-ADR activation did not persist and rerender",
+    )
     check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
     settings_text = page.locator("#settings-content").inner_text()
     check("Cost-ADR · cost weight 1024" in settings_text, "Optional Cost-ADR preset did not become active in Settings")
@@ -424,7 +444,15 @@ def scenario_cost_adr_settings(browser) -> None:
     settings.locator('[name="memorySchedulingPolicy"]').select_option("fixed-retention")
     settings.locator('[name="desiredRetention"]').fill("0.90")
     settings.locator('button[type="submit"]').click()
-    wait_until(page, lambda: "Fixed · 90%" in page.locator("#settings-content").inner_text(), timeout=8000, interval=50, message="Return from Cost-ADR to fixed retention did not complete")
+    wait_until(
+        page,
+        lambda: (persisted_scheduling_policy(page) or {}).get("kind") == "fixed-retention"
+        and abs(float((persisted_scheduling_policy(page) or {}).get("desiredRetention", 0)) - 0.90) < 1e-12
+        and page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "fixed-retention",
+        timeout=8000,
+        interval=50,
+        message="Return from Cost-ADR to fixed retention did not persist and rerender",
+    )
     check("Fixed · 90%" in page.locator("#settings-content").inner_text(), "Return from Cost-ADR to fixed retention did not complete")
     check(not errors, f"Cost-ADR Settings browser errors: {errors}")
     page.close()
