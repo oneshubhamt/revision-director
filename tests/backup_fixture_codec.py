@@ -56,6 +56,19 @@ def encode_file(source:Path,target:Path)->None:
     payload=json.loads(source.read_text())
     target.write_bytes(encode_payload(payload))
 
+BASELINE_JSON=Path(__file__).resolve().parent/'fixtures/browser-baseline.json'
+
+def baseline_backup_path()->Path:
+    source=BASELINE_JSON.read_bytes()
+    digest=sha256(source)[:16]
+    directory=Path(tempfile.gettempdir())/'revision-director-tests'
+    directory.mkdir(parents=True,exist_ok=True)
+    target=directory/f'browser-baseline-{digest}.rdbackup'
+    expected=encode_payload(json.loads(source))
+    if not target.exists() or target.read_bytes()!=expected:
+        target.write_bytes(expected)
+    return target
+
 if __name__=='__main__':
     import sys
     encode_file(Path(sys.argv[1]),Path(sys.argv[2]))
