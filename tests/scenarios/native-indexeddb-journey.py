@@ -220,6 +220,7 @@ def main() -> None:
 
                 complete_review(page)
                 committed = native_state(page)
+                committed_unit = select_by_id(committed["units"], unit["id"])
                 committed_obligation = select_by_id(committed["obligations"], obligation["id"])
                 evidence = committed["evidenceEvents"][0]
                 check(evidence["obligationId"] == obligation["id"] and evidence["confirmedRating"] == 3, "Committed evidence identity/rating is wrong")
@@ -239,7 +240,7 @@ def main() -> None:
                 restored = native_state(page)
 
                 check(select_by_id(restored["profiles"], profile["id"]) == profile, "Profile changed across Chromium restart")
-                check(select_by_id(restored["units"], unit["id"]) == unit, "Unit changed across Chromium restart")
+                check(select_by_id(restored["units"], unit["id"]) == committed_unit, "Committed unit changed across Chromium restart")
                 check(select_by_id(restored["obligations"], obligation["id"]) == committed_obligation, "Reviewed obligation changed across Chromium restart")
                 check(select_by_id(restored["evidenceEvents"], evidence["id"]) == evidence, "Evidence Event changed across Chromium restart")
                 check(restored["activeRetrieval"] == [], "Completed review left an active retrieval record after restart")
