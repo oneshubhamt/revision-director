@@ -135,6 +135,13 @@ def review_unit(page, title: str) -> None:
     check(row.count() == 1, f"Knowledge Unit not found: {title}")
     row.locator('[data-action="review-unit"]').click()
     page.locator("#review-content").wait_for(state="visible")
+    wait_until(
+        page,
+        lambda: title in page.locator("#review-content").inner_text(),
+        timeout=5_000,
+        interval=30,
+        message=f"Review surface did not render selected unit: {title}",
+    )
 
 
 def rate_good(page) -> None:
