@@ -141,6 +141,22 @@ def wait_until(
 
 
 
+def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) -> dict[str, object]:
+    wait_until(
+        page,
+        lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
+        and page.locator("#import-backup").is_enabled(),
+        timeout=timeout,
+        interval=40,
+        message="Restore surface did not settle into mutable primary state",
+    )
+    page.evaluate("document.querySelector('#toast').textContent=''")
+    input_element = page.locator("#import-backup")
+    input_element.set_input_files([])
+    input_element.set_input_files(str(path))
+    return wait_for_backup_import_result(page, timeout=timeout)
+
+
 def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[str, object]:
     wait_until(
         page,
