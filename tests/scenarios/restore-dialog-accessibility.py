@@ -4,7 +4,8 @@ from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
-sys.path.insert(0, str(TESTS))\nfrom backup_fixture_codec import baseline_backup_path
+sys.path.insert(0, str(TESTS))
+from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa
 sys.path.insert(0,str(ROOT/'tests'))
 base=load_browser_qa("revision_director_restore_dialog")
