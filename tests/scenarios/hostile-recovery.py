@@ -161,7 +161,11 @@ def main() -> None:
 
         # Corrupted IndexedDB active document must not defeat a valid emergency copy.
         frame.locator('#attempt-text').fill('Emergency copy survives hostile IndexedDB')
-        frame.wait_for_timeout(700)
+        wait_until(
+            frame,
+            lambda: (host_state_get(page, 'activeRetrieval', 'current') or {}).get('draft', {}).get('values', {}).get('attempt-text') == 'Emergency copy survives hostile IndexedDB',
+            timeout=5000,
+        )
         remove_frame(page, frame)
         mutate_raw_record(page, 'activeRetrieval', 'current', "value.revision='invalid';")
         frame = boot_frame(page)
