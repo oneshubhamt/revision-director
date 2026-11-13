@@ -78,7 +78,7 @@ function directEvent(payload, before, completion, rating, reviewedAt, sequence){
     beforePolicyState:clone(before.policyState),afterPolicyState:clone(completion.policyState),
     policyId:completion.policyId,schedulerPackage:'ts-fsrs',schedulerVersion:'6.0.0',schedulerModel:'FSRS-7',
     schedulerConfig:clone(completion.schedulerConfig),reviewLog:clone(completion.reviewLog),
-    durationObservation:clone(durationObservation),timing:clone(timing),createdAt:reviewedAt
+    durationObservation:{...clone(durationObservation),exactSamples:sequence},timing:clone(timing),createdAt:reviewedAt
   };
 }
 
