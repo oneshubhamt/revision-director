@@ -206,7 +206,8 @@ def main() -> None:
         frame.locator('[data-action="rate"][data-rating="3"]').click()
         wait_until(
             frame,
-            lambda: (host_state_get(page, 'activeRetrieval', 'current') or {}).get('status') == 'active',
+            lambda: (host_state_get(page, 'activeRetrieval', 'current') or {}).get('status') == 'active'
+            and frame.locator('[data-action="rate"][data-rating="3"]').is_enabled(),
             timeout=8000,
         )
         check(len(host_state_all(page, 'evidenceEvents')) == before_guard_evidence, 'Guard mismatch wrote Evidence despite transaction abort')
