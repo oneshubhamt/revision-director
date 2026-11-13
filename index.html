@@ -7852,7 +7852,9 @@ exports.withFuzzing = withFuzzing;
       const startedAt = canonicalIso(value.startedAt, "Active retrieval start date");
       const updatedAt = canonicalIso(value.updatedAt, "Active retrieval update date");
       assert(timeRuntime.sessionStartedAt === startedAt, "Active retrieval start date differs from its timing runtime.");
-      assert(Date.parse(updatedAt) >= Date.parse(startedAt), "Active retrieval update precedes its start.");
+      // Wall-clock time may legitimately move backward during a session. Monotonic
+      // recovery ordering is owned by revision, while timing runtime records the
+      // backward-clock event explicitly.
       return {
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
           id: ACTIVE_RETRIEVAL_ID,
