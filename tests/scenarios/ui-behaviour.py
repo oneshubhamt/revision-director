@@ -50,12 +50,22 @@ def main():
    for pane in ('today','review','library','study','history','settings'):
     page.evaluate("p=>document.querySelector(`[data-pane=\"${p}\"]`).click()",pane)
   page.locator('#pane-settings').wait_for(state='visible')
-  before=page.locator('[data-profile-editor]').count()
+  before_profiles=page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
+  before_ids={profile['id'] for profile in before_profiles}
   page.locator('#new-profile-name').fill('Stage C single delegated action')
   page.locator('#new-profile-date').fill('2029-01-01')
+  page.evaluate("document.querySelector('#toast').textContent=''")
   page.locator('[data-action=add-profile]').click()
-  wait_until(page, lambda: page.locator('[data-profile-editor]').count()==before+1, timeout=5000, interval=40, message='Delegated action duplicated or failed')
-  check(page.locator('[data-profile-editor]').count()==before+1,'Delegated action duplicated or failed')
+  wait_until(
+   page,
+   lambda: len(page.evaluate("async()=>await RevisionDirector.records.listProfiles()"))==len(before_profiles)+1,
+   timeout=5000,
+   interval=40,
+   message='Delegated add-profile action did not create exactly one record',
+  )
+  after_profiles=page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
+  added=[profile for profile in after_profiles if profile['id'] not in before_ids]
+  check(len(added)==1 and added[0]['name']=='Stage C single delegated action','Delegated action duplicated or created the wrong profile')
 
   # Dirty render preserves focus and selection.
   page.locator('[data-pane=library]').click(); page.locator('#pane-library').wait_for(state='visible')
