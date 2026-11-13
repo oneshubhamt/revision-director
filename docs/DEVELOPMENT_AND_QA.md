@@ -33,7 +33,7 @@ Never hand-edit `dist/app.js` or `index.html`.
 
 ## Test philosophy
 
-Tests are organized by behaviour and safety boundary even where historical filenames still contain pass/stage labels. New documentation and new test structure should not reproduce implementation-pass sprawl.
+Tests are organized by behaviour and safety boundary. Historical pass/stage entrypoints have been consolidated into behavior-named suites; their assertion bodies remain isolated under `tests/scenarios/` so failures retain narrow diagnostics without recreating implementation-pass sprawl.
 
 The permanent suite covers:
 
@@ -49,6 +49,22 @@ The permanent suite covers:
 - plugin/public API contracts;
 - responsive/accessibility behaviour;
 - large-data and browser workflows.
+
+## Canonical QA commands
+
+After `npm ci`, use the same entrypoints locally and in CI:
+
+```sh
+npm run qa:core
+npm run qa:optimizer
+npm run qa:browser:durability
+npm run qa:browser
+npm run qa:full
+```
+
+`qa:core` rebuilds the authoritative artifacts, refreshes the tracked checksum manifest in the working tree, checks source/build ownership, and runs every non-browser JavaScript regression. `qa:optimizer` exercises the isolated native optimizer runtime. `qa:browser:durability` is the focused phase-time/durability gate. `qa:browser` runs the complete Python/Chromium matrix plus full browser/WASM optimizer training. `qa:full` runs all four surfaces in order. Browser commands require Playwright and Chromium; local hosted-optimizer runs require `npm ci --prefix tools/fsrs-optimizer` and `npm run build:hosted` if the hosted distribution is not already present.
+
+The Python browser suite shares stable launch, error-capture, wait, module-loading and scenario-runner primitives from `tests/helpers/browser_harness.py`. Behavior-specific shims remain with the scenarios that own them.
 
 ## Required QA discipline
 
@@ -110,15 +126,9 @@ The two-checker configuration was selected because it matched the fastest median
 
 The permanent GitHub Actions workflow uses an explicit Ubuntu 24.04 runner, the pinned project Node/npm/TypeScript toolchain, Python 3.13 and full-sha-pinned official GitHub actions.
 
-The core job is read-only and covers:
+The core job is read-only and invokes `npm run qa:core`, covering the strict TypeScript 7 build, JavaScript parse validation, build integrity, HTML sanity, source ownership, checksum refresh in the checkout, and every non-browser JavaScript regression.
 
-- strict TypeScript 7 build;
-- JavaScript parse validation;
-- build integrity, HTML sanity and source-ownership checks;
-- all non-browser JavaScript regressions;
-- checksum-manifest refresh from the current checkout before integrity checks.
-
-Checksum refresh is implemented once in `build/checksums.py`; CI does not duplicate hashing logic in workflow YAML. The external-optimizer job installs only the isolated native optimizer lockfile and exercises its pinned FSRS-7 boundary. The browser job is read-only and covers the durability gate plus the complete Python/Chromium regression matrix. A separate working-branch-only job has the sole write permission needed to regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. Main-branch and pull-request runs still fail on a generated-artifact/checksum diff, while working-branch source commits are synchronized by that dedicated writer job.
+Checksum refresh is implemented once in `build/checksums.py`; CI does not duplicate hashing logic in workflow YAML. The external-optimizer job installs only the isolated native optimizer lockfile and invokes `npm run qa:optimizer`. The browser job is read-only and invokes the same `qa:browser:durability` and `qa:browser` commands used locally. A separate working-branch-only job has the sole write permission needed to regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. Main-branch and pull-request runs still fail on a generated-artifact/checksum diff, while working-branch source commits are synchronized by that dedicated writer job.
 
 ## Browser/device boundary
 
