@@ -174,10 +174,24 @@ def scenario_corrective_memory_e2e(browser) -> None:
     check(memory["policyState"]["fsrsCard"]["reps"] == 3, "Successful return did not preserve all three closed-book FSRS observations")
     check(memory["dueAt"] == memory["policyState"]["fsrsCard"]["dueAt"], "Successful return desynchronized obligation and FSRS due dates")
 
+    lifecycle_events = [item for item in state["evidenceEvents"] if item["unitId"] == memory["unitId"]]
+    check(
+        len(lifecycle_events) == 3
+        and sum(item["obligationType"] == "memory-recall" for item in lifecycle_events) == 1
+        and sum(item["obligationType"] == "relearn" for item in lifecycle_events) == 2,
+        "Corrective lifecycle evidence types are incomplete",
+    )
     page.locator('[data-pane="history"]').click()
     page.locator("#pane-history").wait_for(state="visible")
-    history_text = page.locator("#history-content").inner_text().lower()
-    check("relearning" in history_text and "recall" in history_text, "Browser history does not expose the corrective lifecycle")
+    history_rows = page.locator("#history-content .record-row").filter(has_text=unit_by_id[memory["unitId"]]["title"])
+    qa.wait_until(
+        page,
+        lambda: history_rows.count() == len(lifecycle_events),
+        timeout=5000,
+        interval=40,
+        message="Browser History did not project every corrective lifecycle event",
+    )
+    check(history_rows.count() == 3, "Browser History does not expose all corrective lifecycle records")
     check(not errors, f"FSRS programme-closure browser errors: {errors}")
     page.close()
 
