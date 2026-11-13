@@ -547,7 +547,7 @@
       return (await this.repo.getByIndex(Store.Obligations, "unitId", unitId)).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
     }
 
-    private buildObligation(draft: ObligationDraft, relation?: { parentObligationId?: string; returnObligationId?: string }): RevisionObligation {
+    private buildObligation(draft: ObligationDraft): RevisionObligation {
       assert(draft.expectedMinutes >= 1 && draft.expectedMinutes <= 240, "Expected minutes are invalid.");
       assert(draft.protocol.trim().length >= 3 && draft.successCriteria.trim().length >= 3, "Protocol and success criteria are required.");
       validateWorkflowSpec(draft.workflow, draft.type);
@@ -574,22 +574,13 @@
         createdAt: time,
         updatedAt: time,
       };
-      if (relation?.parentObligationId) obligation.parentObligationId = relation.parentObligationId;
-      if (relation?.returnObligationId) obligation.returnObligationId = relation.returnObligationId;
       return obligation;
     }
 
-    async createObligation(draft: ObligationDraft, relation?: { parentObligationId?: string; returnObligationId?: string }): Promise<RevisionObligation> {
-      const unit = await this.unit(draft.unitId);
-      if (relation?.parentObligationId) {
-        const parent = await this.obligation(relation.parentObligationId);
-        assert(parent.unitId === unit.id, "Parent obligation belongs to a different knowledge unit.");
-      }
-      if (relation?.returnObligationId) {
-        const target = await this.obligation(relation.returnObligationId);
-        assert(target.unitId === unit.id, "Return obligation belongs to a different knowledge unit.");
-      }
-      const obligation = this.buildObligation(draft, relation);
+    async createObligation(draft: ObligationDraft): Promise<RevisionObligation> {
+      await this.unit(draft.unitId);
+      assert(draft.type !== "relearn", "Relearning obligations are created only by a failed retrieval that records their exact origin.");
+      const obligation = this.buildObligation(draft);
       await this.repo.put(Store.Obligations, obligation);
       return obligation;
     }
