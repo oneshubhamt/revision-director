@@ -1670,7 +1670,14 @@
             if (!item.chunkId) {
               const event = outcome.evidenceEventId ? evidenceMap.get(outcome.evidenceEventId) : undefined;
               assert(event?.obligationId === item.obligationId, "Completed parent-plan outcomes require matching retrieval evidence.");
-            } else assert(outcome.evidenceEventId === undefined, "Chunk outcomes cannot claim parent retrieval evidence.");
+              assert(outcome.completedAt === event.reviewedAt, "Completed parent-plan outcome time does not match its retrieval evidence.");
+              assert(outcome.actualMinutes === roundTo(event.timing.totalActiveMs / 60_000, 1), "Completed parent-plan duration does not match its retrieval timing.");
+            } else {
+              assert(outcome.evidenceEventId === undefined, "Chunk outcomes cannot claim parent retrieval evidence.");
+              const chunk = chunkMap.get(item.chunkId);
+              assert(chunk?.status === "completed" && chunk.completedAt !== undefined && chunk.actualMinutes !== undefined, "Completed chunk-plan outcome requires a completed source chunk.");
+              assert(outcome.completedAt === chunk.completedAt && outcome.actualMinutes === chunk.actualMinutes, "Completed chunk-plan outcome does not match its source chunk.");
+            }
           }
         }
       }
