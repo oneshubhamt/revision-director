@@ -948,261 +948,120 @@
     }
 
     async recordEvidence(obligationId: string, draft: EvidenceDraft, reviewedAt = new Date(), commitGuard?: ActiveCommitGuard, postCommitSession?: ActiveRetrievalSession): Promise<EvidenceEvent> {
-      const timing = canonicalTimingEvidenceSummary(draft.timing);
-      const normalizedDraft: EvidenceDraft = { ...draft, elapsedMs: timing.totalActiveMs, timing };
-      validateEvidence(normalizedDraft);
-      const requestedRating = validateRating(normalizedDraft.confirmedRating);
+      const prepared = prepareEvidenceDraft(draft);
       const obligation = await this.obligation(obligationId);
-      const confirmed = obligation.type === "relearn"
-        ? correctiveMemoryRating(requestedRating, normalizedDraft)
-        : requestedRating;
-      validateWorkflowSpec(obligation.workflow, obligation.type);
-      validateWorkflowResult(normalizedDraft.workflowResult, obligation.workflow.kind);
-      assert(obligation.status === "active", "This obligation is not active.");
+      const rating = evidenceRatingDecision(obligation, prepared);
       const unit = await this.unit(obligation.unitId);
       const priorEvidence = await this.evidenceEvents();
-      const chunking = obligation.chunking;
-      const cycleChunks = chunking?.status === "synthesis-ready" ? (await this.chunksForObligation(obligation.id)).filter((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "completed") : [];
-      const cycleChunkMs = cycleChunks.reduce((sum, chunk) => sum + (chunk.actualMinutes ?? 0) * 60_000, 0);
-      const cycleTimingReliable = cycleChunks.every((chunk) => chunk.timing?.durationReliable !== false);
-      const durationObservation = durationObservationFor(obligation, priorEvidence, normalizedDraft.elapsedMs + cycleChunkMs, timing.durationReliable && cycleTimingReliable);
-      const beforePolicyState = clone(obligation.policyState);
-      const beforeDueAt = obligation.dueAt;
-      const suggested = suggestRating(obligation.type, normalizedDraft);
-      const policy = this.router.get(obligation.type);
+      const chunks = obligation.chunking ? await this.chunksForObligation(obligation.id) : [];
+      const synthesis = synthesisDurationContext(obligation, chunks);
+      const durationObservation = durationObservationFor(
+        obligation,
+        priorEvidence,
+        prepared.draft.elapsedMs + synthesis.cycleChunkMs,
+        prepared.timing.durationReliable && synthesis.durationReliable,
+      );
       const memoryReviewIndex = this.memoryReviewIndexFor(priorEvidence);
       const priorMemoryReviews = obligation.type === "memory-recall"
         ? memoryReviewIndex.get(obligation.id) ?? []
         : [];
+      const policy = this.router.get(obligation.type);
       const completion = obligation.type === "memory-recall"
-        ? policy.complete(obligation, confirmed, normalizedDraft, reviewedAt, {
-            memoryReviews: priorMemoryReviews,
-          })
-        : policy.complete(obligation, confirmed, normalizedDraft, reviewedAt);
+        ? policy.complete(obligation, rating.confirmedRating, prepared.draft, reviewedAt, { memoryReviews: priorMemoryReviews })
+        : policy.complete(obligation, rating.confirmedRating, prepared.draft, reviewedAt);
+      const reviewedAtIso = reviewedAt.toISOString();
 
-      obligation.dueAt = completion.dueAt;
-      obligation.policyState = completion.policyState;
-      const memoryDifficulty = obligation.type === "memory-recall"
-        ? (() => {
-            const beforeCard = beforePolicyState.fsrsCard;
-            const afterCard = completion.policyState.fsrsCard;
-            const schedulerConfig = completion.schedulerConfig;
-            assert(beforeCard && afterCard && schedulerConfig, "Memory completion is missing FSRS difficulty evidence.");
-            const currentReview: MemoryReviewObservation = {
-              evidenceEventId: "pending",
-              reviewedAt: reviewedAt.toISOString(),
-              rating: confirmed,
-              source: "direct-memory",
-              beforeCard: clone(beforeCard),
-              afterCard: clone(afterCard),
-              schedulerConfig: clone(schedulerConfig),
-              configFingerprint: schedulerConfig.fingerprint,
-            };
-            return memoryDifficultyAssessment(
-              obligation,
-              this.settings.memoryDifficultyPolicy,
-              [...priorMemoryReviews, currentReview],
-            );
-          })()
-        : undefined;
-      obligation.updatedAt = reviewedAt.toISOString();
-      obligation.lastCompletedAt = reviewedAt.toISOString();
-      if (durationObservation.accepted) {
-        obligation.expectedMinutes = durationObservation.estimateAfter;
-        obligation.durationSampleCount = durationObservation.exactSamples;
-      }
-
-      const chunkUpdates: ObligationChunk[] = [];
-      if (obligation.chunking?.status === "synthesis-ready") {
-        const cycleId = obligation.chunking.cycleId;
-        for (const chunk of await this.chunksForObligation(obligation.id)) {
-          if (chunk.cycleId !== cycleId || chunk.status === "archived") continue;
-          chunk.status = "archived";
-          chunk.updatedAt = reviewedAt.toISOString();
-          chunkUpdates.push(chunk);
-        }
-        delete obligation.chunking;
-      }
-
-      unit.latestEvidenceAt = reviewedAt.toISOString();
-      unit.latestEvidenceRating = confirmed;
-      unit.evidenceCount += 1;
-      if (confirmed === Rating.Again) unit.lapseCount += 1;
-      unit.updatedAt = reviewedAt.toISOString();
+      const primary = applyPrimaryEvidenceTransition({
+        obligation,
+        unit,
+        prepared,
+        rating,
+        completion,
+        durationObservation,
+        priorMemoryReviews,
+        memoryDifficultyPolicy: this.settings.memoryDifficultyPolicy,
+        reviewedAt: reviewedAtIso,
+      });
+      const synthesisArchive = archiveSynthesisCycle(primary.obligation, chunks, reviewedAtIso);
+      let committedObligation = synthesisArchive.obligation;
 
       let followUp: RevisionObligation | undefined;
+      if (completion.followUpType === "relearn" && committedObligation.type !== "relearn") {
+        const existing = (await this.obligationsForUnit(primary.unit.id)).find((item) =>
+          item.type === "relearn" && item.status === "active" && item.returnObligationId === committedObligation.id
+        );
+        if (!existing) {
+          const dueAt = correctiveRelearnDueAt(await this.profile(primary.unit.profileId), reviewedAt);
+          const followUpId = uid("obligation");
+          followUp = createRelearningFollowUp({
+            obligation: committedObligation,
+            unit: primary.unit,
+            dueAt,
+            followUpId,
+            policyState: this.router.get("relearn").createInitialState(dueAt, followUpId),
+            reviewedAt: reviewedAtIso,
+            ...(primary.memoryDifficulty ? { memoryDifficulty: primary.memoryDifficulty } : {}),
+          });
+        }
+      }
+
       let relatedObligation: RevisionObligation | undefined;
       let correctiveMemoryTransition: CorrectiveMemoryTransition | undefined;
-      if (completion.followUpType === "relearn" && obligation.type !== "relearn") {
-        obligation.status = "suspended";
-        obligation.suspensionReason = "relearning";
-        const existing = (await this.obligationsForUnit(unit.id)).find((item) => item.type === "relearn" && item.status === "active" && item.returnObligationId === obligation.id);
-        if (!existing) {
-          const dueAt = correctiveRelearnDueAt(await this.profile(unit.profileId), reviewedAt);
-          const policy = this.router.get("relearn");
-          const time = reviewedAt.toISOString();
-          const followUpId = uid("obligation");
-          const remediationPlan = memoryDifficulty
-            ? memoryDifficultyRemediationPlan(memoryDifficulty)
-            : { priorityBoost: 2, guidance: "" };
-          const escalation = remediationPlan.guidance;
-          const priorityBoost = remediationPlan.priorityBoost;
-          followUp = {
-            schemaVersion: DOCUMENT_SCHEMA_VERSION,
-            id: followUpId,
-            unitId: unit.id,
-            type: "relearn",
-            status: "active",
-            dueAt,
-            expectedMinutes: Math.max(10, obligation.expectedMinutes),
-            baselineMinutes: Math.max(10, obligation.expectedMinutes),
-            durationSampleCount: 0,
-            protocol: `${escalation}Relearn the weak foundations, then repeat: ${obligation.protocol}`,
-            successCriteria: `${escalation}Explain the corrected concept independently before returning to ${obligationLabel(obligation.type)}.`,
-            workflow: {
-              kind: "relearning",
-              prompt: `${escalation}Repair the failure, then verify independently: ${obligation.workflow.prompt}`,
-              checkpoints: [...obligation.workflow.checkpoints],
-              responseMedium: "in-app",
-            },
-            freshnessDays: obligation.freshnessDays,
-            priority: obligation.priority + priorityBoost,
-            policyState: policy.createInitialState(dueAt, followUpId),
-            parentObligationId: obligation.id,
-            returnObligationId: obligation.id,
-            createdAt: time,
-            updatedAt: time,
-          };
-        }
-      }
-
-      const verificationRating = confirmed;
-      const relearningMastered =
-        obligation.type === "relearn" &&
-        verificationRating >= Rating.Good;
-      if (obligation.type === "relearn" && obligation.returnObligationId) {
-        const original = await this.repo.get(Store.Obligations, obligation.returnObligationId);
+      if (committedObligation.type === "relearn" && committedObligation.returnObligationId) {
+        const original = await this.repo.get(Store.Obligations, committedObligation.returnObligationId);
         assert(original, "Relearning return target is missing.");
-        if (original.type === "memory-recall") {
-          const verificationBeforeDueAt = original.dueAt;
-          const verificationBeforePolicyState = clone(original.policyState);
-          const priorOriginalReviews = memoryReviewIndex.get(original.id) ?? [];
-          const verification = this.router.get("memory-recall").complete(
-            original,
-            verificationRating,
-            normalizedDraft,
-            reviewedAt,
-            { memoryReviews: priorOriginalReviews },
-          );
-          assert(verification.schedulerConfig && verification.reviewLog, "Corrective memory verification lacks FSRS-7 provenance.");
-          original.dueAt = verification.dueAt;
-          original.policyState = verification.policyState;
-          original.lastCompletedAt = reviewedAt.toISOString();
-          correctiveMemoryTransition = {
-            obligationId: original.id,
-            rating: verificationRating,
-            beforeDueAt: verificationBeforeDueAt,
-            afterDueAt: verification.dueAt,
-            beforePolicyState: verificationBeforePolicyState,
-            afterPolicyState: clone(verification.policyState),
-            policyId: verification.policyId,
-            schedulerPackage: "ts-fsrs",
-            schedulerVersion: FSRS_PACKAGE_VERSION,
-            schedulerModel: FSRS_MODEL,
-            schedulerConfig: clone(verification.schedulerConfig),
-            reviewLog: clone(verification.reviewLog),
-          };
-          const beforeCard = verificationBeforePolicyState.fsrsCard;
-          const afterCard = verification.policyState.fsrsCard;
-          assert(beforeCard && afterCard, "Corrective memory verification lacks FSRS-7 card state.");
-          const currentVerification: MemoryReviewObservation = {
-            evidenceEventId: "pending",
-            reviewedAt: reviewedAt.toISOString(),
-            rating: verificationRating,
-            source: "relearning-verification",
-            beforeCard: clone(beforeCard),
-            afterCard: clone(afterCard),
-            schedulerConfig: clone(verification.schedulerConfig),
-            configFingerprint: verification.schedulerConfig.fingerprint,
-          };
-          const difficulty = memoryDifficultyAssessment(
-            original,
-            this.settings.memoryDifficultyPolicy,
-            [...priorOriginalReviews, currentVerification],
-          );
-          if (relearningMastered) {
-            obligation.status = "completed";
-            if (difficulty.automaticHoldEligible) {
-              original.status = "suspended";
-              original.suspensionReason = "persistent-difficulty";
-            } else {
-              original.status = "active";
-              delete original.suspensionReason;
-            }
-          } else {
-            original.status = "suspended";
-            original.suspensionReason = "relearning";
-            const remediation = memoryDifficultyRemediationPlan(difficulty);
-            obligation.priority = Math.max(obligation.priority, original.priority + remediation.priorityBoost);
-          }
-          original.updatedAt = reviewedAt.toISOString();
-          relatedObligation = original;
-        } else if (relearningMastered) {
-          obligation.status = "completed";
-          original.dueAt = addDays(reviewedAt, 3).toISOString();
-          original.status = "active";
-          delete original.suspensionReason;
-          original.updatedAt = reviewedAt.toISOString();
-          relatedObligation = original;
-        }
+        const priorOriginalReviews = original.type === "memory-recall"
+          ? memoryReviewIndex.get(original.id) ?? []
+          : [];
+        const memoryVerification = original.type === "memory-recall"
+          ? this.router.get("memory-recall").complete(
+              original,
+              rating.confirmedRating,
+              prepared.draft,
+              reviewedAt,
+              { memoryReviews: priorOriginalReviews },
+            )
+          : undefined;
+        const corrective = applyCorrectiveRelearningTransition({
+          relearningObligation: committedObligation,
+          original,
+          rating: rating.confirmedRating,
+          reviewedAt: reviewedAtIso,
+          memoryDifficultyPolicy: this.settings.memoryDifficultyPolicy,
+          priorOriginalReviews,
+          ...(memoryVerification ? { memoryVerification } : {}),
+        });
+        committedObligation = corrective.relearningObligation;
+        relatedObligation = corrective.relatedObligation;
+        correctiveMemoryTransition = corrective.correctiveMemoryTransition;
       }
 
-      const evidence: ObjectiveEvidence = {
-        completeness: normalizedDraft.completeness,
-        independence: normalizedDraft.independence,
-        application: normalizedDraft.application,
-        errorTypes: [...normalizedDraft.errorTypes],
-        correctionNote: normalizedDraft.correctionNote.trim(),
-      };
-      if (normalizedDraft.accuracyPercent !== undefined) evidence.accuracyPercent = normalizedDraft.accuracyPercent;
-
-      const event: EvidenceEvent = {
-        schemaVersion: DOCUMENT_SCHEMA_VERSION,
-        id: commitGuard ? `evidence_${commitGuard.commitToken}` : uid("evidence"),
-        profileId: unit.profileId,
-        unitId: unit.id,
-        obligationId: obligation.id,
-        obligationType: obligation.type,
-        reviewedAt: reviewedAt.toISOString(),
-        elapsedMs: timing.totalActiveMs,
-        evidence,
-        workflow: obligation.workflow.kind,
-        workflowResult: clone(normalizedDraft.workflowResult),
-        suggestedRating: suggested,
-        confirmedRating: confirmed,
-        beforeDueAt,
-        afterDueAt: obligation.dueAt,
-        beforePolicyState,
-        afterPolicyState: clone(obligation.policyState),
-        policyId: completion.policyId,
-        durationObservation,
-        timing,
+      const event = buildEvidenceEvent({
+        transition: primary,
+        obligation: committedObligation,
+        eventId: commitGuard ? `evidence_${commitGuard.commitToken}` : uid("evidence"),
         createdAt: nowIso(),
-      };
-      if (completion.reviewLog) event.reviewLog = completion.reviewLog;
-      if (completion.schedulerConfig) event.schedulerConfig = clone(completion.schedulerConfig);
-      if (obligation.type === "memory-recall") {
-        event.schedulerPackage = "ts-fsrs";
-        event.schedulerVersion = FSRS_PACKAGE_VERSION;
-        const card = obligation.policyState.fsrsCard;
-        assert(card?.model === FSRS_MODEL, "Memory evidence cannot be committed without current FSRS-7 state.");
-        event.schedulerModel = FSRS_MODEL;
-      }
-      if (followUp) event.followUpObligationId = followUp.id;
-      if (correctiveMemoryTransition) event.correctiveMemoryTransition = correctiveMemoryTransition;
-
-      const dailyPlan = await this.completedPlanRecord(obligation.id, undefined, roundTo(timing.totalActiveMs / 60_000, 1), reviewedAt, event.id);
-      await this.repo.recordReview(unit, obligation, event, followUp, relatedObligation, chunkUpdates, dailyPlan, commitGuard, postCommitSession);
+        ...(followUp ? { followUp } : {}),
+        ...(correctiveMemoryTransition ? { correctiveMemoryTransition } : {}),
+      });
+      const dailyPlan = await this.completedPlanRecord(
+        committedObligation.id,
+        undefined,
+        roundTo(prepared.timing.totalActiveMs / 60_000, 1),
+        reviewedAt,
+        event.id,
+      );
+      await this.repo.recordReview(
+        primary.unit,
+        committedObligation,
+        event,
+        followUp,
+        relatedObligation,
+        synthesisArchive.chunkUpdates,
+        dailyPlan,
+        commitGuard,
+        postCommitSession,
+      );
       this.invalidateMemoryReviewAnalysis();
       return event;
     }
