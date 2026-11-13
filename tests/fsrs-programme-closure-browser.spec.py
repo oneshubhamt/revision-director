@@ -56,10 +56,11 @@ def start_obligation(page, obligation_id: str) -> None:
         }""",
         obligation_id,
     )
-    page.wait_for_timeout(320)
+    page.locator('.review-card').wait_for(state='visible')
 
 
 def perform_relearn_verification(page, *, successful: bool) -> None:
+    before_events = len(read_state(page)["evidenceEvents"])
     page.locator("#relearn-repair-action").fill(
         "Rebuilt the organism profile, mechanism and discriminators from the source."
     )
@@ -72,7 +73,7 @@ def perform_relearn_verification(page, *, successful: bool) -> None:
     )
     page.locator("#relearn-source-closed").check()
     page.locator('[data-action="check-verification"]').click()
-    page.wait_for_timeout(140)
+    page.locator('[data-action="rate"][data-rating="3"]').wait_for(state="visible")
     if successful:
         qa.check_all_checkpoints(page)
         page.locator('[data-action="rate"][data-rating="3"]').click()
@@ -80,7 +81,13 @@ def perform_relearn_verification(page, *, successful: bool) -> None:
         page.locator("#correction-note").fill("Verification still failed; repair the causal chain again.")
         page.locator("#error-conceptual-misunderstanding").check()
         page.locator('[data-action="rate"][data-rating="1"]').click()
-    page.wait_for_timeout(520)
+    qa.wait_until(
+        page,
+        lambda: len(read_state(page)["evidenceEvents"]) == before_events + 1,
+        timeout=8000,
+        interval=50,
+        message="Corrective FSRS evidence did not persist",
+    )
 
 
 def scenario_corrective_memory_e2e(browser) -> None:
@@ -102,11 +109,17 @@ def scenario_corrective_memory_e2e(browser) -> None:
     if page.locator("#attempt-completed").count():
         page.locator("#attempt-completed").check()
     page.locator('[data-action="reveal"]').click()
-    page.wait_for_timeout(140)
+    page.locator('[data-review-phase="compare"]').wait_for(state="visible")
     page.locator("#correction-note").fill("Could not reconstruct the organism profile independently.")
     page.locator("#error-conceptual-misunderstanding").check()
     page.locator('[data-action="rate"][data-rating="1"]').click()
-    page.wait_for_timeout(560)
+    qa.wait_until(
+        page,
+        lambda: len([item for item in read_state(page)["evidenceEvents"] if item["obligationId"] == memory_id]) == 1,
+        timeout=8000,
+        interval=50,
+        message="Direct memory Again did not persist",
+    )
 
     state = read_state(page)
     memory = next(item for item in state["obligations"] if item["id"] == memory_id)
@@ -155,7 +168,7 @@ def scenario_corrective_memory_e2e(browser) -> None:
     check(memory["dueAt"] == memory["policyState"]["fsrsCard"]["dueAt"], "Successful return desynchronized obligation and FSRS due dates")
 
     page.locator('[data-pane="history"]').click()
-    page.wait_for_timeout(180)
+    page.locator("#pane-history").wait_for(state="visible")
     history_text = page.locator("#history-content").inner_text().lower()
     check("relearning" in history_text and "recall" in history_text, "Browser history does not expose the corrective lifecycle")
     check(not errors, f"FSRS programme-closure browser errors: {errors}")
