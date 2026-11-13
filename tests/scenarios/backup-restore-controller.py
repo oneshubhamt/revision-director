@@ -82,7 +82,7 @@ def main():
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files(str(tampered))
-        wait_until(page, lambda: bool(page.locator('#toast').inner_text().strip()), timeout=5000, interval=40, message='Tampered backup produced no rejection')
+        wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Tampered backup import handler did not finish')
         msg=page.locator('#toast').inner_text().lower()
         check('checksum' in msg or 'integrity' in msg or 'json' in msg,'Tampered backup was not rejected')
         check(not errors,f'Browser errors: {errors}')
