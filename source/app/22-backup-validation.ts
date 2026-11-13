@@ -100,6 +100,11 @@
         assert(unit?.profileId === event.profileId, "Study event links a missing or cross-profile knowledge unit.");
       }
     }
+    const unresolvedRelearningReturnIds = new Set(
+      obligations
+        .filter((item) => item.type === "relearn" && (item.status === "active" || item.status === "suspended") && item.returnObligationId)
+        .map((item) => item.returnObligationId as string),
+    );
     for (const obligation of obligations) {
       const unit = unitMap.get(obligation.unitId);
       assert(unit, "Obligation references a missing unit.");
@@ -108,11 +113,7 @@
       if (obligation.status === "suspended") assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning" || obligation.suspensionReason === "persistent-difficulty", "Suspended obligation lacks a valid reason.");
       else assert(obligation.suspensionReason === undefined, "Only suspended obligations may retain a suspension reason.");
       if (obligation.suspensionReason === "relearning") {
-        assert([...obligationMap.values()].some((item) =>
-          item.type === "relearn" &&
-          (item.status === "active" || item.status === "suspended") &&
-          item.returnObligationId === obligation.id
-        ), "Relearning suspension lacks its unresolved repair obligation.");
+        assert(unresolvedRelearningReturnIds.has(obligation.id), "Relearning suspension lacks its unresolved repair obligation.");
       }
       if (obligation.suspensionReason === "persistent-difficulty") assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
       validDate(obligation.dueAt, "Obligation"); validDate(obligation.createdAt, "Obligation"); validDate(obligation.updatedAt, "Obligation");
@@ -308,19 +309,22 @@
       }
     }
     const evidenceCounts = new Map<string, { total: number; lapses: number }>();
+    const acceptedDurationsByObligation = new Map<string, number>();
     for (const event of evidenceEvents) {
       const count = evidenceCounts.get(event.unitId) ?? { total: 0, lapses: 0 };
       count.total += 1;
       if (event.confirmedRating === Rating.Again) count.lapses += 1;
       evidenceCounts.set(event.unitId, count);
+      if (event.durationObservation.accepted) {
+        acceptedDurationsByObligation.set(event.obligationId, (acceptedDurationsByObligation.get(event.obligationId) ?? 0) + 1);
+      }
     }
     for (const unit of units) {
       const count = evidenceCounts.get(unit.id) ?? { total: 0, lapses: 0 };
       assert(unit.evidenceCount === count.total && unit.lapseCount === count.lapses, "Knowledge unit evidence counters do not match its history.");
     }
     for (const obligation of obligations) {
-      const acceptedExact = evidenceEvents.filter((event) => event.obligationId === obligation.id && event.durationObservation.accepted).length;
-      assert(obligation.durationSampleCount === acceptedExact, "Obligation duration sample count does not match its accepted history.");
+      assert(obligation.durationSampleCount === (acceptedDurationsByObligation.get(obligation.id) ?? 0), "Obligation duration sample count does not match its accepted history.");
     }
     let canonicalActive: ActiveRetrievalSession | null = null;
     if (activeRetrieval) {
