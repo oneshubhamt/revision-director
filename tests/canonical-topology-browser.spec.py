@@ -1,12 +1,10 @@
 from __future__ import annotations
 from pathlib import Path
-import os
 import runpy
-import shutil
 from playwright.sync_api import sync_playwright
+from helpers.browser_harness import ROOT, launch_chromium
 
-ROOT = Path(__file__).resolve().parents[1]
-b1 = runpy.run_path(str(ROOT / "tests/pass-b1-browser.spec.py"), run_name="rd_canonical_topology_base")
+b1 = runpy.run_path(str(ROOT / "tests/scenarios/persistent-active-retrieval.py"), run_name="rd_canonical_topology_base")
 HTML = (ROOT / "index.html").read_text().replace("<head>", "<head>" + b1["PERSISTENT_BROWSER_SHIM"], 1)
 checks = 0
 
@@ -65,9 +63,8 @@ def store_records(page, store: str):
 
 def main() -> None:
     global checks
-    chromium = os.environ.get("CHROMIUM_EXECUTABLE") or shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True, executable_path=chromium if chromium else None, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        browser = launch_chromium(playwright)
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
         page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")

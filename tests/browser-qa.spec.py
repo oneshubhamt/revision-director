@@ -6,6 +6,7 @@ import os
 import json
 from backup_fixture_codec import decode_file, encode_payload
 from playwright.sync_api import sync_playwright
+from helpers.browser_harness import launch_chromium
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -446,13 +447,7 @@ def scenario_plan_execution_states(browser) -> None:
 
 def main() -> None:
     with sync_playwright() as playwright:
-        executable = os.environ.get("CHROMIUM_EXECUTABLE")
-        if not executable and Path("/usr/bin/chromium").exists():
-            executable = "/usr/bin/chromium"
-        launch_options = {"headless": True, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
-        if executable:
-            launch_options["executable_path"] = executable
-        browser = playwright.chromium.launch(**launch_options)
+        browser = launch_chromium(playwright)
         scenario_basic(browser)
         scenario_backups(browser)
         scenario_workflows(browser)

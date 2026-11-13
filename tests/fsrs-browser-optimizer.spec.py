@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 from playwright.sync_api import sync_playwright
+from helpers.browser_harness import launch_chromium
 
 ROOT = Path(__file__).resolve().parents[1]
 HOSTED = ROOT / "Revision_Director_Hosted"
@@ -54,12 +55,7 @@ def run(mode: str) -> None:
     thread.start()
     try:
         with sync_playwright() as playwright:
-            executable = os.environ.get("CHROMIUM_EXECUTABLE") or shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
-            browser = playwright.chromium.launch(
-                headless=True,
-                executable_path=executable if executable else None,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
-            )
+            browser = launch_chromium(playwright)
             try:
                 page = browser.new_page()
                 page.goto(f"http://127.0.0.1:{server.server_port}/", wait_until="load")
