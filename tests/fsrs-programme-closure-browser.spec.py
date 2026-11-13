@@ -1,11 +1,12 @@
 from __future__ import annotations
 from pathlib import Path
 import importlib.util
-import os
-
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "tests"))
+from helpers.browser_harness import launch_chromium
 QA_PATH = ROOT / "tests" / "browser-qa.spec.py"
 spec = importlib.util.spec_from_file_location("revision_director_browser_qa", QA_PATH)
 if spec is None or spec.loader is None:
@@ -163,13 +164,7 @@ def scenario_corrective_memory_e2e(browser) -> None:
 
 def main() -> None:
     with sync_playwright() as playwright:
-        executable = os.environ.get("CHROMIUM_EXECUTABLE")
-        if not executable and Path("/usr/bin/chromium").exists():
-            executable = "/usr/bin/chromium"
-        launch_options = {"headless": True, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
-        if executable:
-            launch_options["executable_path"] = executable
-        browser = playwright.chromium.launch(**launch_options)
+        browser = launch_chromium(playwright)
         scenario_corrective_memory_e2e(browser)
         browser.close()
     print("PASS FSRS programme-closure Chromium corrective-memory scenario")
