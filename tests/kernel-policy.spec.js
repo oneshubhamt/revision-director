@@ -1,26 +1,12 @@
 'use strict';
-const fs = require('fs');
-const vm = require('vm');
-const { webcrypto } = require('crypto');
-const path = require('path');
-const root = path.resolve(__dirname, '..');
-let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, correctiveMemoryRating, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, ActiveRetrievalWorkspace, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsConfigSnapshot, validateStoredFsrsCard, defaultMemoryDifficultyPolicy, canonicalMemoryDifficultyPolicy, memoryDifficultyAssessment, memoryDifficultyRemediationPlan, memoryDifficultyActionLabel, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey, validateBackupPayload };';
-if (!source.includes('void boot();')) throw new Error('Boot marker missing');
-source = source.replace('void boot();', hook);
+const { createAppRuntime } = require('./helpers/runtime-harness');
 
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
-const context = { crypto: webcrypto, structuredClone, console, Date, Intl, URL, Blob, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise };
-context.window = context;
-context.self = context;
-context.globalThis = context;
-vm.createContext(context);
-vm.runInContext(vendor, context, { filename: 'ts-fsrs-6.0.0.umd.js' });
-if (!context.FSRS || typeof context.FSRS.DefaultScheduler !== 'function') throw new Error('Modern ts-fsrs runtime did not load');
-vm.runInContext(source, context, { filename: 'app.js' });
+const { api, context } = createAppRuntime({
+  globalName: '__RD_TEST_API__',
+  expose: ["suggestRating","objectiveScore","correctiveMemoryRating","workflowEvidence","validateWorkflowResult","validateWorkflowSpec","defaultWorkflowSpec","defaultWorkflowForType","compatibleWorkflows","MasteryPolicy","ApplicationPolicy","PerformancePolicy","RelearnPolicy","FreshnessPolicy","SchedulerPolicyRouter","FsrsMemoryPolicy","RevisionService","UIController","ActiveRetrievalWorkspace","Rating","examinationProximityScore","planningLookaheadDays","examImportanceScore","reviewDurationScore","evidenceWeaknessScore","obligationWeaknessScore","temporalDueRisk","plannerScore","buildPlanningCandidate","choosePlanItems","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsConfigSnapshot","validateStoredFsrsCard","defaultMemoryDifficultyPolicy","canonicalMemoryDifficultyPolicy","memoryDifficultyAssessment","memoryDifficultyRemediationPlan","memoryDifficultyActionLabel","daysToExamination","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","validateBackupPayload"],
+  requireFsrs: true,
+});
 
-const api = context.__RD_TEST_API__;
-if (!api) throw new Error('Test API was not exposed');
 let checks=0;
 const fixed=desiredRetention=>({kind:'fixed-retention',desiredRetention});
 function check(condition, message) { checks++; if (!condition) throw new Error(message); }
