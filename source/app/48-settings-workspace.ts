@@ -200,13 +200,6 @@
         bar.value = progress.total > 0 ? Math.max(0, Math.min(progress.total, progress.current)) : 0;
       }
     }
-    private async renderIdleReview(): Promise<void> {
-      const plan = this.currentPlanSnapshot();
-      this.reviewContent.innerHTML = `
-        ${this.host.pageHead("ACTIVE RETRIEVAL", "Review", "Each workflow requires an attempt, comparison, modality-specific evidence and a confirmed outcome.")}
-        ${plan.selected.length ? `<div class="queue-list planner-list">${plan.selected.map((item, index) => this.plannerRow(item, index + 1, "selected")).join("")}</div>` : this.emptyState("No active review session", "Start the daily plan from Today or select a unit from the Library.")}`;
-    }
-
     async render(): Promise<void> {
       const settings = this.service.getSettings();
       const [profiles, optimizerEvidence] = await Promise.all([

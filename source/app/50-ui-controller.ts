@@ -123,7 +123,7 @@
           resetActiveRetrievalAfterRestore: (session) => this.activeRetrieval.resetEmergencyAfterRestore(session),
         },
       );
-            this.registerRenderDomains();
+      this.registerRenderDomains();
     }
 
     async start(): Promise<void> {
@@ -619,6 +619,13 @@
     }
 
 
+
+    private async renderIdleReview(): Promise<void> {
+      const plan = this.currentPlanSnapshot();
+      this.reviewContent.innerHTML = `
+        ${this.pageHead("ACTIVE RETRIEVAL", "Review", "Each workflow requires an attempt, comparison, modality-specific evidence and a confirmed outcome.")}
+        ${plan.selected.length ? `<div class="queue-list planner-list">${plan.selected.map((item, index) => this.plannerRow(item, index + 1, "selected")).join("")}</div>` : this.emptyState("No active review session", "Start the daily plan from Today or select a unit from the Library.")}`;
+    }
 
     private async handleAction(element: HTMLElement): Promise<void> {
       const action = element.dataset["action"];
