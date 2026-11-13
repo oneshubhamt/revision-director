@@ -317,8 +317,9 @@ for (const mutation of [
   {...validBackup,settings:{...validBackup.settings,fsrsScheduling:{policy:fixed(1.2)}}},
 ]) mustFail(() => service.validateBackup(mutation), 'Hostile backup should fail');
 const conceptUnitWithEvidence={...validBackup.units[0],evidenceCount:1};
-check(service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[conceptEvidence]}).evidenceEvents.length === 1, 'Relational workflow evidence backup should pass');
-mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[(({timing,...rest})=>rest)(conceptEvidence)]}),'Current evidence without timing must be rejected');
+const conceptReviewedObligation={...conceptObligation,dueAt:conceptEvidence.afterDueAt,policyState:conceptEvidence.afterPolicyState,durationSampleCount:1};
+check(service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[conceptEvidence]}).evidenceEvents.length === 1, 'Relational workflow evidence backup should pass');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[(({timing,...rest})=>rest)(conceptEvidence)]}),'Current evidence without timing must be rejected');
 const chunkedObligation={...conceptObligation,chunking:{cycleId:'cycle',status:'chunking',originalMinutes:15,synthesisMinutes:5,capacityMinutes:60,totalChunks:2,completedChunks:1,createdAt:due}};
 const chunkRecords=[
   {schemaVersion:1,id:'ch1',obligationId:'o',cycleId:'cycle',ordinal:1,total:2,label:'U · Part 1 of 2',scope:'Part 1 of 2',expectedMinutes:5,status:'completed',createdAt:due,updatedAt:due,completedAt:due,actualMinutes:6,note:'',timing:{totalActiveMs:360000,activeByPhase:{attempt:360000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}},
@@ -334,16 +335,16 @@ mustFail(()=>service.validateBackup({...suspendedOnlyBackup,settings:{...suspend
 mustFail(()=>service.validateBackup({...validBackup,profiles:[{...validBackup.profiles[0],retiredField:true}]}),'Current durable documents must reject unknown top-level fields');
 mustFail(()=>service.validateBackup({...validBackup,retiredField:true}),'Current backup payloads must reject unknown top-level fields');
 const stringTiming={...conceptEvidence,timing:{...conceptEvidence.timing,activeByPhase:{...conceptEvidence.timing.activeByPhase,attempt:'1000'}}};
-mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[stringTiming]}),'Timing canonicalization must reject numeric strings');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[stringTiming]}),'Timing canonicalization must reject numeric strings');
 const stringTimingScalar={...conceptEvidence,timing:{...conceptEvidence.timing,pauseMs:'0'}};
-mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[stringTimingScalar]}),'Timing scalar fields must reject numeric strings');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[stringTimingScalar]}),'Timing scalar fields must reject numeric strings');
 mustFail(()=>service.validateBackup({...validBackup,settings:{...validBackup.settings,fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:'0.9'}}}}),'FSRS scheduling settings must reject numeric strings');
 mustFail(()=>service.validateBackup({...validBackup,settings:{...validBackup.settings,memoryDifficultyPolicy:{...validBackup.settings.memoryDifficultyPolicy,remediationLapses:'2'}}}),'Memory difficulty settings must reject numeric strings');
 mustFail(()=>service.validateBackup({...validBackup,obligations:[{...conceptObligation,workflow:{...conceptObligation.workflow,checkpoints:['A','A']}}]}),'Workflow checkpoints must reject duplicates rather than silently deduplicate');
 mustFail(()=>service.validateBackup({...validBackup,nodes:validBackup.nodes.map(n=>n.id==='t'?{...n,normalizedName:'wrong'}:n)}),'Knowledge-node canonical names must not be silently repaired');
-mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[{...conceptEvidence,elapsedMs:999}]}),'Evidence elapsed time must match timing rather than be overwritten');
-mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[{...conceptEvidence,evidence:{...conceptEvidence.evidence,errorTypes:['slow-retrieval','slow-retrieval']}}]}),'Evidence errors must reject duplicates rather than silently deduplicate');
-mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptObligation,durationSampleCount:1}],evidenceEvents:[{...conceptEvidence,durationObservation:{...conceptEvidence.durationObservation,retiredField:true}}]}),'Nested evidence records must reject unknown fields');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[{...conceptEvidence,elapsedMs:999}]}),'Evidence elapsed time must match timing rather than be overwritten');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[{...conceptEvidence,evidence:{...conceptEvidence.evidence,errorTypes:['slow-retrieval','slow-retrieval']}}]}),'Evidence errors must reject duplicates rather than silently deduplicate');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[{...conceptEvidence,durationObservation:{...conceptEvidence.durationObservation,retiredField:true}}]}),'Nested evidence records must reject unknown fields');
 const relearnPolicyForPause=new api.RelearnPolicy();
 const pausedOriginal={...conceptObligation,status:'suspended',suspensionReason:'relearning'};
 const pausedRepair={schemaVersion:1,...obligation('relearn',relearnPolicyForPause,'relearning'),id:'repair',unitId:'u',status:'suspended',suspensionReason:'unit',parentObligationId:'o',returnObligationId:'o'};
