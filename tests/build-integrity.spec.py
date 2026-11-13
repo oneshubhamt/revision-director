@@ -27,6 +27,12 @@ source_parts = sorted(source_manifest["parts"], key=lambda item: item["order"])
 source_paths = [ROOT / "source" / item["path"] for item in source_parts]
 ts = "".join(path.read_text() for path in source_paths)
 contracts_ts = (ROOT / "source/app/12-production-contracts.ts").read_text()
+fsrs_personalization_ts = (ROOT / "source/app/18-fsrs-personalization.ts").read_text()
+planning_ts = (ROOT / "source/app/20-policy-planning-kernel.ts").read_text()
+repository_ts = (ROOT / "source/app/30-indexeddb-repository.ts").read_text()
+storage_ts = (ROOT / "source/app/31-storage-facade.ts").read_text()
+service_ts = (ROOT / "source/app/40-application-services.ts").read_text()
+backup_codec_ts = (ROOT / "source/app/41-backup-codec.ts").read_text()
 tsconfig = json.loads((ROOT / "source/tsconfig.json").read_text())
 build_script = (ROOT / "build/build.py").read_text()
 first_source = source_paths[0].read_text()
@@ -168,12 +174,24 @@ check("canonical persistent-difficulty settings", "memoryDifficultyPolicy: Memor
 check("leech signal without parallel suspension", "schedulerLeechMiddleware" not in ts and 'type StoredFsrsScheduleStatus = Exclude<FsrsRuntimeScheduleStatus, "suspended">' in ts and 'Revision Director does not persist FSRS-owned suspension state.' in ts and 'scheduleStatus = "suspended"' not in ts)
 check("FSRS rating semantics", 'if (type === "memory-recall")' in ts and '"Easy" remains a user judgement' in ts and "partial or cued recall" in ts)
 check("schema-owned persistence fail-closed", "event.oldVersion !== 0" in ts and "request.error?.name === \"VersionError\"" in ts and "Existing data was not modified" in ts and "storage.metadata.release-refresh" in ts and "canonical.applicationVersion !== APP_VERSION" in ts and "canonical.applicationVersion === APP_VERSION" not in ts and 'candidate["appVersion"] === APP_VERSION' not in ts and 'value["appVersion"] === APP_VERSION' not in ts)
-check("single canonical topology", all(token in ts for token in ["assertExactKeys", "hasAnyStoredData", "putProfileAndSettings", "assertActiveProfileSelection", "Application settings are missing from a populated Revision Director database", "Database metadata is missing from a populated Revision Director database"]) and all(token not in ts.lower() for token in ["migratelegacy", "legacyadapter", "migrationtable"]))
+check("single canonical topology", all(token in ts for token in ["assertExactKeys", "putProfileAndSettings", "assertActiveProfileSelection", 'settings.add(defaultSettings())', 'metadata.add({', "Canonical storage must contain exactly one application-settings document.", "Database metadata is missing from this Revision Director database"]) and "hasAnyStoredData" not in ts and "hasStoredData" not in ts and all(token not in ts.lower() for token in ["migratelegacy", "legacyadapter", "migrationtable"]))
 check("atomic profile/settings persistence", "async putProfileAndSettings(profile: ExamProfile, settings: AppSettings)" in ts and "this.db.transaction([Store.Profiles, Store.Settings], \"readwrite\")" in ts and "await this.repo.putProfileAndSettings(profile, nextSettings);" in ts)
 check("strict current document shapes", all(token in contracts_ts for token in ['assertExactKeys(value, "Exam profile"', 'assertExactKeys(value, "Knowledge node"', 'assertExactKeys(value, "Knowledge unit"', 'assertExactKeys(value, "Study event"', 'assertExactKeys(value, "Revision obligation"', 'assertExactKeys(value, "Obligation chunk"', 'assertExactKeys(value, "Daily plan"', 'assertExactKeys(value, "Active retrieval session"', 'assertExactKeys(value, "Application metadata"']))
 check("transactional settings publication", "await this.repo.put(Store.Settings, canonical);\n      this.settings = canonical;" in ts and "await this.repo.put(Store.Settings, next);\n      this.settings = next;" in ts and "validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex);" in ts and "verifyMemoryDatasetIntegrityWithIndex(" in ts and "await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);" in ts)
 check("no timing compatibility synthesis", "fallbackElapsedMs" not in ts and "canonicalTimingEvidenceSummary(value: TimingEvidenceSummary)" in ts and "completeChunk(chunkId: string, timing: TimingEvidenceSummary" in ts)
-check("no current-shape repair coercions", "reliabilityFlags.push" not in contracts_ts and "checked[key] = Boolean(rawValue)" not in contracts_ts and "sourceVisible: Boolean(value.sourceVisible)" not in contracts_ts and "Number(value.activeByPhase[phase])" not in contracts_ts and "Number(value.backwardClockCount)" not in contracts_ts and "const value = Number(raw);" not in contracts_ts and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
+check("no current-shape repair coercions", all(token not in contracts_ts for token in [
+    "reliabilityFlags.push", "checked[key] = Boolean(rawValue)", "sourceVisible: Boolean(value.sourceVisible)",
+    "Number(value.activeByPhase[phase])", "Number(value.backwardClockCount)", "Number(value.pauseMs)",
+    "Number(value.pauseCount)", "Number(value.inactiveGapCount)", "Number(value.classifiedFocusMs)",
+    "Number(value.classifiedBreakMs)", "Number(value.promptExcludedMs)", "const value = Number(raw);",
+    "queueTargetIds.slice(0, 500)", "value.diagramStrokes.slice(0, 256)", "Object.entries(value.values).slice(0, 96)",
+]) and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
+check("strict settings numeric boundaries", not re.search(r"\bNumber\(", fsrs_personalization_ts) and "Number(record[" not in planning_ts and "requiredFiniteNumber" in fsrs_personalization_ts and "requiredSafeInteger" in planning_ts)
+check("atomic durable snapshot", "this.db.transaction(stores, \"readonly\")" in repository_ts and "async backupState()" in storage_ts and "const state = await this.repo.backupState();" in service_ts)
+check("single verified restore path", "async importBackup(input: unknown)" not in service_ts and "restoreBackupPayload" in service_ts)
+check("canonical SHA-256 archive parser", all(token in backup_codec_ts for token in [
+    'assertExactKeys(value, "Backup manifest"', 'assertExactKeys(value, "Backup counts"', 'assertExactKeys(value, "Backup chunk"', 'assertExactKeys(value, "Backup completion proof"',
+]) and "{16,64}" not in backup_codec_ts)
 check("backup payload narrows from unknown", "const candidate = requireRecord(input, \"Backup\")" in ts and "canonicalDocumentArray(\"profile\"" in ts and "candidate.profiles as ExamProfile[]" not in ts and "candidate.evidenceEvents as EvidenceEvent[]" not in ts)
 check("checked external domain boundaries", "function literalChoice<const Values" in ts and "MessageEvent<unknown>" in ts and "async register(input: unknown)" in ts and "private async importStudyEvent(input: unknown)" in ts and "private async createRevisionCandidate(input: unknown)" in ts and " as InactiveGapClassification" not in ts and " as BackupActiveSessionTreatment" not in ts)
 check("archive parsers narrow unknown records", "as Partial<BackupArchive" not in ts and "const candidate: BackupPayload" not in ts and "const parsed = JSON.parse(raw) as ActiveRetrievalRecoveryEnvelope" not in ts and "as Partial<DiagnosticRecord>" not in ts)
