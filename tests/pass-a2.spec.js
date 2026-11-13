@@ -79,5 +79,15 @@ check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound')
   mustFail(() => api.validateBackupPayload({...emptyBackup, settings:{...emptyBackup.settings, schemaVersion:2}}), 'Unsupported settings schema was accepted');
   mustFail(() => api.validateBackupPayload({...emptyBackup, activeRetrieval:42}), 'Non-object active retrieval payload was accepted');
   mustFail(() => api.validateBackupPayload({...emptyBackup, profiles:[{...rawProfile,status:'suspended',id:'profile\" autofocus onfocus=alert(1) x=\"'}]}), 'Hostile imported identifier was accepted');
+  const hierarchyProfile = api.canonicalExamProfile({...rawProfile, id:'p', status:'active'});
+  const subjectA = api.canonicalKnowledgeNode({schemaVersion:1,id:'subject_a',profileId:'p',parentId:null,kind:'subject',name:'Public Administration',normalizedName:'public administration',createdAt:rawProfile.createdAt,updatedAt:rawProfile.updatedAt});
+  const subjectB = api.canonicalKnowledgeNode({...subjectA,id:'subject_b'});
+  const hierarchyBackup = {
+    ...emptyBackup,
+    profiles:[hierarchyProfile],
+    nodes:[subjectA,subjectB],
+    settings:{...emptyBackup.settings,activeProfileId:'p'},
+  };
+  mustFail(() => api.validateBackupPayload(hierarchyBackup), 'Duplicate semantic root hierarchy paths were accepted');
   console.log(`PASS ${checks} Pass A2 production-contract and storage-facade checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });
