@@ -18,6 +18,7 @@
     assert(typeof value === "string", `${label} must be a string.`);
     const canonical = value.trim();
     assert(canonical.length > 0 && canonical.length <= 240, `${label} is invalid.`);
+    assert(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(canonical), `${label} contains unsupported identifier characters.`);
     return canonical;
   }
 
