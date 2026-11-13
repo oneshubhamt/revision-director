@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import os
+import shutil
+import socket
 import subprocess
 import sys
+import time
+from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
@@ -22,7 +28,6 @@ CORE_NODE_PLAN = (
     "tests/fsrs-optimizer-policy.spec.js",
     "tests/fsrs-programme-closure.spec.js",
     "tests/fsrs-scale-benchmark.spec.js",
-    "tests/fsrs-scheduling-experiments.spec.js",
     "tests/kernel-policy.spec.js",
     "tests/scenarios/adaptive-planning.js",
     "tests/scenarios/planning-persistence-validation.js",
@@ -52,6 +57,7 @@ BROWSER_PLAN = (
     "tests/scenarios/ownership-storage-health.py",
     "tests/scenarios/hostile-recovery.py",
     "tests/scenarios/indexeddb-durability.py",
+    "tests/scenarios/native-indexeddb-journey.py",
     "tests/scenarios/presentation-kernel.py",
     "tests/scenarios/ui-runtime-accessibility.py",
     "tests/scenarios/ui-behaviour.py",
@@ -60,6 +66,10 @@ BROWSER_PLAN = (
     "tests/fsrs-browser-optimizer.spec.py",
     "tests/fsrs-programme-closure-browser.spec.py",
     "tests/full-qa-supplement.spec.py",
+)
+
+DEEP_NODE_PLAN = (
+    "tests/fsrs-scheduling-experiments.spec.js",
 )
 
 REMOVED_WRAPPERS = (
@@ -81,6 +91,65 @@ def run(*command: str) -> None:
     env["PYTHONPATH"] = str(TESTS) + (os.pathsep + existing if existing else "")
     subprocess.run(command, cwd=ROOT, env=env, check=True)
 
+
+
+@contextmanager
+def shared_chromium():
+    executable = os.environ.get("CHROMIUM_EXECUTABLE") or shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+    if not executable:
+        raise AssertionError("Chromium executable is required for browser QA.")
+    with TemporaryDirectory(prefix="revision-director-browser-") as user_data_dir:
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        endpoint = f"http://127.0.0.1:{port}"
+        process = subprocess.Popen(
+            [
+                executable,
+                "--headless=new",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-background-networking",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--remote-debugging-address=127.0.0.1",
+                f"--remote-debugging-port={port}",
+                f"--user-data-dir={user_data_dir}",
+                "about:blank",
+            ],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            deadline = time.monotonic() + 12
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    raise AssertionError("Shared Chromium exited before the CDP endpoint became ready.")
+                try:
+                    with urlopen(endpoint + "/json/version", timeout=0.4):
+                        break
+                except Exception:
+                    time.sleep(0.05)
+            else:
+                raise AssertionError("Timed out waiting for shared Chromium CDP endpoint.")
+            previous = os.environ.get("REVISION_DIRECTOR_CDP_ENDPOINT")
+            os.environ["REVISION_DIRECTOR_CDP_ENDPOINT"] = endpoint
+            try:
+                yield
+            finally:
+                if previous is None:
+                    os.environ.pop("REVISION_DIRECTOR_CDP_ENDPOINT", None)
+                else:
+                    os.environ["REVISION_DIRECTOR_CDP_ENDPOINT"] = previous
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
 
 def assert_test_topology() -> None:
     historical = [*TESTS.glob("pass-*"), *TESTS.glob("stage-*")]
@@ -112,8 +181,15 @@ def durability() -> None:
 
 def browser() -> None:
     assert_test_topology()
-    for path in BROWSER_PLAN:
-        run(sys.executable, path)
+    with shared_chromium():
+        for path in BROWSER_PLAN:
+            run(sys.executable, path)
+
+
+def deep() -> None:
+    assert_test_topology()
+    for path in DEEP_NODE_PLAN:
+        run("node", path)
     run(sys.executable, "tests/fsrs-browser-optimizer.spec.py", "full")
 
 
@@ -122,6 +198,7 @@ def full() -> None:
     optimizer()
     durability()
     browser()
+    deep()
 
 
 COMMANDS = {
@@ -129,6 +206,7 @@ COMMANDS = {
     "optimizer": optimizer,
     "durability": durability,
     "browser": browser,
+    "deep": deep,
     "full": full,
 }
 
@@ -136,5 +214,5 @@ if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) == 2 else ""
     action = COMMANDS.get(command)
     if action is None:
-        raise SystemExit("Usage: python3 tests/qa.py {core|optimizer|durability|browser|full}")
+        raise SystemExit("Usage: python3 tests/qa.py {core|optimizer|durability|browser|deep|full}")
     action()
