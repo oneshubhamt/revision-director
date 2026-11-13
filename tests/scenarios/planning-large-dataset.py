@@ -14,6 +14,7 @@ from helpers.browser_harness import (
     launch_chromium,
     load_browser_qa,
     open_html_page,
+    wait_for_layout,
     wait_until as shared_wait_until,
 )
 # Reuse the exact deterministic IndexedDB-compatible HTML fixture from the main browser suite.
@@ -29,11 +30,10 @@ def open_page(browser, viewport=None):
         browser,
         HTML,
         viewport=viewport or {'width':1365,'height':950},
-        settle_ms=1300,
         include_warnings=True,
     )
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup')
-    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(100)
+    page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
     main_qa.restore_selected_backup(page, main_qa.BASELINE_BACKUP)
     check('restored' in page.locator('#toast').inner_text().lower(), 'Baseline fixture restore failed')
     return page, errors
@@ -42,7 +42,7 @@ def open_page(browser, viewport=None):
 def ensure_pane(page, pane: str) -> None:
     tab=page.locator(f'[data-pane="{pane}"]')
     if tab.get_attribute('aria-selected') != 'true':
-        tab.click(); page.wait_for_timeout(300)
+        tab.click()
     page.locator(f'#pane-{pane}').wait_for(state='visible')
 
 def set_capacity(page, value: int) -> None:
@@ -63,7 +63,7 @@ def set_capacity(page, value: int) -> None:
     check(page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value), 'Capacity setting rerendered with a stale value')
 
 def add_oversized(page) -> None:
-    page.locator('#quick-add-unit').click(); page.wait_for_timeout(120)
+    page.locator('#quick-add-unit').click(); page.locator('#unit-dialog').wait_for(state='visible')
     form=page.locator('#unit-form')
     due=page.evaluate("new Date(Date.now()-3600000).toISOString().slice(0,16)")
     values={
@@ -75,7 +75,7 @@ def add_oversized(page) -> None:
     for name,value in values.items(): form.locator(f'[name="{name}"]').fill(value)
     form.locator('[name="obligationType"]').select_option('concept-reconstruction')
     form.locator('[name="workflowKind"]').select_option('reconstruction')
-    form.locator('button[type="submit"]').click(); page.wait_for_timeout(600)
+    form.locator('button[type="submit"]').click(); page.locator('#unit-dialog').wait_for(state='hidden')
 
 def export_payload(page, folder: str, name: str):
     ensure_pane(page, 'settings')
@@ -86,21 +86,35 @@ def export_payload(page, folder: str, name: str):
 def scenario_capacity_reflow(browser):
     page, errors=open_page(browser)
     set_capacity(page,60); add_oversized(page)
-    page.locator('[data-pane="today"]').click(); page.wait_for_timeout(150)
+    page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
     row=page.locator('.planner-row').filter(has_text='Capacity reflow obligation').first
     check(row.locator('[data-action="review-chunk"]').count()==1,'Initial oversized work was not split')
     with TemporaryDirectory() as tmp:
         p60=export_payload(page,tmp,'60.rdbackup')
         ob=next(item for item in p60['obligations'] if item['unitId']==next(u['id'] for u in p60['units'] if u['title']=='Capacity reflow obligation'))
         check(ob['chunking']['capacityMinutes']==60,'Initial chunk cycle capacity missing')
-        set_capacity(page,30); page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible'); page.wait_for_timeout(900)
+        set_capacity(page,30); page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
+        shared_wait_until(
+            page,
+            lambda: page.evaluate("""id=>new Promise((resolve,reject)=>{const r=indexedDB.open('revision-director');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const q=r.result.transaction('obligations','readonly').objectStore('obligations').get(id);q.onerror=()=>reject(q.error);q.onsuccess=()=>resolve(q.result?.chunking?.capacityMinutes===30);};})""", ob['id']),
+            timeout=8000,
+            interval=50,
+            message='Timed out waiting for 30-minute chunk reflow',
+        )
         p30=export_payload(page,tmp,'30.rdbackup')
         ob30=next(item for item in p30['obligations'] if item['id']==ob['id'])
         check(ob30['chunking']['capacityMinutes']==30,'Untouched split did not reflow to reduced capacity')
         active=[c for c in p30['chunks'] if c['obligationId']==ob['id'] and c['cycleId']==ob30['chunking']['cycleId'] and c['status']!='archived']
         check(active and max(c['expectedMinutes'] for c in active)<=30,'Reflowed chunks exceed reduced capacity')
         check(all(c['status']=='archived' for c in p30['chunks'] if c['obligationId']==ob['id'] and c['cycleId']!=ob30['chunking']['cycleId']),'Prior untouched cycle was not archived')
-        set_capacity(page,120); page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible'); page.wait_for_timeout(900)
+        set_capacity(page,120); page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
+        shared_wait_until(
+            page,
+            lambda: page.evaluate("""id=>new Promise((resolve,reject)=>{const r=indexedDB.open('revision-director');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const q=r.result.transaction('obligations','readonly').objectStore('obligations').get(id);q.onerror=()=>reject(q.error);q.onsuccess=()=>resolve(Boolean(q.result) && !q.result.chunking);};})""", ob['id']),
+            timeout=8000,
+            interval=50,
+            message='Timed out waiting for split-cycle dissolution',
+        )
         row=page.locator('.planner-row').filter(has_text='Capacity reflow obligation').first
         check(row.locator('[data-action="review-one"]').count()==1 and row.locator('[data-action="review-chunk"]').count()==0,'Split cycle did not dissolve when parent fit capacity')
         p120=export_payload(page,tmp,'120.rdbackup')
@@ -165,12 +179,13 @@ def scenario_large_dataset(browser):
         elapsed=time.monotonic()-start
         check(page.locator('#sb-units').inner_text().strip()=='1000','Large syllabus import did not complete')
         check(elapsed<20,f'Large syllabus import/render took too long: {elapsed:.1f}s')
-        page.locator('[data-pane="today"]').click(); page.wait_for_timeout(250)
+        page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
         check(page.locator('#today-content .deferred-list .planner-row').count() <= 20, 'Deferred backlog display exceeded its intentional 20-row cap')
         check(page.locator('#today-content .planner-row').count() <= 40, 'Today rendered an unexpectedly large actionable surface')
-        page.locator('[data-pane="library"]').click(); page.wait_for_timeout(450)
+        page.locator('[data-pane="library"]').click(); page.locator('#pane-library').wait_for(state='visible')
+        shared_wait_until(page, lambda: page.locator('#library-content .unit-row').count()==1000, timeout=10000, interval=50, message='Large library did not finish rendering')
         check(page.locator('#library-content .unit-row').count()==1000,'Large library lost records')
-        page.set_viewport_size({'width':390,'height':844}); page.wait_for_timeout(150)
+        page.set_viewport_size({'width':390,'height':844}); wait_for_layout(page)
         check(not page.evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth'),'Large dataset caused mobile horizontal overflow')
     check(not errors,f'Large-dataset errors: {errors}')
     page.close()
