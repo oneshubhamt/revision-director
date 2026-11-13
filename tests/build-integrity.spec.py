@@ -274,7 +274,7 @@ check("optimizer checksum coverage", all(path in checksum_targets for path in [
     "tools/fsrs-optimizer/smoke.mjs",
 ]))
 check("standalone remains optimizer-asset-free", '<meta name="revision-director-browser-optimizer"' not in html and 'name="revision-director-browser-optimizer"' not in shell and "fsrs-binding.wasm32-wasip1.wasm" not in html and "connect-src 'none'" in html and 'location.protocol === "file:"' in ts)
-check("optimizer tooling syntax", all(subprocess.run(["node", "--check", str(ROOT / path)], capture_output=True).returncode == 0 for path in ["tools/fsrs-optimizer/optimizer-policy.mjs","tools/fsrs-optimizer/optimizer-core.mjs","tools/fsrs-optimizer/optimize.mjs","tools/fsrs-optimizer/browser-worker.mjs","tools/fsrs-optimizer/parity.mjs","build/build-hosted.mjs"]))
+check("optimizer tooling syntax", all(subprocess.run(["node", "--check", str(ROOT / path)], capture_output=True).returncode == 0 for path in ["tools/fsrs-optimizer/optimizer-contract.mjs","tools/fsrs-optimizer/optimizer-policy.mjs","tools/fsrs-optimizer/optimizer-core.mjs","tools/fsrs-optimizer/optimize.mjs","tools/fsrs-optimizer/browser-worker.mjs","tools/fsrs-optimizer/parity.mjs","build/build-hosted.mjs"]))
 check("safe suspension provenance", "type SuspensionReason" in ts and 'suspensionReason = "relearning"' in ts and 'suspensionReason === "unit"' in ts)
 check("automatic relearn follow-up", 'completion.followUpType = "relearn"' in ts)
 check("relearn pauses exact original", 'item.returnObligationId === obligation.id' in ts and 'obligation.status = "suspended"' in ts)
