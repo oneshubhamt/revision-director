@@ -35,15 +35,9 @@
     async initialize(): Promise<void> {
       this.invalidateMemoryReviewAnalysis();
       const state = await this.repo.backupState("ignore");
-      const validated = validateBackupPayload({
-        format: BACKUP_FORMAT,
-        schemaVersion: BACKUP_SCHEMA_VERSION,
-        exportedAt: nowIso(),
-        appVersion: APP_VERSION,
-        ...state,
-      });
-      this.settings = clone(validated.settings);
-      await this.verifyMemoryProjectionIntegrity(validated.obligations, validated.evidenceEvents, this.settings);
+      this.settings = clone(state.settings);
+      assertActiveProfileSelection(state.profiles, this.settings);
+      await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);
     }
 
     private async verifyMemoryProjectionIntegrity(
