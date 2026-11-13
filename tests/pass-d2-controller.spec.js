@@ -11,7 +11,7 @@ context.window=context;context.self=context;context.globalThis=context;vm.create
 const api=context.__RD_D2_TEST__;let checks=0;
 function check(v,m){checks++;if(!v)throw new Error(m)}
 async function mustFail(fn,text){checks++;try{await fn()}catch(e){if(text&&!String(e.message).toLowerCase().includes(text.toLowerCase()))throw e;return}throw new Error('Expected failure: '+text)}
-const settings={schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false}};
+const settings={schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}};
 const empty=()=>({format:'revision-director-backup',schemaVersion:2,exportedAt:new Date().toISOString(),appVersion:'va7.1-pass-f1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:structuredClone(settings),activeRetrieval:null});
 const validator=new api.RevisionService({});
 class FakeService{
