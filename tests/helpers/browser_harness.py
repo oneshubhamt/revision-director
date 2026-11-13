@@ -158,15 +158,27 @@ def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) ->
 
 
 def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[str, object]:
-    # SettingsWorkspace.importBackup clears the file input in its finally block,
-    # after inspection has either rendered the preview or reported the error.
+    started = time.monotonic()
+    terminal = lambda: page.locator("#restore-dialog").is_visible() or bool(page.locator("#toast").inner_text().strip())
+    # A settings rerender may replace the original file input while its async
+    # inspection is still finishing. Input reset/replacement is therefore only
+    # an intermediate signal; preview/error remains the terminal contract.
     wait_until(
         page,
-        lambda: page.locator("#import-backup").input_value() == "",
+        lambda: terminal() or page.locator("#import-backup").input_value() == "",
         timeout=timeout,
         interval=40,
-        message="Timed out waiting for backup inspection completion",
+        message="Timed out waiting for backup inspection progress",
     )
+    if not terminal():
+        remaining = max(1, int(timeout - (time.monotonic() - started) * 1000))
+        wait_until(
+            page,
+            terminal,
+            timeout=remaining,
+            interval=40,
+            message="Timed out waiting for backup import terminal state",
+        )
     message = page.locator("#toast").inner_text().strip()
     return {
         "preview": page.locator("#restore-dialog").is_visible(),
