@@ -1,14 +1,19 @@
-export const HOLDOUT_SEGMENTS=6;
-export const MIN_TRAIN_ITEMS=64;
-export const MIN_HOLDOUT_ITEMS=64;
-export const MIN_HOLDOUT_CARDS=16;
-export const MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT=0.001;
-export const MIN_RELATIVE_LOG_LOSS_IMPROVEMENT=0.005;
-export const CALIBRATION_EPSILON=1e-9;
-export const HOLDOUT_STRATEGY="final-sixth";
-export const OPTIMIZER_CHRONOLOGY="elapsed-24h";
-export const OPTIMIZER_FIXED_UTC_OFFSET_MINUTES=0;
-export const OPTIMIZER_ROLLOVER_HOUR=0;
+import { readFileSync } from "node:fs";
+
+export const OPTIMIZER_CONTRACT=Object.freeze(JSON.parse(
+ readFileSync(new URL("./optimizer-contract.json",import.meta.url),"utf8")
+));
+export const HOLDOUT_SEGMENTS=OPTIMIZER_CONTRACT.holdoutSegments;
+export const MIN_TRAIN_ITEMS=OPTIMIZER_CONTRACT.minimumTrainItems;
+export const MIN_HOLDOUT_ITEMS=OPTIMIZER_CONTRACT.minimumHoldoutItems;
+export const MIN_HOLDOUT_CARDS=OPTIMIZER_CONTRACT.minimumHoldoutCards;
+export const MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT=OPTIMIZER_CONTRACT.minimumAbsoluteLogLossImprovement;
+export const MIN_RELATIVE_LOG_LOSS_IMPROVEMENT=OPTIMIZER_CONTRACT.minimumRelativeLogLossImprovement;
+export const CALIBRATION_EPSILON=OPTIMIZER_CONTRACT.calibrationEpsilon;
+export const HOLDOUT_STRATEGY=OPTIMIZER_CONTRACT.holdoutStrategy;
+export const OPTIMIZER_CHRONOLOGY=OPTIMIZER_CONTRACT.chronology;
+export const OPTIMIZER_FIXED_UTC_OFFSET_MINUTES=OPTIMIZER_CONTRACT.converterFixedUtcOffsetMinutes;
+export const OPTIMIZER_ROLLOVER_HOUR=OPTIMIZER_CONTRACT.converterRolloverHour;
 
 const metric=(value,name)=>{
  if(!value||typeof value!=="object"||!Number.isFinite(value.logLoss)||value.logLoss<0||
