@@ -86,6 +86,7 @@
       if (state.fsrsCard.lastReviewAt !== undefined) state.fsrsCard.lastReviewAt = canonicalIso(state.fsrsCard.lastReviewAt, "FSRS last review date");
       else delete state.fsrsCard.lastReviewAt;
       assert(state.stage === state.fsrsCard.state, "FSRS policy stage does not match its card state.");
+      assert(state.lastIntervalDays === state.fsrsCard.scheduledDays, "FSRS policy interval does not match its card state.");
     } else {
       assert(state.version === "1", "Interval policy state uses an unsupported version.");
       assert(state.fsrsCard === undefined, "Only FSRS policy state may contain an FSRS card.");
