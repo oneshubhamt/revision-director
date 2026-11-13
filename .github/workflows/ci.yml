@@ -96,7 +96,7 @@ jobs:
             git config user.name "revision-director-ci"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add dist/app.js index.html CHECKSUMS.sha256
-            git commit -m "build: synchronize generated artifacts [skip ci]"
+            git commit -m "build: synchronize generated artifacts [generated-sync]"
             git push origin HEAD:working
           fi
 
