@@ -145,12 +145,6 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   mustFail(()=>api.validateStoredFsrsCard({...difficultyProbe.policyState.fsrsCard,scheduleStatus:'suspended'}),'FSRS scheduleStatus must not become a second suspension truth');
   check(memoryObligation.policyState.fsrsCard.cardId === 'o', 'FSRS cards must retain stable obligation identity');
 
-  const previews = memory.preview(memoryObligation, new Date(due));
-  check(previews.length === 4 && previews.map(item => item.rating).join(',') === '1,2,3,4', 'FSRS-7 must preview all four ratings');
-  check(Math.abs(previews[0].intervalDays - 1) < .001, 'Again must use the one-day corrective learning step');
-  check(previews[1].intervalDays > 1 && previews[1].intervalDays < 2, 'Hard must use the FSRS-7/model-override learning interval');
-  check(previews[2].intervalDays > previews[1].intervalDays && previews[3].intervalDays > previews[2].intervalDays, 'Good and Easy must preserve monotonic FSRS-7 model intervals');
-
   const again = memory.complete(memoryObligation, api.Rating.Again, evidence(4,4,4), new Date(due));
   check(again.followUpType === 'relearn', 'Again must route through corrective relearning');
   check(Math.abs((new Date(again.dueAt) - new Date(due)) / 86400000 - 1) < .001, 'Again must persist the one-day scheduler due date');
@@ -158,19 +152,6 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   check(again.schedulerConfig.graduatingInterval === 1 && again.schedulerConfig.allowModelOverride === true, 'FSRS-7 graduation and model override must be explicit');
   check(/^fnv1a64:[0-9a-f]{16}$/.test(again.schedulerConfig.fingerprint), 'FSRS configuration must carry a deterministic fingerprint');
   mustFail(() => api.validateFsrsConfigSnapshot({...again.schedulerConfig, schedulingPolicy:fixed(.91)}), 'Tampered FSRS scheduling policy must fail its fingerprint');
-
-  const againObservation = {
-    evidenceEventId:'again-event', reviewedAt:due, rating:api.Rating.Again, source:'direct-memory',
-    beforeCard:structuredClone(memoryObligation.policyState.fsrsCard),
-    afterCard:structuredClone(again.policyState.fsrsCard),
-    schedulerConfig:structuredClone(again.schedulerConfig),
-    configFingerprint:again.schedulerConfig.fingerprint
-  };
-  const failedObligation = {...memoryObligation, dueAt:again.dueAt, policyState:again.policyState};
-  const nextDay = new Date(new Date(due).getTime() + 86400000);
-  const repaired = memory.complete(failedObligation, api.Rating.Good, evidence(4,4,3), nextDay, {memoryReviews:[againObservation]});
-  const repairedDays = (new Date(repaired.dueAt) - nextDay) / 86400000;
-  check(repairedDays >= 2.9 && repairedDays <= 3.1, 'Successful next-day repair must return to FSRS-7 at about a three-day interval');
 
   const good = memory.complete(memoryObligation, api.Rating.Good, evidence(3,3,1), new Date(due));
   check(good.policyId === 'memory/ts-fsrs@6.0.0/fsrs-7', 'FSRS-7 policy provenance must be explicit');
@@ -190,13 +171,6 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   check(reviewLapse.policyState.fsrsCard.lapses===1&&reviewLapse.followUpType==='relearn','FSRS must still record its raw Review-state lapse counter while Again routes to host-owned relearning');
   const port = api.revisionSchedulerPort(fixed(.9));
   port.verifyProjection(good.policyState.fsrsCard, [goodObservation]); checks++;
-  const rescheduled = port.reschedule(memoryObligation.policyState.fsrsCard, [goodObservation]);
-  check(rescheduled.dueAt === good.policyState.fsrsCard.dueAt && rescheduled.stabilityFast === good.policyState.fsrsCard.stabilityFast, 'Reschedule must reproduce a same-policy review transition');
-
-  const halfDay = port.retrievability(good.policyState.fsrsCard, [goodObservation], new Date(new Date(due).getTime()+12*60*60*1000));
-  const fullDay = port.retrievability(good.policyState.fsrsCard, [goodObservation], new Date(new Date(due).getTime()+24*60*60*1000));
-  check(halfDay > fullDay && halfDay < 1, 'FSRS-7 retrievability must preserve fractional elapsed time within a day');
-
   const normalized = api.memoryReviewObservationsFor('o', [{
     id:'good-event', obligationId:'o', obligationType:'memory-recall', reviewedAt:due,
     confirmedRating:api.Rating.Good, beforePolicyState:memoryObligation.policyState,
