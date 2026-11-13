@@ -145,4 +145,4 @@ These are QA boundaries, not reasons to add compatibility or migration code.
 
 ## Checksums
 
-`CHECKSUMS.sha256` covers release-critical source, build inputs, generated artifacts, vendored/runtime assets and optimizer tooling. QA code, workflow YAML and prose documentation are deliberately outside this release manifest. `python3 build/checksums.py --check` is the ordinary verification command; `--write` is an explicit maintenance operation. The manifest does not hash itself.
+`CHECKSUMS.sha256` covers release-critical source, build inputs, generated artifacts, vendored/runtime assets and optimizer tooling. QA code, workflow YAML, internal documentation, README and changelog prose are deliberately outside this release manifest; legal notices remain covered. `python3 build/checksums.py --check` is the ordinary verification command; `--write` is an explicit maintenance operation. The manifest does not hash itself.
