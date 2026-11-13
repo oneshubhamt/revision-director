@@ -1,7 +1,7 @@
 'use strict';
 const { createAppRuntime } = require('./helpers/runtime-harness');
 
-const { api, context } = createAppRuntime({
+const { api } = createAppRuntime({
   globalName: '__RD_D1_TEST__',
   expose: ["APP_VERSION","RevisionService","BackupCodec","validateBackupPayload","BACKUP_ARCHIVE_FORMAT","BACKUP_ARCHIVE_VERSION","BACKUP_ARCHIVE_MAX_FILE_BYTES","BACKUP_ARCHIVE_MAX_EXPANDED_BYTES","BACKUP_ARCHIVE_CHUNK_MAX_ITEMS","sha256FallbackHex"],
   requireFsrs: false,
