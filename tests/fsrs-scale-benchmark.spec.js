@@ -3,7 +3,7 @@ const assert = require('assert/strict');
 const { performance } = require('perf_hooks');
 const { createAppRuntime } = require('./helpers/runtime-harness');
 
-const { api, context } = createAppRuntime({
+const { api } = createAppRuntime({
   globalName: '__RD_PASS4_VERIFY__',
   expose: ["Rating","Reschedule","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationIndex","verifyMemoryDatasetIntegrityWithIndex","choosePlanItems"],
   requireFsrs: true,
