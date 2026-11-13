@@ -37,6 +37,8 @@ The database creation path creates stores only for a fresh database (`oldVersion
 
 Metadata and settings are initialization records, not reconstruction hints. A fresh database creates both inside the same `oldVersion === 0` versionchange transaction that creates the object stores. Once database creation completes, either record being absent is treated as corruption: startup fails closed without synthesizing replacements or mutating surviving records.
 
+Write durability is selective rather than global. Ordinary single-store writes—including active-retrieval autosaves—use the browser's default IndexedDB durability. Atomic multi-store domain commits request `durability: "strict"`: profile/settings lifecycle commits, unit/obligation structural commits, obligation/chunk commits, guarded review/evidence commits, FSRS settings-plus-projection rebases and backup restore. If an older IndexedDB implementation rejects the transaction-options argument with `TypeError`, the repository retries the same transaction with ordinary `readwrite`; other transaction failures are not swallowed. This keeps high-value semantic commits durability-biased without imposing strict-flush cost on rapidly changing operational state.
+
 ## Durable documents
 
 Every top-level durable document carries `schemaVersion: 1`. Core documents include exam profiles, knowledge nodes and units, study events, revision obligations, evidence events, chunks, daily plans, settings, metadata and the active retrieval session.
