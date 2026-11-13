@@ -88,6 +88,13 @@ def scenario_capacity_reflow(browser):
     set_capacity(page,60); add_oversized(page)
     page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
     row=page.locator('.planner-row').filter(has_text='Capacity reflow obligation').first
+    shared_wait_until(
+        page,
+        lambda: row.locator('[data-action="review-chunk"]').count() == 1,
+        timeout=8000,
+        interval=40,
+        message='Initial oversized work was not split',
+    )
     check(row.locator('[data-action="review-chunk"]').count()==1,'Initial oversized work was not split')
     with TemporaryDirectory() as tmp:
         p60=export_payload(page,tmp,'60.rdbackup')
