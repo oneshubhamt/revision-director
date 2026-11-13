@@ -19,6 +19,8 @@ EXPECTED_NAMES = [
     "19-revision-scheduler-port.ts",
     "20-policy-planning-kernel.ts",
     "21-policy-implementations.ts",
+    "22-backup-validation.ts",
+    "23-evidence-transition.ts",
     "30-indexeddb-repository.ts",
     "31-storage-facade.ts",
     "32-active-retrieval-persistence.ts",
@@ -29,6 +31,7 @@ EXPECTED_NAMES = [
     "42-backup-controller.ts",
     "55-extension-runtime.ts",
     "45-ui-runtime.ts",
+    "46-workflow-form-adapter.ts",
     "50-ui-controller.ts",
     "60-public-bridge-bootstrap.ts",
 ]
@@ -71,6 +74,8 @@ check("personalization boundary owned", "function validateFsrsOptimizerProfile" 
 check("browser optimizer boundary owned", "class FsrsOptimizerRejectedError" in text_by_name["18a-fsrs-browser-optimizer.ts"] and "function startBrowserFsrsOptimizer" in text_by_name["18a-fsrs-browser-optimizer.ts"])
 check("scheduler port owned", "interface RevisionSchedulerPort" in text_by_name["19-revision-scheduler-port.ts"] and "class TsFsrsSchedulerPort" in text_by_name["19-revision-scheduler-port.ts"] and "class Reschedule" in text_by_name["19-revision-scheduler-port.ts"])
 check("policy planning owned", "interface SchedulerPolicy" in text_by_name["20-policy-planning-kernel.ts"] and "function choosePlanItems" in text_by_name["20-policy-planning-kernel.ts"])
+check("backup validation owned", "function validateBackupPayload" in text_by_name["22-backup-validation.ts"] and "this." not in text_by_name["22-backup-validation.ts"])
+check("evidence transition owned", "function applyPrimaryEvidenceTransition" in text_by_name["23-evidence-transition.ts"] and "function buildEvidenceEvent" in text_by_name["23-evidence-transition.ts"] and "this." not in text_by_name["23-evidence-transition.ts"])
 check("repository owned", "const Store = Object.freeze" in text_by_name["30-indexeddb-repository.ts"] and "class IndexedDbRepository" in text_by_name["30-indexeddb-repository.ts"])
 check("storage facade owned", "class AppDiagnostics" in text_by_name["31-storage-facade.ts"] and "class RevisionData" in text_by_name["31-storage-facade.ts"])
 check("active retrieval persistence owned", "class ActiveRetrievalPersistence" in text_by_name["32-active-retrieval-persistence.ts"])
@@ -81,6 +86,8 @@ check("backup codec owned", "class BackupCodec" in text_by_name["41-backup-codec
 check("backup controller owned", "class BackupController" in text_by_name["42-backup-controller.ts"] and "BackupSafetyProofRecord" in text_by_name["42-backup-controller.ts"])
 check("extension runtime owned", "class ExtensionRuntime" in text_by_name["55-extension-runtime.ts"] and "REVISION_DIRECTOR_CAPABILITIES" in text_by_name["55-extension-runtime.ts"] and "loadLocalFiles" in text_by_name["55-extension-runtime.ts"])
 check("UI runtime owned", "class RenderCoordinator" in text_by_name["45-ui-runtime.ts"] and "class AriaTabRegistry" in text_by_name["45-ui-runtime.ts"] and "class OverlayFocusManager" in text_by_name["45-ui-runtime.ts"])
+check("workflow form adapter owned", "function workflowSpecFromForm" in text_by_name["46-workflow-form-adapter.ts"] and "function populateWorkflowForm" in text_by_name["46-workflow-form-adapter.ts"])
+check("domain kernel owns no DOM forms", all(token not in text_by_name["11-domain-kernel.ts"] for token in ["FormData", "HTMLFormElement", "HTMLInputElement", "HTMLSelectElement", "HTMLTextAreaElement", "innerHTML"]))
 check("UI owned", "class UIController" in text_by_name["50-ui-controller.ts"])
 check("public bootstrap owned", "async function boot" in text_by_name["60-public-bridge-bootstrap.ts"] and "installPublicApi" in text_by_name["60-public-bridge-bootstrap.ts"] and "announceReady" in text_by_name["60-public-bridge-bootstrap.ts"])
 
