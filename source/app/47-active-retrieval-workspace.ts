@@ -2,6 +2,10 @@
      ACTIVE RETRIEVAL WORKSPACE · REVIEW UI + DURABLE SESSION STATE MACHINE
      ========================================================================== */
 
+  function reviewPhaseLabel(phase: ReviewPhase): string {
+    return phase === "attempt" ? "Attempt" : phase === "compare" ? "Compare / correct" : phase === "relearn-repair" ? "Repair" : "Closed-book verification";
+  }
+
   interface ActiveRetrievalWorkspaceHost {
     requireMutable(reason: string): boolean;
     openPane(pane: "today" | "review"): Promise<void>;
@@ -39,6 +43,10 @@
     stopForOwnershipLoss(): void {
       this.stopTimer();
       this.hideGapOverlay();
+    }
+
+    resetEmergencyAfterRestore(session: ActiveRetrievalSession | null): void {
+      this.activePersistence.resetEmergencyAfterRestore(session);
     }
 
     forceSaveForLifecycle(source: TimeRuntimeSource): void {
@@ -159,10 +167,6 @@
       this.hideGapOverlay();
     }
 
-    private phaseLabel(phase: ReviewPhase): string {
-      return phase === "attempt" ? "Attempt" : phase === "compare" ? "Compare / correct" : phase === "relearn-repair" ? "Repair" : "Closed-book verification";
-    }
-
     private activeElapsedMs(): number { return this.phaseTime?.activeMs() ?? 0; }
 
     private closedBookAttemptMs(): number {
@@ -200,7 +204,7 @@
       const state = this.reviewContent.querySelector<HTMLElement>("#review-time-state");
       if (state) {
         const status = this.phaseTime?.status() ?? "running";
-        state.textContent = `${this.phaseLabel(this.reviewPhase)} · ${status === "paused" ? "Paused" : status === "gap-pending" ? "Classify gap" : "Active"}`;
+        state.textContent = `${reviewPhaseLabel(this.reviewPhase)} · ${status === "paused" ? "Paused" : status === "gap-pending" ? "Classify gap" : "Active"}`;
         state.classList.toggle("paused", status !== "running");
       }
       const button = this.reviewContent.querySelector<HTMLButtonElement>('[data-action="toggle-pause"]');
@@ -209,13 +213,13 @@
 
     private reviewTimerMarkup(): string {
       const status = this.phaseTime?.status() ?? "running";
-      return `<div class="review-controls"><div class="review-time-cluster"><div class="review-timer" id="review-timer">${formatDuration(this.activeElapsedMs())}</div><span class="review-time-state ${status !== "running" ? "paused" : ""}" id="review-time-state">${escapeHtml(this.phaseLabel(this.reviewPhase))} · ${status === "paused" ? "Paused" : status === "gap-pending" ? "Classify gap" : "Active"}</span></div><button class="mini-btn" data-action="toggle-pause" ${status === "gap-pending" ? "disabled" : ""}>${status === "paused" ? "RESUME" : "PAUSE"}</button></div>`;
+      return `<div class="review-controls"><div class="review-time-cluster"><div class="review-timer" id="review-timer">${formatDuration(this.activeElapsedMs())}</div><span class="review-time-state ${status !== "running" ? "paused" : ""}" id="review-time-state">${escapeHtml(reviewPhaseLabel(this.reviewPhase))} · ${status === "paused" ? "Paused" : status === "gap-pending" ? "Classify gap" : "Active"}</span></div><button class="mini-btn" data-action="toggle-pause" ${status === "gap-pending" ? "disabled" : ""}>${status === "paused" ? "RESUME" : "PAUSE"}</button></div>`;
     }
 
     private showGapOverlay(): void {
       const gap = this.phaseTime?.pendingGap();
       if (!gap) return;
-      this.gapMeta.textContent = `${formatDuration(gap.gapMs)} · ${this.phaseLabel(gap.phase)} · ${gap.source}`;
+      this.gapMeta.textContent = `${formatDuration(gap.gapMs)} · ${reviewPhaseLabel(gap.phase)} · ${gap.source}`;
       this.gapFocusMinutes.value = String(roundTo(gap.gapMs / 60_000, 1));
       this.gapSplit.hidden = true;
       this.gapFocus.show('[data-gap-action="focus"]', '[data-action="toggle-pause"]');
