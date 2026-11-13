@@ -138,7 +138,9 @@ def review_unit(page, title: str) -> None:
 
 
 def rate_good(page) -> None:
-    page.locator('[data-action="rate"][data-rating="3"]').click()
+    button = page.locator('[data-action="rate"][data-rating="3"]')
+    button.click()
+    button.wait_for(state="hidden", timeout=5_000)
 
 
 def scenario_basic(browser) -> None:
