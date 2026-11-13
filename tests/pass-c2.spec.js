@@ -22,7 +22,7 @@ check("Pass C2 identity", source.includes('const APP_VERSION = "va7.1-pass-f1"')
 check("Scheduler port source is manifest-owned", parts.some(item=>item.path === "app/19-revision-scheduler-port.ts") && parts.map(item=>item.order).every((order,index)=>order===index));
 check("UI runtime has dedicated ownership", parts.some(item=>item.path === "app/45-ui-runtime.ts"));
 check("Render coordinator exists", runtime.includes("class RenderCoordinator"));
-check("Named render domains", runtime.includes('type RenderDomain = PaneId | "sidebar" | "ownership" | "storage"'));
+check("Named render domains", runtime.includes('type RenderDomain = PaneId | "plan" | "sidebar" | "ownership" | "storage"') && runtime.includes('"plan", "today", "review"'));
 check("Dirty domain set", runtime.includes("private readonly dirty = new Set<RenderDomain>()"));
 check("Animation-frame batching", runtime.includes("window.requestAnimationFrame"));
 check("Serialized async flush", runtime.includes("private activeFlush: Promise<void> | null = null"));
