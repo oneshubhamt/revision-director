@@ -8,7 +8,7 @@
   "packageManager": "npm@11.20.0",
   "scripts": {
     "build": "python3 build/build.py",
-    "test:build": "python3 tests/build-integrity.spec.py",
+    "test:build": "npm run build && python3 tests/build-integrity.spec.py",
     "build:hosted": "npm run build && node build/build-hosted.mjs",
     "qa:core": "python3 tests/qa.py core",
     "qa:optimizer": "python3 tests/qa.py optimizer",
