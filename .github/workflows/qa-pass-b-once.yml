@@ -1,0 +1,36 @@
+name: One-off Pass B QA measurements
+on:
+  push:
+    branches: [working]
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    if: contains(github.event.head_commit.message, '[pass-b-profile]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Install locked Node toolchain
+        run: npm ci
+      - name: Install isolated optimizer binding
+        run: npm ci --prefix tools/fsrs-optimizer --no-audit --no-fund
+      - name: Install Playwright harness
+        run: |
+          python3 -m pip install --disable-pip-version-check playwright
+          test -x /usr/bin/chromium
+      - name: Profile canonical QA stages
+        run: python3 tools/qa-baseline.py
