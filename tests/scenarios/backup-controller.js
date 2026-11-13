@@ -1,5 +1,5 @@
 'use strict';
-const { createAppRuntime } = require('./helpers/runtime-harness');
+const { createAppRuntime } = require('../helpers/runtime-harness');
 
 const { api } = createAppRuntime({
   globalName: '__RD_D2_TEST__',

@@ -1,6 +1,6 @@
 'use strict';
 
-const { createAppRuntime } = require('./helpers/runtime-harness');
+const { createAppRuntime } = require('../helpers/runtime-harness');
 
 const { api, source } = createAppRuntime({
   globalName: '__RD_F1_RELIABILITY__',

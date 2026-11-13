@@ -1,5 +1,5 @@
 'use strict';
-const { createAppRuntime } = require('./helpers/runtime-harness');
+const { createAppRuntime } = require('../helpers/runtime-harness');
 
 class TestCustomEvent { constructor(type, init = {}) { this.type = type; this.detail = init.detail; } }
 const { api: T, context } = createAppRuntime({
