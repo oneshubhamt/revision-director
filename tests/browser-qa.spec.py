@@ -298,8 +298,16 @@ def scenario_workflows(browser) -> None:
     check_all_checkpoints(page); rate_good(page)
 
     page.locator('[data-pane="history"]').click(); page.locator("#pane-history").wait_for(state="visible")
+    expected_history = ("reconstruction", "diagram practice", "answer writing", "recall", "questions / application", "relearning")
+    wait_until(
+        page,
+        lambda: all(label in page.locator("#history-content").inner_text().lower() for label in expected_history),
+        timeout=8_000,
+        interval=50,
+        message="History did not project the complete workflow chain",
+    )
     history = page.locator("#history-content").inner_text().lower()
-    for label in ("reconstruction", "diagram practice", "answer writing", "recall", "questions / application", "relearning"):
+    for label in expected_history:
         check(label in history, f"History missing workflow: {label}")
     check(not errors, f"Browser errors: {errors}")
     page.close()
