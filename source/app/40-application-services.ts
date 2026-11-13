@@ -1456,11 +1456,12 @@
         if (obligation.status === "suspended") assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning" || obligation.suspensionReason === "persistent-difficulty", "Suspended obligation lacks a valid reason.");
         else assert(obligation.suspensionReason === undefined, "Only suspended obligations may retain a suspension reason.");
         if (obligation.suspensionReason === "relearning") {
-          assert([...obligationMap.values()].some((item) =>
+          const unresolvedRepairs = [...obligationMap.values()].filter((item) =>
             item.type === "relearn" &&
             (item.status === "active" || item.status === "suspended") &&
             item.returnObligationId === obligation.id
-          ), "Relearning suspension lacks its unresolved repair obligation.");
+          );
+          assert(unresolvedRepairs.length === 1, "Relearning suspension must have exactly one unresolved repair obligation.");
         }
         if (obligation.suspensionReason === "persistent-difficulty") assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
         validDate(obligation.dueAt, "Obligation"); validDate(obligation.createdAt, "Obligation"); validDate(obligation.updatedAt, "Obligation");
@@ -1491,6 +1492,10 @@
           assert(obligation.returnObligationId && obligation.parentObligationId === obligation.returnObligationId, "Relearning obligation must point to its exact originating obligation.");
           const original = obligation.returnObligationId ? obligationMap.get(obligation.returnObligationId) : undefined;
           assert(original?.unitId === obligation.unitId && original.type !== "relearn", "Relearning return target is invalid.");
+          if (obligation.status === "active" || obligation.status === "suspended") {
+            assert(original.status === "suspended" && original.suspensionReason === "relearning", "Unresolved relearning obligation requires its origin to remain suspended for relearning.");
+            if (obligation.status === "suspended") assert(obligation.suspensionReason === "unit", "A suspended relearning obligation may only be held by its knowledge unit.");
+          }
         }
       }
       for (const event of evidenceEvents) {
@@ -1515,7 +1520,16 @@
         validateWorkflowResult(event.workflowResult, event.workflow);
         validRatingValue(event.suggestedRating, "Evidence event"); validRatingValue(event.confirmedRating, "Evidence event");
         assert(event.beforePolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType] && event.afterPolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType], "Evidence policy states do not match the obligation type.");
-        if (event.followUpObligationId) assert(obligationMap.has(event.followUpObligationId), "Evidence event references a missing follow-up obligation.");
+        if (event.followUpObligationId) {
+          const followUp = obligationMap.get(event.followUpObligationId);
+          assert(
+            followUp?.type === "relearn" &&
+            followUp.unitId === event.unitId &&
+            followUp.parentObligationId === event.obligationId &&
+            followUp.returnObligationId === event.obligationId,
+            "Evidence event follow-up does not match its exact relearning child.",
+          );
+        }
         if (event.obligationType !== "memory-recall") {
           const policy = this.router.get(event.obligationType);
           const transitionInput = {
