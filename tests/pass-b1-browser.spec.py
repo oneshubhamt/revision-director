@@ -167,7 +167,8 @@ PERSISTENT_BROWSER_SHIM = r"""
 })();
 </script>
 """
-HTML = BASE_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM, 1)
+INTEGRITY_HOOK = "window.__RD_B1_INTEGRITY__={RevisionData,RevisionService,Store}; void boot();"
+HTML = BASE_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM, 1).replace("void boot();", INTEGRITY_HOOK, 1)
 
 
 def check(condition: bool, message: str) -> None:
@@ -280,6 +281,33 @@ def main() -> None:
         page.on("dialog", lambda dialog: dialog.accept())
         page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
 
+        frame = boot_frame(page)
+
+        # Concurrent hierarchy creation must converge on one root primary key and
+        # one child pathLookup entry rather than creating duplicate nodes.
+        concurrency = frame.evaluate("""async () => {
+          const api=window.__RD_B1_INTEGRITY__;
+          const data=await api.RevisionData.open();
+          const service=new api.RevisionService(data);
+          await service.initialize();
+          const profile=await service.createProfile('Concurrency exam','2030-01-01');
+          const subjects=await Promise.all(Array.from({length:12},()=>service.ensureNode(profile.id,null,'subject','Public Administration')));
+          const subject=subjects[0];
+          const sections=await Promise.all(Array.from({length:12},()=>service.ensureNode(profile.id,subject.id,'section','Administrative Theory')));
+          const nodes=await service.nodes();
+          return {
+            subjectIds:[...new Set(subjects.map(node=>node.id))],
+            sectionIds:[...new Set(sections.map(node=>node.id))],
+            rootCount:nodes.filter(node=>node.profileId===profile.id && node.parentId===null && node.kind==='subject' && node.normalizedName==='public administration').length,
+            sectionCount:nodes.filter(node=>node.profileId===profile.id && node.parentId===subject.id && node.kind==='section' && node.normalizedName==='administrative theory').length,
+          };
+        }""")
+        check(len(concurrency["subjectIds"]) == 1 and concurrency["subjectIds"][0].startswith("subject_"), "Concurrent root creation did not converge on the deterministic root identity")
+        check(concurrency["rootCount"] == 1, "Concurrent root creation persisted duplicate subject nodes")
+        check(len(concurrency["sectionIds"]) == 1 and concurrency["sectionCount"] == 1, "Concurrent child creation bypassed the unique pathLookup index")
+
+        page.evaluate("document.querySelector('#app').remove()")
+        page.evaluate("window.__RD_B1_QA_STATE__={local:{},databases:{}}")
         frame = boot_frame(page)
         frame.locator('[data-pane="settings"]').click()
         restore_fixture_d2(page, frame, FIXTURE)
