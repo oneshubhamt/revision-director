@@ -8,6 +8,7 @@ TARGET=512*1024
 MAX_ITEMS=100
 
 def compact(value): return json.dumps(value,separators=(",",":"),ensure_ascii=False)
+def stable_compact(value): return json.dumps(value,separators=(",",":"),ensure_ascii=False,sort_keys=True)
 def sha256(data:bytes)->str:
     return hashlib.sha256(data).hexdigest()
 
@@ -44,7 +45,7 @@ def encode_payload(payload:dict)->bytes:
             group.append(item); total+=size
         flush()
     stable={"format":canonical["format"],"schemaVersion":canonical["schemaVersion"],"profiles":canonical["profiles"],"nodes":canonical["nodes"],"units":canonical["units"],"studyEvents":canonical["studyEvents"],"obligations":canonical["obligations"],"evidenceEvents":canonical["evidenceEvents"],"chunks":canonical["chunks"],"dailyPlans":canonical["dailyPlans"],"settings":canonical["settings"],"activeRetrieval":canonical.get("activeRetrieval")}
-    manifest={"kind":"manifest","format":"revision-director-backup-archive","version":2,"exportedAt":canonical["exportedAt"],"appVersion":canonical["appVersion"],"payloadFormat":"revision-director-backup","payloadSchemaVersion":2,"compression":"none","hashAlgorithm":"sha256","chunkTargetBytes":TARGET,"chunkMaxItems":MAX_ITEMS,"chunkCount":len(bodies),"counts":counts,"stateChecksum":sha256(compact(stable).encode())}
+    manifest={"kind":"manifest","format":"revision-director-backup-archive","version":3,"exportedAt":canonical["exportedAt"],"appVersion":canonical["appVersion"],"payloadFormat":"revision-director-backup","payloadSchemaVersion":2,"compression":"none","hashAlgorithm":"sha256","chunkTargetBytes":TARGET,"chunkMaxItems":MAX_ITEMS,"chunkCount":len(bodies),"counts":counts,"stateChecksum":sha256(stable_compact(stable).encode())}
     chunks=[]; hashes=[]
     for body in bodies:
         checksum=sha256(compact(body).encode()); hashes.append(checksum); chunks.append({**body,"checksum":checksum})
