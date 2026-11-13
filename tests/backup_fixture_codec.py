@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import tempfile
 from pathlib import Path
 
 ORDER=("profiles","nodes","units","studyEvents","obligations","evidenceEvents","chunks","dailyPlans","settings","activeRetrieval")
