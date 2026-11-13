@@ -22,6 +22,13 @@ def check(v,m):
     global checks; checks+=1
     if not v: raise AssertionError(m)
 
+def ensure_settings(page) -> None:
+    tab=page.locator('[data-pane="settings"]')
+    if tab.get_attribute('aria-selected') != 'true':
+        tab.click()
+    page.locator('#pane-settings').wait_for(state='visible')
+
+
 def wait_restore_mutable(page) -> None:
     wait_until(
         page,
@@ -111,7 +118,7 @@ def main():
         check(release_schema['schemaMetadataPreserved'],'Schema rejection rewrote incompatible metadata')
         check(release_schema['recoveredCapacity']==release_schema['currentCapacity'],'Compatible reopen after schema rejection changed settings')
 
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        ensure_settings(page)
 
         # Export remains a single visible action and opens no restore ceremony.
         check(page.locator('[data-action="export-backup"]').is_visible(),'Export action is not visible')
@@ -156,7 +163,7 @@ def main():
         check(attempt.count()==1,'Expected text retrieval did not start')
         attempt.fill('Stage D safety copy live draft')
         wait_until(page, lambda: 'Stage D safety copy live draft' in (page.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") or ''), timeout=5000, interval=40, message='Live draft did not reach emergency recovery')
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        ensure_settings(page)
         open_restore_preview(page, FIXTURE)
         active_safety=safety_download(page,tmp)
         active_safety_payload=decode_file(active_safety)
@@ -167,7 +174,7 @@ def main():
         check(page.evaluate('(k)=>localStorage.getItem(k)',RECOVERY_KEY) is None,'Discard-only candidate left local emergency recovery behind')
 
         # The saved active-session backup requires explicit restore/discard treatment.
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        ensure_settings(page)
         open_restore_preview(page, active_safety)
         check(page.locator('input[name="restore-active-treatment"]').count()==2,'Active-session treatment choices are missing')
         active_restore_safety=safety_download(page,tmp)
@@ -176,14 +183,14 @@ def main():
         check(page.locator('#attempt-text').input_value()=='Stage D safety copy live draft','Restored active draft text changed')
 
         # Reimport the same active backup and explicitly discard its session.
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        ensure_settings(page)
         open_restore_preview(page, active_safety)
         discard_safety=safety_download(page,tmp)
         confirm_restore(page,treatment='discard')
         check(page.evaluate('(k)=>localStorage.getItem(k)',RECOVERY_KEY) is None,'Discard treatment retained emergency active session')
 
         # Corrupt current relational state after inspection: the controller must provide a forensic rescue, not deadlock.
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        ensure_settings(page)
         open_restore_preview(page, FIXTURE)
         page.evaluate("""async()=>{const db=await new Promise((res,rej)=>{const r=indexedDB.open('revision-director',1);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});await new Promise((res,rej)=>{const tx=db.transaction(['profiles'],'readwrite');tx.objectStore('profiles').put({schemaVersion:1,id:'corrupt-profile'});tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});}""")
         rescue=safety_download(page,tmp)
@@ -196,7 +203,7 @@ def main():
         check(page.locator('#sb-units').inner_text()=='2','Forensic-gated restore did not recover known-good backup')
 
         # Hostile content cannot enter the normal restore ceremony even when renamed to an accepted .rdbackup.
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        ensure_settings(page)
         wait_restore_mutable(page)
         rescue_probe=tmp/'forensic-rescue-disguised.rdbackup'
         rescue_probe.write_bytes(rescue.read_bytes())
