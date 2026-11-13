@@ -45,6 +45,7 @@
     const chunkMap = uniqueMap(chunks, "Obligation chunks");
     uniqueMap(dailyPlans, "Daily plans");
     const studyDayKeys = new Set<string>();
+    const nodePathKeys = new Set<string>();
     for (const profile of profiles) assertDocumentSchema(profile, "Backup exam profile");
     for (const node of nodes) assertDocumentSchema(node, "Backup knowledge node");
     for (const unit of units) assertDocumentSchema(unit, "Backup knowledge unit");
@@ -63,6 +64,9 @@
       const profile = profileMap.get(node.profileId);
       assert(profile, "Knowledge node references a missing profile.");
       assert(node.name.trim().length > 0 && node.normalizedName === normalizeName(node.name), "Knowledge node name is invalid.");
+      const pathKey = [node.profileId, node.parentId ?? "<root>", node.kind, node.normalizedName].join("\u0000");
+      assert(!nodePathKeys.has(pathKey), "Knowledge hierarchy contains duplicate semantic paths.");
+      nodePathKeys.add(pathKey);
       if (node.kind === "subject") assert(node.parentId === null, "Subject nodes cannot have parents.");
       if (node.kind === "section") {
         const parent = node.parentId ? nodeMap.get(node.parentId) : undefined;
