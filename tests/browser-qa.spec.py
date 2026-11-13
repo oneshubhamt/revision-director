@@ -234,8 +234,23 @@ def scenario_backups(browser) -> None:
         check(page.locator("[data-profile-editor]").count() == 2, "Backup restore did not replace temporary data")
 
         Path(hostile_path).write_bytes(encode_payload({**payload, 'settings':{**payload['settings'], 'activeProfileId':'missing-profile'}}))
+        page.evaluate("document.querySelector('#toast').textContent=''")
+        page.locator("#import-backup").set_input_files([])
         page.locator("#import-backup").set_input_files(hostile_path)
-        wait_until(page, lambda: any(token in page.locator("#toast").inner_text().lower() for token in ("invalid","missing","profile")), timeout=5000, interval=40, message="Hostile backup accepted")
+        wait_until(
+            page,
+            lambda: page.locator("#import-backup").evaluate("e=>e.value") == "",
+            timeout=5000,
+            interval=40,
+            message="Hostile backup import handler did not finish",
+        )
+        hostile_message = page.locator("#toast").inner_text().strip()
+        check(
+            bool(hostile_message)
+            and page.locator("#toast").evaluate("e=>e.classList.contains('error')")
+            and not page.locator("#restore-dialog").is_visible(),
+            f"Hostile backup did not fail through the rejection UI contract · toast={hostile_message!r}",
+        )
     check(not errors, f"Browser errors: {errors}")
     page.close()
 
