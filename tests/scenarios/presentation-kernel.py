@@ -1,16 +1,12 @@
 from __future__ import annotations
 from pathlib import Path
-import importlib.util
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, chromium_executable
-SPEC = importlib.util.spec_from_file_location('qa', ROOT/'tests/browser-qa.spec.py')
-if SPEC is None or SPEC.loader is None:
-    raise RuntimeError('Unable to load browser QA fixture')
-QA = importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(QA)
+from helpers.browser_harness import ROOT, launch_chromium, load_browser_qa, open_html_page
+QA = load_browser_qa("revision_director_presentation_kernel")
 TIME_SHIM = r'''<script>(()=>{const RealDate=Date;const fixed=RealDate.parse('2026-07-27T06:30:00.000Z');class FixedDate extends RealDate{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed}}Object.defineProperty(window,'Date',{configurable:true,value:FixedDate});})();</script>'''
 HTML = (ROOT/'index.html').read_text().replace('<head>', '<head>'+TIME_SHIM+QA.INDEXEDDB_SHIM, 1)
 CHECKS = 0
@@ -22,14 +18,14 @@ def check(value: bool, message: str) -> None:
         raise AssertionError(message)
 
 def open_page(browser, viewport):
-    page = browser.new_page(viewport=viewport)
-    page.set_default_timeout(10_000)
-    errors: list[str] = []
-    page.on('pageerror', lambda error: errors.append(str(error)))
-    page.on('console', lambda message: errors.append(f'{message.type}: {message.text}') if message.type in ('error','warning') else None)
-    page.on('dialog', lambda dialog: dialog.accept())
-    page.set_content(HTML, wait_until='load')
-    page.wait_for_timeout(1_200)
+    page, errors = open_html_page(
+        browser,
+        HTML,
+        viewport=viewport,
+        settle_ms=1_200,
+        default_timeout=10_000,
+        include_warnings=True,
+    )
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup error')
     page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(100)
     QA.restore_selected_backup(page, ROOT/'tests/fixtures/browser-baseline.rdbackup')
@@ -88,7 +84,7 @@ def verify_corrupt_preference_fallback(browser) -> None:
 
 def main() -> None:
     with sync_playwright() as playwright:
-        browser=playwright.chromium.launch(headless=True, executable_path=chromium_executable() or '/usr/bin/chromium', args=['--no-sandbox','--disable-dev-shm-usage'])
+        browser=launch_chromium(playwright)
         verify_corrupt_preference_fallback(browser)
         for label,viewport in [('desktop',{'width':1440,'height':1000}),('phone',{'width':390,'height':844})]:
             page,errors=open_page(browser,viewport)

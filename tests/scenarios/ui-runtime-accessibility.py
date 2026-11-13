@@ -1,13 +1,12 @@
 from __future__ import annotations
 from pathlib import Path
-import os, runpy, shutil
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, chromium_executable
-base = runpy.run_path(str(ROOT / "tests/browser-qa.spec.py"), run_name="rd_c2_base")
+from helpers.browser_harness import ROOT, launch_chromium, load_browser_qa, open_html_page
+base = load_browser_qa("revision_director_ui_runtime_accessibility")
 INDEXEDDB_SHIM = base["INDEXEDDB_SHIM"]
 BASELINE_BACKUP = ROOT / "tests/fixtures/browser-baseline.rdbackup"
 restore_selected_backup = base["restore_selected_backup"]
@@ -32,13 +31,7 @@ def check(condition: bool, message: str) -> None:
 def wait(page, ms=220): page.wait_for_timeout(ms)
 
 def launch_page(browser, viewport={"width": 1440, "height": 1000}):
-    page = browser.new_page(viewport=viewport)
-    errors=[]
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-    page.on("dialog", lambda d: d.accept())
-    page.set_content(HTML, wait_until="load")
-    wait(page, 1200)
+    page, errors = open_html_page(browser, HTML, viewport=viewport, settle_ms=1200)
     check(not page.locator("#fatal-error").is_visible(), "Fatal startup error")
     return page, errors
 
@@ -49,9 +42,8 @@ def restore_baseline(page):
 
 def main():
     global checks
-    executable = os.environ.get("CHROMIUM_EXECUTABLE") or chromium_executable()
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True, executable_path=executable if executable else None, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        browser = launch_chromium(pw)
         page, errors = launch_page(browser)
         page.set_default_timeout(5000)
         restore_baseline(page)

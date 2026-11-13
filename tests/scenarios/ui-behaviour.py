@@ -1,13 +1,12 @@
 from __future__ import annotations
 from pathlib import Path
-import os, runpy, shutil
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, chromium_executable
-base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_stage_c_behavior_base')
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa
+base=load_browser_qa("revision_director_ui_behaviour")
 restore_selected_backup=base['restore_selected_backup']
 CLOCK=r'''<script>(()=>{let current=Date.now();Date.now=()=>current;window.__RD_STAGE_C_CLOCK__={advance(ms){current+=Number(ms)||0;return current;}};})();</script>'''
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base['INDEXEDDB_SHIM']+CLOCK,1)
@@ -21,15 +20,12 @@ def check(v,msg):
 def wait(page,ms=250):page.wait_for_timeout(ms)
 
 def main():
- executable=chromium_executable() or '/usr/bin/chromium'
  with sync_playwright() as pw:
-  browser=pw.chromium.launch(headless=True,executable_path=executable,args=['--no-sandbox','--disable-dev-shm-usage'])
+  browser=launch_chromium(pw)
   page=browser.new_page(viewport={'width':1365,'height':950})
   page.set_default_timeout(7000)
-  errors=[]
-  page.on('pageerror',lambda e:errors.append(str(e)))
-  page.on('console',lambda m:errors.append(f'{m.type}: {m.text}') if m.type in ('error','warning') else None)
-  page.on('dialog',lambda d:d.accept())
+  errors=capture_browser_errors(page, include_warnings=True)
+  accept_dialogs(page)
   page.set_content(HTML,wait_until='load');wait(page,1300)
   page.locator('[data-pane="settings"]').click();wait(page)
   restore_selected_backup(page, BASELINE)

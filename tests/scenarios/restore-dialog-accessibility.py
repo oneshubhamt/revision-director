@@ -1,14 +1,14 @@
 from __future__ import annotations
 from pathlib import Path
-import os, runpy, shutil, sys
+import sys
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, chromium_executable
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa
 sys.path.insert(0,str(ROOT/'tests'))
-base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_stage_d_restore_ui_base')
+base=load_browser_qa("revision_director_restore_dialog")
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base['INDEXEDDB_SHIM'],1)
 FIXTURE=ROOT/'tests/fixtures/browser-baseline.rdbackup'
 checks=0
@@ -19,16 +19,13 @@ def check(v,m):
 
 def main():
     global checks
-    exe=chromium_executable()
     viewports=[(320,568),(390,844),(620,760),(820,1180),(821,900),(1440,1000)]
     with sync_playwright() as pw:
-        browser=pw.chromium.launch(headless=True,executable_path=exe if exe else None,args=['--no-sandbox','--disable-dev-shm-usage'])
+        browser=launch_chromium(pw)
         for width,height in viewports:
             page=browser.new_page(viewport={'width':width,'height':height})
-            errors=[]
-            page.on('pageerror',lambda e:errors.append(str(e)))
-            page.on('console',lambda m:errors.append(m.text) if m.type=='error' else None)
-            page.on('dialog',lambda d:d.accept())
+            errors=capture_browser_errors(page)
+            accept_dialogs(page)
             page.set_content(HTML,wait_until='load');page.wait_for_timeout(1200)
             page.locator('[data-pane="settings"]').click();page.wait_for_timeout(180)
             page.locator('#import-backup').set_input_files(str(FIXTURE))
