@@ -1,15 +1,15 @@
 from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import json, runpy
+import json
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium
-base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_d1_base')
-INDEXEDDB_SHIM=base['INDEXEDDB_SHIM']
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa
+base=load_browser_qa('revision_director_backup_codec')
+INDEXEDDB_SHIM=base.INDEXEDDB_SHIM
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+INDEXEDDB_SHIM,1)
 FIXTURE=ROOT/'tests/fixtures/browser-baseline.rdbackup'
 RAW=ROOT/'tests/fixtures/browser-baseline.json'
