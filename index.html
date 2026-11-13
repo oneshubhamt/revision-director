@@ -6419,6 +6419,14 @@ exports.withFuzzing = withFuzzing;
       assert(typeof value === "string", `${label} must be a string.`);
       return value;
   }
+  function requiredFiniteNumber(value, label) {
+      assert(typeof value === "number" && Number.isFinite(value), `${label} must be a finite number.`);
+      return value;
+  }
+  function requiredSafeInteger(value, label) {
+      assert(typeof value === "number" && Number.isSafeInteger(value), `${label} must be a safe integer.`);
+      return value;
+  }
   function requiredArray(value, label) {
       assert(Array.isArray(value), `${label} must be an array.`);
       return value;
@@ -7121,24 +7129,39 @@ exports.withFuzzing = withFuzzing;
   }
   function canonicalWorkflowSpec(value) {
       assertExactKeys(value, "Workflow", ["kind", "prompt", "checkpoints", "responseMedium", "targetCount", "questionSetRef", "timeLimitMinutes", "wordLimit", "reconstructionShape", "answerMode", "diagramSurface"]);
+      assert(Array.isArray(value.checkpoints), "Workflow checkpoints must be an array.");
       const workflow = clone(value);
       workflow.prompt = canonicalText(workflow.prompt, "Workflow prompt", 8_000);
-      workflow.checkpoints = [...new Set(workflow.checkpoints.map((checkpoint) => canonicalName(checkpoint, "Workflow checkpoint", 500)))];
-      workflow.responseMedium = workflow.responseMedium;
+      workflow.checkpoints = workflow.checkpoints.map((checkpoint) => canonicalName(checkpoint, "Workflow checkpoint", 500));
+      assert(new Set(workflow.checkpoints).size === workflow.checkpoints.length, "Workflow checkpoints cannot contain duplicates.");
       if (workflow.questionSetRef !== undefined)
           workflow.questionSetRef = canonicalText(workflow.questionSetRef, "Question-set reference", 2_000);
       return workflow;
   }
   function canonicalPolicyState(value) {
       assertExactKeys(value, "Policy state", ["engine", "version", "stage", "successStreak", "failureCount", "lastIntervalDays", "fsrsCard"]);
+      assert(["ts-fsrs", "mastery", "application", "performance", "relearn", "freshness"].includes(value.engine), "Policy engine is invalid.");
+      assert(typeof value.version === "string" && value.version.length > 0 && value.version.length <= 80, "Policy version is invalid.");
+      assert(Number.isSafeInteger(value.stage) && value.stage >= 0, "Policy stage is invalid.");
+      assert(Number.isSafeInteger(value.successStreak) && value.successStreak >= 0, "Policy success streak is invalid.");
+      assert(Number.isSafeInteger(value.failureCount) && value.failureCount >= 0, "Policy failure count is invalid.");
+      assert(typeof value.lastIntervalDays === "number" && Number.isFinite(value.lastIntervalDays) && value.lastIntervalDays >= 0 && value.lastIntervalDays <= FSRS_MAXIMUM_INTERVAL_DAYS, "Policy interval is invalid.");
       const state = clone(value);
-      if (state.fsrsCard) {
+      if (state.engine === "ts-fsrs") {
+          assert(state.version === FSRS_PACKAGE_VERSION && state.fsrsCard, "FSRS policy state is incomplete.");
           assertExactKeys(state.fsrsCard, "FSRS card", ["model", "cardId", "dueAt", "stability", "stabilityFast", "difficulty", "scheduledDays", "learningStep", "reps", "lapses", "state", "scheduleStatus", "lastReviewAt"]);
+          validateStoredFsrsCard(state.fsrsCard);
           state.fsrsCard.dueAt = canonicalIso(state.fsrsCard.dueAt, "FSRS due date");
           if (state.fsrsCard.lastReviewAt !== undefined)
               state.fsrsCard.lastReviewAt = canonicalIso(state.fsrsCard.lastReviewAt, "FSRS last review date");
           else
               delete state.fsrsCard.lastReviewAt;
+          assert(state.stage === state.fsrsCard.state, "FSRS policy stage does not match its card state.");
+      }
+      else {
+          assert(state.version === "1", "Interval policy state uses an unsupported version.");
+          assert(state.fsrsCard === undefined, "Only FSRS policy state may contain an FSRS card.");
+          delete state.fsrsCard;
       }
       return state;
   }
@@ -7147,6 +7170,7 @@ exports.withFuzzing = withFuzzing;
       assertExactKeys(value, "Exam profile", ["schemaVersion", "id", "name", "examDate", "status", "createdAt", "updatedAt"]);
       if (value.examDate)
           validateCalendarDate(value.examDate, "Exam date");
+      assert(ENTITY_STATUSES.includes(value.status), "Exam profile status is invalid.");
       return {
           ...clone(value),
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -7160,22 +7184,27 @@ exports.withFuzzing = withFuzzing;
   function canonicalKnowledgeNode(value) {
       assertDocumentSchema(value, "Knowledge node");
       assertExactKeys(value, "Knowledge node", ["schemaVersion", "id", "profileId", "parentId", "kind", "name", "normalizedName", "createdAt", "updatedAt"]);
+      assert(["subject", "section", "topic"].includes(value.kind), "Knowledge-node kind is invalid.");
       const name = canonicalName(value.name, "Knowledge-node name");
+      const normalizedName = normalizeName(name);
+      assert(value.normalizedName === normalizedName, "Knowledge-node normalized name is not canonical.");
+      const parentId = value.parentId === null ? null : canonicalId(value.parentId, "Knowledge-node parent ID");
+      assert((value.kind === "subject") === (parentId === null), "Knowledge-node parent shape is invalid.");
       return {
           ...clone(value),
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
           id: canonicalId(value.id, "Knowledge-node ID"),
           profileId: canonicalId(value.profileId, "Knowledge-node profile ID"),
-          parentId: value.parentId === null ? null : canonicalId(value.parentId, "Knowledge-node parent ID"),
+          parentId,
           name,
-          normalizedName: normalizeName(name),
+          normalizedName,
           createdAt: canonicalIso(value.createdAt, "Knowledge-node creation date"),
           updatedAt: canonicalIso(value.updatedAt, "Knowledge-node update date"),
       };
   }
   function canonicalKnowledgeUnit(value) {
       assertDocumentSchema(value, "Knowledge unit");
-      assertExactKeys(value, "Knowledge unit", ["schemaVersion", "id", "profileId", "topicNodeId", "title", "scope", "source", "importance", "status", "createdAt", "updatedAt", "latestEvidenceAt", "latestEvidenceRating", "evidenceCount", "lapseCount"]);
+      assertExactKeys(value, "Knowledge unit", ["schemaVersion", "id", "profileId", "topicNodeId", "title", "scope", "source", "importance", "status", "createdAt", "updatedAt", "evidenceCount", "lapseCount"]);
       const unit = clone(value);
       unit.schemaVersion = DOCUMENT_SCHEMA_VERSION;
       unit.id = canonicalId(unit.id, "Knowledge-unit ID");
@@ -7184,19 +7213,26 @@ exports.withFuzzing = withFuzzing;
       unit.title = canonicalName(unit.title, "Knowledge-unit title", 500);
       unit.scope = canonicalText(unit.scope, "Knowledge-unit scope");
       unit.source = canonicalText(unit.source, "Knowledge-unit source", 4_000);
+      assert(unit.importance === 1 || unit.importance === 2 || unit.importance === 3, "Knowledge-unit importance is invalid.");
+      assert(ENTITY_STATUSES.includes(unit.status), "Knowledge-unit status is invalid.");
+      assert(Number.isSafeInteger(unit.evidenceCount) && unit.evidenceCount >= 0, "Knowledge-unit evidence count is invalid.");
+      assert(Number.isSafeInteger(unit.lapseCount) && unit.lapseCount >= 0 && unit.lapseCount <= unit.evidenceCount, "Knowledge-unit lapse count is invalid.");
       unit.createdAt = canonicalIso(unit.createdAt, "Knowledge-unit creation date");
       unit.updatedAt = canonicalIso(unit.updatedAt, "Knowledge-unit update date");
-      if (unit.latestEvidenceAt !== undefined)
-          unit.latestEvidenceAt = canonicalIso(unit.latestEvidenceAt, "Knowledge-unit evidence date");
-      else
-          delete unit.latestEvidenceAt;
-      if (unit.latestEvidenceRating === undefined)
-          delete unit.latestEvidenceRating;
       return unit;
   }
   function canonicalStudyEvent(value) {
       assertDocumentSchema(value, "Study event");
       assertExactKeys(value, "Study event", ["schemaVersion", "id", "profileId", "occurredAt", "activityMode", "area", "task", "measure", "source", "durationMinutes", "understanding", "linkedUnitIds", "notes", "origin", "createdAt"]);
+      assert(ACTIVITY_MODES.includes(value.activityMode), "Study-event activity mode is invalid.");
+      assert(STUDY_ORIGINS.includes(value.origin), "Study-event origin is invalid.");
+      assert(typeof value.durationMinutes === "number" && Number.isFinite(value.durationMinutes) && value.durationMinutes >= 1 && value.durationMinutes <= 1440, "Study-event duration is invalid.");
+      assert(UNDERSTANDING_LEVELS.includes(value.understanding), "Study-event understanding is invalid.");
+      assert(Array.isArray(value.linkedUnitIds), "Study-event unit links must be an array.");
+      const linkedUnitIds = value.linkedUnitIds.map((id) => canonicalId(id, "Study-event unit ID"));
+      assert(new Set(linkedUnitIds).size === linkedUnitIds.length, "Study-event unit links cannot contain duplicates.");
+      const measure = canonicalText(value.measure, "Study-event measure", 4_000);
+      assert(measure.length > 0, "Study-event measure is required.");
       return {
           ...clone(value),
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -7205,25 +7241,38 @@ exports.withFuzzing = withFuzzing;
           occurredAt: canonicalIso(value.occurredAt, "Study-event occurrence date"),
           area: canonicalName(value.area, "Study-event area", 500),
           task: canonicalName(value.task, "Study-event task", 1_000),
-          measure: canonicalText(value.measure, "Study-event measure", 4_000),
+          measure,
           source: canonicalText(value.source, "Study-event source", 4_000),
-          linkedUnitIds: [...new Set(value.linkedUnitIds.map((id) => canonicalId(id, "Study-event unit ID")))],
+          linkedUnitIds,
           notes: canonicalText(value.notes, "Study-event notes"),
           createdAt: canonicalIso(value.createdAt, "Study-event creation date"),
       };
   }
   function canonicalRevisionObligation(value) {
       assertDocumentSchema(value, "Revision obligation");
-      assertExactKeys(value, "Revision obligation", ["schemaVersion", "id", "unitId", "type", "status", "suspensionReason", "dueAt", "expectedMinutes", "baselineMinutes", "durationSampleCount", "chunking", "protocol", "successCriteria", "workflow", "freshnessDays", "priority", "policyState", "parentObligationId", "returnObligationId", "createdAt", "updatedAt", "lastCompletedAt"]);
+      assertExactKeys(value, "Revision obligation", ["schemaVersion", "id", "unitId", "type", "status", "suspensionReason", "dueAt", "expectedMinutes", "baselineMinutes", "durationSampleCount", "chunking", "protocol", "successCriteria", "workflow", "freshnessDays", "priority", "policyState", "parentObligationId", "returnObligationId", "createdAt", "updatedAt"]);
       const obligation = clone(value);
       obligation.schemaVersion = DOCUMENT_SCHEMA_VERSION;
       obligation.id = canonicalId(obligation.id, "Revision-obligation ID");
       obligation.unitId = canonicalId(obligation.unitId, "Revision-obligation unit ID");
+      assert(OBLIGATION_TYPES.includes(obligation.type), "Revision-obligation type is invalid.");
+      assert(["active", "completed", "suspended", "archived"].includes(obligation.status), "Revision-obligation status is invalid.");
+      assert(typeof obligation.expectedMinutes === "number" && Number.isFinite(obligation.expectedMinutes) && obligation.expectedMinutes >= 1 && obligation.expectedMinutes <= 240, "Revision-obligation expected duration is invalid.");
+      assert(typeof obligation.baselineMinutes === "number" && Number.isFinite(obligation.baselineMinutes) && obligation.baselineMinutes >= 1 && obligation.baselineMinutes <= 240, "Revision-obligation baseline duration is invalid.");
+      assert(Number.isSafeInteger(obligation.durationSampleCount) && obligation.durationSampleCount >= 0, "Revision-obligation duration sample count is invalid.");
+      assert(Number.isSafeInteger(obligation.freshnessDays) && obligation.freshnessDays >= 1 && obligation.freshnessDays <= 3650, "Revision-obligation freshness period is invalid.");
+      assert(Number.isSafeInteger(obligation.priority) && obligation.priority >= 0 && obligation.priority <= 100_000, "Revision-obligation priority is invalid.");
       obligation.dueAt = canonicalIso(obligation.dueAt, "Revision-obligation due date");
       obligation.protocol = canonicalText(obligation.protocol, "Revision protocol");
       obligation.successCriteria = canonicalText(obligation.successCriteria, "Revision success criteria");
       obligation.workflow = canonicalWorkflowSpec(obligation.workflow);
+      validateWorkflowSpec(obligation.workflow, obligation.type);
       obligation.policyState = canonicalPolicyState(obligation.policyState);
+      assert(obligation.policyState.engine === POLICY_ENGINE_BY_OBLIGATION[obligation.type], "Revision-obligation policy does not match its type.");
+      if (obligation.type === "memory-recall") {
+          const card = obligation.policyState.fsrsCard;
+          assert(card && card.cardId === obligation.id && card.dueAt === obligation.dueAt, "Memory obligation and FSRS card are not synchronized.");
+      }
       if (obligation.parentObligationId !== undefined)
           obligation.parentObligationId = canonicalId(obligation.parentObligationId, "Parent obligation ID");
       else
@@ -7234,10 +7283,6 @@ exports.withFuzzing = withFuzzing;
           delete obligation.returnObligationId;
       obligation.createdAt = canonicalIso(obligation.createdAt, "Revision-obligation creation date");
       obligation.updatedAt = canonicalIso(obligation.updatedAt, "Revision-obligation update date");
-      if (obligation.lastCompletedAt !== undefined)
-          obligation.lastCompletedAt = canonicalIso(obligation.lastCompletedAt, "Revision-obligation completion date");
-      else
-          delete obligation.lastCompletedAt;
       if (obligation.status === "suspended") {
           assert(obligation.suspensionReason === "unit" || obligation.suspensionReason === "relearning" || obligation.suspensionReason === "persistent-difficulty", "Suspended obligation lacks a valid reason.");
       }
@@ -7247,11 +7292,121 @@ exports.withFuzzing = withFuzzing;
       }
       if (obligation.suspensionReason === "persistent-difficulty")
           assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
-      if (obligation.chunking)
+      if (obligation.chunking) {
+          assertExactKeys(obligation.chunking, "Chunking state", ["cycleId", "status", "originalMinutes", "synthesisMinutes", "capacityMinutes", "totalChunks", "completedChunks", "createdAt"]);
+          obligation.chunking.cycleId = canonicalId(obligation.chunking.cycleId, "Chunk-cycle ID");
+          assert(obligation.chunking.status === "chunking" || obligation.chunking.status === "synthesis-ready", "Chunking state is invalid.");
+          assert(typeof obligation.chunking.originalMinutes === "number" && Number.isFinite(obligation.chunking.originalMinutes) && obligation.chunking.originalMinutes >= 1 && obligation.chunking.originalMinutes <= 240, "Chunking original duration is invalid.");
+          assert(typeof obligation.chunking.synthesisMinutes === "number" && Number.isFinite(obligation.chunking.synthesisMinutes) && obligation.chunking.synthesisMinutes >= 1 && obligation.chunking.synthesisMinutes < obligation.chunking.originalMinutes, "Chunking synthesis duration is invalid.");
+          assert(Number.isSafeInteger(obligation.chunking.capacityMinutes) && obligation.chunking.capacityMinutes >= 5 && obligation.chunking.capacityMinutes <= 600, "Chunking capacity is invalid.");
+          assert(Number.isSafeInteger(obligation.chunking.totalChunks) && obligation.chunking.totalChunks >= 2, "Chunking total is invalid.");
+          assert(Number.isSafeInteger(obligation.chunking.completedChunks) && obligation.chunking.completedChunks >= 0 && obligation.chunking.completedChunks <= obligation.chunking.totalChunks, "Chunking completed count is invalid.");
+          assert(obligation.chunking.originalMinutes === obligation.expectedMinutes, "Chunking duration does not match the parent obligation.");
           obligation.chunking.createdAt = canonicalIso(obligation.chunking.createdAt, "Chunk-cycle creation date");
+      }
       else
           delete obligation.chunking;
       return obligation;
+  }
+  function canonicalObjectiveEvidence(value) {
+      assertExactKeys(value, "Objective evidence", ["completeness", "independence", "application", "accuracyPercent", "errorTypes", "correctionNote"]);
+      assert(Array.isArray(value.errorTypes), "Evidence errors must be an array.");
+      assert(new Set(value.errorTypes).size === value.errorTypes.length, "Evidence errors cannot contain duplicates.");
+      const evidence = clone(value);
+      evidence.correctionNote = canonicalText(evidence.correctionNote, "Evidence correction note");
+      validateEvidence(evidence);
+      return evidence;
+  }
+  function canonicalWorkflowResult(value, expected) {
+      const keys = {
+          recall: ["kind", "responseMedium", "attemptText", "checkpointTotal", "checkpointsMet", "cueLevel"],
+          reconstruction: ["kind", "responseMedium", "attemptText", "shape", "checkpointTotal", "checkpointsMet", "structuralAccuracy", "relationshipAccuracy", "cueLevel"],
+          questions: ["kind", "targetCount", "attempted", "correct", "partial", "incorrect", "novelCount", "cueLevel", "questionSetRef", "attemptNotes", "errorSummary"],
+          diagram: ["kind", "surface", "checkpointTotal", "checkpointsMet", "labelAccuracy", "spatialAccuracy", "processAccuracy", "cueLevel", "attemptCompleted", "notes"],
+          "answer-writing": ["kind", "mode", "responseMedium", "answerText", "demandAddressed", "structure", "contentAccuracy", "examplesEvidence", "conclusion", "completedWithinTime", "attemptElapsedMs", "timeLimitMinutes", "wordCount", "wordLimit", "cueLevel"],
+          relearning: ["kind", "diagnosis", "repairAction", "verificationText", "checkpointTotal", "checkpointsMet", "sourceClosedForVerification", "repairCompleted"],
+      };
+      assertExactKeys(value, "Workflow result", keys[expected]);
+      const result = clone(value);
+      validateWorkflowResult(result, expected);
+      const boundedText = (raw, field, maximum) => {
+          assert(typeof raw === "string" && raw.length <= maximum, `${field} is invalid or too long.`);
+      };
+      if (result.kind === "recall") {
+          boundedText(result.attemptText, "Recall attempt", 20_000);
+      }
+      else if (result.kind === "reconstruction") {
+          boundedText(result.attemptText, "Reconstruction attempt", 20_000);
+      }
+      else if (result.kind === "questions") {
+          boundedText(result.questionSetRef, "Question-set reference", 500);
+          boundedText(result.attemptNotes, "Question attempt notes", 20_000);
+          boundedText(result.errorSummary, "Question error summary", 5_000);
+      }
+      else if (result.kind === "diagram") {
+          boundedText(result.notes, "Diagram notes", 20_000);
+      }
+      else if (result.kind === "answer-writing") {
+          boundedText(result.answerText, "Answer-writing response", 50_000);
+      }
+      else {
+          boundedText(result.repairAction, "Relearning repair action", 20_000);
+          boundedText(result.verificationText, "Relearning verification", 20_000);
+      }
+      return result;
+  }
+  function canonicalFsrsReviewLog(value, label) {
+      const record = requireRecord(value, label);
+      assertExactKeys(record, label, ["model", "rating", "state", "dueAt", "lastReviewAt", "reviewTime", "stability", "stabilityFast", "difficulty", "scheduledDays", "learningStep", "scheduleStatus"]);
+      assert(record["model"] === FSRS_MODEL, `${label} model is invalid.`);
+      const rating = validateRating(record["rating"]);
+      const state = requiredSafeInteger(record["state"], `${label} state`);
+      assert(state >= 0 && state <= 3, `${label} state is invalid.`);
+      const dueAt = canonicalIso(requiredString(record["dueAt"], `${label} due date`), `${label} due date`);
+      const lastReviewRaw = record["lastReviewAt"];
+      assert(lastReviewRaw === null || typeof lastReviewRaw === "string", `${label} prior review date is invalid.`);
+      const lastReviewAt = lastReviewRaw === null ? null : canonicalIso(lastReviewRaw, `${label} prior review date`);
+      const reviewTime = canonicalIso(requiredString(record["reviewTime"], `${label} review date`), `${label} review date`);
+      const stability = requiredFiniteNumber(record["stability"], `${label} stability`);
+      const stabilityFast = requiredFsrs7StabilityFast(requiredFiniteNumber(record["stabilityFast"], `${label} fast stability`));
+      const difficulty = requiredFiniteNumber(record["difficulty"], `${label} difficulty`);
+      const scheduledDays = requiredFiniteNumber(record["scheduledDays"], `${label} scheduled days`);
+      const learningStep = requiredSafeInteger(record["learningStep"], `${label} learning step`);
+      assert(stability >= 0 && difficulty >= 0 && scheduledDays >= 0 && learningStep >= 0, `${label} numeric state is invalid.`);
+      const scheduleStatus = record["scheduleStatus"];
+      if (scheduleStatus !== undefined)
+          assert(scheduleStatus === "new" || scheduleStatus === "learning" || scheduleStatus === "review", `${label} schedule status is invalid.`);
+      return {
+          model: FSRS_MODEL,
+          rating,
+          state,
+          dueAt,
+          lastReviewAt,
+          reviewTime,
+          stability,
+          stabilityFast,
+          difficulty,
+          scheduledDays,
+          learningStep,
+          ...(scheduleStatus !== undefined ? { scheduleStatus } : {}),
+      };
+  }
+  function canonicalDurationObservation(value) {
+      assertExactKeys(value, "Duration observation", ["plannedMinutes", "actualMinutes", "accepted", "reason", "estimateBefore", "estimateAfter", "exactSamples", "unitWorkflowSamples", "globalWorkflowSamples"]);
+      assert(typeof value.plannedMinutes === "number" && Number.isFinite(value.plannedMinutes) && value.plannedMinutes >= 1 && value.plannedMinutes <= 240, "Duration planned minutes are invalid.");
+      assert(typeof value.actualMinutes === "number" && Number.isFinite(value.actualMinutes) && value.actualMinutes >= 0 && value.actualMinutes <= 10_080, "Duration actual minutes are invalid.");
+      assert(typeof value.estimateBefore === "number" && Number.isFinite(value.estimateBefore) && value.estimateBefore >= 1 && value.estimateBefore <= 240, "Duration prior estimate is invalid.");
+      assert(typeof value.estimateAfter === "number" && Number.isFinite(value.estimateAfter) && value.estimateAfter >= 1 && value.estimateAfter <= 240, "Duration next estimate is invalid.");
+      assert(typeof value.accepted === "boolean", "Duration acceptance is invalid.");
+      assert(["accepted", "too-short", "too-long", "invalid", "unreliable-interruption"].includes(value.reason), "Duration reason is invalid.");
+      assert(value.accepted === (value.reason === "accepted"), "Duration acceptance and reason disagree.");
+      assert(value.plannedMinutes === value.estimateBefore, "Duration planned minutes do not match the prior estimate.");
+      if (!value.accepted)
+          assert(value.estimateAfter === value.estimateBefore, "Rejected duration evidence cannot change the estimate.");
+      for (const count of [value.exactSamples, value.unitWorkflowSamples, value.globalWorkflowSamples]) {
+          assert(Number.isSafeInteger(count) && count >= 0, "Duration sample count is invalid.");
+      }
+      return clone(value);
   }
   function canonicalEvidenceEvent(value) {
       assertDocumentSchema(value, "Evidence event");
@@ -7268,6 +7423,8 @@ exports.withFuzzing = withFuzzing;
       const event = clone(value);
       event.schemaVersion = DOCUMENT_SCHEMA_VERSION;
       event.id = canonicalId(event.id, "Evidence-event ID");
+      assert(OBLIGATION_TYPES.includes(event.obligationType), "Evidence-event obligation type is invalid.");
+      assert(RETRIEVAL_WORKFLOWS.includes(event.workflow), "Evidence-event workflow is invalid.");
       event.profileId = canonicalId(event.profileId, "Evidence-event profile ID");
       event.unitId = canonicalId(event.unitId, "Evidence-event unit ID");
       event.obligationId = canonicalId(event.obligationId, "Evidence-event obligation ID");
@@ -7276,17 +7433,41 @@ exports.withFuzzing = withFuzzing;
       event.afterDueAt = canonicalIso(event.afterDueAt, "Evidence-event next due date");
       event.beforePolicyState = canonicalPolicyState(event.beforePolicyState);
       event.afterPolicyState = canonicalPolicyState(event.afterPolicyState);
+      const expectedEngine = POLICY_ENGINE_BY_OBLIGATION[event.obligationType];
+      assert(event.beforePolicyState.engine === expectedEngine && event.afterPolicyState.engine === expectedEngine, "Evidence policy state does not match its obligation type.");
       event.policyId = canonicalId(event.policyId, "Evidence-event policy ID");
       event.timing = canonicalTimingEvidenceSummary(event.timing);
+      assert(typeof value.elapsedMs === "number" && Number.isFinite(value.elapsedMs) && Math.round(value.elapsedMs) === event.timing.totalActiveMs, "Evidence elapsed time does not match timing evidence.");
       event.elapsedMs = event.timing.totalActiveMs;
-      event.evidence.errorTypes = [...new Set(event.evidence.errorTypes)];
-      event.evidence.correctionNote = canonicalText(event.evidence.correctionNote, "Evidence correction note");
+      event.evidence = canonicalObjectiveEvidence(event.evidence);
+      event.workflowResult = canonicalWorkflowResult(event.workflowResult, event.workflow);
+      event.suggestedRating = validateRating(event.suggestedRating);
+      event.confirmedRating = validateRating(event.confirmedRating);
+      event.durationObservation = canonicalDurationObservation(event.durationObservation);
+      if (event.obligationType === "memory-recall") {
+          assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION && event.schedulerModel === FSRS_MODEL, "Memory evidence lacks exact FSRS-7 provenance.");
+          assert(event.schedulerConfig !== undefined && event.reviewLog !== undefined, "Memory evidence lacks scheduler configuration or review log.");
+          event.schedulerConfig = clone(validateFsrsConfigSnapshot(event.schedulerConfig));
+          event.reviewLog = canonicalFsrsReviewLog(event.reviewLog, "Evidence scheduler review log");
+          assert(event.reviewLog["rating"] === event.confirmedRating, "Evidence scheduler review rating does not match the confirmed rating.");
+          assert(event.reviewLog["reviewTime"] === event.reviewedAt, "Evidence scheduler review time does not match the Evidence Event.");
+      }
+      else {
+          assert(event.schedulerPackage === undefined && event.schedulerVersion === undefined && event.schedulerModel === undefined && event.schedulerConfig === undefined && event.reviewLog === undefined, "Non-memory evidence cannot contain direct FSRS scheduler provenance.");
+          delete event.schedulerPackage;
+          delete event.schedulerVersion;
+          delete event.schedulerModel;
+          delete event.schedulerConfig;
+          delete event.reviewLog;
+      }
       if (event.followUpObligationId !== undefined)
           event.followUpObligationId = canonicalId(event.followUpObligationId, "Evidence follow-up obligation ID");
       else
           delete event.followUpObligationId;
       if (event.correctiveMemoryTransition) {
+          assert(event.obligationType === "relearn", "Only relearning evidence may contain a corrective memory transition.");
           const transition = event.correctiveMemoryTransition;
+          assertExactKeys(transition, "Corrective memory transition", ["obligationId", "rating", "beforeDueAt", "afterDueAt", "beforePolicyState", "afterPolicyState", "policyId", "schedulerPackage", "schedulerVersion", "schedulerModel", "schedulerConfig", "reviewLog"]);
           transition.obligationId = canonicalId(transition.obligationId, "Corrective memory obligation ID");
           transition.rating = validateRating(transition.rating);
           transition.beforeDueAt = canonicalIso(transition.beforeDueAt, "Corrective memory prior due date");
@@ -7294,6 +7475,11 @@ exports.withFuzzing = withFuzzing;
           transition.beforePolicyState = canonicalPolicyState(transition.beforePolicyState);
           transition.afterPolicyState = canonicalPolicyState(transition.afterPolicyState);
           transition.policyId = canonicalId(transition.policyId, "Corrective memory policy ID");
+          assert(transition.schedulerPackage === "ts-fsrs" && transition.schedulerVersion === FSRS_PACKAGE_VERSION && transition.schedulerModel === FSRS_MODEL, "Corrective memory scheduler provenance is invalid.");
+          transition.schedulerConfig = clone(validateFsrsConfigSnapshot(transition.schedulerConfig));
+          transition.reviewLog = canonicalFsrsReviewLog(transition.reviewLog, "Corrective memory scheduler review log");
+          assert(transition.reviewLog["rating"] === transition.rating, "Corrective memory review rating does not match its scheduler log.");
+          assert(transition.reviewLog["reviewTime"] === event.reviewedAt, "Corrective memory review time does not match the Evidence Event.");
       }
       else
           delete event.correctiveMemoryTransition;
@@ -7310,6 +7496,9 @@ exports.withFuzzing = withFuzzing;
       chunk.cycleId = canonicalId(chunk.cycleId, "Obligation-chunk cycle ID");
       chunk.label = canonicalName(chunk.label, "Obligation-chunk label", 500);
       chunk.scope = canonicalText(chunk.scope, "Obligation-chunk scope");
+      assert(Number.isSafeInteger(chunk.ordinal) && Number.isSafeInteger(chunk.total) && chunk.ordinal >= 1 && chunk.ordinal <= chunk.total, "Obligation-chunk order is invalid.");
+      assert(typeof chunk.expectedMinutes === "number" && Number.isFinite(chunk.expectedMinutes) && chunk.expectedMinutes >= 1 && chunk.expectedMinutes <= 240, "Obligation-chunk expected duration is invalid.");
+      assert(chunk.status === "pending" || chunk.status === "completed" || chunk.status === "archived", "Obligation-chunk status is invalid.");
       chunk.createdAt = canonicalIso(chunk.createdAt, "Obligation-chunk creation date");
       chunk.updatedAt = canonicalIso(chunk.updatedAt, "Obligation-chunk update date");
       if (chunk.completedAt !== undefined)
@@ -7322,8 +7511,12 @@ exports.withFuzzing = withFuzzing;
           delete chunk.note;
       if (chunk.actualMinutes === undefined)
           delete chunk.actualMinutes;
+      else
+          assert(typeof chunk.actualMinutes === "number" && Number.isFinite(chunk.actualMinutes) && chunk.actualMinutes > 0 && chunk.actualMinutes <= 10_080, "Obligation-chunk actual duration is invalid.");
       if (chunk.status === "completed")
-          assert(chunk.timing !== undefined, "Completed chunk timing is required.");
+          assert(chunk.completedAt !== undefined && chunk.actualMinutes !== undefined && chunk.timing !== undefined, "Completed chunk evidence is incomplete.");
+      if (chunk.status === "pending")
+          assert(chunk.completedAt === undefined && chunk.actualMinutes === undefined && chunk.timing === undefined, "Pending chunk cannot contain completion evidence.");
       if (chunk.timing !== undefined)
           chunk.timing = canonicalTimingEvidenceSummary(chunk.timing);
       else
@@ -7334,36 +7527,80 @@ exports.withFuzzing = withFuzzing;
       assertDocumentSchema(value, "Daily plan");
       assertExactKeys(value, "Daily plan", ["schemaVersion", "id", "studyDayKey", "createdAt", "updatedAt", "plannerVersion", "versions", "outcomes"]);
       validateCalendarDate(value.studyDayKey, "Daily plan study day");
-      const plan = clone(value);
-      plan.schemaVersion = DOCUMENT_SCHEMA_VERSION;
-      plan.id = canonicalId(plan.id, "Daily-plan ID");
-      plan.createdAt = canonicalIso(plan.createdAt, "Daily-plan creation date");
-      plan.updatedAt = canonicalIso(plan.updatedAt, "Daily-plan update date");
-      plan.plannerVersion = canonicalId(plan.plannerVersion, "Daily-plan planner version");
-      plan.versions = plan.versions.map((version) => ({
-          ...version,
-          generatedAt: canonicalIso(version.generatedAt, "Daily-plan version date"),
-          items: version.items.map((item) => ({
-              ...item,
-              key: canonicalId(item.key, "Daily-plan item key"),
-              obligationId: canonicalId(item.obligationId, "Daily-plan obligation ID"),
-              ...(item.chunkId !== undefined ? { chunkId: canonicalId(item.chunkId, "Daily-plan chunk ID") } : {}),
-              profileId: canonicalId(item.profileId, "Daily-plan profile ID"),
-              unitId: canonicalId(item.unitId, "Daily-plan unit ID"),
-              subject: canonicalName(item.subject, "Daily-plan subject", 500),
-              title: canonicalName(item.title, "Daily-plan title", 500),
-              reasons: item.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500)),
-          })),
-      }));
-      plan.outcomes = plan.outcomes.map((outcome) => ({
-          ...outcome,
-          itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
-          ...(outcome.startedAt !== undefined ? { startedAt: canonicalIso(outcome.startedAt, "Daily-plan start date") } : {}),
-          ...(outcome.completedAt !== undefined ? { completedAt: canonicalIso(outcome.completedAt, "Daily-plan completion date") } : {}),
-          ...(outcome.evidenceEventId !== undefined ? { evidenceEventId: canonicalId(outcome.evidenceEventId, "Daily-plan evidence ID") } : {}),
-          ...(outcome.note !== undefined ? { note: canonicalText(outcome.note, "Daily-plan outcome note") } : {}),
-      }));
-      return plan;
+      assert(Array.isArray(value.versions) && value.versions.length > 0, "Daily plan requires at least one version.");
+      assert(Array.isArray(value.outcomes), "Daily plan outcomes must be an array.");
+      const versions = value.versions.map((version) => {
+          assertExactKeys(version, "Daily-plan version", ["version", "generatedAt", "capacityMinutes", "items", "reason"]);
+          assert(Number.isSafeInteger(version.version) && version.version >= 1, "Daily-plan version number is invalid.");
+          assert(Number.isSafeInteger(version.capacityMinutes) && version.capacityMinutes >= 5 && version.capacityMinutes <= 600, "Daily-plan version capacity is invalid.");
+          assert(version.reason === "initial" || version.reason === "manual-regeneration" || version.reason === "data-change" || version.reason === "manual-addition", "Daily-plan version reason is invalid.");
+          assert(Array.isArray(version.items), "Daily-plan version items must be an array.");
+          const items = version.items.map((item) => {
+              assertExactKeys(item, "Daily-plan item", ["key", "obligationId", "chunkId", "profileId", "unitId", "subject", "workflow", "title", "estimatedMinutes", "score", "disposition", "reasons"]);
+              assert(RETRIEVAL_WORKFLOWS.includes(item.workflow), "Daily-plan item workflow is invalid.");
+              assert(typeof item.estimatedMinutes === "number" && Number.isFinite(item.estimatedMinutes) && item.estimatedMinutes >= 1 && item.estimatedMinutes <= 240, "Daily-plan item duration is invalid.");
+              assert(typeof item.score === "number" && Number.isFinite(item.score) && item.score >= 0 && item.score <= 100, "Daily-plan item score is invalid.");
+              assert(item.disposition === "selected" || item.disposition === "required-overrun" || item.disposition === "must-split" || item.disposition === "deferred", "Daily-plan item disposition is invalid.");
+              assert(Array.isArray(item.reasons), "Daily-plan item reasons must be an array.");
+              return {
+                  key: canonicalId(item.key, "Daily-plan item key"),
+                  obligationId: canonicalId(item.obligationId, "Daily-plan obligation ID"),
+                  ...(item.chunkId !== undefined ? { chunkId: canonicalId(item.chunkId, "Daily-plan chunk ID") } : {}),
+                  profileId: canonicalId(item.profileId, "Daily-plan profile ID"),
+                  unitId: canonicalId(item.unitId, "Daily-plan unit ID"),
+                  subject: canonicalName(item.subject, "Daily-plan subject", 500),
+                  workflow: item.workflow,
+                  title: canonicalName(item.title, "Daily-plan title", 500),
+                  estimatedMinutes: item.estimatedMinutes,
+                  score: item.score,
+                  disposition: item.disposition,
+                  reasons: item.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500)),
+              };
+          });
+          assert(new Set(items.map((item) => item.key)).size === items.length, "Daily-plan version contains duplicate item keys.");
+          return {
+              version: version.version,
+              generatedAt: canonicalIso(version.generatedAt, "Daily-plan version date"),
+              capacityMinutes: version.capacityMinutes,
+              items,
+              reason: version.reason,
+          };
+      });
+      assert(versions.every((version, index) => version.version === index + 1), "Daily-plan versions must be sequential.");
+      const outcomes = value.outcomes.map((outcome) => {
+          assertExactKeys(outcome, "Daily-plan outcome", ["itemKey", "status", "startedAt", "completedAt", "actualMinutes", "evidenceEventId", "note"]);
+          assert(outcome.status === "planned" || outcome.status === "started" || outcome.status === "completed" || outcome.status === "skipped", "Daily-plan outcome status is invalid.");
+          if (outcome.actualMinutes !== undefined)
+              assert(typeof outcome.actualMinutes === "number" && Number.isFinite(outcome.actualMinutes) && outcome.actualMinutes > 0 && outcome.actualMinutes <= 10_080, "Daily-plan actual duration is invalid.");
+          const canonical = {
+              itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
+              status: outcome.status,
+              ...(outcome.startedAt !== undefined ? { startedAt: canonicalIso(outcome.startedAt, "Daily-plan start date") } : {}),
+              ...(outcome.completedAt !== undefined ? { completedAt: canonicalIso(outcome.completedAt, "Daily-plan completion date") } : {}),
+              ...(outcome.actualMinutes !== undefined ? { actualMinutes: outcome.actualMinutes } : {}),
+              ...(outcome.evidenceEventId !== undefined ? { evidenceEventId: canonicalId(outcome.evidenceEventId, "Daily-plan evidence ID") } : {}),
+              ...(outcome.note !== undefined ? { note: canonicalText(outcome.note, "Daily-plan outcome note") } : {}),
+          };
+          if (canonical.status === "started")
+              assert(canonical.startedAt !== undefined, "Started daily-plan outcome requires a start time.");
+          if (canonical.status === "completed")
+              assert(canonical.completedAt !== undefined && canonical.actualMinutes !== undefined, "Completed daily-plan outcome is incomplete.");
+          return canonical;
+      });
+      assert(new Set(outcomes.map((outcome) => outcome.itemKey)).size === outcomes.length, "Daily plan contains duplicate outcome keys.");
+      const createdAt = canonicalIso(value.createdAt, "Daily-plan creation date");
+      const updatedAt = canonicalIso(value.updatedAt, "Daily-plan update date");
+      assert(Date.parse(updatedAt) >= Date.parse(createdAt), "Daily-plan timestamps are inconsistent.");
+      return {
+          schemaVersion: DOCUMENT_SCHEMA_VERSION,
+          id: canonicalId(value.id, "Daily-plan ID"),
+          studyDayKey: value.studyDayKey,
+          createdAt,
+          updatedAt,
+          plannerVersion: canonicalId(value.plannerVersion, "Daily-plan planner version"),
+          versions,
+          outcomes,
+      };
   }
   function canonicalAppSettings(value) {
       assertDocumentSchema(value, "Application settings");
@@ -7427,7 +7664,8 @@ exports.withFuzzing = withFuzzing;
       };
       const ignoredGapMs = bounded(value.ignoredGapMs, "Ignored gap time");
       assert(Array.isArray(value.reliabilityFlags), "Timing reliability flags are required.");
-      const reliabilityFlags = [...new Set(value.reliabilityFlags)];
+      const reliabilityFlags = [...value.reliabilityFlags];
+      assert(new Set(reliabilityFlags).size === reliabilityFlags.length, "Timing reliability flags cannot contain duplicates.");
       for (const flag of reliabilityFlags)
           assert(flag === "ignored-gap" || flag === "backward-clock", "Timing reliability flag is invalid.");
       assert((ignoredGapMs > 0) === reliabilityFlags.includes("ignored-gap"), "Ignored-gap reliability flag is inconsistent.");
@@ -7439,13 +7677,13 @@ exports.withFuzzing = withFuzzing;
       return {
           totalActiveMs,
           activeByPhase,
-          pauseMs: bounded(Number(value.pauseMs), "Pause time"),
-          pauseCount: count(Number(value.pauseCount), "Pause count"),
-          inactiveGapCount: count(Number(value.inactiveGapCount), "Inactive-gap count"),
-          classifiedFocusMs: bounded(Number(value.classifiedFocusMs), "Classified focus time"),
-          classifiedBreakMs: bounded(Number(value.classifiedBreakMs), "Classified break time"),
+          pauseMs: bounded(value.pauseMs, "Pause time"),
+          pauseCount: count(value.pauseCount, "Pause count"),
+          inactiveGapCount: count(value.inactiveGapCount, "Inactive-gap count"),
+          classifiedFocusMs: bounded(value.classifiedFocusMs, "Classified focus time"),
+          classifiedBreakMs: bounded(value.classifiedBreakMs, "Classified break time"),
           ignoredGapMs,
-          promptExcludedMs: bounded(Number(value.promptExcludedMs), "Gap prompt time"),
+          promptExcludedMs: bounded(value.promptExcludedMs, "Gap prompt time"),
           backwardClockCount,
           ...(value.sourceRevealAt !== undefined ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
           durationReliable,
@@ -7476,8 +7714,9 @@ exports.withFuzzing = withFuzzing;
           assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= maximum, `${label} is invalid.`);
           return Math.round(raw);
       };
-      assert(Array.isArray(value.pauseHistory), "Pause history is required.");
-      const pauseHistory = value.pauseHistory.slice(-TIME_HISTORY_LIMIT).map((pause) => {
+      assert(Array.isArray(value.pauseHistory) && value.pauseHistory.length <= TIME_HISTORY_LIMIT, "Pause history is invalid or exceeds its canonical bound.");
+      const pauseHistory = value.pauseHistory.map((pause) => {
+          assertExactKeys(pause, "Pause record", ["id", "reason", "phase", "startedAt", "endedAt", "durationMs"]);
           assert(["manual", "inactive-gap-break", "classification-prompt"].includes(pause.reason), "Pause reason is invalid.");
           const startedAt = canonicalIso(pause.startedAt, "Pause start date");
           const endedAt = canonicalIso(pause.endedAt, "Pause end date");
@@ -7485,14 +7724,16 @@ exports.withFuzzing = withFuzzing;
           assert(Date.parse(endedAt) >= Date.parse(startedAt), "Pause end precedes its start.");
           return { id: canonicalId(pause.id, "Pause ID"), reason: pause.reason, phase: canonicalReviewPhase(pause.phase), startedAt, endedAt, durationMs };
       });
-      assert(Array.isArray(value.phaseHistory), "Phase history is required.");
-      const phaseHistory = value.phaseHistory.slice(-TIME_HISTORY_LIMIT).map((transition) => {
+      assert(Array.isArray(value.phaseHistory) && value.phaseHistory.length <= TIME_HISTORY_LIMIT, "Phase history is invalid or exceeds its canonical bound.");
+      const phaseHistory = value.phaseHistory.map((transition) => {
+          assertExactKeys(transition, "Phase transition", ["from", "to", "at", "sourceVisible", "reason"]);
           assert(["source-reveal", "begin-verification", "verification-reveal", "queue-advance"].includes(transition.reason), "Phase transition reason is invalid.");
           assert(typeof transition.sourceVisible === "boolean", "Phase-transition source visibility is invalid.");
           return { from: canonicalReviewPhase(transition.from), to: canonicalReviewPhase(transition.to), at: canonicalIso(transition.at, "Phase transition date"), sourceVisible: transition.sourceVisible, reason: transition.reason };
       });
-      assert(Array.isArray(value.gapHistory), "Inactive-gap history is required.");
-      const gapHistory = value.gapHistory.slice(-TIME_HISTORY_LIMIT).map((gap) => {
+      assert(Array.isArray(value.gapHistory) && value.gapHistory.length <= TIME_HISTORY_LIMIT, "Inactive-gap history is invalid or exceeds its canonical bound.");
+      const gapHistory = value.gapHistory.map((gap) => {
+          assertExactKeys(gap, "Inactive-gap record", ["id", "phase", "source", "detectedAt", "resolvedAt", "gapMs", "classification", "focusMs", "breakMs", "ignoredMs", "promptMs"]);
           assert(["focus", "break", "split", "ignore"].includes(gap.classification), "Inactive-gap classification is invalid.");
           assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(gap.source), "Inactive-gap source is invalid.");
           const gapMs = boundedRuntimeMs(gap.gapMs, "Inactive-gap duration");
@@ -7507,6 +7748,7 @@ exports.withFuzzing = withFuzzing;
       });
       let pendingGap;
       if (value.pendingGap) {
+          assertExactKeys(value.pendingGap, "Pending inactive gap", ["id", "phase", "source", "lastReliableAt", "detectedAt", "gapMs"]);
           assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(value.pendingGap.source), "Pending-gap source is invalid.");
           const lastReliableAt = canonicalIso(value.pendingGap.lastReliableAt, "Pending-gap reliable date");
           const detectedAt = canonicalIso(value.pendingGap.detectedAt, "Pending-gap detection date");
@@ -7546,23 +7788,31 @@ exports.withFuzzing = withFuzzing;
       assert(value.values && typeof value.values === "object" && !Array.isArray(value.values), "Review field values are required.");
       assert(value.checked && typeof value.checked === "object" && !Array.isArray(value.checked), "Review check state is required.");
       assert(Array.isArray(value.diagramStrokes), "Review diagram strokes are required.");
+      const valueEntries = Object.entries(value.values);
+      assert(valueEntries.length <= 96, "Review field set exceeds its canonical bound.");
       const values = {};
-      for (const [rawKey, rawValue] of Object.entries(value.values).slice(0, 96)) {
+      for (const [rawKey, rawValue] of valueEntries) {
           const key = canonicalId(rawKey, "Review field ID");
-          assert(typeof rawValue === "string", "Review field value is invalid.");
-          values[key] = rawValue.slice(0, 20_000);
+          assert(typeof rawValue === "string" && rawValue.length <= 20_000, "Review field value is invalid or too long.");
+          values[key] = rawValue;
       }
+      const checkedEntries = Object.entries(value.checked);
+      assert(checkedEntries.length <= 128, "Review check set exceeds its canonical bound.");
       const checked = {};
-      for (const [rawKey, rawValue] of Object.entries(value.checked).slice(0, 128)) {
+      for (const [rawKey, rawValue] of checkedEntries) {
           const key = canonicalId(rawKey, "Review check ID");
           assert(typeof rawValue === "boolean", "Review check value is invalid.");
           checked[key] = rawValue;
       }
-      const diagramStrokes = value.diagramStrokes.slice(0, 256).map((stroke) => {
-          assert(Array.isArray(stroke), "Diagram stroke is invalid.");
-          return stroke.slice(0, 2_000).map((point) => {
-              assert(point && typeof point === "object" && Number.isFinite(point.x) && Number.isFinite(point.y), "Diagram point is invalid.");
-              return { x: roundTo(clamp(point.x, 0, 1), 6), y: roundTo(clamp(point.y, 0, 1), 6) };
+      assert(value.diagramStrokes.length <= 256, "Review diagram exceeds its canonical stroke bound.");
+      const diagramStrokes = value.diagramStrokes.map((stroke) => {
+          assert(Array.isArray(stroke) && stroke.length <= 2_000, "Diagram stroke is invalid or exceeds its canonical point bound.");
+          return stroke.map((point) => {
+              assert(point && typeof point === "object" && !Array.isArray(point), "Diagram point is invalid.");
+              assertExactKeys(point, "Diagram point", ["x", "y"]);
+              assert(typeof point.x === "number" && Number.isFinite(point.x) && point.x >= 0 && point.x <= 1
+                  && typeof point.y === "number" && Number.isFinite(point.y) && point.y >= 0 && point.y <= 1, "Diagram point is outside the canonical canvas.");
+              return { x: roundTo(point.x, 6), y: roundTo(point.y, 6) };
           });
       });
       assert(Number.isFinite(value.attemptElapsedMs) && value.attemptElapsedMs >= 0 && value.attemptElapsedMs <= 7 * DAY_MS, "Attempt duration is invalid.");
@@ -7574,8 +7824,9 @@ exports.withFuzzing = withFuzzing;
       assert(value.id === ACTIVE_RETRIEVAL_ID, "Active retrieval session ID is invalid.");
       assert(["active", "committing", "completed"].includes(value.status), "Active retrieval status is invalid.");
       assert(Number.isSafeInteger(value.revision) && value.revision >= 1, "Active retrieval revision is invalid.");
-      assert(Array.isArray(value.queueTargetIds), "Active retrieval queue is required.");
-      const queueTargetIds = [...new Set(value.queueTargetIds.slice(0, 500).map((id) => canonicalId(id, "Review target ID")))];
+      assert(Array.isArray(value.queueTargetIds) && value.queueTargetIds.length <= 500, "Active retrieval queue is invalid or exceeds its canonical bound.");
+      const queueTargetIds = value.queueTargetIds.map((id) => canonicalId(id, "Review target ID"));
+      assert(new Set(queueTargetIds).size === queueTargetIds.length, "Active retrieval queue cannot contain duplicate targets.");
       assert(Number.isInteger(value.activeIndex) && value.activeIndex >= 0 && value.activeIndex <= queueTargetIds.length, "Active retrieval index is invalid.");
       assert(typeof value.activeTargetId === "string", "Active retrieval target ID must be a string.");
       const activeTargetId = value.status === "completed" ? value.activeTargetId : canonicalId(value.activeTargetId, "Active review target ID");
@@ -7587,13 +7838,21 @@ exports.withFuzzing = withFuzzing;
           assert(queueTargetIds[value.activeIndex] === activeTargetId, "Active retrieval target does not match its queue.");
       }
       const commitToken = value.commitToken === undefined ? undefined : canonicalId(value.commitToken, "Active retrieval commit token");
-      if (value.status === "committing")
-          assert(commitToken, "A committing retrieval requires a commit token.");
+      if (value.status === "active")
+          assert(commitToken === undefined, "An active retrieval cannot retain a commit token.");
+      else
+          assert(commitToken !== undefined, "Committing and completed retrieval states require a commit token.");
       const phase = canonicalReviewPhase(value.phase);
+      const draft = canonicalReviewDraftSnapshot(value.draft);
+      assert(draft.phase === phase, "Active retrieval draft phase differs from its session phase.");
       const timeRuntime = canonicalPhaseTimeRuntimeSnapshot(value.timeRuntime);
       assert(timeRuntime.currentPhase === phase, "Active retrieval phase and timer phase differ.");
       const elapsedMs = Object.values(timeRuntime.activeByPhase).reduce((sum, amount) => sum + amount, 0);
-      assert(Number.isFinite(value.elapsedMs) && Math.round(value.elapsedMs) === elapsedMs, "Active retrieval elapsed time does not match phase timing.");
+      assert(typeof value.elapsedMs === "number" && Number.isFinite(value.elapsedMs) && Math.round(value.elapsedMs) === elapsedMs, "Active retrieval elapsed time does not match phase timing.");
+      const startedAt = canonicalIso(value.startedAt, "Active retrieval start date");
+      const updatedAt = canonicalIso(value.updatedAt, "Active retrieval update date");
+      assert(timeRuntime.sessionStartedAt === startedAt, "Active retrieval start date differs from its timing runtime.");
+      assert(Date.parse(updatedAt) >= Date.parse(startedAt), "Active retrieval update precedes its start.");
       return {
           schemaVersion: DOCUMENT_SCHEMA_VERSION,
           id: ACTIVE_RETRIEVAL_ID,
@@ -7603,11 +7862,11 @@ exports.withFuzzing = withFuzzing;
           activeIndex: value.activeIndex,
           activeTargetId,
           phase,
-          draft: canonicalReviewDraftSnapshot(value.draft),
+          draft,
           timeRuntime,
           elapsedMs,
-          startedAt: canonicalIso(value.startedAt, "Active retrieval start date"),
-          updatedAt: canonicalIso(value.updatedAt, "Active retrieval update date"),
+          startedAt,
+          updatedAt,
           ...(commitToken ? { commitToken } : {}),
       };
   }
@@ -7710,14 +7969,15 @@ exports.withFuzzing = withFuzzing;
       return weights;
   }
   function fsrsWeightsFingerprint(weights) {
-      return fingerprintText64(validateFsrs7Weights([...weights]).map((value) => Number(value).toString()).join(","));
+      return fingerprintText64(validateFsrs7Weights([...weights]).map((value) => value.toString()).join(","));
   }
   const FSRS7_DEFAULT_WEIGHTS_FINGERPRINT = fsrsWeightsFingerprint(FSRS7_DEFAULT_WEIGHTS);
   function optimizerMetrics(value, label) {
       const record = requireRecord(value, `FSRS optimizer ${label} metrics`);
-      const logLoss = Number(record["logLoss"]);
-      const rmseBins = Number(record["rmseBins"]);
-      assert(Number.isFinite(logLoss) && logLoss >= 0 && Number.isFinite(rmseBins) && rmseBins >= 0, `FSRS optimizer ${label} metrics are invalid.`);
+      assertExactKeys(record, `FSRS optimizer ${label} metrics`, ["logLoss", "rmseBins"]);
+      const logLoss = requiredFiniteNumber(record["logLoss"], `FSRS optimizer ${label} log loss`);
+      const rmseBins = requiredFiniteNumber(record["rmseBins"], `FSRS optimizer ${label} RMSE-bins`);
+      assert(logLoss >= 0 && rmseBins >= 0, `FSRS optimizer ${label} metrics are invalid.`);
       return { logLoss, rmseBins };
   }
   function fsrsHoldoutDiagnostics(stock, personalized) {
@@ -7743,19 +8003,21 @@ exports.withFuzzing = withFuzzing;
       const trainedAt = canonicalIso(requiredString(profile["trainedAt"], "FSRS optimizer training date"), "FSRS optimizer training date");
       const sourceSha256 = requiredString(profile["sourceSha256"], "FSRS optimizer source checksum");
       assert(/^[a-f0-9]{64}$/.test(sourceSha256), "FSRS optimizer source checksum is invalid.");
-      const evidenceItems = Number(profile["evidenceItems"]);
-      assert(Number.isSafeInteger(evidenceItems) && evidenceItems > 0, "FSRS optimizer evidence item count is invalid.");
+      const evidenceItems = requiredSafeInteger(profile["evidenceItems"], "FSRS optimizer evidence item count");
+      assert(evidenceItems > 0, "FSRS optimizer evidence item count is invalid.");
       const weights = validateFsrs7Weights(profile["weights"]);
       const evaluation = requireRecord(profile["evaluation"], "FSRS optimizer evaluation");
+      assertExactKeys(evaluation, "FSRS optimizer evaluation", ["crossValidation", "holdout"]);
       const crossValidation = optimizerMetrics(evaluation["crossValidation"], "cross-validation");
       const holdout = requireRecord(evaluation["holdout"], "FSRS optimizer holdout");
+      assertExactKeys(holdout, "FSRS optimizer holdout", ["strategy", "trainItems", "holdoutItems", "holdoutCards", "minimumTrainItems", "minimumHoldoutItems", "minimumHoldoutCards", "stock", "personalized", "incumbent", "gate"]);
       assert(holdout["strategy"] === FSRS_OPTIMIZER_HOLDOUT_STRATEGY && holdout["gate"] === "passed", "FSRS optimizer holdout strategy/gate is invalid.");
-      const trainItems = Number(holdout["trainItems"]);
-      const holdoutItems = Number(holdout["holdoutItems"]);
-      const holdoutCards = Number(holdout["holdoutCards"]);
-      assert(Number.isSafeInteger(trainItems) && trainItems >= FSRS_OPTIMIZER_MIN_TRAIN_ITEMS, "FSRS optimizer training prefix is too small.");
-      assert(Number.isSafeInteger(holdoutItems) && holdoutItems >= FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS, "FSRS optimizer holdout is too small.");
-      assert(Number.isSafeInteger(holdoutCards) && holdoutCards >= FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS && holdoutCards <= holdoutItems, "FSRS optimizer holdout-card count is invalid.");
+      const trainItems = requiredSafeInteger(holdout["trainItems"], "FSRS optimizer training item count");
+      const holdoutItems = requiredSafeInteger(holdout["holdoutItems"], "FSRS optimizer holdout item count");
+      const holdoutCards = requiredSafeInteger(holdout["holdoutCards"], "FSRS optimizer holdout card count");
+      assert(trainItems >= FSRS_OPTIMIZER_MIN_TRAIN_ITEMS, "FSRS optimizer training prefix is too small.");
+      assert(holdoutItems >= FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS, "FSRS optimizer holdout is too small.");
+      assert(holdoutCards >= FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS && holdoutCards <= holdoutItems, "FSRS optimizer holdout-card count is invalid.");
       assert(trainItems + holdoutItems === evidenceItems, "FSRS optimizer holdout counts do not match evidence items.");
       assert(holdout["minimumTrainItems"] === FSRS_OPTIMIZER_MIN_TRAIN_ITEMS
           && holdout["minimumHoldoutItems"] === FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS
@@ -7781,6 +8043,7 @@ exports.withFuzzing = withFuzzing;
           incumbent = { sourceSha256: incumbentSourceSha256, weightsFingerprint, metrics };
       }
       const training = requireRecord(profile["training"], "FSRS optimizer training metadata");
+      assertExactKeys(training, "FSRS optimizer training metadata", ["enableShortTerm", "enableSchedPenalties", "numRelearningSteps", "chronology", "converterFixedUtcOffsetMinutes", "converterRolloverHour", "runtimeLearningSteps", "runtimeRelearningSteps", "validationCandidateTrainedItems", "finalRetrainedOnAllEvidence"]);
       assert(training["enableShortTerm"] === true && training["enableSchedPenalties"] === true && training["numRelearningSteps"] === 1, "FSRS optimizer training flags are invalid.");
       assert(training["chronology"] === FSRS_OPTIMIZER_CHRONOLOGY
           && training["converterFixedUtcOffsetMinutes"] === FSRS_OPTIMIZER_FIXED_UTC_OFFSET_MINUTES
@@ -7851,14 +8114,14 @@ exports.withFuzzing = withFuzzing;
       const coefficientsRaw = record["coefficients"];
       assert(Array.isArray(coefficientsRaw) && coefficientsRaw.length === 15, "FSRS Cost-ADR policy must contain exactly 15 coefficients.");
       const coefficients = coefficientsRaw.map((value) => {
-          const coefficient = Number(value);
-          assert(Number.isFinite(coefficient) && coefficient >= -64 && coefficient <= 64, "FSRS Cost-ADR coefficient is invalid.");
+          const coefficient = requiredFiniteNumber(value, "FSRS Cost-ADR coefficient");
+          assert(coefficient >= -64 && coefficient <= 64, "FSRS Cost-ADR coefficient is invalid.");
           return coefficient;
       });
-      const costWeightMin = Number(record["costWeightMin"]);
-      const costWeightMax = Number(record["costWeightMax"]);
-      const retentionMin = Number(record["retentionMin"]);
-      const retentionMax = Number(record["retentionMax"]);
+      const costWeightMin = requiredFiniteNumber(record["costWeightMin"], "FSRS Cost-ADR minimum cost weight");
+      const costWeightMax = requiredFiniteNumber(record["costWeightMax"], "FSRS Cost-ADR maximum cost weight");
+      const retentionMin = requiredFiniteNumber(record["retentionMin"], "FSRS Cost-ADR minimum retention");
+      const retentionMax = requiredFiniteNumber(record["retentionMax"], "FSRS Cost-ADR maximum retention");
       assert(Number.isFinite(costWeightMin) && Number.isFinite(costWeightMax) && costWeightMin >= 0 && costWeightMax > costWeightMin
           && Math.log1p(costWeightMax) > Math.log1p(costWeightMin), "FSRS Cost-ADR cost-weight bounds are invalid.");
       assert(Number.isFinite(retentionMin) && Number.isFinite(retentionMax) && retentionMin > 0 && retentionMax > retentionMin && retentionMax < 1, "FSRS Cost-ADR retention bounds are invalid.");
@@ -7866,10 +8129,10 @@ exports.withFuzzing = withFuzzing;
       const boundsAllowed = new Set(["sMin", "sMax", "dMin", "dMax"]);
       assert(Object.keys(boundsRecord).every((key) => boundsAllowed.has(key)), "FSRS Cost-ADR state bounds contain unexpected fields.");
       const bounds = {
-          sMin: Number(boundsRecord["sMin"]),
-          sMax: Number(boundsRecord["sMax"]),
-          dMin: Number(boundsRecord["dMin"]),
-          dMax: Number(boundsRecord["dMax"]),
+          sMin: requiredFiniteNumber(boundsRecord["sMin"], "FSRS Cost-ADR minimum stability"),
+          sMax: requiredFiniteNumber(boundsRecord["sMax"], "FSRS Cost-ADR maximum stability"),
+          dMin: requiredFiniteNumber(boundsRecord["dMin"], "FSRS Cost-ADR minimum difficulty"),
+          dMax: requiredFiniteNumber(boundsRecord["dMax"], "FSRS Cost-ADR maximum difficulty"),
       };
       assert(Number.isFinite(bounds.sMin) && Number.isFinite(bounds.sMax) && bounds.sMin > 0 && bounds.sMax > bounds.sMin
           && Math.log(bounds.sMax) > Math.log(bounds.sMin), "FSRS Cost-ADR stability bounds are invalid.");
@@ -7883,14 +8146,14 @@ exports.withFuzzing = withFuzzing;
       if (kind === "fixed-retention") {
           const allowed = new Set(["kind", "desiredRetention"]);
           assert(Object.keys(record).every((key) => allowed.has(key)), "Fixed-retention scheduling policy contains unexpected fields.");
-          const desiredRetention = Number(record["desiredRetention"]);
-          assert(Number.isFinite(desiredRetention) && desiredRetention >= 0.75 && desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
+          const desiredRetention = requiredFiniteNumber(record["desiredRetention"], "Desired retention");
+          assert(desiredRetention >= 0.75 && desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
           return { kind, desiredRetention };
       }
       if (kind === "cost-adr") {
           const allowed = new Set(["kind", "goalCostWeight", "costAdrPolicy"]);
           assert(Object.keys(record).every((key) => allowed.has(key)), "Cost-ADR scheduling policy contains unexpected fields.");
-          const goalCostWeight = Number(record["goalCostWeight"]);
+          const goalCostWeight = requiredFiniteNumber(record["goalCostWeight"], "FSRS Cost-ADR goal cost weight");
           const costAdrPolicy = canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]);
           assert(goalCostWeight === FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT
               && JSON.stringify(costAdrPolicy) === JSON.stringify(upstreamDefaultFsrsCostAdrPolicy()), "Only the bounded Revision Director Cost-ADR preset is enabled.");
@@ -7945,8 +8208,8 @@ exports.withFuzzing = withFuzzing;
           const toConfigFingerprint = requiredString(rebase["toConfigFingerprint"], "FSRS target configuration fingerprint");
           assert(/^fnv1a64:[0-9a-f]{16}$/.test(fromConfigFingerprint) && /^fnv1a64:[0-9a-f]{16}$/.test(toConfigFingerprint), "FSRS scheduler rebase fingerprint is invalid.");
           assert(fromConfigFingerprint !== toConfigFingerprint, "FSRS scheduler rebase must change scheduler identity.");
-          const rescheduledObligations = Number(rebase["rescheduledObligations"]);
-          assert(Number.isSafeInteger(rescheduledObligations) && rescheduledObligations >= 0, "FSRS scheduler rebase count is invalid.");
+          const rescheduledObligations = requiredSafeInteger(rebase["rescheduledObligations"], "FSRS scheduler rebase count");
+          assert(rescheduledObligations >= 0, "FSRS scheduler rebase count is invalid.");
           lastRebase = {
               at: canonicalIso(requiredString(rebase["at"], "FSRS scheduler rebase date"), "FSRS scheduler rebase date"),
               reason,
@@ -7968,7 +8231,7 @@ exports.withFuzzing = withFuzzing;
       const active = record["active"];
       assert(typeof active === "boolean", "FSRS personalization active flag is invalid.");
       assert(!active || profile !== null, "Active FSRS personalization requires an optimizer profile.");
-      const replayInput = record["replayProfiles"] === undefined ? [] : requiredArray(record["replayProfiles"], "FSRS replay profiles");
+      const replayInput = requiredArray(record["replayProfiles"], "FSRS replay profiles");
       assert(replayInput.length <= 256, "FSRS replay-profile archive is unreasonably large.");
       const replayProfiles = replayInput.map((item) => validateFsrsOptimizerProfile(item));
       const seen = new Set();
@@ -8304,6 +8567,7 @@ exports.withFuzzing = withFuzzing;
       return { ...identity, fingerprint: fsrsConfigurationFingerprint(identity) };
   }
   function validateFsrsConfigSnapshot(config) {
+      assertExactKeys(config, "FSRS configuration", ["model", "schedulingPolicy", "fractionalDays", "enableFuzz", "enableShortTerm", "learningSteps", "relearningSteps", "graduatingInterval", "allowModelOverride", "maximumInterval", "clearStatsOnForget", "weightsSource", "weightsFingerprint", "optimizerProfileSourceSha256", "fingerprint"]);
       assert(config.model === FSRS_MODEL, "FSRS configuration model is invalid.");
       const schedulingPolicy = canonicalFsrsSchedulingPolicy(config.schedulingPolicy);
       assert(JSON.stringify(config.schedulingPolicy) === JSON.stringify(schedulingPolicy), "FSRS scheduling policy is not canonical.");
@@ -8650,7 +8914,7 @@ exports.withFuzzing = withFuzzing;
           const next = serializeFsrsCard(result.card);
           const reviewLog = {
               model: FSRS_MODEL,
-              rating: result.revlog.rating,
+              rating: validateRating(result.revlog.rating),
               state: result.revlog.state,
               dueAt: result.revlog.dueAt.toISOString(),
               lastReviewAt: result.revlog.lastReviewAt?.toISOString() ?? null,
@@ -8662,7 +8926,7 @@ exports.withFuzzing = withFuzzing;
               learningStep: result.revlog.learningStep,
           };
           if (result.revlog.scheduleStatus !== undefined)
-              reviewLog["scheduleStatus"] = result.revlog.scheduleStatus;
+              reviewLog.scheduleStatus = storedFsrsScheduleStatus(result.revlog.scheduleStatus);
           return { card: next, reviewLog };
       }
       retrievability(currentProjection, reviews, at) {
@@ -8871,17 +9135,17 @@ exports.withFuzzing = withFuzzing;
       const record = requireRecord(value, "Memory difficulty policy");
       const allowed = new Set(["remediationLapses", "persistentDifficultyLapses", "automaticHold"]);
       assert(Object.keys(record).every((key) => allowed.has(key)), "Memory difficulty policy contains unexpected fields.");
-      const remediationLapses = Number(record["remediationLapses"]);
-      const persistentDifficultyLapses = Number(record["persistentDifficultyLapses"]);
-      assert(Number.isSafeInteger(remediationLapses) && remediationLapses >= 2 && remediationLapses <= 99, "Memory remediation lapse threshold is invalid.");
-      assert(Number.isSafeInteger(persistentDifficultyLapses) && persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
+      const remediationLapses = requiredSafeInteger(record["remediationLapses"], "Memory remediation lapse threshold");
+      const persistentDifficultyLapses = requiredSafeInteger(record["persistentDifficultyLapses"], "Persistent-difficulty lapse threshold");
+      assert(remediationLapses >= 2 && remediationLapses <= 99, "Memory remediation lapse threshold is invalid.");
+      assert(persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
       const automaticHoldRecord = requireRecord(record["automaticHold"], "Memory automatic-hold policy");
       const holdAllowed = new Set(["enabled", "lapseThreshold"]);
       assert(Object.keys(automaticHoldRecord).every((key) => holdAllowed.has(key)), "Memory automatic-hold policy contains unexpected fields.");
       const enabled = automaticHoldRecord["enabled"];
-      const lapseThreshold = Number(automaticHoldRecord["lapseThreshold"]);
+      const lapseThreshold = requiredSafeInteger(automaticHoldRecord["lapseThreshold"], "Memory automatic-hold lapse threshold");
       assert(typeof enabled === "boolean", "Memory automatic-hold flag is invalid.");
-      assert(Number.isSafeInteger(lapseThreshold) && lapseThreshold > persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold must be later than persistent difficulty.");
+      assert(lapseThreshold > persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold must be later than persistent difficulty.");
       return {
           remediationLapses,
           persistentDifficultyLapses,
@@ -8891,35 +9155,25 @@ exports.withFuzzing = withFuzzing;
   function memoryDifficultyActionLabel(action) {
       return MEMORY_DIFFICULTY_ACTION_LABELS[action];
   }
-  function memoryDifficultyAssessment(obligation, policy, memoryReviews = []) {
+  function memoryDifficultyAssessment(obligation, policy, memoryReviews) {
       assert(obligation.type === "memory-recall", "Persistent-difficulty assessment is only valid for memory recall.");
       const canonicalPolicy = canonicalMemoryDifficultyPolicy(policy);
-      const card = obligation.policyState.fsrsCard;
-      assert(card, "Memory obligation has no FSRS card for difficulty assessment.");
-      // Revision Director's one-day learning step can move an unsuccessful new card
-      // into FSRS Review state before the learner has ever demonstrated successful
-      // retrieval. Host difficulty semantics therefore follow canonical review
-      // outcomes: failures before the first Good/Easy observation are learning
-      // failures; only failures after establishment count as established lapses.
+      assert(obligation.policyState.fsrsCard, "Memory obligation has no FSRS card for difficulty assessment.");
+      // Host difficulty semantics derive only from canonical review evidence.
+      // The materialized FSRS card is a verified scheduling projection, not a
+      // second history source.
       let established = false;
       let earlyLearningFailures = 0;
       let establishedLapses = 0;
-      if (memoryReviews.length === 0) {
-          // Integrity/recovery callers may not have history in hand. The materialized
-          // FSRS lapse counter remains a conservative fallback in that narrow case.
-          establishedLapses = card.lapses;
-      }
-      else {
-          for (const review of memoryReviews) {
-              if (review.rating === Rating.Again) {
-                  if (established)
-                      establishedLapses += 1;
-                  else
-                      earlyLearningFailures += 1;
-              }
-              else if (review.rating >= Rating.Good) {
-                  established = true;
-              }
+      for (const review of memoryReviews) {
+          if (review.rating === Rating.Again) {
+              if (established)
+                  establishedLapses += 1;
+              else
+                  earlyLearningFailures += 1;
+          }
+          else if (review.rating >= Rating.Good) {
+              established = true;
           }
       }
       const level = establishedLapses >= canonicalPolicy.persistentDifficultyLapses ? "persistent-difficulty"
@@ -9768,9 +10022,20 @@ exports.withFuzzing = withFuzzing;
               const plans = db.createObjectStore(Store.DailyPlans, { keyPath: "id" });
               plans.createIndex("studyDayKey", "studyDayKey", { unique: true });
               plans.createIndex("updatedAt", "updatedAt");
-              db.createObjectStore(Store.Settings, { keyPath: "key" });
-              db.createObjectStore(Store.Metadata, { keyPath: "key" });
+              const settings = db.createObjectStore(Store.Settings, { keyPath: "key" });
+              const metadata = db.createObjectStore(Store.Metadata, { keyPath: "key" });
               db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
+              const createdAt = nowIso();
+              settings.add(defaultSettings());
+              metadata.add({
+                  schemaVersion: DOCUMENT_SCHEMA_VERSION,
+                  key: "database",
+                  databaseName: DB_NAME,
+                  databaseVersion: DB_VERSION,
+                  applicationVersion: APP_VERSION,
+                  createdAt,
+                  updatedAt: createdAt,
+              });
           };
           const db = await new Promise((resolve, reject) => {
               request.onsuccess = () => resolve(request.result);
@@ -9797,19 +10062,6 @@ exports.withFuzzing = withFuzzing;
           const values = await requestResult(tx.objectStore(store).getAll());
           await transactionDone(tx);
           return values;
-      }
-      async hasAnyStoredData(excluded = []) {
-          const excludedStores = new Set(excluded);
-          for (const store of Object.values(Store)) {
-              if (excludedStores.has(store))
-                  continue;
-              const tx = this.db.transaction(store, "readonly");
-              const count = await requestResult(tx.objectStore(store).count());
-              await transactionDone(tx);
-              if (count > 0)
-                  return true;
-          }
-          return false;
       }
       async put(store, value) {
           const tx = this.db.transaction(store, "readwrite");
@@ -9952,9 +10204,12 @@ exports.withFuzzing = withFuzzing;
       }
       async rawDump() {
           const stores = Object.values(Store);
+          const tx = this.db.transaction(stores, "readonly");
+          const requests = stores.map((store) => requestResult(tx.objectStore(store).getAll()));
+          const values = await Promise.all(requests);
+          await transactionDone(tx);
           const dump = {};
-          for (const store of stores)
-              dump[store] = await this.getAll(store);
+          stores.forEach((store, index) => { dump[store] = values[index] ?? []; });
           return dump;
       }
       async replaceFromBackup(payload, activeTreatment) {
@@ -10181,37 +10436,21 @@ exports.withFuzzing = withFuzzing;
       }
       async ensureMetadata() {
           const existing = await this.repository.get(Store.Metadata, "database");
-          if (existing) {
-              const canonical = canonicalAppMetadata(existing);
-              assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
-              if (canonical.applicationVersion !== APP_VERSION) {
-                  try {
-                      await this.repository.put(Store.Metadata, canonicalAppMetadata({
-                          ...canonical,
-                          applicationVersion: APP_VERSION,
-                          updatedAt: nowIso(),
-                      }));
-                  }
-                  catch (error) {
-                      this.diagnosticsJournal.record("storage.metadata.release-refresh", "refresh database release provenance", error);
-                  }
+          assert(existing, "Database metadata is missing from this Revision Director database. Existing data was not modified.");
+          const canonical = canonicalAppMetadata(existing);
+          assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
+          if (canonical.applicationVersion !== APP_VERSION) {
+              try {
+                  await this.repository.put(Store.Metadata, canonicalAppMetadata({
+                      ...canonical,
+                      applicationVersion: APP_VERSION,
+                      updatedAt: nowIso(),
+                  }));
               }
-              return;
+              catch (error) {
+                  this.diagnosticsJournal.record("storage.metadata.release-refresh", "refresh database release provenance", error);
+              }
           }
-          if (await this.repository.hasAnyStoredData([Store.Metadata])) {
-              throw new Error("Database metadata is missing from a populated Revision Director database. Existing data was not modified.");
-          }
-          const time = nowIso();
-          const metadata = {
-              schemaVersion: DOCUMENT_SCHEMA_VERSION,
-              key: "database",
-              databaseName: DB_NAME,
-              databaseVersion: DB_VERSION,
-              applicationVersion: APP_VERSION,
-              createdAt: time,
-              updatedAt: time,
-          };
-          await this.repository.put(Store.Metadata, canonicalAppMetadata(metadata));
       }
       async operation(name, action) {
           try {
@@ -10240,9 +10479,6 @@ exports.withFuzzing = withFuzzing;
       }
       async putMany(store, values) {
           await this.operation(`putMany.${store}`, () => this.repository.putMany(store, values.map((value) => this.normalize(store, value))));
-      }
-      async hasStoredData(excluded = []) {
-          return this.operation("hasStoredData", () => this.repository.hasAnyStoredData(excluded));
       }
       async putProfileAndSettings(profile, settings) {
           await this.operation("putProfileAndSettings", () => this.repository.putProfileAndSettings(canonicalExamProfile(profile), canonicalAppSettings(settings)));
@@ -10281,6 +10517,31 @@ exports.withFuzzing = withFuzzing;
       }
       async replaceSettingsAndObligations(settings, obligations) {
           await this.operation("replaceSettingsAndObligations", () => this.repository.replaceSettingsAndObligations(canonicalAppSettings(settings), obligations.map(canonicalRevisionObligation)));
+      }
+      async backupState() {
+          return this.operation("backupState", async () => {
+              const raw = await this.repository.rawDump();
+              const settings = raw[Store.Settings];
+              const metadata = raw[Store.Metadata];
+              const activeRetrieval = raw[Store.ActiveRetrieval];
+              assert(settings.length === 1, "Canonical storage must contain exactly one application-settings document.");
+              assert(metadata.length === 1, "Canonical storage must contain exactly one database-metadata document.");
+              const canonicalMetadata = canonicalDocument("metadata", metadata[0]);
+              assert(canonicalMetadata.databaseName === DB_NAME && canonicalMetadata.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
+              assert(activeRetrieval.length <= 1, "Canonical storage may contain at most one active retrieval session.");
+              return {
+                  profiles: canonicalDocumentArray("profile", raw[Store.Profiles], "Stored exam profiles"),
+                  nodes: canonicalDocumentArray("node", raw[Store.Nodes], "Stored knowledge nodes"),
+                  units: canonicalDocumentArray("unit", raw[Store.Units], "Stored knowledge units"),
+                  studyEvents: canonicalDocumentArray("study-event", raw[Store.StudyEvents], "Stored study events"),
+                  obligations: canonicalDocumentArray("obligation", raw[Store.Obligations], "Stored revision obligations"),
+                  evidenceEvents: canonicalDocumentArray("evidence-event", raw[Store.EvidenceEvents], "Stored evidence events"),
+                  chunks: canonicalDocumentArray("chunk", raw[Store.Chunks], "Stored obligation chunks"),
+                  dailyPlans: canonicalDocumentArray("daily-plan", raw[Store.DailyPlans], "Stored daily plans"),
+                  settings: canonicalDocument("settings", settings[0]),
+                  activeRetrieval: activeRetrieval.length === 1 ? canonicalDocument("active-retrieval", activeRetrieval[0]) : null,
+              };
+          });
       }
       async rawDump() {
           return this.operation("rawDump", () => this.repository.rawDump());
@@ -11016,17 +11277,17 @@ exports.withFuzzing = withFuzzing;
       }
       async initialize() {
           this.invalidateMemoryReviewAnalysis();
-          const stored = await this.repo.get(Store.Settings, "app");
-          if (stored) {
-              this.settings = canonicalAppSettings(stored);
-          }
-          else {
-              assert(!(await this.repo.hasStoredData([Store.Settings, Store.Metadata])), "Application settings are missing from a populated Revision Director database. Existing data was not modified.");
-              this.settings = defaultSettings();
-              await this.repo.put(Store.Settings, this.settings);
-          }
-          this.assertActiveProfileSelection(await this.profiles(), this.settings);
-          await this.verifyMemoryProjectionIntegrity();
+          const state = await this.repo.backupState();
+          const validated = this.validateBackup({
+              format: BACKUP_FORMAT,
+              schemaVersion: BACKUP_SCHEMA_VERSION,
+              exportedAt: nowIso(),
+              appVersion: APP_VERSION,
+              ...state,
+              activeRetrieval: null,
+          });
+          this.settings = clone(validated.settings);
+          await this.verifyMemoryProjectionIntegrity(validated.obligations, validated.evidenceEvents, validated.settings);
       }
       assertActiveProfileSelection(profiles, settings) {
           const active = profiles.filter((profile) => profile.status === "active");
@@ -11036,12 +11297,8 @@ exports.withFuzzing = withFuzzing;
           }
           assert(active.some((profile) => profile.id === settings.activeProfileId), "Default exam profile must reference an active exam profile.");
       }
-      async verifyMemoryProjectionIntegrity() {
-          const [obligations, evidenceEvents] = await Promise.all([
-              this.repo.getAll(Store.Obligations),
-              this.evidenceEvents(),
-          ]);
-          await verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings), fsrsPersonalizationProfileCatalog(this.settings));
+      async verifyMemoryProjectionIntegrity(obligations, evidenceEvents, settings) {
+          await verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(settings), fsrsPersonalizationProfileCatalog(settings));
       }
       storageHealth() {
           return this.repo.storageHealth();
@@ -11063,6 +11320,10 @@ exports.withFuzzing = withFuzzing;
           assert(JSON.stringify(effectiveFsrsPersonalization(canonical)) === JSON.stringify(effectiveFsrsPersonalization(this.settings)), "Use the explicit FSRS personalization controls to stage, activate, deactivate or remove an optimizer profile.");
           assert(JSON.stringify(canonical.fsrsScheduling.lastRebase ?? null) === JSON.stringify(this.settings.fsrsScheduling.lastRebase ?? null), "FSRS scheduler rebase metadata is service-owned.");
           const difficultyChanged = JSON.stringify(canonical.memoryDifficultyPolicy) !== JSON.stringify(this.settings.memoryDifficultyPolicy);
+          const studyDayBoundaryChanged = canonical.studyDayBoundaryHour !== this.settings.studyDayBoundaryHour;
+          if (difficultyChanged || studyDayBoundaryChanged) {
+              assert(!(await this.currentActiveRetrieval()), "Finish or end the active retrieval session before changing review-affecting settings.");
+          }
           if (!fsrsSchedulingPoliciesEqual(canonical.fsrsScheduling.policy, this.settings.fsrsScheduling.policy)) {
               await this.rebaseMemoryScheduler(canonical, activeFsrsOptimizerProfile(canonical), "scheduler-policy-change");
               return;
@@ -11294,6 +11555,7 @@ exports.withFuzzing = withFuzzing;
           return profile;
       }
       async updateProfile(id, name, examDate, status) {
+          assert(!(await this.currentActiveRetrieval()), "Finish or end the active retrieval session before changing an exam profile.");
           const existingProfiles = await this.profiles();
           this.assertActiveProfileSelection(existingProfiles, this.settings);
           const profile = existingProfiles.find((candidate) => candidate.id === id);
@@ -11413,6 +11675,7 @@ exports.withFuzzing = withFuzzing;
           return unit;
       }
       async updateUnitStatus(id, status) {
+          assert(!(await this.currentActiveRetrieval()), "Finish or end the active retrieval session before changing knowledge-unit status.");
           const unit = await this.unit(id);
           unit.status = status;
           unit.updatedAt = nowIso();
@@ -11505,14 +11768,17 @@ exports.withFuzzing = withFuzzing;
               if (status !== "all" && obligation.status !== status)
                   continue;
               const unit = unitMap.get(obligation.unitId);
-              if (!unit || unit.status !== "active")
+              assert(unit, "Revision obligation references a missing knowledge unit.");
+              if (unit.status !== "active")
                   continue;
               const profile = profileMap.get(unit.profileId);
+              assert(profile, "Knowledge unit references a missing exam profile.");
               const topicNode = nodeMap.get(unit.topicNodeId);
-              const sectionNode = topicNode?.parentId ? nodeMap.get(topicNode.parentId) : undefined;
-              const subjectNode = sectionNode?.parentId ? nodeMap.get(sectionNode.parentId) : undefined;
-              if (!profile || !topicNode || !sectionNode || !subjectNode)
-                  continue;
+              assert(topicNode?.kind === "topic" && topicNode.profileId === unit.profileId, "Knowledge unit references an invalid topic node.");
+              const sectionNode = topicNode.parentId ? nodeMap.get(topicNode.parentId) : undefined;
+              assert(sectionNode?.kind === "section" && sectionNode.profileId === unit.profileId, "Topic node references an invalid section node.");
+              const subjectNode = sectionNode.parentId ? nodeMap.get(sectionNode.parentId) : undefined;
+              assert(subjectNode?.kind === "subject" && subjectNode.profileId === unit.profileId && subjectNode.parentId === null, "Section node references an invalid subject node.");
               joined.push({ obligation, unit, profile, subject: subjectNode.name, section: sectionNode.name, topic: topicNode.name });
           }
           return joined.sort((a, b) => {
@@ -11815,6 +12081,11 @@ exports.withFuzzing = withFuzzing;
           const chunk = await this.repo.get(Store.Chunks, chunkId);
           assert(chunk && chunk.status === "pending", "This split session is no longer pending.");
           const obligation = await this.obligation(chunk.obligationId);
+          assert(obligation.status === "active", "This split-session obligation is no longer active.");
+          const unit = await this.unit(obligation.unitId);
+          assert(unit.status === "active", "This split-session knowledge unit is no longer active.");
+          const profile = await this.profile(unit.profileId);
+          assert(profile.status === "active", "This split-session exam profile is no longer active.");
           assert(obligation.chunking?.cycleId === chunk.cycleId && obligation.chunking.status === "chunking", "Split-session state is inconsistent.");
           const canonicalTiming = canonicalTimingEvidenceSummary(timing);
           const actualMinutes = roundTo(Math.max(1, canonicalTiming.totalActiveMs / 60_000), 1);
@@ -11899,6 +12170,9 @@ exports.withFuzzing = withFuzzing;
           validateWorkflowResult(normalizedDraft.workflowResult, obligation.workflow.kind);
           assert(obligation.status === "active", "This obligation is not active.");
           const unit = await this.unit(obligation.unitId);
+          assert(unit.status === "active", "This knowledge unit is no longer active.");
+          const profile = await this.profile(unit.profileId);
+          assert(profile.status === "active", "This exam profile is no longer active.");
           const priorEvidence = await this.evidenceEvents();
           const chunking = obligation.chunking;
           const cycleChunks = chunking?.status === "synthesis-ready" ? (await this.chunksForObligation(obligation.id)).filter((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "completed") : [];
@@ -11940,7 +12214,6 @@ exports.withFuzzing = withFuzzing;
               })()
               : undefined;
           obligation.updatedAt = reviewedAt.toISOString();
-          obligation.lastCompletedAt = reviewedAt.toISOString();
           if (durationObservation.accepted) {
               obligation.expectedMinutes = durationObservation.estimateAfter;
               obligation.durationSampleCount = durationObservation.exactSamples;
@@ -11957,8 +12230,6 @@ exports.withFuzzing = withFuzzing;
               }
               delete obligation.chunking;
           }
-          unit.latestEvidenceAt = reviewedAt.toISOString();
-          unit.latestEvidenceRating = confirmed;
           unit.evidenceCount += 1;
           if (confirmed === Rating.Again)
               unit.lapseCount += 1;
@@ -11971,7 +12242,7 @@ exports.withFuzzing = withFuzzing;
               obligation.suspensionReason = "relearning";
               const existing = (await this.obligationsForUnit(unit.id)).find((item) => item.type === "relearn" && item.status === "active" && item.returnObligationId === obligation.id);
               if (!existing) {
-                  const dueAt = correctiveRelearnDueAt(await this.profile(unit.profileId), reviewedAt);
+                  const dueAt = correctiveRelearnDueAt(profile, reviewedAt);
                   const policy = this.router.get("relearn");
                   const time = reviewedAt.toISOString();
                   const followUpId = uid("obligation");
@@ -12022,7 +12293,6 @@ exports.withFuzzing = withFuzzing;
                   assert(verification.schedulerConfig && verification.reviewLog, "Corrective memory verification lacks FSRS-7 provenance.");
                   original.dueAt = verification.dueAt;
                   original.policyState = verification.policyState;
-                  original.lastCompletedAt = reviewedAt.toISOString();
                   correctiveMemoryTransition = {
                       obligationId: original.id,
                       rating: verificationRating,
@@ -12198,21 +12468,13 @@ exports.withFuzzing = withFuzzing;
           return await this.repo.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null;
       }
       async exportBackup() {
+          const state = await this.repo.backupState();
           return {
               format: BACKUP_FORMAT,
               schemaVersion: BACKUP_SCHEMA_VERSION,
               exportedAt: nowIso(),
               appVersion: APP_VERSION,
-              profiles: await this.profiles(),
-              nodes: await this.nodes(),
-              units: await this.units(),
-              studyEvents: await this.studyEvents(),
-              obligations: await this.obligations(),
-              evidenceEvents: await this.evidenceEvents(),
-              chunks: await this.chunks(),
-              dailyPlans: await this.dailyPlanHistory(),
-              settings: this.getSettings(),
-              activeRetrieval: await this.repo.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null,
+              ...state,
           };
       }
       async createBackupArchive(preferCompression = true) {
@@ -12323,10 +12585,6 @@ exports.withFuzzing = withFuzzing;
               assert(unit.title.trim().length > 0 && unit.scope.trim().length > 0, "Knowledge unit title or scope is missing.");
               assert(unit.importance === 1 || unit.importance === 2 || unit.importance === 3, "Knowledge unit importance is invalid.");
               assert(Number.isInteger(unit.evidenceCount) && unit.evidenceCount >= 0 && Number.isInteger(unit.lapseCount) && unit.lapseCount >= 0, "Knowledge unit counters are invalid.");
-              if (unit.latestEvidenceAt)
-                  validDate(unit.latestEvidenceAt, "Knowledge unit evidence");
-              if (unit.latestEvidenceRating !== undefined)
-                  validRatingValue(unit.latestEvidenceRating, "Knowledge unit");
           }
           for (const event of studyEvents) {
               assert(profileMap.has(event.profileId), "Study event references a missing profile.");
@@ -12379,14 +12637,8 @@ exports.withFuzzing = withFuzzing;
               if (obligation.type === "memory-recall") {
                   assert(obligation.policyState.version === FSRS_PACKAGE_VERSION && obligation.policyState.fsrsCard, "Memory obligation has invalid FSRS-7 state.");
                   const fsrsCard = obligation.policyState.fsrsCard;
-                  assert(fsrsCard.model === FSRS_MODEL, "Memory obligation uses an unsupported scheduler model.");
-                  assert(fsrsCard.cardId === obligation.id, "FSRS card identity does not match its obligation.");
-                  assert(fsrsCard.scheduleStatus === "new" || fsrsCard.scheduleStatus === "learning" || fsrsCard.scheduleStatus === "review" || fsrsCard.scheduleStatus === "suspended", "FSRS card schedule status is invalid.");
-                  requiredFsrs7StabilityFast(fsrsCard.stabilityFast);
-                  validDate(fsrsCard.dueAt, "FSRS card");
+                  validateStoredFsrsCard(fsrsCard, obligation.id);
                   assert(fsrsCard.dueAt === obligation.dueAt, "Memory obligation due date is not synchronized with its FSRS-7 card.");
-                  if (fsrsCard.lastReviewAt)
-                      validDate(fsrsCard.lastReviewAt, "FSRS last review");
               }
               if (obligation.parentObligationId)
                   assert(obligationMap.has(obligation.parentObligationId), "Obligation references a missing parent.");
@@ -12426,6 +12678,27 @@ exports.withFuzzing = withFuzzing;
               assert(event.beforePolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType] && event.afterPolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType], "Evidence policy states do not match the obligation type.");
               if (event.followUpObligationId)
                   assert(obligationMap.has(event.followUpObligationId), "Evidence event references a missing follow-up obligation.");
+              if (event.obligationType !== "memory-recall") {
+                  const policy = this.router.get(event.obligationType);
+                  const transitionInput = {
+                      ...obligation,
+                      dueAt: event.beforeDueAt,
+                      policyState: clone(event.beforePolicyState),
+                  };
+                  const expected = policy.complete(transitionInput, event.confirmedRating, event.evidence, new Date(event.reviewedAt));
+                  assert(expected.policyId === event.policyId, "Evidence policy ID does not match the current policy implementation.");
+                  assert(expected.dueAt === event.afterDueAt, "Evidence next due date does not match the current policy transition.");
+                  const expectedState = expected.policyState;
+                  const actualState = event.afterPolicyState;
+                  assert(expectedState.engine === actualState.engine &&
+                      expectedState.version === actualState.version &&
+                      expectedState.stage === actualState.stage &&
+                      expectedState.successStreak === actualState.successStreak &&
+                      expectedState.failureCount === actualState.failureCount &&
+                      expectedState.lastIntervalDays === actualState.lastIntervalDays &&
+                      expectedState.fsrsCard === undefined &&
+                      actualState.fsrsCard === undefined, "Evidence after-policy state does not match the current policy transition.");
+              }
               if (event.obligationType === "memory-recall") {
                   assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION && event.schedulerModel === FSRS_MODEL, "Memory evidence lacks exact FSRS-7 provenance.");
                   const config = event.schedulerConfig;
@@ -12572,20 +12845,77 @@ exports.withFuzzing = withFuzzing;
               }
           }
           const evidenceCounts = new Map();
+          const evidenceByObligation = new Map();
           for (const event of evidenceEvents) {
               const count = evidenceCounts.get(event.unitId) ?? { total: 0, lapses: 0 };
               count.total += 1;
               if (event.confirmedRating === Rating.Again)
                   count.lapses += 1;
               evidenceCounts.set(event.unitId, count);
+              const obligationEvents = evidenceByObligation.get(event.obligationId) ?? [];
+              obligationEvents.push(event);
+              evidenceByObligation.set(event.obligationId, obligationEvents);
           }
           for (const unit of units) {
               const count = evidenceCounts.get(unit.id) ?? { total: 0, lapses: 0 };
               assert(unit.evidenceCount === count.total && unit.lapseCount === count.lapses, "Knowledge unit evidence counters do not match its history.");
           }
+          const intervalStateEqual = (left, right) => left.engine === right.engine &&
+              left.version === right.version &&
+              left.stage === right.stage &&
+              left.successStreak === right.successStreak &&
+              left.failureCount === right.failureCount &&
+              left.lastIntervalDays === right.lastIntervalDays &&
+              left.fsrsCard === undefined &&
+              right.fsrsCard === undefined;
           for (const obligation of obligations) {
-              const acceptedExact = evidenceEvents.filter((event) => event.obligationId === obligation.id && event.durationObservation.accepted).length;
-              assert(obligation.durationSampleCount === acceptedExact, "Obligation duration sample count does not match its accepted history.");
+              const obligationEvents = [...(evidenceByObligation.get(obligation.id) ?? [])];
+              if (obligation.type !== "memory-recall") {
+                  const policy = this.router.get(obligation.type);
+                  let state = policy.createInitialState(obligation.dueAt, obligation.id);
+                  const remaining = new Set(obligationEvents);
+                  let priorDueAt;
+                  while (remaining.size > 0) {
+                      const candidates = [...remaining].filter((event) => intervalStateEqual(event.beforePolicyState, state) &&
+                          (priorDueAt === undefined || event.beforeDueAt === priorDueAt));
+                      assert(candidates.length === 1, "Non-memory Evidence Event history is disconnected or forked.");
+                      const event = candidates[0];
+                      state = event.afterPolicyState;
+                      priorDueAt = event.afterDueAt;
+                      remaining.delete(event);
+                  }
+                  assert(intervalStateEqual(obligation.policyState, state), "Non-memory obligation policy state does not match its Evidence Event history.");
+                  if (priorDueAt !== undefined)
+                      assert(obligation.dueAt === priorDueAt, "Non-memory obligation due date does not match its Evidence Event history.");
+              }
+              const acceptedBySample = new Map();
+              for (const event of obligationEvents) {
+                  const observation = event.durationObservation;
+                  if (!observation.accepted)
+                      continue;
+                  assert(observation.exactSamples >= 1, "Accepted duration evidence has an invalid exact-sample sequence.");
+                  assert(!acceptedBySample.has(observation.exactSamples), "Accepted duration evidence contains a duplicate exact-sample sequence.");
+                  acceptedBySample.set(observation.exactSamples, event);
+              }
+              assert(obligation.durationSampleCount === acceptedBySample.size, "Obligation duration sample count does not match its accepted history.");
+              let estimate = obligation.baselineMinutes;
+              for (let sample = 1; sample <= obligation.durationSampleCount; sample += 1) {
+                  const event = acceptedBySample.get(sample);
+                  assert(event, "Accepted duration evidence sequence is incomplete.");
+                  assert(event.durationObservation.estimateBefore === estimate, "Accepted duration evidence does not continue the prior estimate.");
+                  estimate = event.durationObservation.estimateAfter;
+              }
+              assert(obligation.expectedMinutes === estimate, "Obligation duration estimate does not match its accepted evidence history.");
+              for (const event of obligationEvents) {
+                  const observation = event.durationObservation;
+                  if (observation.accepted)
+                      continue;
+                  assert(observation.exactSamples >= 0 && observation.exactSamples <= obligation.durationSampleCount, "Rejected duration evidence has an invalid exact-sample sequence.");
+                  const priorEstimate = observation.exactSamples === 0
+                      ? obligation.baselineMinutes
+                      : acceptedBySample.get(observation.exactSamples)?.durationObservation.estimateAfter;
+                  assert(priorEstimate !== undefined && observation.estimateBefore === priorEstimate && observation.estimateAfter === priorEstimate, "Rejected duration evidence does not preserve the contemporaneous estimate.");
+              }
           }
           let canonicalActive = null;
           if (activeRetrieval) {
@@ -12626,12 +12956,6 @@ exports.withFuzzing = withFuzzing;
               settings,
               activeRetrieval: canonicalActive,
           };
-      }
-      async importBackup(input) {
-          const payload = this.validateBackup(input);
-          await this.repo.replaceFromBackup(payload, "discard");
-          this.settings = clone(payload.settings);
-          this.invalidateMemoryReviewAnalysis();
       }
   }
   /* ==========================================================================
@@ -12851,6 +13175,7 @@ exports.withFuzzing = withFuzzing;
       }
       static parseManifest(input) {
           const value = requireRecord(input, "Backup manifest");
+          assertExactKeys(value, "Backup manifest", ["kind", "format", "version", "exportedAt", "appVersion", "payloadFormat", "payloadSchemaVersion", "compression", "hashAlgorithm", "chunkTargetBytes", "chunkMaxItems", "chunkCount", "counts", "stateChecksum"]);
           assert(value["kind"] === "manifest" && value["format"] === BACKUP_ARCHIVE_FORMAT && value["version"] === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
           const appVersion = canonicalId(requiredString(value["appVersion"], "Backup application version"), "Backup application version");
           assert(value["payloadFormat"] === BACKUP_FORMAT && value["payloadSchemaVersion"] === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
@@ -12860,7 +13185,7 @@ exports.withFuzzing = withFuzzing;
           const chunkCount = value["chunkCount"];
           assert(typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup manifest chunk count is invalid.");
           const stateChecksum = value["stateChecksum"];
-          assert(typeof stateChecksum === "string" && /^[0-9a-f]{16,64}$/.test(stateChecksum), "Backup state checksum is invalid.");
+          assert(typeof stateChecksum === "string" && /^[0-9a-f]{64}$/.test(stateChecksum), "Backup state checksum is invalid.");
           return {
               kind: "manifest",
               format: BACKUP_ARCHIVE_FORMAT,
@@ -12880,6 +13205,7 @@ exports.withFuzzing = withFuzzing;
       }
       static parseCounts(input) {
           const value = requireRecord(input, "Backup counts");
+          assertExactKeys(value, "Backup counts", BACKUP_ENTITY_ORDER);
           const counts = this.zeroCounts();
           for (const key of BACKUP_ENTITY_ORDER) {
               const count = value[key];
@@ -12890,6 +13216,7 @@ exports.withFuzzing = withFuzzing;
       }
       static parseChunk(input) {
           const value = requireRecord(input, "Backup chunk");
+          assertExactKeys(value, "Backup chunk", ["kind", "sequence", "entityType", "count", "items", "checksum"]);
           const sequence = value["sequence"];
           assert(value["kind"] === "chunk" && typeof sequence === "number" && Number.isInteger(sequence) && sequence >= 0, "Backup chunk sequence is invalid.");
           const entityType = literalChoice(value["entityType"], BACKUP_ENTITY_ORDER, "Backup chunk entity type");
@@ -12897,17 +13224,18 @@ exports.withFuzzing = withFuzzing;
           const items = value["items"];
           assert(typeof count === "number" && Number.isInteger(count) && Array.isArray(items), "Backup chunk contents are invalid.");
           const checksum = value["checksum"];
-          assert(typeof checksum === "string" && /^[0-9a-f]{16,64}$/.test(checksum), "Backup chunk checksum is invalid.");
+          assert(typeof checksum === "string" && /^[0-9a-f]{64}$/.test(checksum), "Backup chunk checksum is invalid.");
           return { kind: "chunk", sequence, entityType, count, items, checksum };
       }
       static parseCompletion(input) {
           const value = requireRecord(input, "Backup completion proof");
+          assertExactKeys(value, "Backup completion proof", ["kind", "chunkCount", "counts", "chunkHashes", "checksum"]);
           const chunkCount = value["chunkCount"];
           assert(value["kind"] === "complete" && typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup completion proof is invalid.");
           const chunkHashes = value["chunkHashes"];
-          assert(Array.isArray(chunkHashes) && chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{16,64}$/.test(hash)), "Backup completion hashes are invalid.");
+          assert(Array.isArray(chunkHashes) && chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)), "Backup completion hashes are invalid.");
           const checksum = value["checksum"];
-          assert(typeof checksum === "string" && /^[0-9a-f]{16,64}$/.test(checksum), "Backup final checksum is invalid.");
+          assert(typeof checksum === "string" && /^[0-9a-f]{64}$/.test(checksum), "Backup final checksum is invalid.");
           return { kind: "complete", chunkCount, counts: this.parseCounts(value["counts"]), chunkHashes, checksum };
       }
       static inspection(manifest, archiveChecksum, activeRetrievalStatus, compressedBytes, expandedBytes, warnings) {
