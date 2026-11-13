@@ -7,9 +7,9 @@ import sys
 sys.path.insert(0, str(TESTS))
 from helpers.browser_harness import ROOT, launch_chromium, load_browser_qa, open_html_page
 base = load_browser_qa("revision_director_ui_runtime_accessibility")
-INDEXEDDB_SHIM = base["INDEXEDDB_SHIM"]
+INDEXEDDB_SHIM = base.INDEXEDDB_SHIM
 BASELINE_BACKUP = ROOT / "tests/fixtures/browser-baseline.rdbackup"
-restore_selected_backup = base["restore_selected_backup"]
+restore_selected_backup = base.restore_selected_backup
 CLOCK_SHIM = r"""
 <script>
 (() => {

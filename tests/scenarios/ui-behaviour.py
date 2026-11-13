@@ -7,9 +7,9 @@ import sys
 sys.path.insert(0, str(TESTS))
 from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa
 base=load_browser_qa("revision_director_ui_behaviour")
-restore_selected_backup=base['restore_selected_backup']
+restore_selected_backup=base.restore_selected_backup
 CLOCK=r'''<script>(()=>{let current=Date.now();Date.now=()=>current;window.__RD_STAGE_C_CLOCK__={advance(ms){current+=Number(ms)||0;return current;}};})();</script>'''
-HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base['INDEXEDDB_SHIM']+CLOCK,1)
+HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base.INDEXEDDB_SHIM+CLOCK,1)
 BASELINE=ROOT/'tests/fixtures/browser-baseline.rdbackup'
 CHECKS=0
 
