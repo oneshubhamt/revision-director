@@ -34,6 +34,8 @@ evidence_transition_ts = (ROOT / "source/app/23-evidence-transition.ts").read_te
 repository_ts = (ROOT / "source/app/30-indexeddb-repository.ts").read_text()
 storage_ts = (ROOT / "source/app/31-storage-facade.ts").read_text()
 service_ts = (ROOT / "source/app/40-application-services.ts").read_text()
+active_retrieval_workspace_ts = (ROOT / "source/app/47-active-retrieval-workspace.ts").read_text()
+ui_controller_ts = (ROOT / "source/app/50-ui-controller.ts").read_text()
 backup_codec_ts = (ROOT / "source/app/41-backup-codec.ts").read_text()
 tsconfig = json.loads((ROOT / "source/tsconfig.json").read_text())
 build_script = (ROOT / "build/build.py").read_text()
@@ -81,7 +83,7 @@ check("manifest owns expected layers", all(token in {path.name for path in sourc
     "12-production-contracts.ts", "18-fsrs-personalization.ts", "18a-fsrs-browser-optimizer.ts", "19-revision-scheduler-port.ts", "20-policy-planning-kernel.ts", "21-policy-implementations.ts",
     "22-backup-validation.ts", "23-evidence-transition.ts",
     "30-indexeddb-repository.ts", "31-storage-facade.ts", "32-active-retrieval-persistence.ts", "33-phase-time-runtime.ts", "34-cross-tab-ownership.ts", "40-application-services.ts",
-    "41-backup-codec.ts", "45-ui-runtime.ts", "46-workflow-form-adapter.ts", "50-ui-controller.ts", "60-public-bridge-bootstrap.ts"
+    "41-backup-codec.ts", "45-ui-runtime.ts", "46-workflow-form-adapter.ts", "47-active-retrieval-workspace.ts", "50-ui-controller.ts", "60-public-bridge-bootstrap.ts"
 ]))
 check("shell presentation manifest placeholder", "<!-- INLINE_PRESENTATION_MANIFEST -->" in shell)
 check("shell presentation prepaint placeholder", "<!-- INLINE_PRESENTATION_PREPAINT -->" in shell)
@@ -198,6 +200,7 @@ check("canonical SHA-256 archive parser", all(token in backup_codec_ts for token
 check("backup payload narrows from unknown", "const candidate = requireRecord(input, \"Backup\")" in ts and "canonicalDocumentArray(\"profile\"" in ts and "candidate.profiles as ExamProfile[]" not in ts and "candidate.evidenceEvents as EvidenceEvent[]" not in ts)
 check("backup validation boundary ownership", "function validateBackupPayload(input: unknown): BackupPayload" in backup_validation_ts and "validateBackup(input: unknown)" not in service_ts and "this." not in backup_validation_ts)
 check("evidence transition boundary ownership", all(token in evidence_transition_ts for token in ["function prepareEvidenceDraft", "function applyPrimaryEvidenceTransition", "function applyCorrectiveRelearningTransition", "function buildEvidenceEvent"]) and "this." not in evidence_transition_ts and "async " not in evidence_transition_ts)
+check("active retrieval workspace boundary ownership", "class ActiveRetrievalWorkspace" in active_retrieval_workspace_ts and "private activeReviewIds" in active_retrieval_workspace_ts and "private reviewPhase" in active_retrieval_workspace_ts and "async render()" in active_retrieval_workspace_ts and "private activeReviewIds" not in ui_controller_ts and "private reviewPhase" not in ui_controller_ts and "this.activeRetrieval.handleAction(element)" in ui_controller_ts)
 check("checked external domain boundaries", "function literalChoice<const Values" in ts and "MessageEvent<unknown>" in ts and "async register(input: unknown)" in ts and "private async importStudyEvent(input: unknown)" in ts and "private async createRevisionCandidate(input: unknown)" in ts and " as InactiveGapClassification" not in ts and " as BackupActiveSessionTreatment" not in ts)
 check("archive parsers narrow unknown records", "as Partial<BackupArchive" not in ts and "const candidate: BackupPayload" not in ts and "const parsed = JSON.parse(raw) as ActiveRetrievalRecoveryEnvelope" not in ts and "as Partial<DiagnosticRecord>" not in ts)
 check("store-keyed persistence typing", "interface StoreValueMap" in ts and "type StoreValue<S extends StoreName>" in ts and "async get<S extends StoreName>(store: S" in ts and "async getAll<S extends StoreName>(store: S" in ts and "async get<T>(store: StoreName" not in ts and "async getAll<T>(store: StoreName" not in ts)
@@ -282,15 +285,15 @@ check("diagram canvas", 'id="diagram-canvas"' in ts and "initializeDiagramCanvas
 check("answer-writing constraints", "completedWithinTime" in ts and "wordLimit" in ts and "timeLimitMinutes" in ts)
 check("two-stage relearning", 'data-review-phase="relearn-repair"' in ts and 'data-review-phase="relearn-verify"' in ts)
 check("keyboard uses protected reveal", "reveal.click();" in ts and 'this.reviewPhase === "attempt"' in ts)
-check("keyboard cannot rerender through reveal", "void this.renderReview();" not in ts[ts.index("private handleKeyboard"):ts.index("private toast")])
+check("keyboard cannot rerender through reveal", "void this.render();" not in active_retrieval_workspace_ts[active_retrieval_workspace_ts.index("handleKeyboard(event: KeyboardEvent)"):])
 check("production path has no sample seeding", all(term not in ts for term in ["seedPrototypeData", "seededSamples", "clearAndReseed", "reset-data", "RESET PROTOTYPE"]))
-check("attempt survives navigation", "reviewDrafts" in ts and "captureReviewDraft" in ts and "restoreReviewDraft" in ts)
+check("attempt survives navigation", "reviewDrafts" in active_retrieval_workspace_ts and "captureDraft" in active_retrieval_workspace_ts and "restoreReviewDraft" in active_retrieval_workspace_ts and "this.activeRetrieval.captureDraft()" in ui_controller_ts)
 check("side-by-side comparison", "comparison-grid" in ts and "attemptComparisonPanel" in ts and "comparison-attempt-text" in ts)
 check("diagram visible in comparison", "comparison-diagram-canvas" in ts and "syncComparisonAttempt" in ts)
 check("automatic answer timing", "attemptElapsedMs <= timeLimitMinutes * 60_000" in ts and "answer-within-time" not in ts)
 check("relearning trigger context", "triggeringEvidence" in ts and "WHY THIS RELEARNING EXISTS" in ts)
 check("question set provenance", "questionSetRef" in ts and "questions-error-summary" in ts)
-check("source reveal preserves attempt", 'this.reviewPhase = "compare"' in ts and "await this.renderReview();" not in ts[ts.index('else if (action === "reveal")'):ts.index('else if (action === "begin-verification")')])
+check("source reveal preserves attempt", 'this.reviewPhase = "compare"' in active_retrieval_workspace_ts and "await this.render();" not in active_retrieval_workspace_ts[active_retrieval_workspace_ts.index('else if (action === "reveal")'):active_retrieval_workspace_ts.index('else if (action === "begin-verification")')])
 check("production backup schema", 'const BACKUP_FORMAT = "revision-director-backup" as const' in ts and 'const BACKUP_SCHEMA_VERSION = 2' in ts)
 check("frozen public capability API", "interface RevisionDirectorPublicApi" in ts and "Object.freeze({" in ts and 'Object.defineProperty(window, "RevisionDirector"' in ts)
 check("non-writable public API", 'Object.defineProperty(window, "RevisionDirector"' in ts and "writable: false" in ts and "RevisionDirectorBridge" not in ts)
