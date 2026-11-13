@@ -59,6 +59,15 @@ check("44-pixel general target", css.includes("min-height:44px"));
 check("44-pixel file target", css.includes(".file-btn{min-height:44px}"));
 check("File input included", css.includes('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])'));
 check("Reduced motion", css.includes("@media (prefers-reduced-motion:reduce)"));
+check("Responsive breakpoint ownership is singular", (() => {
+  const values = [...css.matchAll(/@media\s*\(\s*max-width\s*:\s*(\d+)px\s*\)/g)].map((match) => match[1]);
+  return values.length === new Set(values).size && css.includes("CONSOLIDATED RESPONSIVE OVERRIDES");
+})());
+check("Legacy CSS tokens are absent", !["var(--text-muted)", "var(--txt3)", "var(--f-head)"].some((token) => css.includes(token)));
+check("Hidden display invariant is singular", (css.match(/\[hidden\]\{display:none!important\}/g)||[]).length === 1
+  && !css.includes(".optimizer-progress[hidden]")
+  && !css.includes(".gap-overlay[hidden]")
+  && !css.includes(".ownership-banner[hidden]"));
 check("Safe-area variables", css.includes("safe-area-inset-bottom") && css.includes("safe-area-inset-left"));
 check("Compact independent scroll", css.includes("height:calc(100dvh - 64px - env(safe-area-inset-bottom))") && css.includes("overflow-y:auto"));
 check("Viewport cover", shell.includes("viewport-fit=cover"));
