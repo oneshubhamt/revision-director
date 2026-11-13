@@ -54,24 +54,7 @@ jobs:
         run: npm run build
 
       - name: Refresh tracked checksums
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib
-
-          root = Path(".")
-          manifest = root / "CHECKSUMS.sha256"
-          out = []
-          for line in manifest.read_text().splitlines():
-              if not line:
-                  continue
-              _, relative = line.split("  ./", 1)
-              path = root / relative
-              if not path.is_file():
-                  raise SystemExit(f"Missing checksum target: {relative}")
-              out.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  ./{relative}")
-          manifest.write_text("\n".join(out) + "\n")
-          PY
+        run: python3 build/checksums.py --write
 
       - name: JavaScript syntax
         run: node --check dist/app.js
@@ -89,25 +72,6 @@ jobs:
             echo "==> $file"
             node "$file"
           done
-
-      - name: Verify tracked checksums
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib
-
-          root = Path(".")
-          for line in (root / "CHECKSUMS.sha256").read_text().splitlines():
-              if not line:
-                  continue
-              digest, relative = line.split("  ./", 1)
-              path = root / relative
-              if not path.is_file():
-                  raise SystemExit(f"Missing checksum target: {relative}")
-              actual = hashlib.sha256(path.read_bytes()).hexdigest()
-              if actual != digest:
-                  raise SystemExit(f"Checksum mismatch: {relative}")
-          PY
 
       - name: Require committed generated artifacts elsewhere
         if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/working') }}
@@ -144,24 +108,7 @@ jobs:
         run: npm run build
 
       - name: Refresh tracked checksums
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib
-
-          root = Path(".")
-          manifest = root / "CHECKSUMS.sha256"
-          out = []
-          for line in manifest.read_text().splitlines():
-              if not line:
-                  continue
-              _, relative = line.split("  ./", 1)
-              path = root / relative
-              if not path.is_file():
-                  raise SystemExit(f"Missing checksum target: {relative}")
-              out.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  ./{relative}")
-          manifest.write_text("\n".join(out) + "\n")
-          PY
+        run: python3 build/checksums.py --write
 
       - name: Commit generated artifacts
         run: |
