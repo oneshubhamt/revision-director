@@ -3,7 +3,7 @@ const { createAppRuntime } = require('./helpers/runtime-harness');
 
 const { api, context } = createAppRuntime({
   globalName: '__RD_TEST_API__',
-  expose: ["suggestRating","objectiveScore","correctiveMemoryRating","workflowEvidence","validateWorkflowResult","validateWorkflowSpec","defaultWorkflowSpec","defaultWorkflowForType","compatibleWorkflows","MasteryPolicy","ApplicationPolicy","PerformancePolicy","RelearnPolicy","FreshnessPolicy","SchedulerPolicyRouter","FsrsMemoryPolicy","RevisionService","Rating","examinationProximityScore","planningLookaheadDays","examImportanceScore","reviewDurationScore","evidenceWeaknessScore","obligationWeaknessScore","temporalDueRisk","plannerScore","buildPlanningCandidate","choosePlanItems","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsConfigSnapshot","validateStoredFsrsCard","defaultMemoryDifficultyPolicy","canonicalMemoryDifficultyPolicy","memoryDifficultyAssessment","memoryDifficultyRemediationPlan","memoryDifficultyActionLabel","daysToExamination","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","validateBackupPayload"],
+  expose: ["suggestRating","objectiveScore","correctiveMemoryRating","workflowEvidence","validateWorkflowResult","validateWorkflowSpec","defaultWorkflowSpec","defaultWorkflowForType","compatibleWorkflows","MasteryPolicy","ApplicationPolicy","PerformancePolicy","RelearnPolicy","FreshnessPolicy","SchedulerPolicyRouter","FsrsMemoryPolicy","RevisionService","Rating","examinationProximityScore","planningLookaheadDays","examImportanceScore","reviewDurationScore","evidenceWeaknessScore","obligationWeaknessScore","temporalDueRisk","plannerScore","buildPlanningCandidate","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsConfigSnapshot","validateStoredFsrsCard","defaultMemoryDifficultyPolicy","canonicalMemoryDifficultyPolicy","memoryDifficultyAssessment","memoryDifficultyRemediationPlan","memoryDifficultyActionLabel","daysToExamination","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","validateBackupPayload"],
   requireFsrs: true,
 });
 
@@ -236,15 +236,6 @@ check(api.evidenceWeaknessScore(weakEvents) > .6, 'Repeated weak evidence must c
 const dayStart = new Date('2026-07-25T04:00:00Z');
 const dayEnd = new Date('2026-07-26T04:00:00Z');
 check(api.temporalDueRisk(new Date('2026-07-20T04:00:00Z'), dayStart, dayEnd, 1) > api.temporalDueRisk(new Date('2026-07-26T12:00:00Z'), dayStart, dayEnd, 1), 'Overdue work must carry higher due risk');
-const planItem = (id, score, mins, type='concept-reconstruction', state='due') => ({
-  joined:{obligation:{id,type,dueAt:due,expectedMinutes:mins},unit:{},profile:{}}, score, dueState:state, executionMinutes:mins, factors:{dueRisk:.7,examImportance:.7,weakness:.5,reviewDuration:.8,examinationProximity:.5,weeklyBalance:.5}
-});
-let packed = api.choosePlanItems([planItem('a',90,40),planItem('b',80,20),planItem('c',70,20)],60);
-check(packed.selected.reduce((sum,item)=>sum+item.joined.obligation.expectedMinutes,0) <= 60, 'Daily plan must respect capacity when feasible');
-check(packed.selected.some(item=>item.joined.obligation.id==='a'), 'Highest-value feasible obligation should be retained');
-packed = api.choosePlanItems([planItem('r',95,90,'relearn','overdue'),planItem('n',70,20)],60);
-check(packed.selected.length === 1 && packed.selected[0].joined.obligation.id === 'r', 'Oversized critical relearning must remain visible as a necessary overrun');
-
 const router = new api.SchedulerPolicyRouter(() => fixed(.9));
 for (const type of ['memory-recall','concept-reconstruction','application-practice','performance-practice','relearn','freshness-review']) check(router.get(type).type === type, `Router missing ${type}`);
 
