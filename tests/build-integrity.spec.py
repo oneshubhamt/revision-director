@@ -235,7 +235,7 @@ check("DOM and FormData boundaries are runtime typed", "function requiredNamedFo
 check("SHA-256-only backup integrity", 'type BackupArchiveHashAlgorithm = "sha256";' in ts and "fnv1a64" not in (ROOT / "source/app/41-backup-codec.ts").read_text())
 check("policy router", "class SchedulerPolicyRouter" in ts)
 check("immutable Study Event semantics", "interface StudyEvent" in ts and "studyEvents" in ts)
-check("atomic unit and first obligation", "createUnitWithObligation" in ts and "this.db.transaction([Store.Units, Store.Obligations]" in ts)
+check("atomic unit and first obligation", "createUnitWithObligation" in ts and 'readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict")' in repository_ts)
 check("atomic unit status propagation", "updateUnitWithObligations" in ts)
 check("cross-profile Study Event guard", "Study Event cannot link a knowledge unit from another exam profile" in ts)
 check("strong evidence rubric", all(term in ts for term in ["completeness", "independence", "application", "accuracyPercent", "errorTypes", "ERROR_TYPES"]))
