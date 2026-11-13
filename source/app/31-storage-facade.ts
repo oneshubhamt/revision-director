@@ -212,6 +212,10 @@
       await this.operation(`put.${store}`, () => this.repository.put(store, this.normalize(store, value)));
     }
 
+    async add<S extends StoreName>(store: S, value: StoreValue<S>): Promise<void> {
+      await this.operation(`add.${store}`, () => this.repository.add(store, this.normalize(store, value)));
+    }
+
     async putMany<S extends StoreName>(store: S, values: StoreValue<S>[]): Promise<void> {
       await this.operation(`putMany.${store}`, () => this.repository.putMany(store, values.map((value) => this.normalize(store, value))));
     }
@@ -236,9 +240,10 @@
     }
 
     async findNode(profileId: string, parentId: string | null, kind: KnowledgeNodeKind, name: string): Promise<KnowledgeNode | undefined> {
-      const candidates = await this.getByIndex(Store.Nodes, "profileId", profileId);
-      const normalized = normalizeName(name);
-      return candidates.find((node) => node.parentId === parentId && node.kind === kind && node.normalizedName === normalized);
+      return this.operation("findNode", async () => {
+        const value = await this.repository.findNode(profileId, parentId, kind, name);
+        return value === undefined ? undefined : canonicalKnowledgeNode(value);
+      });
     }
 
     async getByIndex<S extends StoreName>(store: S, indexName: string, query: IDBValidKey | IDBKeyRange): Promise<StoreValue<S>[]> {
