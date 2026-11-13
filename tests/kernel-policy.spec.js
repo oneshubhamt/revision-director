@@ -319,6 +319,9 @@ for (const mutation of [
 const conceptUnitWithEvidence={...validBackup.units[0],evidenceCount:1};
 const conceptReviewedObligation={...conceptObligation,dueAt:conceptEvidence.afterDueAt,policyState:conceptEvidence.afterPolicyState,durationSampleCount:1};
 check(service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[conceptEvidence]}).evidenceEvents.length === 1, 'Relational workflow evidence backup should pass');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[{...conceptReviewedObligation,policyState:conceptObligation.policyState}],evidenceEvents:[conceptEvidence]}),'Current non-memory policy state must match its Evidence Event history');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[{...conceptEvidence,afterPolicyState:{...conceptEvidence.afterPolicyState,stage:2}}]}),'Non-memory Evidence Event transitions must match the policy engine');
+mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[{...conceptEvidence,durationObservation:{...conceptEvidence.durationObservation,estimateBefore:14,plannedMinutes:14}}]}),'Adaptive duration history must continue from the canonical prior estimate');
 mustFail(()=>service.validateBackup({...validBackup,units:[conceptUnitWithEvidence],obligations:[conceptReviewedObligation],evidenceEvents:[(({timing,...rest})=>rest)(conceptEvidence)]}),'Current evidence without timing must be rejected');
 const chunkedObligation={...conceptObligation,chunking:{cycleId:'cycle',status:'chunking',originalMinutes:15,synthesisMinutes:5,capacityMinutes:60,totalChunks:2,completedChunks:1,createdAt:due}};
 const chunkRecords=[
