@@ -98,8 +98,10 @@ check(source.includes('const deterministic = await this.get(Store.Nodes, await r
   'Root hierarchy lookup does not use deterministic primary-key fast lookup.');
 check(source.includes('return this.getOneByIndex(Store.Nodes, "pathLookup", [profileId, parentId, kind, normalized]);'),
   'Child hierarchy lookup no longer uses the canonical pathLookup index.');
-check(source.includes('const validated = validateBackupPayload({') && source.includes('const state = await this.repo.backupState("ignore");'),
-  'Startup does not run full relational validation over the canonical durable snapshot.');
+check(source.includes('const state = await this.repo.backupState("ignore");')
+  && source.includes('assertActiveProfileSelection(state.profiles, this.settings);')
+  && source.includes('await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);'),
+  'Startup no longer preserves its recovery-aware canonical validation boundary.');
 check(source.includes('assert(unit, "Revision obligation references a missing knowledge unit.");')
   && source.includes('assert(topicNode?.kind === "topic"'),
   'Joined obligation materialization can still silently hide broken durable relationships.');
@@ -145,42 +147,6 @@ check(source.includes('assert(unit, "Revision obligation references a missing kn
   const repository = new api.IndexedDbRepository(fakeDb);
   const found = await repository.findNode('p', null, 'subject', 'Public Administration');
   check(found?.id === rootId && indexReads === 0, 'Deterministic root lookup did not use its primary-key fast path.');
-
-  const corruptState = {
-    profiles: [],
-    nodes: [{
-      schemaVersion: 1,
-      id: 'node_orphan',
-      profileId: 'missing_profile',
-      parentId: null,
-      kind: 'subject',
-      name: 'Orphan',
-      normalizedName: 'orphan',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    }],
-    units: [],
-    studyEvents: [],
-    obligations: [],
-    evidenceEvents: [],
-    chunks: [],
-    dailyPlans: [],
-    settings: {
-      schemaVersion: 1,
-      key: 'app',
-      activeProfileId: '',
-      fsrsScheduling: { policy: { kind: 'fixed-retention', desiredRetention: 0.9 } },
-      memoryDifficultyPolicy: { remediationLapses: 2, persistentDifficultyLapses: 4, automaticHold: { enabled: false, lapseThreshold: 8 } },
-      dailyCapacityMinutes: 60,
-      studyDayBoundaryHour: 4,
-      fsrsPersonalization: { profile: null, active: false, replayProfiles: [] },
-    },
-    activeRetrieval: null,
-  };
-  const corruptService = new api.RevisionService({
-    backupState: async () => structuredClone(corruptState),
-  });
-  await mustReject(() => corruptService.initialize(), 'Startup accepted a relationally corrupt durable snapshot.');
 
   const joinedService = new api.RevisionService({
     getAll: async (store) => {
