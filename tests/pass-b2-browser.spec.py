@@ -98,6 +98,12 @@ def active_session(page):
     return session
 
 
+def evidence_events(page):
+    return page.evaluate("""() => {
+      const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
+      return structuredClone((raw?.stores?.evidenceEvents?.records ?? []).map(([,value]) => value));
+    }""")
+
 
 def seed_baseline_state(page) -> None:
     payload = decode_file(BASELINE_BACKUP)
@@ -267,7 +273,15 @@ def main() -> None:
         for index in range(frame.locator("[data-checkpoint]").count()):
             item = frame.locator("[data-checkpoint]").nth(index)
             if not item.is_checked(): item.check()
-        frame.locator('[data-action="rate"][data-rating="3"]').click(); wait(frame, 600)
+        frame.locator('[data-action="rate"][data-rating="3"]').click()
+        wait_until(
+            frame,
+            lambda: len(evidence_events(page)) > 0 or frame.locator("#toast.error.show").count() > 0,
+            timeout=4000,
+        )
+        commit_error = frame.locator("#toast.error.show").inner_text() if frame.locator("#toast.error.show").count() else ""
+        check(not commit_error, f"Review commit failed in browser: {commit_error}")
+        check(len(evidence_events(page)) > 0, "Review rating did not durably commit an Evidence Event")
 
         frame.locator('[data-pane="settings"]').click(); wait(frame, 180)
         with TemporaryDirectory() as tmp:
