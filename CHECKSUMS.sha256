@@ -89,7 +89,7 @@ ea376c42c45dd829aef23d5b709f43ff4494370af73edf924e7590cc893a367d  ./tests/pass-f
 d021d6343f33dcb0bc85d151c4bed0b9768042f3aeb7f5233971df7d9a91ff36  ./tests/planning.spec.js
 95e40fcffebd727171a210fb86eb7fadc311e3ec8e0ccac4d1b3894198a8f330  ./tests/runtime-harness-ownership.spec.js
 6bfbbb4ac5915ef7f9e03a1a7bc6e1aa29c5d7bcdfe749c842e72d5a24f42daa  ./tests/source-ownership.spec.py
-72dbaca3c41c982ea60129522ef6e8b0146823f705183d874ffb60c424971c97  ./tests/stage-b-hostile-recovery.spec.py
+759e7a36fd9b039dcfaff07f5506ddb977a8dd78e4daf7b8d4aba0194a310d61  ./tests/stage-b-hostile-recovery.spec.py
 f7fedb2f577b1130a4328cabfba618851ce2cc08a78513fd5fa787a9470e051f  ./tests/stage-c-behavioural.spec.py
 1b0713d910c13a84343066a181aa48ff701a3e0f151d83e382bbb7f5776e241c  ./tests/stage-c-responsive.spec.py
 0694726071e6300ee1129d0d1bebaa3529568e218fbe1510a88c6ede5f775f11  ./tests/stage-d-data-safety-browser.spec.py
