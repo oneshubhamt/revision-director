@@ -46,7 +46,6 @@ CORE_NODE_PLAN = (
 )
 
 BROWSER_PLAN = (
-    "tests/scenarios/planning-large-dataset.py",
     "tests/scenarios/backup-codec.py",
     "tests/scenarios/backup-restore-controller.py",
     "tests/scenarios/data-safety.py",
@@ -70,6 +69,10 @@ BROWSER_PLAN = (
 
 DEEP_NODE_PLAN = (
     "tests/fsrs-scheduling-experiments.spec.js",
+)
+
+PERFORMANCE_BROWSER_PLAN = (
+    "tests/scenarios/planning-large-dataset.py",
 )
 
 REMOVED_WRAPPERS = (
@@ -186,6 +189,12 @@ def browser() -> None:
             run(sys.executable, path)
 
 
+def performance() -> None:
+    assert_test_topology()
+    for path in PERFORMANCE_BROWSER_PLAN:
+        run(sys.executable, path)
+
+
 def deep() -> None:
     assert_test_topology()
     for path in DEEP_NODE_PLAN:
@@ -198,6 +207,7 @@ def full() -> None:
     optimizer()
     durability()
     browser()
+    performance()
     deep()
 
 
@@ -206,6 +216,7 @@ COMMANDS = {
     "optimizer": optimizer,
     "durability": durability,
     "browser": browser,
+    "performance": performance,
     "deep": deep,
     "full": full,
 }
@@ -214,5 +225,5 @@ if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) == 2 else ""
     action = COMMANDS.get(command)
     if action is None:
-        raise SystemExit("Usage: python3 tests/qa.py {core|optimizer|durability|browser|deep|full}")
+        raise SystemExit("Usage: python3 tests/qa.py {core|optimizer|durability|browser|performance|deep|full}")
     action()
