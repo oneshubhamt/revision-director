@@ -8,7 +8,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_backup_import_result, wait_until
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_until
 sys.path.insert(0,str(ROOT/'tests'))
 base=load_browser_qa('revision_director_backup_restore_controller')
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base.INDEXEDDB_SHIM,1)
@@ -44,7 +44,7 @@ def main():
         accept_dialogs(page)
         page.set_content(HTML,wait_until='load'); wait_for_app_ready(page)
         check(not page.locator('#fatal-error').is_visible(),'Fatal startup error')
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        open_rendered_pane(page, 'settings')
         before=page.locator('#sb-units').inner_text()
         page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
         check(page.locator('#restore-preview').get_by_text('No application data has been changed').count()==1,'Non-mutating inspection message missing')
@@ -54,13 +54,13 @@ def main():
         check(page.locator('#sb-units').inner_text()=='2','Verified restore did not replace records')
         check('verified backup restored' in page.locator('#toast').inner_text().lower(),'Restore success not reported')
         # One-click local export remains simple.
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        open_rendered_pane(page, 'settings')
         with page.expect_download() as info:
             page.locator('[data-action="export-backup"]').click()
         exported=tmp/info.value.suggested_filename;info.value.save_as(str(exported))
         check(exported.suffix=='.rdbackup' and exported.stat().st_size>0,'One-click export failed')
         # Start an unfinished retrieval and export it.
-        page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
+        open_rendered_pane(page, 'today')
         page.locator('[data-action="start-due"]').click(); page.locator('#review-content').wait_for(state='visible')
         attempt=page.locator('#attempt-text')
         if attempt.count():
@@ -72,7 +72,7 @@ def main():
                 interval=40,
                 message='Active retrieval draft did not reach recovery storage before export',
             )
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        open_rendered_pane(page, 'settings')
         with page.expect_download() as active_info:
             page.locator('[data-action="export-backup"]').click()
         active_file=tmp/active_info.value.suggested_filename;active_info.value.save_as(str(active_file))
@@ -92,7 +92,7 @@ def main():
         # Selecting a tampered file must not enter restore ceremony.
         data=bytearray(FIXTURE.read_bytes()); data[-10]^=1
         tampered=tmp/'tampered.rdbackup';tampered.write_bytes(data)
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        open_rendered_pane(page, 'settings')
         wait_until(
             page,
             lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
