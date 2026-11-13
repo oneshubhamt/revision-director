@@ -100,11 +100,12 @@
         assert(unit?.profileId === event.profileId, "Study event links a missing or cross-profile knowledge unit.");
       }
     }
-    const unresolvedRelearningReturnIds = new Set(
-      obligations
-        .filter((item) => item.type === "relearn" && (item.status === "active" || item.status === "suspended") && item.returnObligationId)
-        .map((item) => item.returnObligationId as string),
-    );
+    const unresolvedRelearningReturnIds = new Set<string>();
+    for (const item of obligations) {
+      if (item.type === "relearn" && (item.status === "active" || item.status === "suspended") && item.returnObligationId) {
+        unresolvedRelearningReturnIds.add(item.returnObligationId);
+      }
+    }
     for (const obligation of obligations) {
       const unit = unitMap.get(obligation.unitId);
       assert(unit, "Obligation references a missing unit.");
