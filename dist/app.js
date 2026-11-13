@@ -3803,20 +3803,10 @@
               return this.getOneByIndex(Store.Nodes, "pathLookup", [profileId, parentId, kind, normalized]);
           }
           assert(kind === "subject", "Only subject nodes may exist at the hierarchy root.");
-          const canonicalRootId = await rootKnowledgeNodeId(profileId, normalized);
-          const canonicalRoot = await this.get(Store.Nodes, canonicalRootId);
-          if (canonicalRoot) {
-              assert(canonicalRoot.profileId === profileId && canonicalRoot.parentId === null
-                  && canonicalRoot.kind === kind && canonicalRoot.normalizedName === normalized, "Canonical root-node identity collides with a different knowledge node.");
-              return canonicalRoot;
-          }
-          // Existing clean-slate databases created before deterministic root IDs may
-          // contain one random-ID root subject. Read it without repairing storage;
-          // all newly created root subjects use the deterministic primary key.
-          const legacyRoots = (await this.getByIndex(Store.Nodes, "profileId", profileId))
+          const roots = (await this.getByIndex(Store.Nodes, "profileId", profileId))
               .filter((node) => node.parentId === null && node.kind === kind && node.normalizedName === normalized);
-          assert(legacyRoots.length <= 1, "Knowledge hierarchy contains duplicate root subjects.");
-          return legacyRoots[0];
+          assert(roots.length <= 1, "Knowledge hierarchy contains duplicate root subjects.");
+          return roots[0];
       }
       async getOneByIndex(store, indexName, query) {
           const tx = this.db.transaction(store, "readonly");
