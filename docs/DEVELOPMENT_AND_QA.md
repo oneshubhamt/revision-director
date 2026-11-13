@@ -59,12 +59,16 @@ npm run qa:core
 npm run qa:optimizer
 npm run qa:browser:durability
 npm run qa:browser
+npm run qa:browser:performance
+npm run qa:deep
 npm run qa:full
 ```
 
-`qa:core` performs exactly one authoritative build, verifies `CHECKSUMS.sha256` read-only, checks the build/architecture contract and HTML structure, and runs every non-browser JavaScript regression. `qa:optimizer` exercises the isolated native optimizer runtime. `qa:browser:durability` is the focused phase-time/durability gate. `qa:browser` runs the complete Python/Chromium matrix plus full browser/WASM optimizer training. `qa:full` runs all four surfaces in order. Browser commands require Playwright and Chromium; local hosted-optimizer runs require `npm ci --prefix tools/fsrs-optimizer` and `npm run build:hosted` if the hosted distribution is not already present.
+`qa:core` performs exactly one authoritative build, verifies `CHECKSUMS.sha256` read-only, checks the build/architecture contract and HTML structure, and runs the fast non-browser JavaScript regressions. `qa:optimizer` exercises the isolated native optimizer runtime. `qa:browser:durability` is the focused phase-time/durability gate. `qa:browser` runs the ordinary browser matrix against one parent-owned Chromium process, with isolated Playwright contexts for each scenario and only the fast browser/WASM optimizer probe. `qa:browser:performance` keeps the 1,000-unit large-data journey in its own Chromium process so process state and remote-CDP transport cannot distort the measurement. `qa:deep` owns the long FSRS-R2 scheduling experiment and full browser/WASM optimizer training. `qa:full` runs every tier. Browser commands require Playwright and Chromium; local hosted-optimizer runs require `npm ci --prefix tools/fsrs-optimizer` and `npm run build:hosted` if the hosted distribution is not already present.
 
-The Python browser suite shares stable launch, error-capture, wait and module-loading primitives from `tests/helpers/browser_harness.py`; scenario ordering belongs only to `tests/qa.py`. The reusable persistent IndexedDB shim, host-state access, iframe bootstrapping and safety-copy restore ceremony live in `tests/helpers/persistent_browser.py`. Clock manipulation, hostile-commit injection, broadcast-channel behavior and other scenario-specific shims remain with the scenarios that own them.
+The Python browser suite shares launch, error-capture, readiness, condition-wait, layout and module-loading primitives from `tests/helpers/browser_harness.py`; scenario ordering belongs only to `tests/qa.py`. Ordinary browser scenarios connect over CDP to one Chromium process but receive fresh incognito contexts so cookies, IndexedDB, localStorage and ownership state remain isolated. Tests whose subject is process persistence or performance deliberately opt out: the native IndexedDB journey launches a persistent profile, closes Chromium and relaunches a new process with the same profile, while the large-data performance tier uses its own local Chromium. The reusable mock IndexedDB shim, host-state access, iframe bootstrapping and safety-copy restore ceremony remain in `tests/helpers/persistent_browser.py`.
+
+Fixed wall-clock sleeps are not the normal synchronization primitive. Browser tests should wait for the state that makes the assertion meaningful: visible/hidden UI state, a specific rendered record, IndexedDB persistence, ownership state, evidence publication, or a controlled-clock transition. Real elapsed waits are retained only where elapsed browser time itself is under test, such as timer/durability behavior.
 
 ## Required QA discipline
 
