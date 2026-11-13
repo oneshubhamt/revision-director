@@ -89,7 +89,15 @@ def main():
         search = page.locator("#library-search")
         search.fill("Drainage")
         search.evaluate("e=>e.setSelectionRange(2,6)")
-        wait_until(page, lambda: page.locator(".unit-row").count() >= 1, timeout=3000, interval=40)
+        wait_until(
+            page,
+            lambda: page.locator(".unit-row").count() >= 1
+            and page.evaluate("document.activeElement?.id") == "library-search"
+            and search.evaluate("e=>[e.selectionStart,e.selectionEnd]") == [2,6],
+            timeout=3000,
+            interval=40,
+            message="Render invalidation did not preserve search focus and selection",
+        )
         check(page.evaluate("document.activeElement?.id") == "library-search", "Render invalidation lost search focus")
         selection = search.evaluate("e=>[e.selectionStart,e.selectionEnd]")
         check(selection == [2,6], f"Render invalidation lost text selection: {selection}")
