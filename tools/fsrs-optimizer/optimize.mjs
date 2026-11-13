@@ -5,6 +5,7 @@ import {
  FSRSBinding,computeParameters,convertCsvToFsrsItemsWithCardIds,evaluateWithTimeSeriesSplits
 } from "@open-spaced-repetition/binding";
 import {OptimizerGateRejectedError,optimizeFsrsProfile} from "./optimizer-core.mjs";
+import {OPTIMIZER_CONTRACT} from "./optimizer-policy.mjs";
 
 const args=process.argv.slice(2);
 const [input,output,...flagArgs]=args;
@@ -52,7 +53,10 @@ const progress=stage=>{
 };
 
 const optimizerOptions=(cardIds,stage)=>({
- modelVersion:"FSRS-7",enableShortTerm:true,enableSchedPenalties:true,numRelearningSteps:1,
+ modelVersion:OPTIMIZER_CONTRACT.model,
+ enableShortTerm:OPTIMIZER_CONTRACT.enableShortTerm,
+ enableSchedPenalties:OPTIMIZER_CONTRACT.enableSchedPenalties,
+ numRelearningSteps:OPTIMIZER_CONTRACT.numRelearningSteps,
  cardIds,timeout:pollMs,progress:progress(stage)
 });
 
