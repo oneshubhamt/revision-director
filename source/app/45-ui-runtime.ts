@@ -2,6 +2,54 @@
      PASS C2 · UI RUNTIME, RENDER COORDINATION AND ACCESSIBILITY
      ========================================================================== */
 
+  interface ElementConstructor<T extends Element> {
+    new(): T;
+  }
+
+  function formText(data: FormData, name: string, fallback = ""): string {
+    const value = data.get(name);
+    if (value === null) return fallback;
+    assert(typeof value === "string", `${name} must be text.`);
+    return value;
+  }
+
+  function formNumber(data: FormData, name: string): number {
+    const value = Number(formText(data, name));
+    assert(Number.isFinite(value), `${name} must be a finite number.`);
+    return value;
+  }
+
+  function requiredNamedFormControl<T extends Element>(
+    form: HTMLFormElement,
+    name: string,
+    constructor: ElementConstructor<T>,
+  ): T {
+    const control = form.elements.namedItem(name);
+    assert(control instanceof constructor, `Missing or invalid form control: ${name}.`);
+    return control;
+  }
+
+  function formInput(form: HTMLFormElement, name: string): HTMLInputElement {
+    return requiredNamedFormControl(form, name, HTMLInputElement);
+  }
+
+  function formSelect(form: HTMLFormElement, name: string): HTMLSelectElement {
+    return requiredNamedFormControl(form, name, HTMLSelectElement);
+  }
+
+  function formTextarea(form: HTMLFormElement, name: string): HTMLTextAreaElement {
+    return requiredNamedFormControl(form, name, HTMLTextAreaElement);
+  }
+
+  function escapeHtml(value: unknown): string {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
   type PaneId = "today" | "review" | "library" | "study" | "history" | "settings";
   type RenderDomain = PaneId | "sidebar" | "ownership" | "storage";
   type RenderCallback = () => void | Promise<void>;
