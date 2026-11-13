@@ -112,7 +112,7 @@ async function testMemoryExamHorizon() {
   const memoryObligation = { ...obligation('memory',0,12,'memory-recall'), type:'memory-recall', workflow:{kind:'recall',prompt:'attempt',checkpoints:['one'],responseMedium:'oral'}, policyState:memoryState };
 
   const easyEvidence = {completeness:4,independence:4,application:4,errorTypes:[],correctionNote:''};
-  const easy = memoryPolicy.complete(memoryObligation, api.Rating.Easy, easyEvidence, ref);
+  const easy = memoryPolicy.complete(memoryObligation, api.Rating.Easy, easyEvidence, ref, {memoryReviews:[]});
   const unreviewedExamState = memoryPolicy.createInitialState(easy.dueAt, 'memory-exam');
   const examBoundObligation = {
     ...obligation('memory-exam',0,12,'memory-recall'),
