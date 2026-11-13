@@ -1714,10 +1714,12 @@
           const remaining = new Set(obligationEvents);
           let priorDueAt: ISODateTime | undefined;
           while (remaining.size > 0) {
-            const candidates = [...remaining].filter((event) => intervalStateEqual(event.beforePolicyState, state));
+            const candidates = [...remaining].filter((event) =>
+              intervalStateEqual(event.beforePolicyState, state) &&
+              (priorDueAt === undefined || event.beforeDueAt === priorDueAt)
+            );
             assert(candidates.length === 1, "Non-memory Evidence Event history is disconnected or forked.");
             const event = candidates[0]!;
-            if (priorDueAt !== undefined) assert(event.beforeDueAt === priorDueAt, "Non-memory Evidence Event due-date history is disconnected.");
             state = event.afterPolicyState;
             priorDueAt = event.afterDueAt;
             remaining.delete(event);
