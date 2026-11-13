@@ -180,7 +180,6 @@ def open_html_page(
     html: str,
     *,
     viewport: dict[str, int] | None = None,
-    settle_ms: int = 0,
     default_timeout: int = 10_000,
     include_warnings: bool = False,
     auto_accept_dialogs: bool = True,
@@ -192,6 +191,4 @@ def open_html_page(
         accept_dialogs(page)
     page.set_content(html, wait_until="load")
     wait_for_app_ready(page, timeout=default_timeout)
-    if settle_ms:
-        page.wait_for_timeout(settle_ms)
     return page, errors
