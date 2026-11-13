@@ -27,7 +27,7 @@ class FakeService{
 }
 (async()=>{
  check(api.APP_VERSION==='va7.1-pass-f1','D2 app version wrong');
- check(api.BACKUP_ARCHIVE_VERSION===2&&api.BACKUP_SCHEMA_VERSION===2,'D2 backup version wrong');
+ check(api.BACKUP_ARCHIVE_VERSION===3&&api.BACKUP_SCHEMA_VERSION===2,'D2 backup version wrong');
  const service=new FakeService();const controller=new api.BackupController(service);
  const created=await controller.createVerified(false);
  check(created.inspection.verified&&created.inspection.archiveChecksum.length>=16,'Verified creation failed');
