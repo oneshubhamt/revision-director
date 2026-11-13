@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, costAdrPresetSchedulingPolicy, defaultFsrsSchedulingSettings, FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics, fsrsWeightsFingerprint, fsrsPersonalizationProfileCatalog, verifyHistoricalMemorySchedulerConfigurations };';
+const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, costAdrPresetSchedulingPolicy, defaultFsrsSchedulingSettings, FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics, fsrsWeightsFingerprint, fsrsPersonalizationProfileCatalog, verifyHistoricalMemorySchedulerConfigurations, suggestRating };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -74,7 +74,7 @@ function directEvent(payload, before, completion, rating, reviewedAt, sequence){
     schemaVersion:1,id:'memory-evidence-'+sequence,profileId:unit.profileId,unitId:before.unitId,
     obligationId:before.id,obligationType:'memory-recall',reviewedAt,elapsedMs:600000,
     evidence:ratingEvidence(rating),workflow:'recall',workflowResult:recallResult(rating),
-    suggestedRating:rating,confirmedRating:rating,beforeDueAt:before.dueAt,afterDueAt:completion.dueAt,
+    suggestedRating:api.suggestRating('memory-recall',ratingEvidence(rating)),confirmedRating:rating,beforeDueAt:before.dueAt,afterDueAt:completion.dueAt,
     beforePolicyState:clone(before.policyState),afterPolicyState:clone(completion.policyState),
     policyId:completion.policyId,schedulerPackage:'ts-fsrs',schedulerVersion:'6.0.0',schedulerModel:'FSRS-7',
     schedulerConfig:clone(completion.schedulerConfig),reviewLog:clone(completion.reviewLog),
