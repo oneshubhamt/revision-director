@@ -5,7 +5,7 @@ const { webcrypto } = require('crypto');
 const path = require('path');
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, correctiveMemoryRating, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsConfigSnapshot, validateStoredFsrsCard, defaultMemoryDifficultyPolicy, canonicalMemoryDifficultyPolicy, memoryDifficultyAssessment, memoryDifficultyRemediationPlan, memoryDifficultyActionLabel, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey, validateBackupPayload };';
+const hook = 'window.__RD_TEST_API__ = { suggestRating, objectiveScore, correctiveMemoryRating, workflowEvidence, validateWorkflowResult, validateWorkflowSpec, defaultWorkflowSpec, defaultWorkflowForType, compatibleWorkflows, MasteryPolicy, ApplicationPolicy, PerformancePolicy, RelearnPolicy, FreshnessPolicy, SchedulerPolicyRouter, FsrsMemoryPolicy, RevisionService, UIController, ActiveRetrievalWorkspace, Rating, examinationProximityScore, planningLookaheadDays, examImportanceScore, reviewDurationScore, evidenceWeaknessScore, obligationWeaknessScore, temporalDueRisk, plannerScore, buildPlanningCandidate, choosePlanItems, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsConfigSnapshot, validateStoredFsrsCard, defaultMemoryDifficultyPolicy, canonicalMemoryDifficultyPolicy, memoryDifficultyAssessment, memoryDifficultyRemediationPlan, memoryDifficultyActionLabel, daysToExamination, durationObservationFor, weeklySubjectBalanceScores, createAutomaticChunks, interleaveSelected, planItemKey, validateBackupPayload };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 
@@ -263,7 +263,7 @@ const router = new api.SchedulerPolicyRouter(() => fixed(.9));
 for (const type of ['memory-recall','concept-reconstruction','application-practice','performance-practice','relearn','freshness-review']) check(router.get(type).type === type, `Router missing ${type}`);
 
 // Workflow UI surfaces are distinct rather than one generic rubric.
-const ui = Object.create(api.UIController.prototype);
+const ui = Object.create(api.ActiveRetrievalWorkspace.prototype);
 ui.reviewPreviews = [{rating:1,label:'1d'},{rating:2,label:'2d'},{rating:3,label:'3d'},{rating:4,label:'8d'}];
 const uiMemoryPolicy = {
   createInitialState(firstDueAt, cardId) {
