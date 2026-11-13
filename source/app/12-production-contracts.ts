@@ -253,36 +253,68 @@
     assertDocumentSchema(value, "Daily plan");
     assertExactKeys(value, "Daily plan", ["schemaVersion", "id", "studyDayKey", "createdAt", "updatedAt", "plannerVersion", "versions", "outcomes"]);
     validateCalendarDate(value.studyDayKey, "Daily plan study day");
-    const plan = clone(value);
-    plan.schemaVersion = DOCUMENT_SCHEMA_VERSION;
-    plan.id = canonicalId(plan.id, "Daily-plan ID");
-    plan.createdAt = canonicalIso(plan.createdAt, "Daily-plan creation date");
-    plan.updatedAt = canonicalIso(plan.updatedAt, "Daily-plan update date");
-    plan.plannerVersion = canonicalId(plan.plannerVersion, "Daily-plan planner version");
-    plan.versions = plan.versions.map((version) => ({
-      ...version,
-      generatedAt: canonicalIso(version.generatedAt, "Daily-plan version date"),
-      items: version.items.map((item) => ({
-        ...item,
-        key: canonicalId(item.key, "Daily-plan item key"),
-        obligationId: canonicalId(item.obligationId, "Daily-plan obligation ID"),
-        ...(item.chunkId !== undefined ? { chunkId: canonicalId(item.chunkId, "Daily-plan chunk ID") } : {}),
-        profileId: canonicalId(item.profileId, "Daily-plan profile ID"),
-        unitId: canonicalId(item.unitId, "Daily-plan unit ID"),
-        subject: canonicalName(item.subject, "Daily-plan subject", 500),
-        title: canonicalName(item.title, "Daily-plan title", 500),
-        reasons: item.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500)),
-      })),
-    }));
-    plan.outcomes = plan.outcomes.map((outcome) => ({
-      ...outcome,
-      itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
-      ...(outcome.startedAt !== undefined ? { startedAt: canonicalIso(outcome.startedAt, "Daily-plan start date") } : {}),
-      ...(outcome.completedAt !== undefined ? { completedAt: canonicalIso(outcome.completedAt, "Daily-plan completion date") } : {}),
-      ...(outcome.evidenceEventId !== undefined ? { evidenceEventId: canonicalId(outcome.evidenceEventId, "Daily-plan evidence ID") } : {}),
-      ...(outcome.note !== undefined ? { note: canonicalText(outcome.note, "Daily-plan outcome note") } : {}),
-    }));
-    return plan;
+    assert(Array.isArray(value.versions) && value.versions.length > 0, "Daily plan requires at least one version.");
+    assert(Array.isArray(value.outcomes), "Daily plan outcomes must be an array.");
+    const versions = value.versions.map((version) => {
+      assertExactKeys(version, "Daily-plan version", ["version", "generatedAt", "capacityMinutes", "items", "reason"]);
+      assert(Number.isSafeInteger(version.version) && version.version >= 1, "Daily-plan version number is invalid.");
+      assert(Number.isSafeInteger(version.capacityMinutes) && version.capacityMinutes >= 5 && version.capacityMinutes <= 600, "Daily-plan version capacity is invalid.");
+      assert(["initial", "manual-regeneration", "data-change", "manual-addition"].includes(version.reason), "Daily-plan version reason is invalid.");
+      assert(Array.isArray(version.items), "Daily-plan version items must be an array.");
+      const items = version.items.map((item) => {
+        assertExactKeys(item, "Daily-plan item", ["key", "obligationId", "chunkId", "profileId", "unitId", "subject", "workflow", "title", "estimatedMinutes", "score", "disposition", "reasons"]);
+        assert(RETRIEVAL_WORKFLOWS.includes(item.workflow), "Daily-plan item workflow is invalid.");
+        assert(typeof item.estimatedMinutes === "number" && Number.isFinite(item.estimatedMinutes) && item.estimatedMinutes >= 1 && item.estimatedMinutes <= 240, "Daily-plan item duration is invalid.");
+        assert(typeof item.score === "number" && Number.isFinite(item.score), "Daily-plan item score is invalid.");
+        assert(["selected", "required-overrun", "must-split", "deferred"].includes(item.disposition), "Daily-plan item disposition is invalid.");
+        assert(Array.isArray(item.reasons), "Daily-plan item reasons must be an array.");
+        return {
+          key: canonicalId(item.key, "Daily-plan item key"),
+          obligationId: canonicalId(item.obligationId, "Daily-plan obligation ID"),
+          ...(item.chunkId !== undefined ? { chunkId: canonicalId(item.chunkId, "Daily-plan chunk ID") } : {}),
+          profileId: canonicalId(item.profileId, "Daily-plan profile ID"),
+          unitId: canonicalId(item.unitId, "Daily-plan unit ID"),
+          subject: canonicalName(item.subject, "Daily-plan subject", 500),
+          workflow: item.workflow,
+          title: canonicalName(item.title, "Daily-plan title", 500),
+          estimatedMinutes: item.estimatedMinutes,
+          score: item.score,
+          disposition: item.disposition,
+          reasons: item.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500)),
+        } satisfies DailyPlanItemSnapshot;
+      });
+      return {
+        version: version.version,
+        generatedAt: canonicalIso(version.generatedAt, "Daily-plan version date"),
+        capacityMinutes: version.capacityMinutes,
+        items,
+        reason: version.reason,
+      } satisfies DailyPlanVersion;
+    });
+    const outcomes = value.outcomes.map((outcome) => {
+      assertExactKeys(outcome, "Daily-plan outcome", ["itemKey", "status", "startedAt", "completedAt", "actualMinutes", "evidenceEventId", "note"]);
+      assert(["planned", "started", "completed", "skipped"].includes(outcome.status), "Daily-plan outcome status is invalid.");
+      if (outcome.actualMinutes !== undefined) assert(typeof outcome.actualMinutes === "number" && Number.isFinite(outcome.actualMinutes) && outcome.actualMinutes >= 0 && outcome.actualMinutes <= 10_080, "Daily-plan actual duration is invalid.");
+      return {
+        itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
+        status: outcome.status,
+        ...(outcome.startedAt !== undefined ? { startedAt: canonicalIso(outcome.startedAt, "Daily-plan start date") } : {}),
+        ...(outcome.completedAt !== undefined ? { completedAt: canonicalIso(outcome.completedAt, "Daily-plan completion date") } : {}),
+        ...(outcome.actualMinutes !== undefined ? { actualMinutes: outcome.actualMinutes } : {}),
+        ...(outcome.evidenceEventId !== undefined ? { evidenceEventId: canonicalId(outcome.evidenceEventId, "Daily-plan evidence ID") } : {}),
+        ...(outcome.note !== undefined ? { note: canonicalText(outcome.note, "Daily-plan outcome note") } : {}),
+      } satisfies DailyPlanOutcome;
+    });
+    return {
+      schemaVersion: DOCUMENT_SCHEMA_VERSION,
+      id: canonicalId(value.id, "Daily-plan ID"),
+      studyDayKey: value.studyDayKey,
+      createdAt: canonicalIso(value.createdAt, "Daily-plan creation date"),
+      updatedAt: canonicalIso(value.updatedAt, "Daily-plan update date"),
+      plannerVersion: canonicalId(value.plannerVersion, "Daily-plan planner version"),
+      versions,
+      outcomes,
+    };
   }
 
   function canonicalAppSettings(value: AppSettings): AppSettings {
@@ -351,7 +383,8 @@
     };
     const ignoredGapMs = bounded(value.ignoredGapMs, "Ignored gap time");
     assert(Array.isArray(value.reliabilityFlags), "Timing reliability flags are required.");
-    const reliabilityFlags = [...new Set(value.reliabilityFlags)];
+    const reliabilityFlags = [...value.reliabilityFlags];
+    assert(new Set(reliabilityFlags).size === reliabilityFlags.length, "Timing reliability flags cannot contain duplicates.");
     for (const flag of reliabilityFlags) assert(flag === "ignored-gap" || flag === "backward-clock", "Timing reliability flag is invalid.");
     assert((ignoredGapMs > 0) === reliabilityFlags.includes("ignored-gap"), "Ignored-gap reliability flag is inconsistent.");
     const backwardClockCount = count(value.backwardClockCount, "Backward-clock count");
@@ -362,13 +395,13 @@
     return {
       totalActiveMs,
       activeByPhase,
-      pauseMs: bounded(Number(value.pauseMs), "Pause time"),
-      pauseCount: count(Number(value.pauseCount), "Pause count"),
-      inactiveGapCount: count(Number(value.inactiveGapCount), "Inactive-gap count"),
-      classifiedFocusMs: bounded(Number(value.classifiedFocusMs), "Classified focus time"),
-      classifiedBreakMs: bounded(Number(value.classifiedBreakMs), "Classified break time"),
+      pauseMs: bounded(value.pauseMs, "Pause time"),
+      pauseCount: count(value.pauseCount, "Pause count"),
+      inactiveGapCount: count(value.inactiveGapCount, "Inactive-gap count"),
+      classifiedFocusMs: bounded(value.classifiedFocusMs, "Classified focus time"),
+      classifiedBreakMs: bounded(value.classifiedBreakMs, "Classified break time"),
       ignoredGapMs,
-      promptExcludedMs: bounded(Number(value.promptExcludedMs), "Gap prompt time"),
+      promptExcludedMs: bounded(value.promptExcludedMs, "Gap prompt time"),
       backwardClockCount,
       ...(value.sourceRevealAt !== undefined ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
       durationReliable,
@@ -400,8 +433,9 @@
       assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= maximum, `${label} is invalid.`);
       return Math.round(raw);
     };
-    assert(Array.isArray(value.pauseHistory), "Pause history is required.");
-    const pauseHistory = value.pauseHistory.slice(-TIME_HISTORY_LIMIT).map((pause) => {
+    assert(Array.isArray(value.pauseHistory) && value.pauseHistory.length <= TIME_HISTORY_LIMIT, "Pause history is invalid or exceeds its canonical bound.");
+    const pauseHistory = value.pauseHistory.map((pause) => {
+      assertExactKeys(pause, "Pause record", ["id", "reason", "phase", "startedAt", "endedAt", "durationMs"]);
       assert(["manual", "inactive-gap-break", "classification-prompt"].includes(pause.reason), "Pause reason is invalid.");
       const startedAt = canonicalIso(pause.startedAt, "Pause start date");
       const endedAt = canonicalIso(pause.endedAt, "Pause end date");
@@ -409,14 +443,16 @@
       assert(Date.parse(endedAt) >= Date.parse(startedAt), "Pause end precedes its start.");
       return { id: canonicalId(pause.id, "Pause ID"), reason: pause.reason, phase: canonicalReviewPhase(pause.phase), startedAt, endedAt, durationMs };
     });
-    assert(Array.isArray(value.phaseHistory), "Phase history is required.");
-    const phaseHistory = value.phaseHistory.slice(-TIME_HISTORY_LIMIT).map((transition) => {
+    assert(Array.isArray(value.phaseHistory) && value.phaseHistory.length <= TIME_HISTORY_LIMIT, "Phase history is invalid or exceeds its canonical bound.");
+    const phaseHistory = value.phaseHistory.map((transition) => {
+      assertExactKeys(transition, "Phase transition", ["from", "to", "at", "sourceVisible", "reason"]);
       assert(["source-reveal", "begin-verification", "verification-reveal", "queue-advance"].includes(transition.reason), "Phase transition reason is invalid.");
       assert(typeof transition.sourceVisible === "boolean", "Phase-transition source visibility is invalid.");
       return { from: canonicalReviewPhase(transition.from), to: canonicalReviewPhase(transition.to), at: canonicalIso(transition.at, "Phase transition date"), sourceVisible: transition.sourceVisible, reason: transition.reason };
     });
-    assert(Array.isArray(value.gapHistory), "Inactive-gap history is required.");
-    const gapHistory = value.gapHistory.slice(-TIME_HISTORY_LIMIT).map((gap) => {
+    assert(Array.isArray(value.gapHistory) && value.gapHistory.length <= TIME_HISTORY_LIMIT, "Inactive-gap history is invalid or exceeds its canonical bound.");
+    const gapHistory = value.gapHistory.map((gap) => {
+      assertExactKeys(gap, "Inactive-gap record", ["id", "phase", "source", "detectedAt", "resolvedAt", "gapMs", "classification", "focusMs", "breakMs", "ignoredMs", "promptMs"]);
       assert(["focus", "break", "split", "ignore"].includes(gap.classification), "Inactive-gap classification is invalid.");
       assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(gap.source), "Inactive-gap source is invalid.");
       const gapMs = boundedRuntimeMs(gap.gapMs, "Inactive-gap duration");
@@ -431,6 +467,7 @@
     });
     let pendingGap: PendingInactiveGap | undefined;
     if (value.pendingGap) {
+      assertExactKeys(value.pendingGap, "Pending inactive gap", ["id", "phase", "source", "lastReliableAt", "detectedAt", "gapMs"]);
       assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(value.pendingGap.source), "Pending-gap source is invalid.");
       const lastReliableAt = canonicalIso(value.pendingGap.lastReliableAt, "Pending-gap reliable date");
       const detectedAt = canonicalIso(value.pendingGap.detectedAt, "Pending-gap detection date");
@@ -471,23 +508,31 @@
     assert(value.values && typeof value.values === "object" && !Array.isArray(value.values), "Review field values are required.");
     assert(value.checked && typeof value.checked === "object" && !Array.isArray(value.checked), "Review check state is required.");
     assert(Array.isArray(value.diagramStrokes), "Review diagram strokes are required.");
+    const valueEntries = Object.entries(value.values);
+    assert(valueEntries.length <= 96, "Review field set exceeds its canonical bound.");
     const values: Record<string, string> = {};
-    for (const [rawKey, rawValue] of Object.entries(value.values).slice(0, 96)) {
+    for (const [rawKey, rawValue] of valueEntries) {
       const key = canonicalId(rawKey, "Review field ID");
-      assert(typeof rawValue === "string", "Review field value is invalid.");
-      values[key] = rawValue.slice(0, 20_000);
+      assert(typeof rawValue === "string" && rawValue.length <= 20_000, "Review field value is invalid or too long.");
+      values[key] = rawValue;
     }
+    const checkedEntries = Object.entries(value.checked);
+    assert(checkedEntries.length <= 128, "Review check set exceeds its canonical bound.");
     const checked: Record<string, boolean> = {};
-    for (const [rawKey, rawValue] of Object.entries(value.checked).slice(0, 128)) {
+    for (const [rawKey, rawValue] of checkedEntries) {
       const key = canonicalId(rawKey, "Review check ID");
       assert(typeof rawValue === "boolean", "Review check value is invalid.");
       checked[key] = rawValue;
     }
-    const diagramStrokes = value.diagramStrokes.slice(0, 256).map((stroke) => {
-      assert(Array.isArray(stroke), "Diagram stroke is invalid.");
-      return stroke.slice(0, 2_000).map((point) => {
-        assert(point && typeof point === "object" && Number.isFinite(point.x) && Number.isFinite(point.y), "Diagram point is invalid.");
-        return { x: roundTo(clamp(point.x, 0, 1), 6), y: roundTo(clamp(point.y, 0, 1), 6) };
+    assert(value.diagramStrokes.length <= 256, "Review diagram exceeds its canonical stroke bound.");
+    const diagramStrokes = value.diagramStrokes.map((stroke) => {
+      assert(Array.isArray(stroke) && stroke.length <= 2_000, "Diagram stroke is invalid or exceeds its canonical point bound.");
+      return stroke.map((point) => {
+        assert(point && typeof point === "object" && !Array.isArray(point), "Diagram point is invalid.");
+        assertExactKeys(point, "Diagram point", ["x", "y"]);
+        assert(typeof point.x === "number" && Number.isFinite(point.x) && point.x >= 0 && point.x <= 1
+          && typeof point.y === "number" && Number.isFinite(point.y) && point.y >= 0 && point.y <= 1, "Diagram point is outside the canonical canvas.");
+        return { x: roundTo(point.x, 6), y: roundTo(point.y, 6) };
       });
     });
     assert(Number.isFinite(value.attemptElapsedMs) && value.attemptElapsedMs >= 0 && value.attemptElapsedMs <= 7 * DAY_MS, "Attempt duration is invalid.");
@@ -500,8 +545,9 @@
     assert(value.id === ACTIVE_RETRIEVAL_ID, "Active retrieval session ID is invalid.");
     assert(["active", "committing", "completed"].includes(value.status), "Active retrieval status is invalid.");
     assert(Number.isSafeInteger(value.revision) && value.revision >= 1, "Active retrieval revision is invalid.");
-    assert(Array.isArray(value.queueTargetIds), "Active retrieval queue is required.");
-    const queueTargetIds = [...new Set(value.queueTargetIds.slice(0, 500).map((id) => canonicalId(id, "Review target ID")))];
+    assert(Array.isArray(value.queueTargetIds) && value.queueTargetIds.length <= 500, "Active retrieval queue is invalid or exceeds its canonical bound.");
+    const queueTargetIds = value.queueTargetIds.map((id) => canonicalId(id, "Review target ID"));
+    assert(new Set(queueTargetIds).size === queueTargetIds.length, "Active retrieval queue cannot contain duplicate targets.");
     assert(Number.isInteger(value.activeIndex) && value.activeIndex >= 0 && value.activeIndex <= queueTargetIds.length, "Active retrieval index is invalid.");
     assert(typeof value.activeTargetId === "string", "Active retrieval target ID must be a string.");
     const activeTargetId = value.status === "completed" ? value.activeTargetId : canonicalId(value.activeTargetId, "Active review target ID");
@@ -512,8 +558,11 @@
       assert(queueTargetIds[value.activeIndex] === activeTargetId, "Active retrieval target does not match its queue.");
     }
     const commitToken = value.commitToken === undefined ? undefined : canonicalId(value.commitToken, "Active retrieval commit token");
-    if (value.status === "committing") assert(commitToken, "A committing retrieval requires a commit token.");
+    if (value.status === "active") assert(commitToken === undefined, "An active retrieval cannot retain a commit token.");
+    else assert(commitToken !== undefined, "Committing and completed retrieval states require a commit token.");
     const phase = canonicalReviewPhase(value.phase);
+    const draft = canonicalReviewDraftSnapshot(value.draft);
+    assert(draft.phase === phase, "Active retrieval draft phase differs from its session phase.");
     const timeRuntime = canonicalPhaseTimeRuntimeSnapshot(value.timeRuntime);
     assert(timeRuntime.currentPhase === phase, "Active retrieval phase and timer phase differ.");
     const elapsedMs = Object.values(timeRuntime.activeByPhase).reduce((sum, amount) => sum + amount, 0);
@@ -527,7 +576,7 @@
       activeIndex: value.activeIndex,
       activeTargetId,
       phase,
-      draft: canonicalReviewDraftSnapshot(value.draft),
+      draft,
       timeRuntime,
       elapsedMs,
       startedAt: canonicalIso(value.startedAt, "Active retrieval start date"),
