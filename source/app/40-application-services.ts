@@ -1520,6 +1520,10 @@
         assert(event.workflow === obligation.workflow.kind, "Evidence workflow does not match the obligation.");
         validateWorkflowResult(event.workflowResult, event.workflow);
         validRatingValue(event.suggestedRating, "Evidence event"); validRatingValue(event.confirmedRating, "Evidence event");
+        assert(event.suggestedRating === suggestRating(event.obligationType, event.evidence), "Evidence suggested rating does not match its objective evidence.");
+        if (event.obligationType === "relearn") {
+          assert(event.confirmedRating === correctiveMemoryRating(event.confirmedRating, event.evidence), "Relearning confirmed rating is incompatible with its closed-book evidence.");
+        }
         assert(event.beforePolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType] && event.afterPolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType], "Evidence policy states do not match the obligation type.");
         if (event.followUpObligationId) {
           const followUp = obligationMap.get(event.followUpObligationId);
@@ -1559,7 +1563,12 @@
           );
         }
         if (event.obligationType === "memory-recall") {
+          assert(event.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Memory evidence policy provenance is invalid.");
           assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION && event.schedulerModel === FSRS_MODEL, "Memory evidence lacks exact FSRS-7 provenance.");
+          const beforeCard = event.beforePolicyState.fsrsCard;
+          const afterCard = event.afterPolicyState.fsrsCard;
+          assert(beforeCard && afterCard, "Memory evidence lacks FSRS card state.");
+          assert(event.beforeDueAt === beforeCard.dueAt && event.afterDueAt === afterCard.dueAt, "Memory evidence due dates do not match its FSRS card transition.");
           const config = event.schedulerConfig;
           assert(config, "Memory evidence lacks scheduler configuration.");
           validateFsrsConfigSnapshot(config);
@@ -1586,6 +1595,11 @@
             assert(state.fsrsCard.cardId === corrective.obligationId, "Corrective-memory card identity is invalid.");
             requiredFsrs7StabilityFast(state.fsrsCard.stabilityFast);
           }
+          assert(
+            corrective.beforeDueAt === corrective.beforePolicyState.fsrsCard!.dueAt &&
+            corrective.afterDueAt === corrective.afterPolicyState.fsrsCard!.dueAt,
+            "Corrective-memory due dates do not match its FSRS card transition.",
+          );
         }
       }
       for (const obligation of obligations) {
