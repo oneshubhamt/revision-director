@@ -6,13 +6,6 @@ import shutil
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "dist/app.js").read_text().replace(
-    "void boot();",
-    "window.__RD_F1_RELIABILITY__={readwriteTransaction};",
-    1,
-)
-VENDOR = (ROOT / "vendor/ts-fsrs-6.0.0/index.umd.js").read_text()
-
 
 def main() -> None:
     chromium = os.environ.get("CHROMIUM_EXECUTABLE") or shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
@@ -28,19 +21,14 @@ def main() -> None:
             lambda route: route.fulfill(status=200, content_type="text/html", body="<html><body></body></html>"),
         )
         page.goto("http://revision-director.test/", wait_until="load")
-        page.add_script_tag(content=VENDOR)
-        page.add_script_tag(content=APP)
         result = page.evaluate("""async () => {
-          if (typeof window.__RD_F1_RELIABILITY__?.readwriteTransaction !== "function") {
-            throw new Error("Reliability test hook missing");
-          }
           const request=indexedDB.open("revision-director-durability-probe",1);
           const db=await new Promise((resolve,reject)=>{
             request.onupgradeneeded=()=>request.result.createObjectStore("probe");
             request.onsuccess=()=>resolve(request.result);
             request.onerror=()=>reject(request.error);
           });
-          const strict=window.__RD_F1_RELIABILITY__.readwriteTransaction(db,"probe","strict");
+          const strict=db.transaction("probe","readwrite",{durability:"strict"});
           strict.objectStore("probe").put({ok:true},"strict");
           const strictHint=strict.durability;
           await new Promise((resolve,reject)=>{
@@ -48,7 +36,7 @@ def main() -> None:
             strict.onabort=()=>reject(strict.error ?? new Error("strict transaction aborted"));
             strict.onerror=()=>reject(strict.error ?? new Error("strict transaction failed"));
           });
-          const ordinary=window.__RD_F1_RELIABILITY__.readwriteTransaction(db,"probe");
+          const ordinary=db.transaction("probe","readwrite");
           ordinary.objectStore("probe").put({ok:true},"default");
           const ordinaryHint=ordinary.durability;
           await new Promise((resolve,reject)=>{
