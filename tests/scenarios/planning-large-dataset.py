@@ -34,7 +34,7 @@ def open_page(browser, viewport=None, *, baseline=True):
         include_warnings=True,
     )
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup')
-    page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+    open_rendered_pane(page, 'settings')
     shared_wait_until(
         page,
         lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
