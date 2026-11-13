@@ -22,6 +22,22 @@ def check(v,m):
     global checks; checks+=1
     if not v: raise AssertionError(m)
 
+def open_restore_preview(page, path: Path) -> None:
+    wait_until(
+        page,
+        lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
+        and page.locator('#import-backup').is_enabled(),
+        timeout=5000,
+        interval=40,
+        message='Restore surface did not settle into mutable primary state',
+    )
+    page.evaluate("document.querySelector('#toast').textContent=''")
+    page.locator('#import-backup').set_input_files([])
+    page.locator('#import-backup').set_input_files(str(path))
+    result=wait_for_backup_import_result(page, timeout=8000)
+    check(bool(result['preview']), f"Verified backup did not open restore preview · result={result!r}")
+
+
 def safety_download(page,tmp:Path):
     with page.expect_download() as info:
         page.locator('[data-action="create-restore-safety"]').click()
@@ -107,7 +123,7 @@ def main():
 
         # Inspection is non-mutating, cancellable, and the same file can be selected again.
         before=page.locator('#sb-units').inner_text()
-        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
+        open_restore_preview(page, FIXTURE)
         check(page.locator('#restore-dialog').is_visible(),'Import selection did not open preview')
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated local records')
         preview=page.locator('#restore-preview').inner_text()
@@ -118,7 +134,7 @@ def main():
         page.get_by_role('button',name='CANCEL',exact=True).click(); page.locator('#restore-dialog').wait_for(state='hidden')
         check(not page.locator('#restore-dialog').is_visible(),'Cancel did not close restore preview')
         check(page.locator('#sb-units').inner_text()==before,'Cancel mutated data')
-        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
+        open_restore_preview(page, FIXTURE)
         check(page.locator('#restore-dialog').is_visible(),'Same backup could not be reselected after cancellation')
 
         safety=safety_download(page,tmp)
@@ -137,7 +153,7 @@ def main():
         attempt.fill('Stage D safety copy live draft')
         wait_until(page, lambda: 'Stage D safety copy live draft' in (page.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") or ''), timeout=5000, interval=40, message='Live draft did not reach emergency recovery')
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
+        open_restore_preview(page, FIXTURE)
         active_safety=safety_download(page,tmp)
         active_safety_payload=decode_file(active_safety)
         check(active_safety_payload['activeRetrieval'] is not None,'Current-state safety copy omitted unfinished retrieval')
@@ -148,29 +164,7 @@ def main():
 
         # The saved active-session backup requires explicit restore/discard treatment.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        wait_until(
-            page,
-            lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
-            and page.locator('#import-backup').is_enabled(),
-            timeout=5000,
-            interval=40,
-            message='Restore surface did not return to mutable primary state',
-        )
-        page.locator('#import-backup').set_input_files([])
-        page.locator('#import-backup').set_input_files(str(active_safety))
-        wait_until(
-            page,
-            lambda: page.locator('#restore-dialog').is_visible()
-            or page.locator('#import-backup').evaluate('e=>e.value') == '',
-            timeout=8000,
-            interval=40,
-            message='Active-session backup import handler did not finish',
-        )
-        if not page.locator('#restore-dialog').is_visible():
-            raise AssertionError(
-                f"Active-session safety backup was rejected · ownership={page.evaluate('document.documentElement.dataset.reviewOwnership')!r} · "
-                f"enabled={page.locator('#import-backup').is_enabled()} · toast={page.locator('#toast').inner_text()!r}"
-            )
+        open_restore_preview(page, active_safety)
         check(page.locator('input[name="restore-active-treatment"]').count()==2,'Active-session treatment choices are missing')
         active_restore_safety=safety_download(page,tmp)
         confirm_restore(page,treatment='restore')
@@ -179,14 +173,14 @@ def main():
 
         # Reimport the same active backup and explicitly discard its session.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(active_safety)); page.locator('#restore-dialog').wait_for(state='visible')
+        open_restore_preview(page, active_safety)
         discard_safety=safety_download(page,tmp)
         confirm_restore(page,treatment='discard')
         check(page.evaluate('(k)=>localStorage.getItem(k)',RECOVERY_KEY) is None,'Discard treatment retained emergency active session')
 
         # Corrupt current relational state after inspection: the controller must provide a forensic rescue, not deadlock.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
+        open_restore_preview(page, FIXTURE)
         page.evaluate("""async()=>{const db=await new Promise((res,rej)=>{const r=indexedDB.open('revision-director',1);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});await new Promise((res,rej)=>{const tx=db.transaction(['profiles'],'readwrite');tx.objectStore('profiles').put({schemaVersion:1,id:'corrupt-profile'});tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});}""")
         rescue=safety_download(page,tmp)
         check(rescue.suffix=='.rdrescue','Corrupted state did not create .rdrescue')
