@@ -6,7 +6,7 @@ const { webcrypto } = require('crypto');
 
 const root = path.resolve(__dirname, '..');
 let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_D_QA__ = { RevisionService, MasteryPolicy, createAutomaticChunks, weeklySubjectBalanceScores, interleaveSelected, planItemKey, subjectBalanceKey };';
+const hook = 'window.__RD_D_QA__ = { RevisionService, MasteryPolicy, createAutomaticChunks, weeklySubjectBalanceScores, interleaveSelected, planItemKey, subjectBalanceKey, validateBackupPayload };';
 if (!source.includes('void boot();')) throw new Error('Boot marker missing');
 source = source.replace('void boot();', hook);
 const vendor = fs.readFileSync(path.join(root, 'vendor/ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
@@ -31,7 +31,6 @@ const nodes = [
 const unit = { schemaVersion:1, id:'u', profileId:'p', topicNodeId:'t', title:'Unit', scope:'Scope', source:'Source', importance:3, status:'active', createdAt:now, updatedAt:now, evidenceCount:0, lapseCount:0 };
 const settings = { schemaVersion:1, key:'app', activeProfileId:'p', fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}}, memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}}, dailyCapacityMinutes:60, studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]} };
 const validBackup = { format:'revision-director-backup', schemaVersion:2, exportedAt:now, appVersion:'va7.1-pass-f1', profiles:[profile], nodes, units:[unit], studyEvents:[], obligations:[baseObligation], evidenceEvents:[], chunks:[], dailyPlans:[], settings, activeRetrieval:null };
-const validator = new api.RevisionService({});
 
 // Exhaustive bounded split conservation across the entire supported duration/capacity domain.
 for (let capacity = 5; capacity <= 239; capacity += 1) {
@@ -114,22 +113,22 @@ async function reflowChecks() {
 // Strict backup validation for all Pass D records.
 const evidence = { schemaVersion:1, id:'e', profileId:'p', unitId:'u', obligationId:'o', obligationType:'concept-reconstruction', reviewedAt:now, elapsedMs:15*60000, evidence:{completeness:3,independence:3,application:3,errorTypes:[],correctionNote:''}, workflow:'reconstruction', workflowResult:{kind:'reconstruction',responseMedium:'in-app',attemptText:'Valid attempt',shape:'outline',checkpointTotal:2,checkpointsMet:2,structuralAccuracy:3,relationshipAccuracy:3,cueLevel:'none'}, suggestedRating:3, confirmedRating:3, beforeDueAt:now, afterDueAt:now, beforePolicyState:baseObligation.policyState, afterPolicyState:baseObligation.policyState, policyId:'concept-mastery/v1', durationObservation:{plannedMinutes:15,actualMinutes:15,accepted:true,reason:'accepted',estimateBefore:15,estimateAfter:15,exactSamples:1,unitWorkflowSamples:0,globalWorkflowSamples:0}, timing:{totalActiveMs:15*60000,activeByPhase:{attempt:15*60000,compare:0,'relearn-repair':0,'relearn-verify':0},pauseMs:0,pauseCount:0,inactiveGapCount:0,classifiedFocusMs:0,classifiedBreakMs:0,ignoredGapMs:0,promptExcludedMs:0,backwardClockCount:0,durationReliable:true,reliabilityFlags:[]}, createdAt:now };
 const evidenceBackup = {...validBackup, units:[{...unit,evidenceCount:1}], obligations:[{...baseObligation,durationSampleCount:1}], evidenceEvents:[evidence]};
-check(validator.validateBackup(evidenceBackup).evidenceEvents.length === 1, 'Valid duration evidence must pass strict validation');
-mustFail(()=>validator.validateBackup({...evidenceBackup,evidenceEvents:[{...evidence,durationObservation:{...evidence.durationObservation,accepted:'yes'}}]}),'Non-boolean duration acceptance must fail');
-mustFail(()=>validator.validateBackup({...evidenceBackup,evidenceEvents:[{...evidence,durationObservation:{...evidence.durationObservation,actualMinutes:-1}}]}),'Negative duration observations must fail');
-mustFail(()=>validator.validateBackup({...evidenceBackup,obligations:[{...baseObligation,durationSampleCount:0}]}),'Duration sample counters must match accepted history');
+check(api.validateBackupPayload(evidenceBackup).evidenceEvents.length === 1, 'Valid duration evidence must pass strict validation');
+mustFail(()=>api.validateBackupPayload({...evidenceBackup,evidenceEvents:[{...evidence,durationObservation:{...evidence.durationObservation,accepted:'yes'}}]}),'Non-boolean duration acceptance must fail');
+mustFail(()=>api.validateBackupPayload({...evidenceBackup,evidenceEvents:[{...evidence,durationObservation:{...evidence.durationObservation,actualMinutes:-1}}]}),'Negative duration observations must fail');
+mustFail(()=>api.validateBackupPayload({...evidenceBackup,obligations:[{...baseObligation,durationSampleCount:0}]}),'Duration sample counters must match accepted history');
 
 const planItem = { key:'o', obligationId:'o', profileId:'p', unitId:'u', subject:'Subject', workflow:'reconstruction', title:'Unit', estimatedMinutes:15, score:70, disposition:'selected', reasons:[] };
 const dailyPlan = { schemaVersion:1, id:'d', studyDayKey:'2026-07-25', createdAt:now, updatedAt:now, plannerVersion:'pass-d-2', versions:[{version:1,generatedAt:now,capacityMinutes:60,items:[planItem],reason:'initial'}], outcomes:[{itemKey:'o',status:'completed',startedAt:now,completedAt:now,actualMinutes:15,evidenceEventId:'e'}] };
 const planBackup = {...evidenceBackup,dailyPlans:[dailyPlan]};
-check(validator.validateBackup(planBackup).dailyPlans.length === 1, 'Valid persisted daily plan must pass strict validation');
-mustFail(()=>validator.validateBackup({...planBackup,dailyPlans:[{...dailyPlan,studyDayKey:'2026-02-31'}]}),'Impossible daily-plan dates must fail');
-mustFail(()=>validator.validateBackup({...planBackup,dailyPlans:[{...dailyPlan,versions:[{...dailyPlan.versions[0],capacityMinutes:-1}]}]}),'Invalid plan capacity must fail');
-mustFail(()=>validator.validateBackup({...planBackup,dailyPlans:[{...dailyPlan,versions:[{...dailyPlan.versions[0],items:[{...planItem,disposition:'evil'}]}]}]}),'Invalid plan disposition must fail');
-mustFail(()=>validator.validateBackup({...planBackup,dailyPlans:[{...dailyPlan,versions:[{...dailyPlan.versions[0],items:[{...planItem,profileId:'wrong'}]}]}]}),'Cross-record plan relationships must fail');
-mustFail(()=>validator.validateBackup({...planBackup,dailyPlans:[{...dailyPlan,outcomes:[{itemKey:'o',status:'started'}]}]}),'Started outcomes without timestamps must fail');
-mustFail(()=>validator.validateBackup({...planBackup,dailyPlans:[{...dailyPlan,outcomes:[{...dailyPlan.outcomes[0],actualMinutes:20000}]}]}),'Implausible completed durations must fail');
-mustFail(()=>validator.validateBackup({...planBackup,dailyPlans:[dailyPlan,{...dailyPlan,id:'d2'}]}),'Duplicate study-day plans must fail');
+check(api.validateBackupPayload(planBackup).dailyPlans.length === 1, 'Valid persisted daily plan must pass strict validation');
+mustFail(()=>api.validateBackupPayload({...planBackup,dailyPlans:[{...dailyPlan,studyDayKey:'2026-02-31'}]}),'Impossible daily-plan dates must fail');
+mustFail(()=>api.validateBackupPayload({...planBackup,dailyPlans:[{...dailyPlan,versions:[{...dailyPlan.versions[0],capacityMinutes:-1}]}]}),'Invalid plan capacity must fail');
+mustFail(()=>api.validateBackupPayload({...planBackup,dailyPlans:[{...dailyPlan,versions:[{...dailyPlan.versions[0],items:[{...planItem,disposition:'evil'}]}]}]}),'Invalid plan disposition must fail');
+mustFail(()=>api.validateBackupPayload({...planBackup,dailyPlans:[{...dailyPlan,versions:[{...dailyPlan.versions[0],items:[{...planItem,profileId:'wrong'}]}]}]}),'Cross-record plan relationships must fail');
+mustFail(()=>api.validateBackupPayload({...planBackup,dailyPlans:[{...dailyPlan,outcomes:[{itemKey:'o',status:'started'}]}]}),'Started outcomes without timestamps must fail');
+mustFail(()=>api.validateBackupPayload({...planBackup,dailyPlans:[{...dailyPlan,outcomes:[{...dailyPlan.outcomes[0],actualMinutes:20000}]}]}),'Implausible completed durations must fail');
+mustFail(()=>api.validateBackupPayload({...planBackup,dailyPlans:[dailyPlan,{...dailyPlan,id:'d2'}]}),'Duplicate study-day plans must fail');
 
 Promise.all([persistenceChecks(),reflowChecks()]).then(()=>{
   console.log(`PASS ${checks} Pass D de novo QA checks`);
