@@ -12,6 +12,7 @@ source_manifest_path = ROOT / "source/app/source-manifest.json"
 source_manifest = json.loads(source_manifest_path.read_text())
 optimizer_package = json.loads((ROOT / "tools/fsrs-optimizer/package.json").read_text())
 optimizer_lock = json.loads((ROOT / "tools/fsrs-optimizer/package-lock.json").read_text())
+optimizer_contract = json.loads((ROOT / "tools/fsrs-optimizer/optimizer-contract.json").read_text())
 optimizer_policy = (ROOT / "tools/fsrs-optimizer/optimizer-policy.mjs").read_text()
 optimizer_core = (ROOT / "tools/fsrs-optimizer/optimizer-core.mjs").read_text()
 optimizer_worker = (ROOT / "tools/fsrs-optimizer/browser-worker.mjs").read_text()
@@ -192,6 +193,11 @@ check("no current-shape repair coercions", all(token not in contracts_ts for tok
     "queueTargetIds.slice(0, 500)", "value.diagramStrokes.slice(0, 256)", "Object.entries(value.values).slice(0, 96)",
 ]) and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
 check("strict settings numeric boundaries", not re.search(r"\bNumber\(", fsrs_personalization_ts) and "Number(record[" not in planning_ts and "requiredFiniteNumber" in fsrs_personalization_ts and "requiredSafeInteger" in planning_ts)
+check("dead optional canonicalizers removed", "function canonicalOptionalId" not in contracts_ts and "function canonicalOptionalIso" not in contracts_ts)
+responsive_breakpoints = re.findall(r"@media\s*\(\s*max-width\s*:\s*(\d+)px\s*\)", css)
+check("CSS semantic tokens are closed", all(token not in css for token in ["var(--text-muted)", "var(--txt3)", "var(--f-head)"]))
+check("CSS hidden invariant is singular", css.count("[hidden]{display:none!important}") == 1 and ".optimizer-progress[hidden]" not in css and ".gap-overlay[hidden]" not in css and ".ownership-banner[hidden]" not in css)
+check("CSS breakpoints consolidated", len(responsive_breakpoints) == len(set(responsive_breakpoints)) and "CONSOLIDATED RESPONSIVE OVERRIDES" in css)
 check("atomic durable snapshot", "this.db.transaction(stores, \"readonly\")" in repository_ts and "async backupState(activeRetrievalMode:" in storage_ts and 'this.repo.backupState("ignore")' in service_ts and "const state = await this.repo.backupState();" in service_ts)
 check("single verified restore path", "async importBackup(input: unknown)" not in service_ts and "restoreBackupPayload" in service_ts)
 check("canonical SHA-256 archive parser", all(token in backup_codec_ts for token in [
@@ -223,20 +229,20 @@ check("atomic unit status propagation", "updateUnitWithObligations" in ts)
 check("cross-profile Study Event guard", "Study Event cannot link a knowledge unit from another exam profile" in ts)
 check("strong evidence rubric", all(term in ts for term in ["completeness", "independence", "application", "accuracyPercent", "errorTypes", "ERROR_TYPES"]))
 check("scheduler configuration provenance", "interface FsrsConfigSnapshot" in ts and "schedulerConfig?: FsrsConfigSnapshot" in ts and "fingerprint: string" in ts and "validateFsrsConfigSnapshot" in ts)
-check("FSRS personalization profile contract", 'schema: "revision-director-fsrs-profile/v1"' in ts and "function validateFsrsOptimizerProfile" in ts and "bindingVersion" in ts)
+check("FSRS personalization profile contract", optimizer_contract.get("profileSchema") == "revision-director-fsrs-profile/v1" and optimizer_contract.get("model") == "FSRS-7" and 'profileSchema: "revision-director-fsrs-profile/v1"' in fsrs_personalization_ts and "function validateFsrsOptimizerProfile" in ts and "bindingVersion" in ts)
 check("FSRS-7 exact 34-weight validation", "FSRS7_PARAMETER_BOUNDS" in ts and "value.length === 34" in ts and "FSRS7_DEFAULT_WEIGHTS" in ts)
 check("FSRS optimizer evidence export", 'review_time,card_id,review_rating,review_duration,review_state' in ts and "fsrsOptimizerCsv" in ts and "relearning-verification" in ts)
 check("canonical optimizer retrieval duration", 'durationPhase = source === "direct-memory" ? "attempt" : "relearn-verify"' in ts and "timing.durationReliable && timing.reliabilityFlags.length === 0" in ts and "durationMs: durationReliable ? Math.round(phaseMs) : 0" in ts and "event.elapsedMs" not in (ROOT / "source/app/18-fsrs-personalization.ts").read_text())
 check("optimizer source snapshot binding", "async function fsrsOptimizerEvidenceSnapshot" in ts and "sourceSha256: await sha256Hex(utf8Bytes(dataset.csv))" in ts and "assertOptimizerProfileMatchesCurrentEvidence" in ts and "profile.sourceSha256 === snapshot.sourceSha256" in ts and ts.count("await this.assertOptimizerProfileMatchesCurrentEvidence") >= 2)
 check("shared SHA-256 utility", "function sha256FallbackHex" in ts and "async function sha256Hex" in ts and "return sha256Hex(bytes);" in ts and "private static sha256Fallback" not in ts)
-check("chronological held-out activation gate", 'strategy: "final-sixth"' in ts and "minimumTrainItems: 64" in ts and "minimumHoldoutItems: 64" in ts and "minimumHoldoutCards: 16" in ts and "FSRS_OPTIMIZER_MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT = 0.001" in ts and "FSRS_OPTIMIZER_MIN_RELATIVE_LOG_LOSS_IMPROVEMENT = 0.005" in ts and 'diagnostics.calibration.status !== "regressed"' in ts and "incumbentDiagnostics" in ts)
+check("chronological held-out activation gate", optimizer_contract.get("holdoutStrategy") == "final-sixth" and optimizer_contract.get("minimumTrainItems") == 64 and optimizer_contract.get("minimumHoldoutItems") == 64 and optimizer_contract.get("minimumHoldoutCards") == 16 and optimizer_contract.get("minimumAbsoluteLogLossImprovement") == 0.001 and optimizer_contract.get("minimumRelativeLogLossImprovement") == 0.005 and "FSRS_OPTIMIZER_CONTRACT.minimumAbsoluteLogLossImprovement" in fsrs_personalization_ts and "FSRS_OPTIMIZER_CONTRACT.minimumRelativeLogLossImprovement" in fsrs_personalization_ts and 'diagnostics.calibration.status !== "regressed"' in ts and "incumbentDiagnostics" in ts)
 check("optimizer calibration diagnostics", "interface FsrsHoldoutDiagnostics" in ts and "function fsrsHoldoutDiagnostics" in ts and 'metric: "rmse-bins"' in ts and 'Calibration · RMSE bins' in ts and "holdoutDiagnostics" in optimizer_policy)
-check("optimizer gate parity", "MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT=0.001" in optimizer_policy and "MIN_RELATIVE_LOG_LOSS_IMPROVEMENT=0.005" in optimizer_policy and 'calibration.status==="regressed"' in optimizer_policy)
+check("optimizer gate parity", 'readFileSync(new URL("./optimizer-contract.json",import.meta.url)' in optimizer_policy and "MIN_ABSOLUTE_LOG_LOSS_IMPROVEMENT=OPTIMIZER_CONTRACT.minimumAbsoluteLogLossImprovement" in optimizer_policy and "MIN_RELATIVE_LOG_LOSS_IMPROVEMENT=OPTIMIZER_CONTRACT.minimumRelativeLogLossImprovement" in optimizer_policy and 'calibration.status==="regressed"' in optimizer_policy)
 check("explicit personalization rebase semantics", "activateFsrsOptimizerProfile" in ts and "replaceActiveFsrsOptimizerProfile" in ts and "deactivateFsrsOptimizerProfile" in ts and '"replace-profile"' in ts and "appendFsrsReplayProfile" in ts and "replayProfilesBeforeDiscardingCurrent" in ts and "const replayProfiles = await this.replayProfilesBeforeDiscardingCurrent(personalization);" in ts and "replaceSettingsAndObligations" in ts and "rescheduledObligations" in ts and "Finish or end the active retrieval session before changing FSRS scheduler parameters." in ts)
 check("optimizer binding isolated from principal browser runtime", "@open-spaced-repetition/binding" not in ts and "@open-spaced-repetition/binding" not in js and "browserFsrsOptimizerAvailability" in ts and "startBrowserFsrsOptimizer" in ts)
 check("optimizer dependencies pinned", optimizer_package.get("dependencies", {}).get("@open-spaced-repetition/binding") == "0.6.1" and optimizer_package.get("dependencies", {}).get("@open-spaced-repetition/binding-wasm32-wasip1") == "0.6.1" and optimizer_package.get("overrides", {}).get("@emnapi/core") == "2.0.0-beta.3" and optimizer_lock.get("packages", {}).get("", {}).get("dependencies") == optimizer_package.get("dependencies"))
 check("single optimizer algorithm core", "optimizeFsrsProfile" in optimizer_core and "splitChronologicalHoldout" in optimizer_core and "evaluateHoldoutGate" in optimizer_core and "incumbentProfile" in optimizer_core and "optimizerWeightsFingerprint" in optimizer_core and "optimizeFsrsProfile" in optimizer_cli and "incumbentProfile" in optimizer_cli and "optimizeFsrsProfile" in optimizer_worker and "const {requestId,csv,incumbentProfile=null}=request;" in optimizer_worker and "splitChronologicalHoldout" not in optimizer_cli and "evaluateHoldoutGate" not in optimizer_cli and "splitChronologicalHoldout" not in optimizer_worker and "evaluateHoldoutGate" not in optimizer_worker)
-check("optimizer training policy", all(token in optimizer_core for token in ["computeParameters", "evaluateWithTimeSeriesSplits", "finalRetrainedOnAllEvidence", 'runtimeLearningSteps:["1d"]', 'runtimeRelearningSteps:["1d"]']) and all(token in optimizer_policy for token in ["MIN_TRAIN_ITEMS=64", "MIN_HOLDOUT_ITEMS=64", "MIN_HOLDOUT_CARDS=16", 'HOLDOUT_STRATEGY="final-sixth"']))
+check("optimizer training policy", all(token in optimizer_core for token in ["computeParameters", "evaluateWithTimeSeriesSplits", "finalRetrainedOnAllEvidence", "runtimeLearningSteps:[...OPTIMIZER_CONTRACT.runtimeLearningSteps]", "runtimeRelearningSteps:[...OPTIMIZER_CONTRACT.runtimeRelearningSteps]"]) and all(key in optimizer_contract for key in ["minimumTrainItems", "minimumHoldoutItems", "minimumHoldoutCards", "holdoutStrategy", "runtimeLearningSteps", "runtimeRelearningSteps"]))
 check("local optimizer publication semantics", "stageFsrsOptimizerProfile(profile)" in ts and "replaceActiveFsrsOptimizerProfile(profile)" in ts and "activateFsrsOptimizerProfile()" in ts and "Profile staged; activation remains explicit." in ts and "Active weights switched with one atomic rebase." in ts and "stageFsrsOptimizerProfile(profile); await this.service.activate" not in ts)
 check("optimizer Worker cancellation/progress", 'new Worker(new URL("./fsrs-optimizer.worker.js", document.baseURI)' in ts and "worker.terminate()" in ts and 'type:"progress"' in optimizer_worker and "onProgress" in ts)
 check("hosted distribution includes local optimizer", root_package.get("scripts", {}).get("build:hosted") == "npm run build && node build/build-hosted.mjs" and "build:optimizer-static" not in root_package.get("scripts", {}) and '<meta\\s+name=["\']revision-director-browser-optimizer' in hosted_build and "optimizer-footprint.json" in hosted_build and "Revision_Director_Hosted" in hosted_build and "fsrs-binding.wasm32-wasip1.wasm" in hosted_build and "wasm-unsafe-eval" in hosted_build)
@@ -249,13 +255,17 @@ check("optimizer checksum coverage", all(path in checksum_targets for path in [
     "source/app/18a-fsrs-browser-optimizer.ts",
     "source/app/19-revision-scheduler-port.ts",
     "tests/fsrs-browser-optimizer.spec.py",
+    "tests/fsrs-contract-parity.spec.js",
     "tests/fsrs-integration.spec.js",
     "tests/fsrs-scale-benchmark.spec.js",
     "tests/fsrs-scheduling-experiments.spec.js",
     "tests/fsrs-optimizer-core.spec.js",
     "tests/fsrs-optimizer-policy.spec.js",
+    "tests/helpers/runtime-harness.js",
+    "tests/runtime-harness-ownership.spec.js",
     "tools/fsrs-optimizer/browser-worker.mjs",
     "tools/fsrs-optimizer/optimize.mjs",
+    "tools/fsrs-optimizer/optimizer-contract.json",
     "tools/fsrs-optimizer/optimizer-core.mjs",
     "tools/fsrs-optimizer/optimizer-policy.mjs",
     "tools/fsrs-optimizer/package-lock.json",
