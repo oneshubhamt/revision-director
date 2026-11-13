@@ -56,5 +56,15 @@ check("Reduced motion", css.includes("@media (prefers-reduced-motion:reduce)"));
 check("Safe-area variables", css.includes("safe-area-inset-bottom") && css.includes("safe-area-inset-left"));
 check("Compact independent scroll", css.includes("height:calc(100dvh - 64px - env(safe-area-inset-bottom))") && css.includes("overflow-y:auto"));
 check("Viewport cover", shell.includes("viewport-fit=cover"));
+check("Durable identifier HTML sinks are escaped",
+  !ui.includes('data-id="${unit.id}"')
+  && !ui.includes('data-id="${obligation.id}"')
+  && !ui.includes('data-id="${event.id}"')
+  && !ui.includes('data-id="${profile.id}"')
+  && !ui.includes('value="${profile.id}"')
+  && !ui.includes('value="${unit.id}"')
+  && !ui.includes('data-profile-editor="${profile.id}"')
+  && ui.includes('data-id="${escapeHtml(unit.id)}"')
+  && ui.includes('value="${escapeHtml(profile.id)}"'));
 
 console.log(`PASS ${checks} Pass C2 UI-runtime and accessibility checks`);
