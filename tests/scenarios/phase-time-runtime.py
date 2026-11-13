@@ -3,18 +3,25 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
 from backup_fixture_codec import decode_file
-import os
-import runpy
-import shutil
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, chromium_executable
-b1 = runpy.run_path(str(TESTS / "scenarios/persistent-active-retrieval.py"), run_name="rd_b1_base")
+from helpers.browser_harness import (
+    ROOT,
+    accept_dialogs,
+    capture_browser_errors,
+    launch_chromium,
+    wait_until as shared_wait_until,
+)
+from helpers.persistent_browser import (
+    BASE_HTML,
+    PERSISTENT_BROWSER_SHIM,
+    create_persistent_frame,
+    host_state_get as state_get,
+)
 BASELINE_BACKUP = ROOT / "tests/fixtures/browser-baseline.rdbackup"
-PERSISTENT_BROWSER_SHIM = b1["PERSISTENT_BROWSER_SHIM"]
 CLOCK_SHIM = r"""
 <script>
 (() => {
@@ -28,7 +35,6 @@ CLOCK_SHIM = r"""
 })();
 </script>
 """
-BASE_HTML = (ROOT / "index.html").read_text()
 # Pass B2 advances Date.now() by minutes in milliseconds to exercise phase timing.
 # Keep cross-tab ownership out of this synthetic clock domain; Pass B1 separately
 # exercises the production 15-second ownership lease.
@@ -53,38 +59,23 @@ def wait(frame, ms=1150):
 
 
 def wait_until(frame, predicate, timeout=6000):
-    import time
-    deadline = time.monotonic() + timeout / 1000
-    while time.monotonic() < deadline:
-        try:
-            if predicate():
-                return
-        except Exception:
-            pass
-        frame.wait_for_timeout(80)
-    raise AssertionError("Timed out waiting for persisted browser state")
-
-
-def state_get(page, store: str, key: str):
-    return page.evaluate("""([store,key]) => {
-      const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
-      const records=raw?.stores?.[store]?.records ?? [];
-      const found=records.find(([encoded]) => encoded === JSON.stringify(key));
-      return found ? structuredClone(found[1]) : null;
-    }""", [store, key])
-
+    shared_wait_until(
+        frame,
+        predicate,
+        timeout=timeout,
+        interval=80,
+        message="Timed out waiting for persisted browser state",
+    )
 
 
 def boot_frame(page):
-    page.evaluate("""() => {
-      const old=document.querySelector('#app'); if(old) old.remove();
-      const frame=document.createElement('iframe'); frame.id='app'; frame.name='revision-app';
-      frame.style.width='1365px'; frame.style.height='950px'; document.body.appendChild(frame);
-    }""")
-    frame = page.frame(name="revision-app")
-    if frame is None:
-        raise AssertionError("QA app frame was not created")
-    frame.set_content(HTML, wait_until="load")
+    frame = create_persistent_frame(
+        page,
+        HTML,
+        name="revision-app",
+        width=1365,
+        height=950,
+    )
     wait_until(
         frame,
         lambda: frame.evaluate("typeof RevisionDirector === 'object'") and frame.locator("#import-backup").is_enabled(),
@@ -181,15 +172,12 @@ def seed_baseline_state(page) -> None:
 
 def main() -> None:
     global checks
-    chromium = os.environ.get("CHROMIUM_EXECUTABLE") or chromium_executable()
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True, executable_path=chromium if chromium else None, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        browser = launch_chromium(playwright)
         context = browser.new_context(viewport={"width": 1365, "height": 950}, accept_downloads=True)
         page = context.new_page()
-        errors: list[str] = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
-        page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
-        page.on("dialog", lambda dialog: dialog.accept())
+        errors = capture_browser_errors(page)
+        accept_dialogs(page)
         page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
         seed_baseline_state(page)
         frame = boot_frame(page)
