@@ -22,7 +22,7 @@ def check(v,m):
     global checks; checks+=1
     if not v: raise AssertionError(m)
 
-def open_restore_preview(page, path: Path) -> None:
+def wait_restore_mutable(page) -> None:
     wait_until(
         page,
         lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
@@ -31,6 +31,10 @@ def open_restore_preview(page, path: Path) -> None:
         interval=40,
         message='Restore surface did not settle into mutable primary state',
     )
+
+
+def open_restore_preview(page, path: Path) -> None:
+    wait_restore_mutable(page)
     page.evaluate("document.querySelector('#toast').textContent=''")
     page.locator('#import-backup').set_input_files([])
     page.locator('#import-backup').set_input_files(str(path))
@@ -193,6 +197,7 @@ def main():
 
         # Hostile content cannot enter the normal restore ceremony even when renamed to an accepted .rdbackup.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        wait_restore_mutable(page)
         rescue_probe=tmp/'forensic-rescue-disguised.rdbackup'
         rescue_probe.write_bytes(rescue.read_bytes())
         page.evaluate("document.querySelector('#toast').textContent=''")
