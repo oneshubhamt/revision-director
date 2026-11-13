@@ -1,18 +1,12 @@
 'use strict';
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
-const { webcrypto } = require('crypto');
-const { TextEncoder, TextDecoder, CompressionStream, DecompressionStream, Blob, ReadableStream } = globalThis;
-const root = path.resolve(__dirname, '..');
-let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_D1_TEST__ = { APP_VERSION, RevisionService, BackupCodec, validateBackupPayload, BACKUP_ARCHIVE_FORMAT, BACKUP_ARCHIVE_VERSION, BACKUP_ARCHIVE_MAX_FILE_BYTES, BACKUP_ARCHIVE_MAX_EXPANDED_BYTES, BACKUP_ARCHIVE_CHUNK_MAX_ITEMS, sha256FallbackHex };';
-source = source.replace('void boot();', hook);
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
-const context = { crypto:webcrypto, structuredClone, console, Date, Intl, URL, Blob, TextEncoder, TextDecoder, CompressionStream, DecompressionStream, ReadableStream, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array, BigInt, navigator:{}, localStorage:{getItem(){return null},setItem(){},removeItem(){}} };
-context.window=context; context.self=context; context.globalThis=context;
-vm.createContext(context); vm.runInContext(vendor, context); vm.runInContext(source, context);
-const api=context.__RD_D1_TEST__;
+const { createAppRuntime } = require('./helpers/runtime-harness');
+
+const { api, context } = createAppRuntime({
+  globalName: '__RD_D1_TEST__',
+  expose: ["APP_VERSION","RevisionService","BackupCodec","validateBackupPayload","BACKUP_ARCHIVE_FORMAT","BACKUP_ARCHIVE_VERSION","BACKUP_ARCHIVE_MAX_FILE_BYTES","BACKUP_ARCHIVE_MAX_EXPANDED_BYTES","BACKUP_ARCHIVE_CHUNK_MAX_ITEMS","sha256FallbackHex"],
+  requireFsrs: false,
+});
+
 let checks=0;
 function check(v,m){checks++; if(!v) throw new Error(m)}
 async function mustFail(fn,m){checks++; try{await fn()}catch{return} throw new Error(m)}
