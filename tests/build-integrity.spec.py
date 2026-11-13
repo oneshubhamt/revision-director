@@ -354,7 +354,7 @@ check("Pass C planning factors", all(term in ts for term in ["dueRisk", "examImp
 check("FSRS retrievability used only for memory risk", "function fsrsRetrievability" in ts and 'obligation.type !== "memory-recall"' in ts and ".model.forgettingCurve(" in ts and "elapsedDays" in ts and "stabilityFast" in ts)
 check("capacity-bounded planner", "function choosePlanItems" in ts and "Int32Array(capacity + 1)" in ts and "dailyCapacityMinutes" in ts)
 check("daily plan query/command split", "async calculateDailyPlan" in ts and "async ensureDailyPlan" in ts and "async regenerateDailyPlan" in ts and "async dailyPlan(" not in ts and "buildPlanningCandidate" in ts)
-check("planning evidence indexed once per cycle", "function planningEvidenceIndex" in ts and "const indexedEvidence = planningEvidenceIndex(evidence);" in ts and "buildPlanningCandidate(item, indexedEvidence" in ts)
+check("planning evidence indexed once per cycle", "function planningEvidenceIndex" in planning_ts and "const indexedEvidence = planningEvidenceIndex(evidence);" in service_ts and re.search(r"buildPlanningCandidate\(\s*item,\s*indexedEvidence,", service_ts) is not None)
 check("canonical FSRS scheduler options", "function fsrsSharedSchedulerOptions" in ts and "...fsrsSharedSchedulerOptions(weights)" in ts and "function fsrsBaseSchedulerOptions" in ts)
 check("canonical historical FSRS configuration collector", "function historicalFsrsConfigurations" in ts and "historicalFsrsConfigurations(reviewIndex.values())" in ts and "historicalFsrsConfigurations([reviews])" in ts)
 check("single guarded active-retrieval commit envelope", "private async commitActiveRetrievalTransition" in ts and "this.commitActiveRetrievalTransition(" in ts and ts.count("this.commitActiveRetrievalTransition(") == 2)
