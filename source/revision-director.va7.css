@@ -531,17 +531,17 @@ summary{display:flex;align-items:center;cursor:pointer}
 }
 
 @media (max-width:820px){
-.ownership-banner{top:10px;right:10px;width:calc(100vw - 20px)}.storage-capacity-banner{left:10px;right:10px;bottom:76px}
 :root{--rd-layout-sidebar-width:0px}
-  .app-shell{display:block;padding-bottom:68px}
-  .sidebar{position:fixed;inset:auto 0 0;width:auto;height:64px;display:block;border-right:0;border-top:1px solid var(--rd-color-border-accent);background:#07080e;z-index:50}
+  html,body{height:100%;min-height:100%}
+  .app-shell{display:block;height:100dvh;min-height:100vh;padding-bottom:0;overflow:hidden}
+  .sidebar{position:fixed;inset:auto 0 0;width:auto;height:calc(64px + env(safe-area-inset-bottom));display:block;border-right:0;border-top:1px solid var(--rd-color-border-accent);background:#07080e;z-index:50;padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
   .brand,.sidebar-clock,.sidebar-stats,.sidebar-actions{display:none}
   .nav{height:64px;padding:5px;display:grid;grid-template-columns:repeat(6,1fr);gap:3px}
   .nav-item{display:grid;justify-items:center;gap:2px;padding:4px 2px;border-left:0;border-top:2px solid transparent;font-size:10px}
   .nav-item.on{border-left:0;border-top-color:var(--rd-color-accent-primary)}
   .nav-mark{width:22px;height:20px;font-size:8px}
-  .main{margin-left:0;width:100%}
-  .pane{padding:18px 14px 28px}
+  .main{margin-left:0;width:100%;height:calc(100dvh - 64px - env(safe-area-inset-bottom));min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .pane{min-height:100%;padding-top:18px;padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));padding-bottom:calc(28px + env(safe-area-inset-bottom))}
   .hero-panel{grid-template-columns:1fr;padding:23px 20px}
   .cycle{justify-content:flex-start}
   .queue-item{grid-template-columns:70px minmax(0,1fr)}
@@ -553,11 +553,6 @@ summary{display:flex;align-items:center;cursor:pointer}
   .settings-save{grid-column:1}
   .history-item{grid-template-columns:70px 1fr}
   .history-meta{grid-column:2;text-align:left;display:flex;flex-wrap:wrap;gap:8px 14px}
-html,body{height:100%;min-height:100%}
-  .app-shell{height:100dvh;min-height:100vh;padding-bottom:0;overflow:hidden}
-  .sidebar{inset:auto 0 0;height:calc(64px + env(safe-area-inset-bottom));padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-  .main{margin-left:0;width:100%;height:calc(100dvh - 64px - env(safe-area-inset-bottom));min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-  .pane{min-height:100%;padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));padding-bottom:calc(28px + env(safe-area-inset-bottom))}
   .ownership-banner{top:calc(10px + env(safe-area-inset-top));right:max(10px,env(safe-area-inset-right));width:calc(100vw - max(20px,env(safe-area-inset-left) + env(safe-area-inset-right)))}
   .storage-capacity-banner{left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));bottom:calc(76px + env(safe-area-inset-bottom))}
 }
@@ -567,9 +562,8 @@ html,body{height:100%;min-height:100%}
   .summary-grid{grid-template-columns:1fr 1fr}
   .queue-row,.record-row,.unit-row{grid-template-columns:1fr}
   .row-actions{justify-content:flex-start}
-  .evidence-form,.settings-grid{grid-template-columns:1fr}
+  .evidence-form{grid-template-columns:1fr}
   .evidence-form .wide,.settings-card.wide{grid-column:auto}
-  .rating-grid{grid-template-columns:1fr 1fr}
   .check-grid{grid-template-columns:1fr}
 .planner-row{grid-template-columns:34px minmax(0,1fr)}
   .planner-row .row-actions{grid-column:2;justify-content:flex-start}
@@ -617,6 +611,5 @@ h1{font-size:34px}
 
 @media (max-width:460px){
 .summary-grid{grid-template-columns:1fr}
-  .rating-grid{grid-template-columns:1fr}
 .factor-grid{grid-template-columns:1fr}
 }
