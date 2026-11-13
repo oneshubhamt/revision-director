@@ -187,7 +187,7 @@ check("no current-shape repair coercions", all(token not in contracts_ts for tok
     "queueTargetIds.slice(0, 500)", "value.diagramStrokes.slice(0, 256)", "Object.entries(value.values).slice(0, 96)",
 ]) and "Active retrieval elapsed time does not match phase timing." in contracts_ts)
 check("strict settings numeric boundaries", not re.search(r"\bNumber\(", fsrs_personalization_ts) and "Number(record[" not in planning_ts and "requiredFiniteNumber" in fsrs_personalization_ts and "requiredSafeInteger" in planning_ts)
-check("atomic durable snapshot", "this.db.transaction(stores, \"readonly\")" in repository_ts and "async backupState()" in storage_ts and "const state = await this.repo.backupState();" in service_ts)
+check("atomic durable snapshot", "this.db.transaction(stores, \"readonly\")" in repository_ts and "async backupState(activeRetrievalMode:" in storage_ts and 'this.repo.backupState("ignore")' in service_ts and "const state = await this.repo.backupState();" in service_ts)
 check("single verified restore path", "async importBackup(input: unknown)" not in service_ts and "restoreBackupPayload" in service_ts)
 check("canonical SHA-256 archive parser", all(token in backup_codec_ts for token in [
     'assertExactKeys(value, "Backup manifest"', 'assertExactKeys(value, "Backup counts"', 'assertExactKeys(value, "Backup chunk"', 'assertExactKeys(value, "Backup completion proof"',
