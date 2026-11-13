@@ -411,25 +411,27 @@
 
     async ensureNode(profileId: string, parentId: string | null, kind: KnowledgeNodeKind, name: string): Promise<KnowledgeNode> {
       assert(name.trim().length > 0, `Enter a ${kind} name.`);
-      const existing = await this.repo.findNode(profileId, parentId, kind, name);
+      assert(parentId !== null || kind === "subject", "Only subject nodes may exist at the hierarchy root.");
+      const normalizedName = normalizeName(name);
+      const existing = await this.repo.findNode(profileId, parentId, kind, normalizedName);
       if (existing) return existing;
       const time = nowIso();
       const node: KnowledgeNode = {
         schemaVersion: DOCUMENT_SCHEMA_VERSION,
-        id: uid(kind),
+        id: parentId === null ? await rootKnowledgeNodeId(profileId, normalizedName) : uid(kind),
         profileId,
         parentId,
         kind,
         name: name.trim().replace(/\s+/g, " "),
-        normalizedName: normalizeName(name),
+        normalizedName,
         createdAt: time,
         updatedAt: time,
       };
       try {
-        await this.repo.put(Store.Nodes, node);
+        await this.repo.add(Store.Nodes, node);
         return node;
       } catch (error) {
-        const concurrent = await this.repo.findNode(profileId, parentId, kind, name);
+        const concurrent = await this.repo.findNode(profileId, parentId, kind, normalizedName);
         if (concurrent) return concurrent;
         throw error;
       }
