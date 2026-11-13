@@ -8,7 +8,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_until
 sys.path.insert(0,str(ROOT/'tests'))
 base=load_browser_qa('revision_director_backup_restore_controller')
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base.INDEXEDDB_SHIM,1)
@@ -18,8 +18,6 @@ checks=0
 def check(v,m):
     global checks; checks+=1
     if not v: raise AssertionError(m)
-
-def wait(page,ms=400): page.wait_for_timeout(ms)
 
 def restore_selected(page, tmp:Path, treatment:str='discard'):
     check(page.locator('#restore-dialog').is_visible(),'Restore preview did not open')
@@ -33,7 +31,8 @@ def restore_selected(page, tmp:Path, treatment:str='discard'):
     page.locator('#restore-safety-saved').check()
     page.locator('#restore-replace-confirm').check()
     check(page.locator('#restore-final-button').is_enabled(),'Final restore remained disabled')
-    page.locator('#restore-final-button').click(); wait(page,1200)
+    page.locator('#restore-final-button').click()
+    wait_until(page, lambda: not page.locator('#restore-dialog').is_visible() and 'restored' in page.locator('#toast').inner_text().lower(), timeout=8000, interval=40, message='Restore did not complete')
 
 def main():
     global checks
@@ -43,11 +42,11 @@ def main():
         page=browser.new_page(viewport={'width':1440,'height':1000})
         errors=capture_browser_errors(page)
         accept_dialogs(page)
-        page.set_content(HTML,wait_until='load');wait(page,1300)
+        page.set_content(HTML,wait_until='load'); wait_for_app_ready(page)
         check(not page.locator('#fatal-error').is_visible(),'Fatal startup error')
-        page.locator('[data-pane="settings"]').click();wait(page)
+        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
         before=page.locator('#sb-units').inner_text()
-        page.locator('#import-backup').set_input_files(str(FIXTURE));wait(page,900)
+        page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
         check(page.locator('#restore-preview').get_by_text('No application data has been changed').count()==1,'Non-mutating inspection message missing')
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated application state')
         check('Archive checksum:' in page.locator('#restore-preview').inner_text(),'Restore preview lacks checksum')
@@ -55,22 +54,22 @@ def main():
         check(page.locator('#sb-units').inner_text()=='2','Verified restore did not replace records')
         check('verified backup restored' in page.locator('#toast').inner_text().lower(),'Restore success not reported')
         # One-click local export remains simple.
-        page.locator('[data-pane="settings"]').click();wait(page)
+        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
         with page.expect_download() as info:
             page.locator('[data-action="export-backup"]').click()
         exported=tmp/info.value.suggested_filename;info.value.save_as(str(exported))
         check(exported.suffix=='.rdbackup' and exported.stat().st_size>0,'One-click export failed')
         # Start an unfinished retrieval and export it.
-        page.locator('[data-pane="today"]').click();wait(page)
-        page.locator('[data-action="start-due"]').click();wait(page,700)
+        page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
+        page.locator('[data-action="start-due"]').click(); page.locator('#review-content').wait_for(state='visible')
         attempt=page.locator('#attempt-text')
         if attempt.count(): attempt.fill('Durable active retrieval text')
-        page.locator('[data-pane="settings"]').click();wait(page)
+        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
         with page.expect_download() as active_info:
             page.locator('[data-action="export-backup"]').click()
         active_file=tmp/active_info.value.suggested_filename;active_info.value.save_as(str(active_file))
         # Reinspect active backup: preview must require explicit treatment.
-        page.locator('#import-backup').set_input_files(str(active_file));wait(page,900)
+        page.locator('#import-backup').set_input_files(str(active_file)); page.locator('#restore-dialog').wait_for(state='visible')
         check(page.locator('input[name="restore-active-treatment"]').count()==2,'Active-session treatment choices missing')
         check(page.locator('#restore-final-button').is_disabled(),'Restore enabled before active-session treatment')
         restore_selected(page,tmp,'restore')
@@ -80,8 +79,10 @@ def main():
         # Selecting a tampered file must not enter restore ceremony.
         data=bytearray(FIXTURE.read_bytes()); data[-10]^=1
         tampered=tmp/'tampered.rdbackup';tampered.write_bytes(data)
-        page.locator('[data-pane="settings"]').click();wait(page)
-        page.locator('#import-backup').set_input_files(str(tampered));wait(page,700)
+        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        page.evaluate("document.querySelector('#toast').textContent=''")
+        page.locator('#import-backup').set_input_files(str(tampered))
+        wait_until(page, lambda: bool(page.locator('#toast').inner_text().strip()), timeout=5000, interval=40, message='Tampered backup produced no rejection')
         msg=page.locator('#toast').inner_text().lower()
         check('checksum' in msg or 'integrity' in msg or 'json' in msg,'Tampered backup was not rejected')
         check(not errors,f'Browser errors: {errors}')
