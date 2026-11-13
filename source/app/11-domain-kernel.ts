@@ -343,6 +343,15 @@
     return WORKFLOWS_BY_OBLIGATION[type];
   }
 
+  function assertActiveProfileSelection(profiles: readonly ExamProfile[], settings: AppSettings): void {
+    const active = profiles.filter((profile) => profile.status === "active");
+    if (active.length === 0) {
+      assert(settings.activeProfileId === "", "Default exam profile must be empty when no active exam profile exists.");
+      return;
+    }
+    assert(active.some((profile) => profile.id === settings.activeProfileId), "Default exam profile must reference an active exam profile.");
+  }
+
   function defaultWorkflowForType(type: ObligationType): RetrievalWorkflow {
     return WORKFLOWS_BY_OBLIGATION[type][0];
   }
