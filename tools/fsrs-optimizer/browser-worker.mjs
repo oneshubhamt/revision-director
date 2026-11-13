@@ -1,6 +1,6 @@
 import {createInstance} from "@open-spaced-repetition/binding-wasm32-wasip1/workerd";
 import {OptimizerGateRejectedError,convertFsrsEvidence,optimizeFsrsProfile,optimizerMetrics} from "./optimizer-core.mjs";
-import {OPTIMIZER_CHRONOLOGY} from "./optimizer-policy.mjs";
+import {OPTIMIZER_CONTRACT,OPTIMIZER_CHRONOLOGY} from "./optimizer-policy.mjs";
 
 const send=message=>self.postMessage(message);
 const hex=buffer=>Array.from(new Uint8Array(buffer),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -57,7 +57,10 @@ async function optimize(binding,request){
   csv,
   sourceSha256:async bytes=>hex(await crypto.subtle.digest("SHA-256",bytes)),
   optimizerOptions:(cardIds,stage)=>({
-   modelVersion:"FSRS-7",enableShortTerm:true,enableSchedPenalties:true,numRelearningSteps:1,
+   modelVersion:OPTIMIZER_CONTRACT.model,
+   enableShortTerm:OPTIMIZER_CONTRACT.enableShortTerm,
+   enableSchedPenalties:OPTIMIZER_CONTRACT.enableSchedPenalties,
+   numRelearningSteps:OPTIMIZER_CONTRACT.numRelearningSteps,
    cardIds,progress:progress(requestId,stage)
   }),
   incumbentProfile
