@@ -28,6 +28,15 @@ class SharedChromiumSession:
         self._browser = browser
         self._contexts = []
 
+    def _close_context(self, context) -> None:
+        if context not in self._contexts:
+            return
+        self._contexts.remove(context)
+        try:
+            context.close()
+        except Exception:
+            pass
+
     def new_context(self, **kwargs):
         context = self._browser.new_context(**kwargs)
         self._contexts.append(context)
@@ -35,16 +44,23 @@ class SharedChromiumSession:
 
     def new_page(self, **kwargs):
         context = self.new_context(**kwargs)
-        return context.new_page()
+        page = context.new_page()
+        closing = {"active": False}
+
+        def close_ephemeral_context() -> None:
+            if closing["active"]:
+                return
+            closing["active"] = True
+            self._close_context(context)
+
+        page.on("close", lambda: close_ephemeral_context())
+        return page
 
     def close(self) -> None:
-        for context in reversed(self._contexts):
-            try:
-                context.close()
-            except Exception:
-                pass
-        self._contexts.clear()
-        self._browser.close()
+        for context in list(reversed(self._contexts)):
+            self._close_context(context)
+        # The parent qa.py process owns the CDP Chromium lifetime. A child
+        # suite closing its Browser facade must never terminate that process.
 
     def __getattr__(self, name):
         return getattr(self._browser, name)
