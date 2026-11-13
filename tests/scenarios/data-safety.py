@@ -42,10 +42,17 @@ def confirm_restore(page, treatment=None, dismiss_first=False):
         page.locator('#restore-final-button').click()
         check(page.locator('#restore-dialog').is_visible(),'Cancelled confirmation closed the restore preview')
         check(page.locator('#sb-units').inner_text()==before,'Cancelled final confirmation mutated data')
+    page.evaluate("document.querySelector('#toast').textContent=''")
     page.once('dialog', lambda dialog: dialog.accept())
     page.locator('#restore-final-button').click()
     page.locator('#restore-dialog').wait_for(state='hidden')
-    wait_until(page, lambda: 'restored' in page.locator('#toast').inner_text().lower(), timeout=8000, interval=40, message='Confirmed restore did not finish')
+    wait_until(
+        page,
+        lambda: 'restored' in page.locator('#toast').inner_text().lower(),
+        timeout=8000,
+        interval=40,
+        message='Confirmed restore did not finish canonical hydration',
+    )
 
 def main():
     global checks
