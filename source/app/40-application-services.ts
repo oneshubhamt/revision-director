@@ -1706,17 +1706,24 @@
         right.fsrsCard === undefined;
 
       for (const obligation of obligations) {
-        const obligationEvents = [...(evidenceByObligation.get(obligation.id) ?? [])]
-          .sort((left, right) => left.reviewedAt.localeCompare(right.reviewedAt) || left.id.localeCompare(right.id));
+        const obligationEvents = [...(evidenceByObligation.get(obligation.id) ?? [])];
 
         if (obligation.type !== "memory-recall") {
           const policy = this.router.get(obligation.type);
-          let state = policy.createInitialState(obligation.dueAt);
-          for (const event of obligationEvents) {
-            assert(intervalStateEqual(event.beforePolicyState, state), "Non-memory Evidence Event history does not continue the prior policy state.");
+          let state = policy.createInitialState(obligation.dueAt, obligation.id);
+          const remaining = new Set(obligationEvents);
+          let priorDueAt: ISODateTime | undefined;
+          while (remaining.size > 0) {
+            const candidates = [...remaining].filter((event) => intervalStateEqual(event.beforePolicyState, state));
+            assert(candidates.length === 1, "Non-memory Evidence Event history is disconnected or forked.");
+            const event = candidates[0]!;
+            if (priorDueAt !== undefined) assert(event.beforeDueAt === priorDueAt, "Non-memory Evidence Event due-date history is disconnected.");
             state = event.afterPolicyState;
+            priorDueAt = event.afterDueAt;
+            remaining.delete(event);
           }
           assert(intervalStateEqual(obligation.policyState, state), "Non-memory obligation policy state does not match its Evidence Event history.");
+          if (priorDueAt !== undefined) assert(obligation.dueAt === priorDueAt, "Non-memory obligation due date does not match its Evidence Event history.");
         }
 
         const acceptedBySample = new Map<number, EvidenceEvent>();
