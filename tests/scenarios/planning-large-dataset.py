@@ -14,6 +14,7 @@ from helpers.browser_harness import (
     launch_chromium,
     load_browser_qa,
     open_html_page,
+    wait_for_backup_import_result,
     wait_for_layout,
     wait_until as shared_wait_until,
 )
@@ -144,16 +145,9 @@ def scenario_hostile_planning_import(browser):
         page.locator('[data-pane="settings"]').click()
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files(str(hp))
-        shared_wait_until(
-            page,
-            lambda: page.locator('#import-backup').evaluate('e=>e.value') == '',
-            timeout=8000,
-            interval=80,
-            message='Hostile planning import handler did not finish',
-        )
-        toast=page.locator('#toast').inner_text().strip()
-        check(bool(toast) and page.locator('#toast').evaluate("e=>e.classList.contains('error')") and not page.locator('#restore-dialog').is_visible(),
-              f'Impossible planning date did not fail through the rejection UI contract · toast={toast!r}')
+        result=wait_for_backup_import_result(page, timeout=8000)
+        check(bool(result['message']) and result['error'] and not result['preview'],
+              f"Impossible planning date did not fail through the rejection UI contract · result={result!r}")
     check(not errors,f'Hostile-import errors: {errors}')
     page.close()
 
