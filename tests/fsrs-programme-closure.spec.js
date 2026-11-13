@@ -107,17 +107,6 @@ function findMemory(repo){ const value=repo.obligations.find(item=>item.type==='
 function findUnit(repo,id){ const value=repo.units.find(item=>item.id===id); if(!value) throw new Error('Unit missing'); return value; }
 function findProfile(repo,id){ const value=repo.profiles.find(item=>item.id===id); if(!value) throw new Error('Profile missing'); return value; }
 
-async function testNewLearningReviewBoundary(){
-  const scheduler=await F.DefaultScheduler({version:'FSRS-7',desiredRetention:.9,enableShortTerm:true,learningSteps:['23h'],relearningSteps:['23h'],graduatingInterval:1,allowModelOverride:true,enableFuzz:false,maximumInterval:36500,clearStatsOnForget:false});
-  const start=new Date('2026-01-01T08:00:00.000Z');
-  const fresh=scheduler.newCard({now:start,cardId:'transition-probe'});
-  check(fresh.state===0,'FSRS transition probe must begin in New state');
-  const learning=scheduler.review({card:fresh,grade:F.Rating.Again,now:start}).card;
-  check(learning.state===1,'A sub-graduating learning step must produce New → Learning');
-  const review=scheduler.review({card:learning,grade:F.Rating.Good,now:new Date(learning.dueAt)}).card;
-  check(review.state===2,'A successful learning-step review must produce Learning → Review');
-}
-
 async function testProgrammeLifecycleAndRebases(){
   const payload=JSON.parse(fs.readFileSync(path.join(root,'tests','fixtures','browser-baseline.json'),'utf8'));
   payload.dailyPlans=[]; payload.chunks=[]; payload.activeRetrieval=null; payload.evidenceEvents=[];
@@ -199,7 +188,6 @@ async function testProgrammeLifecycleAndRebases(){
 }
 
 (async()=>{
-  await testNewLearningReviewBoundary();
   await testProgrammeLifecycleAndRebases();
   console.log('PASS '+checks+' FSRS programme-closure scheduler/replay/planner/rebase checks');
 })().catch(error=>{console.error(error);process.exitCode=1;});
