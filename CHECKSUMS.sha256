@@ -51,7 +51,7 @@ e76db9184cee93d11d636df95b06192690481fd144033d327dd8726d476f50f3  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 b8acbd89a7a929b219e091e34a9723ab163d608bebec4a2739d6b62ce8a45acd  ./tests/backup_fixture_codec.py
 0b220cb505467f53f52002b1e39f16d6f50e451a49a0236e7622fe95461705ed  ./tests/browser-qa.spec.py
-8af0a7112416286ab43d7407af7ae7f0218d65c960c9ff17bcbf42a87dc18419  ./tests/build-integrity.spec.py
+1e4f00774f1ade4b1ab80cb5f95e0a6b1622e307e691f031144c50980347902d  ./tests/build-integrity.spec.py
 cb0c953c10f8a02eb28ccc4fe487eb5e045d364835540d5534bd9779d19f8274  ./tests/fixtures/browser-baseline.json
 909124745204ba2ad8536712f53588bcd3b91422854fa9191c161d13d0b7867b  ./tests/fixtures/browser-baseline.rdbackup
 c0e60f44c36dc1d4de85140a7f8d087382ca30d880506d5ae3bf01218869c9c0  ./tests/fsrs-browser-optimizer.spec.py
