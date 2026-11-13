@@ -1670,7 +1670,7 @@
           if (outcome.status === "started") assert(Boolean(outcome.startedAt), "Started daily-plan outcomes require a start time.");
           if (outcome.startedAt && outcome.completedAt) assert(new Date(outcome.completedAt).getTime() >= new Date(outcome.startedAt).getTime(), "Daily-plan outcome timestamps are inconsistent.");
           if (outcome.status === "completed") {
-            assert(Number.isFinite(outcome.actualMinutes) && (outcome.actualMinutes ?? 0) > 0 && (outcome.actualMinutes ?? 0) <= 10_080 && Boolean(outcome.completedAt), "Completed daily-plan outcomes require a valid duration and completion time.");
+            assert(Number.isFinite(outcome.actualMinutes) && (outcome.actualMinutes ?? -1) >= 0 && (outcome.actualMinutes ?? -1) <= 10_080 && Boolean(outcome.completedAt), "Completed daily-plan outcomes require a valid rounded duration and completion time.");
             const item = itemByKey.get(outcome.itemKey);
             assert(item, "Completed daily-plan outcome references an unknown item.");
             if (!item.chunkId) {
