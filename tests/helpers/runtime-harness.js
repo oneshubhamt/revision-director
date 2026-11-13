@@ -98,7 +98,7 @@ function createAppRuntime({
   vm.runInContext(source, context, { filename: 'app.js' });
   const api = context[globalName];
   if (!api) throw new Error(`${globalName} was not exposed`);
-  return { api, context, fsrs };
+  return { api, context, fsrs, source };
 }
 
 module.exports = {
