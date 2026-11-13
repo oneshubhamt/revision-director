@@ -10514,7 +10514,7 @@ exports.withFuzzing = withFuzzing;
               return deterministic;
           }
           // Imported current-format backups may legitimately retain non-generated IDs.
-          // The validator enforces semantic uniqueness, so this is a bounded compatibility lookup,
+          // The validator enforces semantic uniqueness, so this is an import-fidelity fallback,
           // not a second uniqueness policy.
           const roots = (await this.getByIndex(Store.Nodes, "profileId", profileId))
               .filter((node) => node.parentId === null && node.kind === kind && node.normalizedName === normalized);

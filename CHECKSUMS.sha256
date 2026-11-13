@@ -3,13 +3,13 @@
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 af876ea5cb9b13c35ab6626f3ba640de3946ffad1329f5c1e6adf4483b67fa81  ./build/checksums.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
-3d638bdfa3e71d18198fc2207cec2ea11ee414951300e464ec4f68a65902952d  ./dist/app.js
+f478b329fc35c323ab9904271fd2e9424669a14f2d36c08b89963bc5b311c1f0  ./dist/app.js
 2aa4507050fcebca069e0874287856820a62a6f4febe7b8acd4de28decf6446d  ./docs/ARCHITECTURE.md
 f7f123c0be8daa394026ed0a4dce270dfd7773851579c97e0fb304279d432f24  ./docs/DATA_AND_STORAGE.md
 fd8f5185f6caa63a8404018018bf48938446ea2076c987cf22923085e0973bb9  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ba443230bfdda805284486e5b36639034180a19c288be052d9e329ab4d001404  ./docs/SCHEDULING_AND_PLANNING.md
-6cb0b1cfe4e6b1a83d8ce82fd78a709873d78b0a4c9497de85bc61447fc6938d  ./index.html
+29dedb924836ebb25dda4e02eb9d49bfd28f73267343238b1230645a7b0331a2  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -26,7 +26,7 @@ de8d46d2767a2cb078b3b2aacc097dc86a5e653a01b881fd3dcc43f575842c89  ./source/app/0
 c9fb42874e8aa2f7de935a0a988ef9de2591df1eeed61c42edbfbfe862261ace  ./source/app/19-revision-scheduler-port.ts
 c0630c2dec3e855fba04ab22bfc864a730f4658e2fb08cd2f789d121eafc14c5  ./source/app/20-policy-planning-kernel.ts
 7d6de3dcba9f7f27b47156e75f02525c64998736ced555e93eb41751d69f4eb8  ./source/app/21-policy-implementations.ts
-469a7ec2110f9dbedbca38e37a2f995099722afa694e434dd13a0ead6819c978  ./source/app/30-indexeddb-repository.ts
+ef52d93f7a013f9852b646be84e3de8a602ac7caedd903b7861bb1a5b41f4c27  ./source/app/30-indexeddb-repository.ts
 3355b86ac8c7ab063bf315770de701b031bdd760c7d63ddc585e583aa6b17f16  ./source/app/31-storage-facade.ts
 c835f78e652f1a6b67657e474f4b179fbb568dcc05e807977d516d674819e482  ./source/app/32-active-retrieval-persistence.ts
 ac494ddc8ae368b65427c0257e2fddd371ecd96a9f20466cccc3f412c6ed1f89  ./source/app/33-phase-time-runtime.ts
@@ -46,7 +46,7 @@ e30f76f9a4dcb5f47b7decb1b68bf3e369b69864c56320fc41fbabb2225b192c  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 b8acbd89a7a929b219e091e34a9723ab163d608bebec4a2739d6b62ce8a45acd  ./tests/backup_fixture_codec.py
 f56e423e6d32718522c26aefac13cebd150062aad46a7983f6ad352790281edb  ./tests/browser-qa.spec.py
-e4f244331132e9ec3bc3e5ac28dd914f19be357216d3e23a991f722df3cda0dc  ./tests/build-integrity.spec.py
+7255038debd43a5b5b9e87a3cc8498f0bcce3e3edd1aa70077f191969e34b58f  ./tests/build-integrity.spec.py
 cb0c953c10f8a02eb28ccc4fe487eb5e045d364835540d5534bd9779d19f8274  ./tests/fixtures/browser-baseline.json
 909124745204ba2ad8536712f53588bcd3b91422854fa9191c161d13d0b7867b  ./tests/fixtures/browser-baseline.rdbackup
 5094dfbfa9be0d50c066d7da20e99ecd206ada2981a47e8908c907d35b4079ed  ./tests/fsrs-browser-optimizer.spec.py
