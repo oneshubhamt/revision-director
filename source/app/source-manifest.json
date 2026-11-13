@@ -118,11 +118,16 @@
     },
     {
       "order": 23,
+      "path": "app/47-active-retrieval-workspace.ts",
+      "layer": "Active retrieval workspace: review rendering, phase timing, draft/diagram state, recovery and idempotent review commits."
+    },
+    {
+      "order": 24,
       "path": "app/50-ui-controller.ts",
       "layer": "DOM helpers and the current UI controller."
     },
     {
-      "order": 24,
+      "order": 25,
       "path": "app/60-public-bridge-bootstrap.ts",
       "layer": "Validated public bridge and boot sequence; the build owns the outer sealed IIFE."
     }
