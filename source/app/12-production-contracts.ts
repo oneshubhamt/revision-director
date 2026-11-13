@@ -479,7 +479,7 @@
     const outcomes = value.outcomes.map((outcome) => {
       assertExactKeys(outcome, "Daily-plan outcome", ["itemKey", "status", "startedAt", "completedAt", "actualMinutes", "evidenceEventId", "note"]);
       assert(outcome.status === "planned" || outcome.status === "started" || outcome.status === "completed" || outcome.status === "skipped", "Daily-plan outcome status is invalid.");
-      if (outcome.actualMinutes !== undefined) assert(typeof outcome.actualMinutes === "number" && Number.isFinite(outcome.actualMinutes) && outcome.actualMinutes > 0 && outcome.actualMinutes <= 10_080, "Daily-plan actual duration is invalid.");
+      if (outcome.actualMinutes !== undefined) assert(typeof outcome.actualMinutes === "number" && Number.isFinite(outcome.actualMinutes) && outcome.actualMinutes >= 0 && outcome.actualMinutes <= 10_080, "Daily-plan actual duration is invalid.");
       const canonical: DailyPlanOutcome = {
         itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
         status: outcome.status,
