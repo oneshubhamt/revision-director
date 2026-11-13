@@ -1,17 +1,7 @@
 'use strict';
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
-const { webcrypto } = require('crypto');
+const { createAppRuntime, memoryLocalStorage } = require('./helpers/runtime-harness');
 
 (async () => {
-  const root = path.resolve(__dirname, '..');
-  let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-  const hook = 'window.__RD_B3_TEST__ = { APP_VERSION, REVIEW_OWNER_STORAGE_KEY, REVIEW_OWNER_CHANNEL, REVIEW_OWNER_HEARTBEAT_MS, REVIEW_OWNER_STALE_MS, REVIEW_OWNER_TAKEOVER_WAIT_MS, ReviewOwnershipCoordinator, RevisionData, AppDiagnostics };';
-  if (!source.includes('void boot();')) throw new Error('Boot marker missing');
-  source = source.replace('void boot();', hook);
-  const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
-
   class FakeBroadcastChannel {
     static groups = new Map();
     constructor(name) {
@@ -21,23 +11,25 @@ const { webcrypto } = require('crypto');
     postMessage(data) { for (const peer of FakeBroadcastChannel.groups.get(this.name) || []) if (peer !== this) setTimeout(() => peer.onmessage && peer.onmessage({ data: structuredClone(data) }), 0); }
     close() { FakeBroadcastChannel.groups.get(this.name)?.delete(this); }
   }
-  const storageData = new Map();
-  const localStorage = {
-    getItem(key) { return storageData.has(String(key)) ? storageData.get(String(key)) : null; },
-    setItem(key, value) { storageData.set(String(key), String(value)); },
-    removeItem(key) { storageData.delete(String(key)); },
-    clear() { storageData.clear(); },
-  };
+  const memory = memoryLocalStorage();
+  const localStorage = memory.api;
   const listeners = new Map();
   const document = { documentElement: { dataset: {} }, querySelector(){ return null; } };
   const navigator = { storage: { persisted: async () => false, persist: async () => false, estimate: async () => ({ usage: 80, quota: 100 }) } };
-  const context = { crypto: webcrypto, structuredClone, console, Date, Intl, URL, Blob, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array, localStorage, navigator, document, BroadcastChannel: FakeBroadcastChannel };
-  context.window = context; context.self = context; context.globalThis = context;
-  context.addEventListener = (name, handler) => { const values = listeners.get(name) || []; values.push(handler); listeners.set(name, values); };
-  context.removeEventListener = () => {};
-  vm.createContext(context); vm.runInContext(vendor, context); vm.runInContext(source, context);
-  const api = context.__RD_B3_TEST__;
-  let checks = 0;
+  const { api, context } = createAppRuntime({
+    globalName: '__RD_B3_TEST__',
+    expose: ["APP_VERSION","REVIEW_OWNER_STORAGE_KEY","REVIEW_OWNER_CHANNEL","REVIEW_OWNER_HEARTBEAT_MS","REVIEW_OWNER_STALE_MS","REVIEW_OWNER_TAKEOVER_WAIT_MS","ReviewOwnershipCoordinator","RevisionData","AppDiagnostics"],
+    context: {
+      localStorage,
+      navigator,
+      document,
+      BroadcastChannel: FakeBroadcastChannel,
+      addEventListener(name, handler) { const values = listeners.get(name) || []; values.push(handler); listeners.set(name, values); },
+      removeEventListener() {},
+    },
+  });
+
+let checks = 0;
   const check = (value, message) => { checks += 1; if (!value) throw new Error(message); };
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
