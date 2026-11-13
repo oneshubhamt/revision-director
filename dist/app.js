@@ -990,6 +990,7 @@
       assert(typeof value === "string", `${label} must be a string.`);
       const canonical = value.trim();
       assert(canonical.length > 0 && canonical.length <= 240, `${label} is invalid.`);
+      assert(/^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$/.test(canonical), `${label} contains unsupported identifier characters.`);
       return canonical;
   }
   function canonicalOptionalId(value, label) {
@@ -3664,6 +3665,10 @@
           tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed."));
       });
   }
+  async function rootKnowledgeNodeId(profileId, normalizedName) {
+      const digest = await sha256Hex(utf8Bytes(`${profileId}\u0000subject\u0000${normalizedName}`));
+      return `subject_${digest.slice(0, 32)}`;
+  }
   class IndexedDbRepository {
       db;
       constructor(db) {
@@ -3755,6 +3760,11 @@
           tx.objectStore(store).put(value);
           await transactionDone(tx);
       }
+      async add(store, value) {
+          const tx = this.db.transaction(store, "readwrite");
+          tx.objectStore(store).add(value);
+          await transactionDone(tx);
+      }
       async putMany(store, values) {
           const tx = this.db.transaction(store, "readwrite");
           const target = tx.objectStore(store);
@@ -3788,9 +3798,31 @@
           await transactionDone(tx);
       }
       async findNode(profileId, parentId, kind, name) {
-          const candidates = await this.getByIndex(Store.Nodes, "profileId", profileId);
           const normalized = normalizeName(name);
-          return candidates.find((node) => node.parentId === parentId && node.kind === kind && node.normalizedName === normalized);
+          if (parentId !== null) {
+              return this.getOneByIndex(Store.Nodes, "pathLookup", [profileId, parentId, kind, normalized]);
+          }
+          assert(kind === "subject", "Only subject nodes may exist at the hierarchy root.");
+          const canonicalRootId = await rootKnowledgeNodeId(profileId, normalized);
+          const canonicalRoot = await this.get(Store.Nodes, canonicalRootId);
+          if (canonicalRoot) {
+              assert(canonicalRoot.profileId === profileId && canonicalRoot.parentId === null
+                  && canonicalRoot.kind === kind && canonicalRoot.normalizedName === normalized, "Canonical root-node identity collides with a different knowledge node.");
+              return canonicalRoot;
+          }
+          // Existing clean-slate databases created before deterministic root IDs may
+          // contain one random-ID root subject. Read it without repairing storage;
+          // all newly created root subjects use the deterministic primary key.
+          const legacyRoots = (await this.getByIndex(Store.Nodes, "profileId", profileId))
+              .filter((node) => node.parentId === null && node.kind === kind && node.normalizedName === normalized);
+          assert(legacyRoots.length <= 1, "Knowledge hierarchy contains duplicate root subjects.");
+          return legacyRoots[0];
+      }
+      async getOneByIndex(store, indexName, query) {
+          const tx = this.db.transaction(store, "readonly");
+          const result = await requestResult(tx.objectStore(store).index(indexName).get(query));
+          await transactionDone(tx);
+          return result;
       }
       async getByIndex(store, indexName, query) {
           const tx = this.db.transaction(store, "readonly");
@@ -3821,19 +3853,7 @@
               if (commitGuard && postCommitSession)
                   tx.objectStore(Store.ActiveRetrieval).put(postCommitSession);
           };
-          if (commitGuard) {
-              const request = tx.objectStore(Store.ActiveRetrieval).get(commitGuard.sessionId);
-              request.onsuccess = () => {
-                  const current = request.result;
-                  if (!current || current.status !== "committing" || current.revision !== commitGuard.expectedRevision || current.activeTargetId !== commitGuard.targetId || current.commitToken !== commitGuard.commitToken) {
-                      tx.abort();
-                      return;
-                  }
-                  apply();
-              };
-          }
-          else
-              apply();
+          this.applyWithCommitGuard(tx, commitGuard, apply);
           await transactionDone(tx);
       }
       async dailyPlanByStudyDay(studyDayKey) {
@@ -3866,20 +3886,28 @@
               if (commitGuard && postCommitSession)
                   tx.objectStore(Store.ActiveRetrieval).put(postCommitSession);
           };
-          if (commitGuard) {
-              const request = tx.objectStore(Store.ActiveRetrieval).get(commitGuard.sessionId);
-              request.onsuccess = () => {
-                  const current = request.result;
-                  if (!current || current.status !== "committing" || current.revision !== commitGuard.expectedRevision || current.activeTargetId !== commitGuard.targetId || current.commitToken !== commitGuard.commitToken) {
-                      tx.abort();
-                      return;
-                  }
-                  apply();
-              };
-          }
-          else
-              apply();
+          this.applyWithCommitGuard(tx, commitGuard, apply);
           await transactionDone(tx);
+      }
+      applyWithCommitGuard(tx, commitGuard, apply) {
+          if (!commitGuard) {
+              apply();
+              return;
+          }
+          const request = tx.objectStore(Store.ActiveRetrieval).get(commitGuard.sessionId);
+          request.onsuccess = () => {
+              const current = request.result;
+              const matches = Boolean(current
+                  && current.status === "committing"
+                  && current.revision === commitGuard.expectedRevision
+                  && current.activeTargetId === commitGuard.targetId
+                  && current.commitToken === commitGuard.commitToken);
+              if (!matches) {
+                  tx.abort();
+                  return;
+              }
+              apply();
+          };
       }
       async replaceSettingsAndObligations(settings, obligations) {
           const tx = this.db.transaction([Store.Settings, Store.Obligations], "readwrite");
@@ -4164,6 +4192,9 @@
       async put(store, value) {
           await this.operation(`put.${store}`, () => this.repository.put(store, this.normalize(store, value)));
       }
+      async add(store, value) {
+          await this.operation(`add.${store}`, () => this.repository.add(store, this.normalize(store, value)));
+      }
       async putMany(store, values) {
           await this.operation(`putMany.${store}`, () => this.repository.putMany(store, values.map((value) => this.normalize(store, value))));
       }
@@ -4180,9 +4211,10 @@
           await this.operation(`delete.${store}`, () => this.repository.delete(store, key));
       }
       async findNode(profileId, parentId, kind, name) {
-          const candidates = await this.getByIndex(Store.Nodes, "profileId", profileId);
-          const normalized = normalizeName(name);
-          return candidates.find((node) => node.parentId === parentId && node.kind === kind && node.normalizedName === normalized);
+          return this.operation("findNode", async () => {
+              const value = await this.repository.findNode(profileId, parentId, kind, name);
+              return value === undefined ? undefined : canonicalKnowledgeNode(value);
+          });
       }
       async getByIndex(store, indexName, query) {
           return this.operation(`index.${store}.${indexName}`, async () => (await this.repository.getByIndex(store, indexName, query)).map((value) => this.normalize(store, value)));
@@ -5267,27 +5299,29 @@
       }
       async ensureNode(profileId, parentId, kind, name) {
           assert(name.trim().length > 0, `Enter a ${kind} name.`);
-          const existing = await this.repo.findNode(profileId, parentId, kind, name);
+          assert(parentId !== null || kind === "subject", "Only subject nodes may exist at the hierarchy root.");
+          const normalizedName = normalizeName(name);
+          const existing = await this.repo.findNode(profileId, parentId, kind, normalizedName);
           if (existing)
               return existing;
           const time = nowIso();
           const node = {
               schemaVersion: DOCUMENT_SCHEMA_VERSION,
-              id: uid(kind),
+              id: parentId === null ? await rootKnowledgeNodeId(profileId, normalizedName) : uid(kind),
               profileId,
               parentId,
               kind,
               name: name.trim().replace(/\s+/g, " "),
-              normalizedName: normalizeName(name),
+              normalizedName,
               createdAt: time,
               updatedAt: time,
           };
           try {
-              await this.repo.put(Store.Nodes, node);
+              await this.repo.add(Store.Nodes, node);
               return node;
           }
           catch (error) {
-              const concurrent = await this.repo.findNode(profileId, parentId, kind, name);
+              const concurrent = await this.repo.findNode(profileId, parentId, kind, normalizedName);
               if (concurrent)
                   return concurrent;
               throw error;
@@ -8587,7 +8621,7 @@
             <div class="planner-reasons">${item.reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
             <details class="planner-details"><summary>Why score ${item.score}</summary><div class="factor-grid">${this.factorMeter("Due risk", item.factors.dueRisk)}${this.factorMeter("Exam importance", item.factors.examImportance)}${this.factorMeter("Weakness", item.factors.weakness)}${this.factorMeter("Duration fit", item.factors.reviewDuration)}${this.factorMeter("Exam proximity", item.factors.examinationProximity)}${this.factorMeter("Weekly balance", item.factors.weeklyBalance)}</div></details>
           </div>
-          <div class="row-actions"><button class="mini-btn" data-action="${item.chunk ? "review-chunk" : "review-one"}" data-id="${item.chunk?.id ?? joined.obligation.id}">${item.chunk ? "WORK CHUNK" : actionLabel}</button></div>
+          <div class="row-actions"><button class="mini-btn" data-action="${item.chunk ? "review-chunk" : "review-one"}" data-id="${escapeHtml(item.chunk?.id ?? joined.obligation.id)}">${item.chunk ? "WORK CHUNK" : actionLabel}</button></div>
         </article>`;
       }
       emptyState(title, message) {
@@ -8639,7 +8673,7 @@
                   return `<div class="policy-box"><strong>${label} · ${burden}.</strong> ${escapeHtml(actions)}.</div>`;
               }).join("");
               const heldMemory = memoryObligations.filter((obligation) => obligation.status === "suspended" && obligation.suspensionReason === "persistent-difficulty");
-              return `<article class="unit-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(unit.profileId)?.name ?? "Exam")} · ${escapeHtml(subject?.name ?? "")} › ${escapeHtml(section?.name ?? "")} › ${escapeHtml(topic?.name ?? "")}</div><div class="row-title">${escapeHtml(unit.title)}</div><p>${escapeHtml(unit.scope)}</p><div class="row-meta">${unitObligations.map((obligation) => `<span class="chip ${obligationChip(obligation.type)}">${escapeHtml(obligationLabel(obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(obligation.workflow.kind))}</span>`).join("")}<span>${unit.evidenceCount} evidence events</span><span>${unit.lapseCount} failures</span></div>${difficultyPanels}</div><div class="row-actions"><button class="mini-btn" data-action="review-unit" data-id="${unit.id}">REVIEW</button><button class="mini-btn" data-action="add-obligation" data-id="${unit.id}">ADD OBLIGATION</button>${heldMemory.map((obligation) => `<button class="mini-btn" data-action="resume-persistent-difficulty" data-id="${obligation.id}">RESUME MEMORY</button>`).join("")}<button class="mini-btn" data-action="toggle-unit" data-id="${unit.id}" data-status="${unit.status === "active" ? "suspended" : "active"}">${unit.status === "active" ? "SUSPEND" : "ACTIVATE"}</button></div></article>`;
+              return `<article class="unit-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(unit.profileId)?.name ?? "Exam")} · ${escapeHtml(subject?.name ?? "")} › ${escapeHtml(section?.name ?? "")} › ${escapeHtml(topic?.name ?? "")}</div><div class="row-title">${escapeHtml(unit.title)}</div><p>${escapeHtml(unit.scope)}</p><div class="row-meta">${unitObligations.map((obligation) => `<span class="chip ${obligationChip(obligation.type)}">${escapeHtml(obligationLabel(obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(obligation.workflow.kind))}</span>`).join("")}<span>${unit.evidenceCount} evidence events</span><span>${unit.lapseCount} failures</span></div>${difficultyPanels}</div><div class="row-actions"><button class="mini-btn" data-action="review-unit" data-id="${escapeHtml(unit.id)}">REVIEW</button><button class="mini-btn" data-action="add-obligation" data-id="${escapeHtml(unit.id)}">ADD OBLIGATION</button>${heldMemory.map((obligation) => `<button class="mini-btn" data-action="resume-persistent-difficulty" data-id="${escapeHtml(obligation.id)}">RESUME MEMORY</button>`).join("")}<button class="mini-btn" data-action="toggle-unit" data-id="${escapeHtml(unit.id)}" data-status="${unit.status === "active" ? "suspended" : "active"}">${unit.status === "active" ? "SUSPEND" : "ACTIVATE"}</button></div></article>`;
           }).join("")}</div>` : this.emptyState("No matching knowledge", "Create a unit or change the search filter.")}</div>
           </div>`;
       }
@@ -8660,7 +8694,7 @@
           <div class="study-grid">
             <section>
               <div class="section-head"><h2>Recent study events</h2><span class="section-note">Area · Task · Measure remain canonical Study Director inputs.</span></div>
-              ${events.length ? `<div class="record-list">${events.slice(0, 30).map((event) => `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.occurredAt)}</div><div class="row-title">${escapeHtml(event.area)} · ${escapeHtml(event.task)}</div><div class="row-meta"><span class="chip">${escapeHtml(event.activityMode)}</span><span>${escapeHtml(event.measure)}</span><span>${event.durationMinutes}m</span><span>Understanding ${event.understanding}/4</span><span>${event.linkedUnitIds.length} linked units</span></div>${event.notes ? `<p>${escapeHtml(event.notes)}</p>` : ""}</div><div class="row-actions"><button class="mini-btn" data-action="derive-unit" data-id="${event.id}">CREATE UNIT</button></div></article>`).join("")}</div>` : this.emptyState("No study events", "Log what you studied, practised or tested.")}
+              ${events.length ? `<div class="record-list">${events.slice(0, 30).map((event) => `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.occurredAt)}</div><div class="row-title">${escapeHtml(event.area)} · ${escapeHtml(event.task)}</div><div class="row-meta"><span class="chip">${escapeHtml(event.activityMode)}</span><span>${escapeHtml(event.measure)}</span><span>${event.durationMinutes}m</span><span>Understanding ${event.understanding}/4</span><span>${event.linkedUnitIds.length} linked units</span></div>${event.notes ? `<p>${escapeHtml(event.notes)}</p>` : ""}</div><div class="row-actions"><button class="mini-btn" data-action="derive-unit" data-id="${escapeHtml(event.id)}">CREATE UNIT</button></div></article>`).join("")}</div>` : this.emptyState("No study events", "Log what you studied, practised or tested.")}
             </section>
             <aside class="panel info-card"><h3>Why this exists</h3><p>A timer records effort. A Study Event records the academic meaning of that effort.</p><ul><li>It anchors revision to actual learning.</li><li>It distinguishes learning, review, practice and testing.</li><li>It allows later AI or rule-based diagnosis without bloating every Plan row.</li><li>It does not itself prove retention.</li></ul></aside>
           </div>`;
@@ -8784,7 +8818,7 @@
           this.settingsContent.innerHTML = `
           ${this.pageHead("SYSTEM CONTROL", "Settings", "Revision Director remains deterministic and local-first; AI can later advise without owning the record.")}
           <form id="settings-form" class="settings-grid">
-            <section class="panel settings-card"><h3>Planning</h3><label>Default exam profile for new records<select name="activeProfileId" ${profiles.length ? "" : "disabled"}>${profiles.length ? profiles.map((profile) => `<option value="${profile.id}" ${profile.id === settings.activeProfileId ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("") : '<option value="">Create an exam profile first</option>'}</select></label><label>Daily revision capacity<input name="dailyCapacityMinutes" type="number" min="5" max="600" value="${settings.dailyCapacityMinutes}"></label><label>Study-day boundary hour<input name="studyDayBoundaryHour" type="number" min="0" max="12" value="${settings.studyDayBoundaryHour}"></label></section>
+            <section class="panel settings-card"><h3>Planning</h3><label>Default exam profile for new records<select name="activeProfileId" ${profiles.length ? "" : "disabled"}>${profiles.length ? profiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${profile.id === settings.activeProfileId ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("") : '<option value="">Create an exam profile first</option>'}</select></label><label>Daily revision capacity<input name="dailyCapacityMinutes" type="number" min="5" max="600" value="${settings.dailyCapacityMinutes}"></label><label>Study-day boundary hour<input name="studyDayBoundaryHour" type="number" min="0" max="12" value="${settings.studyDayBoundaryHour}"></label></section>
             <section class="panel settings-card"><h3>Memory scheduling</h3><label>Scheduling policy<select name="memorySchedulingPolicy"><option value="fixed-retention" ${schedulingPolicy.kind === "fixed-retention" ? "selected" : ""}>Fixed retention · 90% default</option><option value="cost-adr" ${schedulingPolicy.kind === "cost-adr" ? "selected" : ""}>Adaptive workload · Cost-ADR · optional preset</option></select></label><label>Fixed-retention target · fixed mode only<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${fixedRetentionValue}"></label><div class="dependency-status"><span>Active policy</span><strong>${schedulingPolicy.kind === "cost-adr" ? `Cost-ADR · cost weight ${FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT}` : `Fixed · ${roundTo(schedulingPolicy.desiredRetention * 100, 0)}%`}</strong></div><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">The outcome-sensitive FSRS-R2 benchmark selected fixed 90% for new installations. Cost-ADR remains available only as the bounded 1024 preset for explicit comparison; arbitrary Cost-ADR tuning remains unavailable. Existing saved policy choices are preserved until you change them. Switching policy performs an atomic FSRS replay/rebase.</p></section>
             <section class="panel settings-card"><h3>Persistent difficulty</h3><label>Escalate to remediation after established recall failures<input name="difficultyRemediationLapses" type="number" min="2" max="99" value="${settings.memoryDifficultyPolicy.remediationLapses}"></label><label>Persistent difficulty after established recall failures<input name="difficultyPersistentLapses" type="number" min="3" max="100" value="${settings.memoryDifficultyPolicy.persistentDifficultyLapses}"></label><label class="check-option strong-check"><input name="difficultyAutomaticHold" type="checkbox" ${settings.memoryDifficultyPolicy.automaticHold.enabled ? "checked" : ""}>Hold persistent-difficulty memory out of the normal queue after successful remediation</label><label>Automatic-hold failure threshold<input name="difficultyAutomaticHoldLapses" type="number" min="${settings.memoryDifficultyPolicy.persistentDifficultyLapses + 1}" max="1000" value="${settings.memoryDifficultyPolicy.automaticHold.lapseThreshold}"></label><p class="helper">Difficulty is derived from canonical memory history: failures before the first successful retrieval are early-learning failures; only later Again outcomes count as established recall failures. The raw FSRS lapse counter remains scheduler state but does not independently decide host remediation or queue holds.</p></section>
             ${this.fsrsPersonalizationCard(settings, optimizerEvidence)}
@@ -8792,7 +8826,7 @@
             <section class="panel settings-card"><h3>Backup and recovery</h3><button class="btn" type="button" data-action="export-backup">EXPORT BACKUP</button><label class="btn file-btn">IMPORT BACKUP<input id="import-backup" type="file" accept=".rdbackup,application/x-revision-director-backup,application/gzip,application/octet-stream"></label><p class="helper">Export remains one click. Import verifies and previews the file first, then requires a current-state safety copy and explicit restore confirmation.</p></section>
             ${this.pluginSettingsCard()}
             <section class="panel settings-card"><h3>Storage health</h3><div class="dependency-status"><span>IndexedDB</span><strong class="${storage.indexedDbAvailable ? "ok" : "bad"}">${storage.indexedDbAvailable ? "Available" : "Unavailable"}</strong></div><div class="dependency-status"><span>Persistence</span><strong class="${storage.persistence === "granted" ? "ok" : ""}">${escapeHtml(persistenceLabel)}</strong></div><p class="helper">${escapeHtml(storageUsage)} · ${storage.diagnosticCount} bounded diagnostic record${storage.diagnosticCount === 1 ? "" : "s"}.</p><button class="mini-btn" type="button" data-action="refresh-storage">REFRESH STORAGE STATUS</button></section>
-            <section class="panel settings-card wide"><h3>Exam horizons</h3><p class="helper">Proximity affects cross-exam priority and how far the planner may bring an obligation forward. Profiles whose examination date has passed are automatically excluded until the date is updated for a new cycle.</p><div class="profile-planner-list">${profiles.filter((profile) => profile.status !== "archived").map((profile) => { const passed = Boolean(examDateTime(profile)) && daysToExamination(profile, planningReference) < 0; return `<div class="profile-planner-row" data-profile-editor="${profile.id}"><label>Profile<input data-profile-name value="${escapeHtml(profile.name)}"></label><label>Examination date<input data-profile-date type="date" value="${escapeHtml(profile.examDate)}"></label><label>Planning status<select data-profile-status><option value="active" ${profile.status === "active" ? "selected" : ""}>Active</option><option value="suspended" ${profile.status === "suspended" ? "selected" : ""}>Paused</option></select><small>${passed ? "Exam passed — excluded automatically" : profile.status === "suspended" ? "Paused manually" : "Included in planning"}</small></label><button class="mini-btn" type="button" data-action="save-profile" data-id="${profile.id}">SAVE</button></div>`; }).join("")}</div></section>
+            <section class="panel settings-card wide"><h3>Exam horizons</h3><p class="helper">Proximity affects cross-exam priority and how far the planner may bring an obligation forward. Profiles whose examination date has passed are automatically excluded until the date is updated for a new cycle.</p><div class="profile-planner-list">${profiles.filter((profile) => profile.status !== "archived").map((profile) => { const passed = Boolean(examDateTime(profile)) && daysToExamination(profile, planningReference) < 0; return `<div class="profile-planner-row" data-profile-editor="${escapeHtml(profile.id)}"><label>Profile<input data-profile-name value="${escapeHtml(profile.name)}"></label><label>Examination date<input data-profile-date type="date" value="${escapeHtml(profile.examDate)}"></label><label>Planning status<select data-profile-status><option value="active" ${profile.status === "active" ? "selected" : ""}>Active</option><option value="suspended" ${profile.status === "suspended" ? "selected" : ""}>Paused</option></select><small>${passed ? "Exam passed — excluded automatically" : profile.status === "suspended" ? "Paused manually" : "Included in planning"}</small></label><button class="mini-btn" type="button" data-action="save-profile" data-id="${escapeHtml(profile.id)}">SAVE</button></div>`; }).join("")}</div></section>
             <section class="panel settings-card wide"><h3>Policy router</h3><div class="engine-list"><div><dt>Memory recall</dt><dd>ts-fsrs 6.0.0 · FSRS-7</dd></div><div><dt>Concept reconstruction</dt><dd>Mastery policy v1</dd></div><div><dt>Application practice</dt><dd>Application policy v1</dd></div><div><dt>Performance practice</dt><dd>Performance policy v1</dd></div><div><dt>Relearn</dt><dd>Relearning policy v1</dd></div><div><dt>Freshness review</dt><dd>Freshness horizon policy v1</dd></div></div></section>
             <section class="panel settings-card wide"><h3>Retrieval workflows</h3><div class="engine-list"><div><dt>Recall</dt><dd>Closed-book response + checkpoints + cueing</dd></div><div><dt>Reconstruction</dt><dd>Structure + relationships + checkpoints</dd></div><div><dt>Questions / application</dt><dd>Attempted, correct, partial, novel and cueing</dd></div><div><dt>Diagram practice</dt><dd>Canvas or paper + labels, form and process</dd></div><div><dt>Answer writing</dt><dd>Demand, structure, content, evidence and time</dd></div><div><dt>Relearning</dt><dd>Diagnose → repair → closed-book verification</dd></div></div></section>
             <button class="btn primary settings-save" type="submit">SAVE SETTINGS</button>
@@ -9607,7 +9641,7 @@
           const profiles = (await this.service.profiles()).filter((profile) => profile.status === "active");
           assert(profiles.length > 0, "Create an active exam profile in Settings before adding a knowledge unit.");
           const profileSelect = formSelect(this.unitForm, "profileId");
-          profileSelect.innerHTML = profiles.map((profile) => `<option value="${profile.id}">${escapeHtml(profile.name)}</option>`).join("");
+          profileSelect.innerHTML = profiles.map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)}</option>`).join("");
           const settings = this.service.getSettings();
           profileSelect.value = prefill?.profileId ?? settings.activeProfileId ?? profiles[0]?.id ?? "";
           formInput(this.unitForm, "subject").value = prefill?.subject ?? "";
@@ -9665,7 +9699,7 @@
           assert(profiles.length > 0, "Create an active exam profile in Settings before logging study.");
           const units = (await this.service.units()).filter((unit) => unit.status === "active");
           const profileSelect = formSelect(this.studyForm, "profileId");
-          profileSelect.innerHTML = profiles.map((profile) => `<option value="${profile.id}">${escapeHtml(profile.name)}</option>`).join("");
+          profileSelect.innerHTML = profiles.map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)}</option>`).join("");
           profileSelect.value = prefill?.profileId ?? this.service.getSettings().activeProfileId ?? profiles[0]?.id ?? "";
           formInput(this.studyForm, "occurredAt").value = toLocalInput(prefill?.occurredAt ?? nowIso());
           formSelect(this.studyForm, "activityMode").value = prefill?.activityMode ?? "learn";
@@ -9678,7 +9712,7 @@
           formSelect(this.studyForm, "origin").value = prefill?.origin ?? "manual";
           formTextarea(this.studyForm, "notes").value = prefill?.notes ?? "";
           const linked = formSelect(this.studyForm, "linkedUnitIds");
-          linked.innerHTML = units.map((unit) => `<option value="${unit.id}" ${prefill?.linkedUnitIds?.includes(unit.id) ? "selected" : ""}>${escapeHtml(unit.title)}</option>`).join("");
+          linked.innerHTML = units.map((unit) => `<option value="${escapeHtml(unit.id)}" ${prefill?.linkedUnitIds?.includes(unit.id) ? "selected" : ""}>${escapeHtml(unit.title)}</option>`).join("");
           this.dialogFocus.open(this.studyDialog, '[name="profileId"]');
       }
       async submitStudy(event) {
