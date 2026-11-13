@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
+import time
 from backup_fixture_codec import decode_file, encode_payload
 from playwright.sync_api import sync_playwright
 
@@ -121,11 +122,14 @@ def scenario_hostile_planning_import(browser):
         page.locator('[data-pane="settings"]').click()
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files(str(hp))
-        deadline=time.monotonic()+8
-        while time.monotonic()<deadline:
-            toast=page.locator('#toast').inner_text().lower()
-            if 'invalid' in toast or page.locator('#restore-dialog').is_visible(): break
-            page.wait_for_timeout(80)
+        shared_wait_until(
+            page,
+            lambda: 'invalid' in page.locator('#toast').inner_text().lower()
+            or page.locator('#restore-dialog').is_visible(),
+            timeout=8000,
+            interval=80,
+            message='Timed out waiting for hostile planning import result',
+        )
         toast=page.locator('#toast').inner_text().lower()
         check('invalid' in toast and not page.locator('#restore-dialog').is_visible(),
               'Impossible planning date was accepted through UI import')
@@ -150,9 +154,14 @@ def scenario_large_dataset(browser):
     page, errors=open_page(browser,{'width':1440,'height':1000})
     with TemporaryDirectory() as tmp:
         payload=large_backup(1000); p=Path(tmp)/'large.rdbackup'; p.write_bytes(encode_payload(payload))
-        start=time.monotonic(); page.locator('[data-pane="settings"]').click(); main_qa.restore_selected_backup(page, p);
-        deadline=time.monotonic()+20
-        while time.monotonic()<deadline and page.locator('#sb-units').inner_text().strip()!='1000': page.wait_for_timeout(100)
+        start=time.monotonic(); page.locator('[data-pane="settings"]').click(); main_qa.restore_selected_backup(page, p)
+        shared_wait_until(
+            page,
+            lambda: page.locator('#sb-units').inner_text().strip() == '1000',
+            timeout=20000,
+            interval=100,
+            message='Timed out waiting for large syllabus render',
+        )
         elapsed=time.monotonic()-start
         check(page.locator('#sb-units').inner_text().strip()=='1000','Large syllabus import did not complete')
         check(elapsed<20,f'Large syllabus import/render took too long: {elapsed:.1f}s')
