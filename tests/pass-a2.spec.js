@@ -38,6 +38,8 @@ const profile = api.canonicalExamProfile(rawProfile);
 check(profile.id === 'p' && profile.name === 'Exam Profile', 'Profile canonicalisation failed');
 check(profile.createdAt.endsWith('Z') && profile.updatedAt.endsWith('Z'), 'Profile dates were not canonicalised');
 mustFail(() => api.canonicalExamProfile({...rawProfile, schemaVersion:2}), 'Unsupported document schema was accepted');
+mustFail(() => api.canonicalExamProfile({...rawProfile, id:'p"><img src=x onerror=alert(1)>'}), 'HTML-breaking durable identifier was accepted');
+mustFail(() => api.canonicalExamProfile({...rawProfile, id:'internal space'}), 'Whitespace-bearing durable identifier was accepted');
 
 const node = api.canonicalKnowledgeNode({ schemaVersion:1, id:'n', profileId:'p', parentId:null, kind:'subject', name:'  Public   Administration ', normalizedName:'wrong', createdAt:rawProfile.createdAt, updatedAt:rawProfile.updatedAt });
 check(node.name === 'Public Administration' && node.normalizedName === 'public administration', 'Node canonical name contract failed');
@@ -90,5 +92,6 @@ check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound')
   mustFail(() => service.validateBackup({...emptyBackup, profiles:'not-an-array'}), 'Non-array backup collection was accepted');
   mustFail(() => service.validateBackup({...emptyBackup, settings:{...emptyBackup.settings, schemaVersion:2}}), 'Unsupported settings schema was accepted');
   mustFail(() => service.validateBackup({...emptyBackup, activeRetrieval:42}), 'Non-object active retrieval payload was accepted');
+  mustFail(() => service.validateBackup({...emptyBackup, profiles:[{...rawProfile,status:'suspended',id:'profile\" autofocus onfocus=alert(1) x=\"'}]}), 'Hostile imported identifier was accepted');
   console.log(`PASS ${checks} Pass A2 production-contract and storage-facade checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });
