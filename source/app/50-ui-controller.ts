@@ -405,7 +405,9 @@
     }
 
     private async renderPane(pane: PaneId): Promise<void> {
-      await this.renderCoordinator.invalidateAndWait("plan", pane, "sidebar", "ownership", "storage");
+      const domains: RenderDomain[] = [pane, "sidebar", "ownership", "storage"];
+      if (pane === "today" || pane === "review" || !this.planSnapshot) domains.unshift("plan");
+      await this.renderCoordinator.invalidateAndWait(...domains);
     }
 
     private async refreshPlanSnapshot(): Promise<void> {
