@@ -1,5 +1,5 @@
-/* Revision Director VA7.1 Pass C2 — monolithic CSS source.
- * Physically one file; ownership blocks preserve the original cascade order.
+/* Revision Director VA7.1 Pass C2 — canonical CSS source.
+ * Base ownership blocks retain semantic order; responsive overrides are consolidated broad-to-narrow at the end.
  */
 
 /* ==========================================================================
