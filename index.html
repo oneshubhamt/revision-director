@@ -8682,19 +8682,24 @@ exports.withFuzzing = withFuzzing;
       }
   }
   const FSRS_SCHEDULER_CACHE = new Map();
-  function fsrsBaseSchedulerOptions(desiredRetention, weights) {
+  function fsrsSharedSchedulerOptions(weights) {
       return {
-          version: FSRS_MODEL,
-          desiredRetention,
           enableShortTerm: true,
-          learningSteps: FSRS_LEARNING_STEPS,
-          relearningSteps: FSRS_RELEARNING_STEPS,
+          learningSteps: [...FSRS_LEARNING_STEPS],
+          relearningSteps: [...FSRS_RELEARNING_STEPS],
           graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
           allowModelOverride: true,
           enableFuzz: false,
           maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
           clearStatsOnForget: false,
           ...(weights ? { weights: [...weights] } : {}),
+      };
+  }
+  function fsrsBaseSchedulerOptions(desiredRetention, weights) {
+      return {
+          version: FSRS_MODEL,
+          desiredRetention,
+          ...fsrsSharedSchedulerOptions(weights),
       };
   }
   async function createCostAdrFsrsScheduler(runtime, policy, profile) {
@@ -8705,18 +8710,10 @@ exports.withFuzzing = withFuzzing;
           .use(runtime.schedulerCostAdrMiddleware, runtime.schedulerFuzzingMiddleware, runtime.schedulerStatsMiddleware, runtime.schedulerScheduledDaysMiddleware, runtime.schedulerLearningStepsMiddleware, runtime.schedulerMaximumIntervalMiddleware, runtime.schedulerMonotonicIntervalMiddleware)
           .create({
           config: {
-              weights: [...weights],
+              ...fsrsSharedSchedulerOptions(weights),
               fractionalDays: true,
               costAdrPolicy: clone(policy.costAdrPolicy),
               goalCostWeight: policy.goalCostWeight,
-              enableFuzz: false,
-              clearStatsOnForget: false,
-              enableShortTerm: true,
-              learningSteps: [...FSRS_LEARNING_STEPS],
-              relearningSteps: [...FSRS_RELEARNING_STEPS],
-              graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
-              allowModelOverride: true,
-              maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
           },
       });
   }
