@@ -116,7 +116,10 @@ function session(revision, overrides = {}) {
   const repo = fs.readFileSync(path.join(root, 'source/app/30-indexeddb-repository.ts'), 'utf8');
   check(ts.includes('document.addEventListener("visibilitychange"') && ts.includes('window.addEventListener("pagehide"') && ts.includes('window.addEventListener("beforeunload"'), 'Forced lifecycle save hooks are incomplete');
   check(ts.includes('if (this.commitInFlight) return;') && ts.includes('button.disabled = true'), 'UI duplicate-commit guard is missing');
-  check(repo.includes('current.status !== "committing"') && repo.includes('current.commitToken !== commitGuard.commitToken'), 'Transactional duplicate-commit guard is missing');
+  check(repo.includes('private applyWithCommitGuard(')
+    && (repo.match(/this\.applyWithCommitGuard\(/g) || []).length === 2
+    && (repo.match(/current\.commitToken === commitGuard\.commitToken/g) || []).length === 1,
+  'Transactional duplicate-commit guard is not centralized in one authoritative path');
   check(source.includes('id: commitGuard ? `evidence_${commitGuard.commitToken}`'), 'Evidence idempotency token is missing');
   check(diagnostics.length === 0, `Unexpected diagnostics: ${JSON.stringify(diagnostics)}`);
   console.log(`PASS ${checks} Pass B1 durable-active-retrieval checks`);
