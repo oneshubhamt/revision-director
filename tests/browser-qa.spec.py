@@ -422,7 +422,6 @@ def scenario_cost_adr_settings(browser) -> None:
         check(saved_policy["goalCostWeight"] == 1024, "Persisted Cost-ADR goal cost weight is not the bounded preset")
         check(len(saved_policy["costAdrPolicy"]["coefficients"]) == 15, "Persisted Cost-ADR policy lost upstream coefficient provenance")
 
-    page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
     settings = page.locator('#settings-form')
     settings.locator('[name="memorySchedulingPolicy"]').select_option("fixed-retention")
     settings.locator('[name="desiredRetention"]').fill("0.90")
