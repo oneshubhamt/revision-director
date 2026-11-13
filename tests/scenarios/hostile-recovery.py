@@ -58,7 +58,11 @@ def wait_until(frame, predicate, timeout=10000) -> None:
 
 def remove_frame(page, frame) -> None:
     frame.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
-    frame.wait_for_timeout(180)
+    wait_until(
+        frame,
+        lambda: frame.locator("html").get_attribute("data-review-ownership") == "secondary",
+        timeout=5000,
+    )
     page.evaluate("document.querySelector('#app')?.remove()")
 
 def import_fixture(page, frame) -> None:
@@ -68,14 +72,18 @@ def import_fixture(page, frame) -> None:
     restore_backup_with_safety_copy(page, frame, FIXTURE)
     wait_until(frame, lambda: "restored" in frame.locator('#toast').inner_text().lower())
 
-def start_recall(frame, answer: str) -> None:
+def start_recall(page, frame, answer: str) -> None:
     frame.locator('[data-pane="library"]').click()
     row = frame.locator('.unit-row').filter(has_text='Staphylococcus aureus — recognition and clinical reasoning')
     check(row.count() == 1, 'Hostile-recovery target unit is missing')
     row.locator('[data-action="review-unit"]').click()
     wait_until(frame, lambda: frame.locator('#attempt-text').count() == 1)
     frame.locator('#attempt-text').fill(answer)
-    frame.wait_for_timeout(700)
+    wait_until(
+        frame,
+        lambda: (host_state_get(page, 'activeRetrieval', 'current') or {}).get('draft', {}).get('values', {}).get('attempt-text') == answer,
+        timeout=5000,
+    )
 
 def host_local(page, key: str):
     return page.evaluate("key => window.__RD_B1_QA_STATE__.local[key] ?? null", key)
@@ -136,7 +144,7 @@ def main() -> None:
         # Establish a valid canonical session.
         frame = boot_frame(page)
         import_fixture(page, frame)
-        start_recall(frame, 'Canonical IndexedDB recovery answer')
+        start_recall(page, frame, 'Canonical IndexedDB recovery answer')
         initial = host_state_get(page, 'activeRetrieval', 'current')
         check(initial and initial['status'] == 'active', 'Canonical active session was not established')
 
@@ -170,7 +178,13 @@ def main() -> None:
         remove_frame(page, frame)
         delete_raw_record(page, 'obligations', target)
         frame = boot_frame(page)
-        frame.wait_for_timeout(900)
+        wait_until(
+            frame,
+            lambda: frame.locator('#attempt-text').count() == 0
+            and host_state_get(page, 'activeRetrieval', 'current') is None
+            and host_local(page, 'revision-director:active-retrieval:v1') is None,
+            timeout=8000,
+        )
         check(frame.locator('#attempt-text').count() == 0, 'Missing recovery target was reopened')
         check(host_state_get(page, 'activeRetrieval', 'current') is None, 'Invalid-target IndexedDB recovery state was not cleared')
         check(host_local(page, 'revision-director:active-retrieval:v1') is None, 'Invalid-target emergency recovery state was not cleared')
@@ -178,7 +192,7 @@ def main() -> None:
         # A hostile commit-token change between the committing snapshot and the
         # evidence transaction must abort all scheduler/evidence mutation.
         import_fixture(page, frame)
-        start_recall(frame, 'Transactional guard sabotage')
+        start_recall(page, frame, 'Transactional guard sabotage')
         guarded = host_state_get(page, 'activeRetrieval', 'current')
         guarded_target = guarded['activeTargetId']
         before_obligation = next(item for item in host_state_all(page, 'obligations') if item['id'] == guarded_target)
@@ -186,7 +200,11 @@ def main() -> None:
         prepare_good(frame)
         page.evaluate("window.__RD_B1_QA_STATE__.sabotageCommit=true")
         frame.locator('[data-action="rate"][data-rating="3"]').click()
-        frame.wait_for_timeout(900)
+        wait_until(
+            frame,
+            lambda: (host_state_get(page, 'activeRetrieval', 'current') or {}).get('status') == 'active',
+            timeout=8000,
+        )
         check(len(host_state_all(page, 'evidenceEvents')) == before_guard_evidence, 'Guard mismatch wrote Evidence despite transaction abort')
         after_obligation = next(item for item in host_state_all(page, 'obligations') if item['id'] == guarded_target)
         check(after_obligation == before_obligation, 'Guard mismatch advanced scheduler state despite transaction abort')
@@ -206,7 +224,7 @@ def main() -> None:
 
         # Re-establish data, then simulate a crash after the committing snapshot but before the atomic evidence transaction.
         import_fixture(page, frame)
-        start_recall(frame, 'Retry after committing-state crash')
+        start_recall(page, frame, 'Retry after committing-state crash')
         remove_frame(page, frame)
         envelope = json.loads(host_local(page, 'revision-director:active-retrieval:v1'))
         envelope['session']['status'] = 'committing'
@@ -223,7 +241,6 @@ def main() -> None:
         before = len(host_state_all(page, 'evidenceEvents'))
         complete_good(frame)
         wait_until(frame, lambda: len(host_state_all(page, 'evidenceEvents')) == before + 1)
-        frame.wait_for_timeout(350)
         check(len(host_state_all(page, 'evidenceEvents')) == before + 1, 'Retry after committing-state crash duplicated evidence')
 
         # A newer completed tombstone must suppress an older active emergency snapshot.
@@ -237,7 +254,12 @@ def main() -> None:
             set_host_local(page, 'revision-director:active-retrieval:v1', json.dumps(local))
             mutate_raw_record(page, 'activeRetrieval', 'current', "value.status='completed'; value.activeIndex=value.queueTargetIds.length; value.activeTargetId=''; value.commitToken='commit_completed'; value.revision += 10; value.updatedAt='2026-07-28T00:00:00.000Z'; value.phase='attempt'; value.draft.phase='attempt'; value.timeRuntime.currentPhase='attempt';")
             frame = boot_frame(page)
-            frame.wait_for_timeout(800)
+            wait_until(
+                frame,
+                lambda: host_state_get(page, 'activeRetrieval', 'current') is None
+                and host_local(page, 'revision-director:active-retrieval:v1') is None,
+                timeout=8000,
+            )
             check(frame.locator('.review-card').count() == 0, 'Completed tombstone was exposed as unfinished work')
             check(host_state_get(page, 'activeRetrieval', 'current') is None, 'Completed tombstone was not cleared from IndexedDB')
             check(host_local(page, 'revision-director:active-retrieval:v1') is None, 'Completed tombstone was not cleared from emergency storage')
