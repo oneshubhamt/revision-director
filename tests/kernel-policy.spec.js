@@ -229,7 +229,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   await Promise.all([api.prepareFsrsScheduler(fixed(.85)), api.prepareFsrsScheduler(fixed(.95))]);
   const lowerRetention = new api.FsrsMemoryPolicy(() => fixed(.85));
   const higherRetention = new api.FsrsMemoryPolicy(() => fixed(.95));
-  check(lowerRetention.preview(obligation('memory-recall', lowerRetention), new Date(due))[3].intervalDays > higherRetention.preview(obligation('memory-recall', higherRetention), new Date(due))[3].intervalDays, 'Higher desired retention must shorten the Easy interval');
+  check(lowerRetention.preview(obligation('memory-recall', lowerRetention), new Date(due), {memoryReviews:[]})[3].intervalDays > higherRetention.preview(obligation('memory-recall', higherRetention), new Date(due), {memoryReviews:[]})[3].intervalDays, 'Higher desired retention must shorten the Easy interval');
 
   const invalid = structuredClone(memoryObligation);
   delete invalid.policyState.fsrsCard.stabilityFast;
