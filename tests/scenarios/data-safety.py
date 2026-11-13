@@ -100,7 +100,7 @@ def main():
 
         # Inspection is non-mutating, cancellable, and the same file can be selected again.
         before=page.locator('#sb-units').inner_text()
-        page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
+        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
         check(page.locator('#restore-dialog').is_visible(),'Import selection did not open preview')
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated local records')
         preview=page.locator('#restore-preview').inner_text()
@@ -111,7 +111,7 @@ def main():
         page.get_by_role('button',name='CANCEL',exact=True).click(); page.locator('#restore-dialog').wait_for(state='hidden')
         check(not page.locator('#restore-dialog').is_visible(),'Cancel did not close restore preview')
         check(page.locator('#sb-units').inner_text()==before,'Cancel mutated data')
-        page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
+        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
         check(page.locator('#restore-dialog').is_visible(),'Same backup could not be reselected after cancellation')
 
         safety=safety_download(page,tmp)
@@ -130,7 +130,7 @@ def main():
         attempt.fill('Stage D safety copy live draft')
         wait_until(page, lambda: 'Stage D safety copy live draft' in (page.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") or ''), timeout=5000, interval=40, message='Live draft did not reach emergency recovery')
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
+        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
         active_safety=safety_download(page,tmp)
         active_safety_payload=decode_file(active_safety)
         check(active_safety_payload['activeRetrieval'] is not None,'Current-state safety copy omitted unfinished retrieval')
@@ -141,7 +141,7 @@ def main():
 
         # The saved active-session backup requires explicit restore/discard treatment.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        page.locator('#import-backup').set_input_files(str(active_safety)); page.locator('#restore-dialog').wait_for(state='visible')
+        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(active_safety)); page.locator('#restore-dialog').wait_for(state='visible')
         check(page.locator('input[name="restore-active-treatment"]').count()==2,'Active-session treatment choices are missing')
         active_restore_safety=safety_download(page,tmp)
         confirm_restore(page,treatment='restore')
@@ -150,14 +150,14 @@ def main():
 
         # Reimport the same active backup and explicitly discard its session.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        page.locator('#import-backup').set_input_files(str(active_safety)); page.locator('#restore-dialog').wait_for(state='visible')
+        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(active_safety)); page.locator('#restore-dialog').wait_for(state='visible')
         discard_safety=safety_download(page,tmp)
         confirm_restore(page,treatment='discard')
         check(page.evaluate('(k)=>localStorage.getItem(k)',RECOVERY_KEY) is None,'Discard treatment retained emergency active session')
 
         # Corrupt current relational state after inspection: the controller must provide a forensic rescue, not deadlock.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
+        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
         page.evaluate("""async()=>{const db=await new Promise((res,rej)=>{const r=indexedDB.open('revision-director',1);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});await new Promise((res,rej)=>{const tx=db.transaction(['profiles'],'readwrite');tx.objectStore('profiles').put({schemaVersion:1,id:'corrupt-profile'});tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});}""")
         rescue=safety_download(page,tmp)
         check(rescue.suffix=='.rdrescue','Corrupted state did not create .rdrescue')
@@ -171,14 +171,14 @@ def main():
         # Rescue and raw JSON cannot enter the normal restore ceremony.
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
         page.evaluate("document.querySelector('#toast').textContent=''")
-        page.locator('#import-backup').set_input_files(str(rescue))
+        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(rescue))
         wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='.rdrescue import handler did not finish')
         check(not page.locator('#restore-dialog').is_visible(),'.rdrescue entered ordinary restore ceremony')
         rescue_message=page.locator('#toast').inner_text().strip()
         check(bool(rescue_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')"), f'.rdrescue rejection was not reported as an error · toast={rescue_message!r}')
         raw=tmp/'raw.json';raw.write_text(json.dumps({'format':'revision-director-backup'}))
         page.evaluate("document.querySelector('#toast').textContent=''")
-        page.locator('#import-backup').set_input_files(str(raw))
+        page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(raw))
         wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Raw JSON import handler did not finish')
         raw_message=page.locator('#toast').inner_text().strip()
         check(not page.locator('#restore-dialog').is_visible() and bool(raw_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')"),
