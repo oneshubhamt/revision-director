@@ -18,7 +18,7 @@ const { createAppRuntime, memoryLocalStorage } = require('../helpers/runtime-har
   const navigator = { storage: { persisted: async () => false, persist: async () => false, estimate: async () => ({ usage: 80, quota: 100 }) } };
   const { api } = createAppRuntime({
     globalName: '__RD_B3_TEST__',
-    expose: ["REVIEW_OWNER_STORAGE_KEY","REVIEW_OWNER_CHANNEL","REVIEW_OWNER_HEARTBEAT_MS","REVIEW_OWNER_STALE_MS","REVIEW_OWNER_TAKEOVER_WAIT_MS","ReviewOwnershipCoordinator","RevisionData","AppDiagnostics"],
+    expose: ["REVIEW_OWNER_STORAGE_KEY","REVIEW_OWNER_CHANNEL","ReviewOwnershipCoordinator","RevisionData","AppDiagnostics"],
     context: {
       localStorage,
       navigator,
