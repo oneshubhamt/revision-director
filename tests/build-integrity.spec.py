@@ -29,6 +29,8 @@ ts = "".join(path.read_text() for path in source_paths)
 contracts_ts = (ROOT / "source/app/12-production-contracts.ts").read_text()
 fsrs_personalization_ts = (ROOT / "source/app/18-fsrs-personalization.ts").read_text()
 planning_ts = (ROOT / "source/app/20-policy-planning-kernel.ts").read_text()
+backup_validation_ts = (ROOT / "source/app/22-backup-validation.ts").read_text()
+evidence_transition_ts = (ROOT / "source/app/23-evidence-transition.ts").read_text()
 repository_ts = (ROOT / "source/app/30-indexeddb-repository.ts").read_text()
 storage_ts = (ROOT / "source/app/31-storage-facade.ts").read_text()
 service_ts = (ROOT / "source/app/40-application-services.ts").read_text()
@@ -77,8 +79,9 @@ check("source parts own no runtime wrapper", not first_source.lstrip().startswit
 check("manifest owns expected layers", all(token in {path.name for path in source_paths} for token in [
     "00-runtime-boundary.ts", "05-presentation-engine.ts", "10-domain-model.ts", "11-domain-kernel.ts",
     "12-production-contracts.ts", "18-fsrs-personalization.ts", "18a-fsrs-browser-optimizer.ts", "19-revision-scheduler-port.ts", "20-policy-planning-kernel.ts", "21-policy-implementations.ts",
+    "22-backup-validation.ts", "23-evidence-transition.ts",
     "30-indexeddb-repository.ts", "31-storage-facade.ts", "32-active-retrieval-persistence.ts", "33-phase-time-runtime.ts", "34-cross-tab-ownership.ts", "40-application-services.ts",
-    "41-backup-codec.ts", "45-ui-runtime.ts", "50-ui-controller.ts", "60-public-bridge-bootstrap.ts"
+    "41-backup-codec.ts", "45-ui-runtime.ts", "46-workflow-form-adapter.ts", "50-ui-controller.ts", "60-public-bridge-bootstrap.ts"
 ]))
 check("shell presentation manifest placeholder", "<!-- INLINE_PRESENTATION_MANIFEST -->" in shell)
 check("shell presentation prepaint placeholder", "<!-- INLINE_PRESENTATION_PREPAINT -->" in shell)
@@ -193,6 +196,8 @@ check("canonical SHA-256 archive parser", all(token in backup_codec_ts for token
     'assertExactKeys(value, "Backup manifest"', 'assertExactKeys(value, "Backup counts"', 'assertExactKeys(value, "Backup chunk"', 'assertExactKeys(value, "Backup completion proof"',
 ]) and "{16,64}" not in backup_codec_ts)
 check("backup payload narrows from unknown", "const candidate = requireRecord(input, \"Backup\")" in ts and "canonicalDocumentArray(\"profile\"" in ts and "candidate.profiles as ExamProfile[]" not in ts and "candidate.evidenceEvents as EvidenceEvent[]" not in ts)
+check("backup validation boundary ownership", "function validateBackupPayload(input: unknown): BackupPayload" in backup_validation_ts and "validateBackup(input: unknown)" not in service_ts and "this." not in backup_validation_ts)
+check("evidence transition boundary ownership", all(token in evidence_transition_ts for token in ["function prepareEvidenceDraft", "function applyPrimaryEvidenceTransition", "function applyCorrectiveRelearningTransition", "function buildEvidenceEvent"]) and "this." not in evidence_transition_ts and "async " not in evidence_transition_ts)
 check("checked external domain boundaries", "function literalChoice<const Values" in ts and "MessageEvent<unknown>" in ts and "async register(input: unknown)" in ts and "private async importStudyEvent(input: unknown)" in ts and "private async createRevisionCandidate(input: unknown)" in ts and " as InactiveGapClassification" not in ts and " as BackupActiveSessionTreatment" not in ts)
 check("archive parsers narrow unknown records", "as Partial<BackupArchive" not in ts and "const candidate: BackupPayload" not in ts and "const parsed = JSON.parse(raw) as ActiveRetrievalRecoveryEnvelope" not in ts and "as Partial<DiagnosticRecord>" not in ts)
 check("store-keyed persistence typing", "interface StoreValueMap" in ts and "type StoreValue<S extends StoreName>" in ts and "async get<S extends StoreName>(store: S" in ts and "async getAll<S extends StoreName>(store: S" in ts and "async get<T>(store: StoreName" not in ts and "async getAll<T>(store: StoreName" not in ts)
@@ -261,10 +266,10 @@ check("safe suspension provenance", "type SuspensionReason" in ts and 'suspensio
 check("automatic relearn follow-up", 'completion.followUpType = "relearn"' in ts)
 check("relearn pauses exact original", 'item.returnObligationId === obligation.id' in ts and 'obligation.status = "suspended"' in ts)
 check("atomic original reactivation", "relatedObligation?: RevisionObligation" in ts and "if (relatedObligation) obligationStore.put(relatedObligation)" in ts)
-check("FSRS corrective verification boundary", 'const verification = this.router.get("memory-recall").complete(' in ts and "priorOriginalReviews = memoryReviewIndex.get(original.id) ?? []" in ts and "verificationRating" in ts and "original.dueAt = verification.dueAt" in ts and "original.policyState = verification.policyState" in ts)
-check("FSRS due ownership invariant", 'assert(fsrsCard.dueAt === obligation.dueAt' in ts and "original.lastCompletedAt = reviewedAt.toISOString()" in ts)
+check("FSRS corrective verification boundary", 'const memoryVerification = original.type === "memory-recall"' in service_ts and 'this.router.get("memory-recall").complete(' in service_ts and "priorOriginalReviews = original.type === \"memory-recall\"" in service_ts and "original.dueAt = verification.dueAt" in evidence_transition_ts and "original.policyState = clone(verification.policyState)" in evidence_transition_ts)
+check("FSRS due ownership invariant", 'assert(fsrsCard.dueAt === obligation.dueAt' in ts and "original.lastCompletedAt = input.reviewedAt" in evidence_transition_ts)
 check("early-learning difficulty separated from lapses", '"learning-difficulty"' in ts and "MEMORY_EARLY_LEARNING_FAILURE_THRESHOLD = 2" in ts and "let established = false" in ts and "if (established) establishedLapses += 1" in ts and "else earlyLearningFailures += 1" in ts and "!established && earlyLearningFailures" in ts)
-check("exam-bounded corrective relearning", "function correctiveRelearnDueAt" in ts and "correctiveRelearnDueAt(await this.profile(unit.profileId), reviewedAt)" in ts)
+check("exam-bounded corrective relearning", "function correctiveRelearnDueAt" in ts and "correctiveRelearnDueAt(await this.profile(primary.unit.profileId), reviewedAt)" in service_ts)
 check("FSRS corrective verification transition audit", "correctiveMemoryTransition" in ts and "CorrectiveMemoryTransition" in ts and "Corrective-memory scheduler transition presence is inconsistent" in ts and "correctiveMemoryRating" in ts)
 check("priority-aware queue", "b.obligation.priority - a.obligation.priority" in ts and "b.unit.importance - a.unit.importance" in ts)
 check("relational backup validation", "Section must belong to a subject in the same profile" in ts and "Evidence event relationships are inconsistent" in ts)
