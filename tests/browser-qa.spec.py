@@ -342,8 +342,29 @@ def scenario_bridge(browser) -> None:
     rows = page.locator("[data-profile-editor]")
     for index in range(rows.count()):
         row = rows.nth(index)
+        profile_id = row.get_attribute("data-profile-editor")
+        check(bool(profile_id), "Profile editor is missing durable identity")
         row.locator("[data-profile-status]").select_option("suspended")
         row.locator('[data-action="save-profile"]').click()
+        wait_until(
+            page,
+            lambda profile_id=profile_id: page.evaluate(
+                """id=>new Promise((resolve,reject)=>{
+                  const request=indexedDB.open('revision-director');
+                  request.onerror=()=>reject(request.error);
+                  request.onsuccess=()=>{
+                    const db=request.result;
+                    const get=db.transaction('profiles','readonly').objectStore('profiles').get(id);
+                    get.onerror=()=>reject(get.error);
+                    get.onsuccess=()=>{ resolve(get.result?.status==='suspended'); db.close(); };
+                  };
+                })""",
+                profile_id,
+            ),
+            timeout=5_000,
+            interval=40,
+            message=f"Profile suspension did not persist: {profile_id}",
+        )
     wait_until(page, lambda: page.evaluate("RevisionDirector.records.getDueSummary().dueCount") == 0, timeout=5000, interval=40, message="Paused profiles remained due")
     summary = page.evaluate("RevisionDirector.records.getDueSummary()")
     check(summary["dueCount"] == 0, f"Paused profiles remained in bridge due summary: {summary}")
