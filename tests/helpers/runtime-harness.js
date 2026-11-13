@@ -60,6 +60,19 @@ function defaultContext() {
   };
 }
 
+function createVendorRuntime({ context: overrides = {}, requireFsrs = true } = {}) {
+  const context = { ...defaultContext(), ...overrides };
+  context.window = context;
+  context.self = context;
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(VENDOR_PATH, 'utf8'), context, { filename: 'ts-fsrs-6.0.0.umd.js' });
+  if (requireFsrs && (!context.FSRS || typeof context.FSRS.DefaultScheduler !== 'function')) {
+    throw new Error('Modern ts-fsrs runtime did not load');
+  }
+  return context;
+}
+
 function createAppRuntime({
   globalName = '__RD_TEST_API__',
   expose = [],
@@ -90,5 +103,6 @@ function createAppRuntime({
 module.exports = {
   ROOT,
   createAppRuntime,
+  createVendorRuntime,
   memoryLocalStorage,
 };
