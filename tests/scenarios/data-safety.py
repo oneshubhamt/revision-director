@@ -1,13 +1,13 @@
 from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import json, os, runpy, shutil, sys
+import json, runpy, sys
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, chromium_executable
+from helpers.browser_harness import ROOT, capture_browser_errors, launch_chromium
 sys.path.insert(0,str(ROOT/'tests'))
 from backup_fixture_codec import decode_file
 base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_stage_d_base')
@@ -48,14 +48,11 @@ def confirm_restore(page, dialog_mode, treatment=None, dismiss_first=False):
 
 def main():
     global checks
-    exe=chromium_executable()
     with sync_playwright() as pw, TemporaryDirectory() as td:
         tmp=Path(td)
-        browser=pw.chromium.launch(headless=True,executable_path=exe if exe else None,args=['--no-sandbox','--disable-dev-shm-usage'])
+        browser=launch_chromium(pw)
         page=browser.new_page(viewport={'width':1440,'height':1000})
-        errors=[]
-        page.on('pageerror',lambda e:errors.append(str(e)))
-        page.on('console',lambda m:errors.append(m.text) if m.type=='error' else None)
+        errors=capture_browser_errors(page)
         dialog_mode={'accept':True}
         def handle_dialog(dialog):
             if dialog_mode['accept']: dialog.accept()

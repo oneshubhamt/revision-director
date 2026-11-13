@@ -1,21 +1,22 @@
 from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import importlib.util
-import json, os, time
+import json
 from backup_fixture_codec import decode_file, encode_payload
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, chromium_executable
+from helpers.browser_harness import (
+    ROOT,
+    launch_chromium,
+    load_browser_qa,
+    open_html_page,
+    wait_until as shared_wait_until,
+)
 # Reuse the exact deterministic IndexedDB-compatible HTML fixture from the main browser suite.
-spec = importlib.util.spec_from_file_location('revision_director_main_browser_qa', ROOT / 'tests/browser-qa.spec.py')
-if spec is None or spec.loader is None:
-    raise RuntimeError('Unable to load main browser QA fixture')
-main_qa = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(main_qa)
+main_qa = load_browser_qa("revision_director_planning_large_dataset")
 HTML = main_qa.HTML
 
 def check(value: bool, message: str) -> None:
@@ -23,13 +24,13 @@ def check(value: bool, message: str) -> None:
         raise AssertionError(message)
 
 def open_page(browser, viewport=None):
-    page = browser.new_page(viewport=viewport or {'width':1365,'height':950})
-    errors=[]
-    page.on('pageerror', lambda error: errors.append(('pageerror',str(error))))
-    page.on('console', lambda msg: errors.append((msg.type,msg.text)) if msg.type in ('error','warning') else None)
-    page.on('dialog', lambda dialog: dialog.accept())
-    page.set_content(HTML, wait_until='load')
-    page.wait_for_timeout(1300)
+    page, errors = open_html_page(
+        browser,
+        HTML,
+        viewport=viewport or {'width':1365,'height':950},
+        settle_ms=1300,
+        include_warnings=True,
+    )
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup')
     page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(100)
     main_qa.restore_selected_backup(page, main_qa.BASELINE_BACKUP)
@@ -49,10 +50,14 @@ def set_capacity(page, value: int) -> None:
     form.locator('[name="dailyCapacityMinutes"]').fill(str(value))
     page.evaluate("document.querySelector('#toast').textContent=''")
     form.locator('button[type="submit"]').click()
-    deadline=time.monotonic()+8
-    while time.monotonic()<deadline:
-        if 'settings saved' in page.locator('#toast').inner_text().lower() and page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value): break
-        page.wait_for_timeout(80)
+    shared_wait_until(
+        page,
+        lambda: 'settings saved' in page.locator('#toast').inner_text().lower()
+        and page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value),
+        timeout=8000,
+        interval=80,
+        message='Timed out waiting for capacity setting persistence',
+    )
     check('settings saved' in page.locator('#toast').inner_text().lower(), 'Capacity setting did not persist')
     check(page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value), 'Capacity setting rerendered with a stale value')
 
@@ -162,11 +167,8 @@ def scenario_large_dataset(browser):
     page.close()
 
 def main():
-    with sync_playwright() as p:
-        executable=os.environ.get('CHROMIUM_EXECUTABLE') or ('/usr/bin/chromium' if Path('/usr/bin/chromium').exists() else None)
-        opts={'headless':True,'args':['--no-sandbox','--disable-dev-shm-usage']}
-        if executable: opts['executable_path']=executable
-        browser=p.chromium.launch(**opts)
+    with sync_playwright() as playwright:
+        browser=launch_chromium(playwright)
         scenario_capacity_reflow(browser)
         scenario_hostile_planning_import(browser)
         scenario_large_dataset(browser)
