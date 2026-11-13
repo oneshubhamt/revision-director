@@ -135,6 +135,14 @@ def main():
         check(page.evaluate("document.activeElement?.getAttribute('data-gap-action')") == "focus", "Tab did not wrap to first overlay control")
         page.locator('[data-gap-action="break"]').click(); overlay.wait_for(state="hidden")
         check(not overlay.is_visible(), "Overlay did not close after classification")
+        wait_until(
+            page,
+            lambda: not page.locator(".app-shell").evaluate("e=>e.inert")
+            and page.evaluate("document.activeElement?.getAttribute('data-action')") == "toggle-pause",
+            timeout=3000,
+            interval=30,
+            message="Overlay focus did not return to pause control",
+        )
         check(not page.locator(".app-shell").evaluate("e=>e.inert"), "Application remained inert")
         check(page.evaluate("document.activeElement?.getAttribute('data-action')") == "toggle-pause", "Overlay focus did not return to pause control")
 
