@@ -1768,6 +1768,20 @@
           ? chunkMap.has(targetId.slice(6))
           : obligationMap.has(targetId);
         assert(canonicalActive.queueTargetIds.every(validTarget), "Backup active retrieval references an unknown target.");
+        const activeTargetEligible = (targetId: string): boolean => {
+          if (targetId.startsWith("chunk:")) {
+            const chunk = chunkMap.get(targetId.slice(6));
+            const obligation = chunk ? obligationMap.get(chunk.obligationId) : undefined;
+            const unit = obligation ? unitMap.get(obligation.unitId) : undefined;
+            const profile = unit ? profileMap.get(unit.profileId) : undefined;
+            return chunk?.status === "pending" && obligation?.status === "active" && unit?.status === "active" && profile?.status === "active";
+          }
+          const obligation = obligationMap.get(targetId);
+          const unit = obligation ? unitMap.get(obligation.unitId) : undefined;
+          const profile = unit ? profileMap.get(unit.profileId) : undefined;
+          return obligation?.status === "active" && unit?.status === "active" && profile?.status === "active";
+        };
+        assert(activeTargetEligible(canonicalActive.activeTargetId), "Backup active retrieval target is no longer executable.");
       }
       assertDocumentSchema(settings, "Backup settings");
       assert(settings.key === "app", "Backup settings key is invalid.");
