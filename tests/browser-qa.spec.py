@@ -279,6 +279,13 @@ def scenario_workflows(browser) -> None:
     check_all_checkpoints(page); rate_good(page)
 
     relearn = page.locator(".planner-row").filter(has_text="Relearn")
+    wait_until(
+        page,
+        lambda: relearn.count() >= 1,
+        timeout=5_000,
+        interval=40,
+        message="Relearning obligation was not created",
+    )
     check(relearn.count() >= 1, "Relearning obligation was not created")
     relearn.first.locator('[data-action="review-one"]').click()
     wait_until(page, lambda: "WHY THIS RELEARNING EXISTS" in page.locator("#review-content").inner_text(), timeout=5000, interval=40, message="Relearning review did not open")
