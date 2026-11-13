@@ -314,6 +314,14 @@
       assert(typeof value === "string", `${label} must be a string.`);
       return value;
   }
+  function requiredFiniteNumber(value, label) {
+      assert(typeof value === "number" && Number.isFinite(value), `${label} must be a finite number.`);
+      return value;
+  }
+  function requiredSafeInteger(value, label) {
+      assert(typeof value === "number" && Number.isSafeInteger(value), `${label} must be a safe integer.`);
+      return value;
+  }
   function requiredArray(value, label) {
       assert(Array.isArray(value), `${label} must be an array.`);
       return value;
@@ -1229,36 +1237,69 @@
       assertDocumentSchema(value, "Daily plan");
       assertExactKeys(value, "Daily plan", ["schemaVersion", "id", "studyDayKey", "createdAt", "updatedAt", "plannerVersion", "versions", "outcomes"]);
       validateCalendarDate(value.studyDayKey, "Daily plan study day");
-      const plan = clone(value);
-      plan.schemaVersion = DOCUMENT_SCHEMA_VERSION;
-      plan.id = canonicalId(plan.id, "Daily-plan ID");
-      plan.createdAt = canonicalIso(plan.createdAt, "Daily-plan creation date");
-      plan.updatedAt = canonicalIso(plan.updatedAt, "Daily-plan update date");
-      plan.plannerVersion = canonicalId(plan.plannerVersion, "Daily-plan planner version");
-      plan.versions = plan.versions.map((version) => ({
-          ...version,
-          generatedAt: canonicalIso(version.generatedAt, "Daily-plan version date"),
-          items: version.items.map((item) => ({
-              ...item,
-              key: canonicalId(item.key, "Daily-plan item key"),
-              obligationId: canonicalId(item.obligationId, "Daily-plan obligation ID"),
-              ...(item.chunkId !== undefined ? { chunkId: canonicalId(item.chunkId, "Daily-plan chunk ID") } : {}),
-              profileId: canonicalId(item.profileId, "Daily-plan profile ID"),
-              unitId: canonicalId(item.unitId, "Daily-plan unit ID"),
-              subject: canonicalName(item.subject, "Daily-plan subject", 500),
-              title: canonicalName(item.title, "Daily-plan title", 500),
-              reasons: item.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500)),
-          })),
-      }));
-      plan.outcomes = plan.outcomes.map((outcome) => ({
-          ...outcome,
-          itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
-          ...(outcome.startedAt !== undefined ? { startedAt: canonicalIso(outcome.startedAt, "Daily-plan start date") } : {}),
-          ...(outcome.completedAt !== undefined ? { completedAt: canonicalIso(outcome.completedAt, "Daily-plan completion date") } : {}),
-          ...(outcome.evidenceEventId !== undefined ? { evidenceEventId: canonicalId(outcome.evidenceEventId, "Daily-plan evidence ID") } : {}),
-          ...(outcome.note !== undefined ? { note: canonicalText(outcome.note, "Daily-plan outcome note") } : {}),
-      }));
-      return plan;
+      assert(Array.isArray(value.versions) && value.versions.length > 0, "Daily plan requires at least one version.");
+      assert(Array.isArray(value.outcomes), "Daily plan outcomes must be an array.");
+      const versions = value.versions.map((version) => {
+          assertExactKeys(version, "Daily-plan version", ["version", "generatedAt", "capacityMinutes", "items", "reason"]);
+          assert(Number.isSafeInteger(version.version) && version.version >= 1, "Daily-plan version number is invalid.");
+          assert(Number.isSafeInteger(version.capacityMinutes) && version.capacityMinutes >= 5 && version.capacityMinutes <= 600, "Daily-plan version capacity is invalid.");
+          assert(["initial", "manual-regeneration", "data-change", "manual-addition"].includes(version.reason), "Daily-plan version reason is invalid.");
+          assert(Array.isArray(version.items), "Daily-plan version items must be an array.");
+          const items = version.items.map((item) => {
+              assertExactKeys(item, "Daily-plan item", ["key", "obligationId", "chunkId", "profileId", "unitId", "subject", "workflow", "title", "estimatedMinutes", "score", "disposition", "reasons"]);
+              assert(RETRIEVAL_WORKFLOWS.includes(item.workflow), "Daily-plan item workflow is invalid.");
+              assert(typeof item.estimatedMinutes === "number" && Number.isFinite(item.estimatedMinutes) && item.estimatedMinutes >= 1 && item.estimatedMinutes <= 240, "Daily-plan item duration is invalid.");
+              assert(typeof item.score === "number" && Number.isFinite(item.score), "Daily-plan item score is invalid.");
+              assert(["selected", "required-overrun", "must-split", "deferred"].includes(item.disposition), "Daily-plan item disposition is invalid.");
+              assert(Array.isArray(item.reasons), "Daily-plan item reasons must be an array.");
+              return {
+                  key: canonicalId(item.key, "Daily-plan item key"),
+                  obligationId: canonicalId(item.obligationId, "Daily-plan obligation ID"),
+                  ...(item.chunkId !== undefined ? { chunkId: canonicalId(item.chunkId, "Daily-plan chunk ID") } : {}),
+                  profileId: canonicalId(item.profileId, "Daily-plan profile ID"),
+                  unitId: canonicalId(item.unitId, "Daily-plan unit ID"),
+                  subject: canonicalName(item.subject, "Daily-plan subject", 500),
+                  workflow: item.workflow,
+                  title: canonicalName(item.title, "Daily-plan title", 500),
+                  estimatedMinutes: item.estimatedMinutes,
+                  score: item.score,
+                  disposition: item.disposition,
+                  reasons: item.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500)),
+              };
+          });
+          return {
+              version: version.version,
+              generatedAt: canonicalIso(version.generatedAt, "Daily-plan version date"),
+              capacityMinutes: version.capacityMinutes,
+              items,
+              reason: version.reason,
+          };
+      });
+      const outcomes = value.outcomes.map((outcome) => {
+          assertExactKeys(outcome, "Daily-plan outcome", ["itemKey", "status", "startedAt", "completedAt", "actualMinutes", "evidenceEventId", "note"]);
+          assert(["planned", "started", "completed", "skipped"].includes(outcome.status), "Daily-plan outcome status is invalid.");
+          if (outcome.actualMinutes !== undefined)
+              assert(typeof outcome.actualMinutes === "number" && Number.isFinite(outcome.actualMinutes) && outcome.actualMinutes >= 0 && outcome.actualMinutes <= 10_080, "Daily-plan actual duration is invalid.");
+          return {
+              itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
+              status: outcome.status,
+              ...(outcome.startedAt !== undefined ? { startedAt: canonicalIso(outcome.startedAt, "Daily-plan start date") } : {}),
+              ...(outcome.completedAt !== undefined ? { completedAt: canonicalIso(outcome.completedAt, "Daily-plan completion date") } : {}),
+              ...(outcome.actualMinutes !== undefined ? { actualMinutes: outcome.actualMinutes } : {}),
+              ...(outcome.evidenceEventId !== undefined ? { evidenceEventId: canonicalId(outcome.evidenceEventId, "Daily-plan evidence ID") } : {}),
+              ...(outcome.note !== undefined ? { note: canonicalText(outcome.note, "Daily-plan outcome note") } : {}),
+          };
+      });
+      return {
+          schemaVersion: DOCUMENT_SCHEMA_VERSION,
+          id: canonicalId(value.id, "Daily-plan ID"),
+          studyDayKey: value.studyDayKey,
+          createdAt: canonicalIso(value.createdAt, "Daily-plan creation date"),
+          updatedAt: canonicalIso(value.updatedAt, "Daily-plan update date"),
+          plannerVersion: canonicalId(value.plannerVersion, "Daily-plan planner version"),
+          versions,
+          outcomes,
+      };
   }
   function canonicalAppSettings(value) {
       assertDocumentSchema(value, "Application settings");
@@ -1322,7 +1363,8 @@
       };
       const ignoredGapMs = bounded(value.ignoredGapMs, "Ignored gap time");
       assert(Array.isArray(value.reliabilityFlags), "Timing reliability flags are required.");
-      const reliabilityFlags = [...new Set(value.reliabilityFlags)];
+      const reliabilityFlags = [...value.reliabilityFlags];
+      assert(new Set(reliabilityFlags).size === reliabilityFlags.length, "Timing reliability flags cannot contain duplicates.");
       for (const flag of reliabilityFlags)
           assert(flag === "ignored-gap" || flag === "backward-clock", "Timing reliability flag is invalid.");
       assert((ignoredGapMs > 0) === reliabilityFlags.includes("ignored-gap"), "Ignored-gap reliability flag is inconsistent.");
@@ -1334,13 +1376,13 @@
       return {
           totalActiveMs,
           activeByPhase,
-          pauseMs: bounded(Number(value.pauseMs), "Pause time"),
-          pauseCount: count(Number(value.pauseCount), "Pause count"),
-          inactiveGapCount: count(Number(value.inactiveGapCount), "Inactive-gap count"),
-          classifiedFocusMs: bounded(Number(value.classifiedFocusMs), "Classified focus time"),
-          classifiedBreakMs: bounded(Number(value.classifiedBreakMs), "Classified break time"),
+          pauseMs: bounded(value.pauseMs, "Pause time"),
+          pauseCount: count(value.pauseCount, "Pause count"),
+          inactiveGapCount: count(value.inactiveGapCount, "Inactive-gap count"),
+          classifiedFocusMs: bounded(value.classifiedFocusMs, "Classified focus time"),
+          classifiedBreakMs: bounded(value.classifiedBreakMs, "Classified break time"),
           ignoredGapMs,
-          promptExcludedMs: bounded(Number(value.promptExcludedMs), "Gap prompt time"),
+          promptExcludedMs: bounded(value.promptExcludedMs, "Gap prompt time"),
           backwardClockCount,
           ...(value.sourceRevealAt !== undefined ? { sourceRevealAt: canonicalIso(value.sourceRevealAt, "Source reveal date") } : {}),
           durationReliable,
@@ -1371,8 +1413,9 @@
           assert(typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= maximum, `${label} is invalid.`);
           return Math.round(raw);
       };
-      assert(Array.isArray(value.pauseHistory), "Pause history is required.");
-      const pauseHistory = value.pauseHistory.slice(-TIME_HISTORY_LIMIT).map((pause) => {
+      assert(Array.isArray(value.pauseHistory) && value.pauseHistory.length <= TIME_HISTORY_LIMIT, "Pause history is invalid or exceeds its canonical bound.");
+      const pauseHistory = value.pauseHistory.map((pause) => {
+          assertExactKeys(pause, "Pause record", ["id", "reason", "phase", "startedAt", "endedAt", "durationMs"]);
           assert(["manual", "inactive-gap-break", "classification-prompt"].includes(pause.reason), "Pause reason is invalid.");
           const startedAt = canonicalIso(pause.startedAt, "Pause start date");
           const endedAt = canonicalIso(pause.endedAt, "Pause end date");
@@ -1380,14 +1423,16 @@
           assert(Date.parse(endedAt) >= Date.parse(startedAt), "Pause end precedes its start.");
           return { id: canonicalId(pause.id, "Pause ID"), reason: pause.reason, phase: canonicalReviewPhase(pause.phase), startedAt, endedAt, durationMs };
       });
-      assert(Array.isArray(value.phaseHistory), "Phase history is required.");
-      const phaseHistory = value.phaseHistory.slice(-TIME_HISTORY_LIMIT).map((transition) => {
+      assert(Array.isArray(value.phaseHistory) && value.phaseHistory.length <= TIME_HISTORY_LIMIT, "Phase history is invalid or exceeds its canonical bound.");
+      const phaseHistory = value.phaseHistory.map((transition) => {
+          assertExactKeys(transition, "Phase transition", ["from", "to", "at", "sourceVisible", "reason"]);
           assert(["source-reveal", "begin-verification", "verification-reveal", "queue-advance"].includes(transition.reason), "Phase transition reason is invalid.");
           assert(typeof transition.sourceVisible === "boolean", "Phase-transition source visibility is invalid.");
           return { from: canonicalReviewPhase(transition.from), to: canonicalReviewPhase(transition.to), at: canonicalIso(transition.at, "Phase transition date"), sourceVisible: transition.sourceVisible, reason: transition.reason };
       });
-      assert(Array.isArray(value.gapHistory), "Inactive-gap history is required.");
-      const gapHistory = value.gapHistory.slice(-TIME_HISTORY_LIMIT).map((gap) => {
+      assert(Array.isArray(value.gapHistory) && value.gapHistory.length <= TIME_HISTORY_LIMIT, "Inactive-gap history is invalid or exceeds its canonical bound.");
+      const gapHistory = value.gapHistory.map((gap) => {
+          assertExactKeys(gap, "Inactive-gap record", ["id", "phase", "source", "detectedAt", "resolvedAt", "gapMs", "classification", "focusMs", "breakMs", "ignoredMs", "promptMs"]);
           assert(["focus", "break", "split", "ignore"].includes(gap.classification), "Inactive-gap classification is invalid.");
           assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(gap.source), "Inactive-gap source is invalid.");
           const gapMs = boundedRuntimeMs(gap.gapMs, "Inactive-gap duration");
@@ -1402,6 +1447,7 @@
       });
       let pendingGap;
       if (value.pendingGap) {
+          assertExactKeys(value.pendingGap, "Pending inactive gap", ["id", "phase", "source", "lastReliableAt", "detectedAt", "gapMs"]);
           assert(["tick", "visibility", "focus", "pageshow", "recovery", "snapshot"].includes(value.pendingGap.source), "Pending-gap source is invalid.");
           const lastReliableAt = canonicalIso(value.pendingGap.lastReliableAt, "Pending-gap reliable date");
           const detectedAt = canonicalIso(value.pendingGap.detectedAt, "Pending-gap detection date");
@@ -1441,23 +1487,31 @@
       assert(value.values && typeof value.values === "object" && !Array.isArray(value.values), "Review field values are required.");
       assert(value.checked && typeof value.checked === "object" && !Array.isArray(value.checked), "Review check state is required.");
       assert(Array.isArray(value.diagramStrokes), "Review diagram strokes are required.");
+      const valueEntries = Object.entries(value.values);
+      assert(valueEntries.length <= 96, "Review field set exceeds its canonical bound.");
       const values = {};
-      for (const [rawKey, rawValue] of Object.entries(value.values).slice(0, 96)) {
+      for (const [rawKey, rawValue] of valueEntries) {
           const key = canonicalId(rawKey, "Review field ID");
-          assert(typeof rawValue === "string", "Review field value is invalid.");
-          values[key] = rawValue.slice(0, 20_000);
+          assert(typeof rawValue === "string" && rawValue.length <= 20_000, "Review field value is invalid or too long.");
+          values[key] = rawValue;
       }
+      const checkedEntries = Object.entries(value.checked);
+      assert(checkedEntries.length <= 128, "Review check set exceeds its canonical bound.");
       const checked = {};
-      for (const [rawKey, rawValue] of Object.entries(value.checked).slice(0, 128)) {
+      for (const [rawKey, rawValue] of checkedEntries) {
           const key = canonicalId(rawKey, "Review check ID");
           assert(typeof rawValue === "boolean", "Review check value is invalid.");
           checked[key] = rawValue;
       }
-      const diagramStrokes = value.diagramStrokes.slice(0, 256).map((stroke) => {
-          assert(Array.isArray(stroke), "Diagram stroke is invalid.");
-          return stroke.slice(0, 2_000).map((point) => {
-              assert(point && typeof point === "object" && Number.isFinite(point.x) && Number.isFinite(point.y), "Diagram point is invalid.");
-              return { x: roundTo(clamp(point.x, 0, 1), 6), y: roundTo(clamp(point.y, 0, 1), 6) };
+      assert(value.diagramStrokes.length <= 256, "Review diagram exceeds its canonical stroke bound.");
+      const diagramStrokes = value.diagramStrokes.map((stroke) => {
+          assert(Array.isArray(stroke) && stroke.length <= 2_000, "Diagram stroke is invalid or exceeds its canonical point bound.");
+          return stroke.map((point) => {
+              assert(point && typeof point === "object" && !Array.isArray(point), "Diagram point is invalid.");
+              assertExactKeys(point, "Diagram point", ["x", "y"]);
+              assert(typeof point.x === "number" && Number.isFinite(point.x) && point.x >= 0 && point.x <= 1
+                  && typeof point.y === "number" && Number.isFinite(point.y) && point.y >= 0 && point.y <= 1, "Diagram point is outside the canonical canvas.");
+              return { x: roundTo(point.x, 6), y: roundTo(point.y, 6) };
           });
       });
       assert(Number.isFinite(value.attemptElapsedMs) && value.attemptElapsedMs >= 0 && value.attemptElapsedMs <= 7 * DAY_MS, "Attempt duration is invalid.");
@@ -1469,8 +1523,9 @@
       assert(value.id === ACTIVE_RETRIEVAL_ID, "Active retrieval session ID is invalid.");
       assert(["active", "committing", "completed"].includes(value.status), "Active retrieval status is invalid.");
       assert(Number.isSafeInteger(value.revision) && value.revision >= 1, "Active retrieval revision is invalid.");
-      assert(Array.isArray(value.queueTargetIds), "Active retrieval queue is required.");
-      const queueTargetIds = [...new Set(value.queueTargetIds.slice(0, 500).map((id) => canonicalId(id, "Review target ID")))];
+      assert(Array.isArray(value.queueTargetIds) && value.queueTargetIds.length <= 500, "Active retrieval queue is invalid or exceeds its canonical bound.");
+      const queueTargetIds = value.queueTargetIds.map((id) => canonicalId(id, "Review target ID"));
+      assert(new Set(queueTargetIds).size === queueTargetIds.length, "Active retrieval queue cannot contain duplicate targets.");
       assert(Number.isInteger(value.activeIndex) && value.activeIndex >= 0 && value.activeIndex <= queueTargetIds.length, "Active retrieval index is invalid.");
       assert(typeof value.activeTargetId === "string", "Active retrieval target ID must be a string.");
       const activeTargetId = value.status === "completed" ? value.activeTargetId : canonicalId(value.activeTargetId, "Active review target ID");
@@ -1482,9 +1537,13 @@
           assert(queueTargetIds[value.activeIndex] === activeTargetId, "Active retrieval target does not match its queue.");
       }
       const commitToken = value.commitToken === undefined ? undefined : canonicalId(value.commitToken, "Active retrieval commit token");
-      if (value.status === "committing")
-          assert(commitToken, "A committing retrieval requires a commit token.");
+      if (value.status === "active")
+          assert(commitToken === undefined, "An active retrieval cannot retain a commit token.");
+      else
+          assert(commitToken !== undefined, "Committing and completed retrieval states require a commit token.");
       const phase = canonicalReviewPhase(value.phase);
+      const draft = canonicalReviewDraftSnapshot(value.draft);
+      assert(draft.phase === phase, "Active retrieval draft phase differs from its session phase.");
       const timeRuntime = canonicalPhaseTimeRuntimeSnapshot(value.timeRuntime);
       assert(timeRuntime.currentPhase === phase, "Active retrieval phase and timer phase differ.");
       const elapsedMs = Object.values(timeRuntime.activeByPhase).reduce((sum, amount) => sum + amount, 0);
@@ -1498,7 +1557,7 @@
           activeIndex: value.activeIndex,
           activeTargetId,
           phase,
-          draft: canonicalReviewDraftSnapshot(value.draft),
+          draft,
           timeRuntime,
           elapsedMs,
           startedAt: canonicalIso(value.startedAt, "Active retrieval start date"),
@@ -1605,14 +1664,15 @@
       return weights;
   }
   function fsrsWeightsFingerprint(weights) {
-      return fingerprintText64(validateFsrs7Weights([...weights]).map((value) => Number(value).toString()).join(","));
+      return fingerprintText64(validateFsrs7Weights([...weights]).map((value) => value.toString()).join(","));
   }
   const FSRS7_DEFAULT_WEIGHTS_FINGERPRINT = fsrsWeightsFingerprint(FSRS7_DEFAULT_WEIGHTS);
   function optimizerMetrics(value, label) {
       const record = requireRecord(value, `FSRS optimizer ${label} metrics`);
-      const logLoss = Number(record["logLoss"]);
-      const rmseBins = Number(record["rmseBins"]);
-      assert(Number.isFinite(logLoss) && logLoss >= 0 && Number.isFinite(rmseBins) && rmseBins >= 0, `FSRS optimizer ${label} metrics are invalid.`);
+      assertExactKeys(record, `FSRS optimizer ${label} metrics`, ["logLoss", "rmseBins"]);
+      const logLoss = requiredFiniteNumber(record["logLoss"], `FSRS optimizer ${label} log loss`);
+      const rmseBins = requiredFiniteNumber(record["rmseBins"], `FSRS optimizer ${label} RMSE-bins`);
+      assert(logLoss >= 0 && rmseBins >= 0, `FSRS optimizer ${label} metrics are invalid.`);
       return { logLoss, rmseBins };
   }
   function fsrsHoldoutDiagnostics(stock, personalized) {
@@ -1638,19 +1698,21 @@
       const trainedAt = canonicalIso(requiredString(profile["trainedAt"], "FSRS optimizer training date"), "FSRS optimizer training date");
       const sourceSha256 = requiredString(profile["sourceSha256"], "FSRS optimizer source checksum");
       assert(/^[a-f0-9]{64}$/.test(sourceSha256), "FSRS optimizer source checksum is invalid.");
-      const evidenceItems = Number(profile["evidenceItems"]);
-      assert(Number.isSafeInteger(evidenceItems) && evidenceItems > 0, "FSRS optimizer evidence item count is invalid.");
+      const evidenceItems = requiredSafeInteger(profile["evidenceItems"], "FSRS optimizer evidence item count");
+      assert(evidenceItems > 0, "FSRS optimizer evidence item count is invalid.");
       const weights = validateFsrs7Weights(profile["weights"]);
       const evaluation = requireRecord(profile["evaluation"], "FSRS optimizer evaluation");
+      assertExactKeys(evaluation, "FSRS optimizer evaluation", ["crossValidation", "holdout"]);
       const crossValidation = optimizerMetrics(evaluation["crossValidation"], "cross-validation");
       const holdout = requireRecord(evaluation["holdout"], "FSRS optimizer holdout");
+      assertExactKeys(holdout, "FSRS optimizer holdout", ["strategy", "trainItems", "holdoutItems", "holdoutCards", "minimumTrainItems", "minimumHoldoutItems", "minimumHoldoutCards", "stock", "personalized", "incumbent", "gate"]);
       assert(holdout["strategy"] === FSRS_OPTIMIZER_HOLDOUT_STRATEGY && holdout["gate"] === "passed", "FSRS optimizer holdout strategy/gate is invalid.");
-      const trainItems = Number(holdout["trainItems"]);
-      const holdoutItems = Number(holdout["holdoutItems"]);
-      const holdoutCards = Number(holdout["holdoutCards"]);
-      assert(Number.isSafeInteger(trainItems) && trainItems >= FSRS_OPTIMIZER_MIN_TRAIN_ITEMS, "FSRS optimizer training prefix is too small.");
-      assert(Number.isSafeInteger(holdoutItems) && holdoutItems >= FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS, "FSRS optimizer holdout is too small.");
-      assert(Number.isSafeInteger(holdoutCards) && holdoutCards >= FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS && holdoutCards <= holdoutItems, "FSRS optimizer holdout-card count is invalid.");
+      const trainItems = requiredSafeInteger(holdout["trainItems"], "FSRS optimizer training item count");
+      const holdoutItems = requiredSafeInteger(holdout["holdoutItems"], "FSRS optimizer holdout item count");
+      const holdoutCards = requiredSafeInteger(holdout["holdoutCards"], "FSRS optimizer holdout card count");
+      assert(trainItems >= FSRS_OPTIMIZER_MIN_TRAIN_ITEMS, "FSRS optimizer training prefix is too small.");
+      assert(holdoutItems >= FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS, "FSRS optimizer holdout is too small.");
+      assert(holdoutCards >= FSRS_OPTIMIZER_MIN_HOLDOUT_CARDS && holdoutCards <= holdoutItems, "FSRS optimizer holdout-card count is invalid.");
       assert(trainItems + holdoutItems === evidenceItems, "FSRS optimizer holdout counts do not match evidence items.");
       assert(holdout["minimumTrainItems"] === FSRS_OPTIMIZER_MIN_TRAIN_ITEMS
           && holdout["minimumHoldoutItems"] === FSRS_OPTIMIZER_MIN_HOLDOUT_ITEMS
@@ -1676,6 +1738,7 @@
           incumbent = { sourceSha256: incumbentSourceSha256, weightsFingerprint, metrics };
       }
       const training = requireRecord(profile["training"], "FSRS optimizer training metadata");
+      assertExactKeys(training, "FSRS optimizer training metadata", ["enableShortTerm", "enableSchedPenalties", "numRelearningSteps", "chronology", "converterFixedUtcOffsetMinutes", "converterRolloverHour", "runtimeLearningSteps", "runtimeRelearningSteps", "validationCandidateTrainedItems", "finalRetrainedOnAllEvidence"]);
       assert(training["enableShortTerm"] === true && training["enableSchedPenalties"] === true && training["numRelearningSteps"] === 1, "FSRS optimizer training flags are invalid.");
       assert(training["chronology"] === FSRS_OPTIMIZER_CHRONOLOGY
           && training["converterFixedUtcOffsetMinutes"] === FSRS_OPTIMIZER_FIXED_UTC_OFFSET_MINUTES
@@ -1746,14 +1809,14 @@
       const coefficientsRaw = record["coefficients"];
       assert(Array.isArray(coefficientsRaw) && coefficientsRaw.length === 15, "FSRS Cost-ADR policy must contain exactly 15 coefficients.");
       const coefficients = coefficientsRaw.map((value) => {
-          const coefficient = Number(value);
-          assert(Number.isFinite(coefficient) && coefficient >= -64 && coefficient <= 64, "FSRS Cost-ADR coefficient is invalid.");
+          const coefficient = requiredFiniteNumber(value, "FSRS Cost-ADR coefficient");
+          assert(coefficient >= -64 && coefficient <= 64, "FSRS Cost-ADR coefficient is invalid.");
           return coefficient;
       });
-      const costWeightMin = Number(record["costWeightMin"]);
-      const costWeightMax = Number(record["costWeightMax"]);
-      const retentionMin = Number(record["retentionMin"]);
-      const retentionMax = Number(record["retentionMax"]);
+      const costWeightMin = requiredFiniteNumber(record["costWeightMin"], "FSRS Cost-ADR minimum cost weight");
+      const costWeightMax = requiredFiniteNumber(record["costWeightMax"], "FSRS Cost-ADR maximum cost weight");
+      const retentionMin = requiredFiniteNumber(record["retentionMin"], "FSRS Cost-ADR minimum retention");
+      const retentionMax = requiredFiniteNumber(record["retentionMax"], "FSRS Cost-ADR maximum retention");
       assert(Number.isFinite(costWeightMin) && Number.isFinite(costWeightMax) && costWeightMin >= 0 && costWeightMax > costWeightMin
           && Math.log1p(costWeightMax) > Math.log1p(costWeightMin), "FSRS Cost-ADR cost-weight bounds are invalid.");
       assert(Number.isFinite(retentionMin) && Number.isFinite(retentionMax) && retentionMin > 0 && retentionMax > retentionMin && retentionMax < 1, "FSRS Cost-ADR retention bounds are invalid.");
@@ -1761,10 +1824,10 @@
       const boundsAllowed = new Set(["sMin", "sMax", "dMin", "dMax"]);
       assert(Object.keys(boundsRecord).every((key) => boundsAllowed.has(key)), "FSRS Cost-ADR state bounds contain unexpected fields.");
       const bounds = {
-          sMin: Number(boundsRecord["sMin"]),
-          sMax: Number(boundsRecord["sMax"]),
-          dMin: Number(boundsRecord["dMin"]),
-          dMax: Number(boundsRecord["dMax"]),
+          sMin: requiredFiniteNumber(boundsRecord["sMin"], "FSRS Cost-ADR minimum stability"),
+          sMax: requiredFiniteNumber(boundsRecord["sMax"], "FSRS Cost-ADR maximum stability"),
+          dMin: requiredFiniteNumber(boundsRecord["dMin"], "FSRS Cost-ADR minimum difficulty"),
+          dMax: requiredFiniteNumber(boundsRecord["dMax"], "FSRS Cost-ADR maximum difficulty"),
       };
       assert(Number.isFinite(bounds.sMin) && Number.isFinite(bounds.sMax) && bounds.sMin > 0 && bounds.sMax > bounds.sMin
           && Math.log(bounds.sMax) > Math.log(bounds.sMin), "FSRS Cost-ADR stability bounds are invalid.");
@@ -1778,14 +1841,14 @@
       if (kind === "fixed-retention") {
           const allowed = new Set(["kind", "desiredRetention"]);
           assert(Object.keys(record).every((key) => allowed.has(key)), "Fixed-retention scheduling policy contains unexpected fields.");
-          const desiredRetention = Number(record["desiredRetention"]);
-          assert(Number.isFinite(desiredRetention) && desiredRetention >= 0.75 && desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
+          const desiredRetention = requiredFiniteNumber(record["desiredRetention"], "Desired retention");
+          assert(desiredRetention >= 0.75 && desiredRetention <= 0.97, "Desired retention must be between 75% and 97%.");
           return { kind, desiredRetention };
       }
       if (kind === "cost-adr") {
           const allowed = new Set(["kind", "goalCostWeight", "costAdrPolicy"]);
           assert(Object.keys(record).every((key) => allowed.has(key)), "Cost-ADR scheduling policy contains unexpected fields.");
-          const goalCostWeight = Number(record["goalCostWeight"]);
+          const goalCostWeight = requiredFiniteNumber(record["goalCostWeight"], "FSRS Cost-ADR goal cost weight");
           const costAdrPolicy = canonicalFsrsCostAdrPolicy(record["costAdrPolicy"]);
           assert(goalCostWeight === FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT
               && JSON.stringify(costAdrPolicy) === JSON.stringify(upstreamDefaultFsrsCostAdrPolicy()), "Only the bounded Revision Director Cost-ADR preset is enabled.");
@@ -1840,8 +1903,8 @@
           const toConfigFingerprint = requiredString(rebase["toConfigFingerprint"], "FSRS target configuration fingerprint");
           assert(/^fnv1a64:[0-9a-f]{16}$/.test(fromConfigFingerprint) && /^fnv1a64:[0-9a-f]{16}$/.test(toConfigFingerprint), "FSRS scheduler rebase fingerprint is invalid.");
           assert(fromConfigFingerprint !== toConfigFingerprint, "FSRS scheduler rebase must change scheduler identity.");
-          const rescheduledObligations = Number(rebase["rescheduledObligations"]);
-          assert(Number.isSafeInteger(rescheduledObligations) && rescheduledObligations >= 0, "FSRS scheduler rebase count is invalid.");
+          const rescheduledObligations = requiredSafeInteger(rebase["rescheduledObligations"], "FSRS scheduler rebase count");
+          assert(rescheduledObligations >= 0, "FSRS scheduler rebase count is invalid.");
           lastRebase = {
               at: canonicalIso(requiredString(rebase["at"], "FSRS scheduler rebase date"), "FSRS scheduler rebase date"),
               reason,
@@ -1863,7 +1926,7 @@
       const active = record["active"];
       assert(typeof active === "boolean", "FSRS personalization active flag is invalid.");
       assert(!active || profile !== null, "Active FSRS personalization requires an optimizer profile.");
-      const replayInput = record["replayProfiles"] === undefined ? [] : requiredArray(record["replayProfiles"], "FSRS replay profiles");
+      const replayInput = requiredArray(record["replayProfiles"], "FSRS replay profiles");
       assert(replayInput.length <= 256, "FSRS replay-profile archive is unreasonably large.");
       const replayProfiles = replayInput.map((item) => validateFsrsOptimizerProfile(item));
       const seen = new Set();
@@ -2199,6 +2262,7 @@
       return { ...identity, fingerprint: fsrsConfigurationFingerprint(identity) };
   }
   function validateFsrsConfigSnapshot(config) {
+      assertExactKeys(config, "FSRS configuration", ["model", "schedulingPolicy", "fractionalDays", "enableFuzz", "enableShortTerm", "learningSteps", "relearningSteps", "graduatingInterval", "allowModelOverride", "maximumInterval", "clearStatsOnForget", "weightsSource", "weightsFingerprint", "optimizerProfileSourceSha256", "fingerprint"]);
       assert(config.model === FSRS_MODEL, "FSRS configuration model is invalid.");
       const schedulingPolicy = canonicalFsrsSchedulingPolicy(config.schedulingPolicy);
       assert(JSON.stringify(config.schedulingPolicy) === JSON.stringify(schedulingPolicy), "FSRS scheduling policy is not canonical.");
@@ -2766,17 +2830,17 @@
       const record = requireRecord(value, "Memory difficulty policy");
       const allowed = new Set(["remediationLapses", "persistentDifficultyLapses", "automaticHold"]);
       assert(Object.keys(record).every((key) => allowed.has(key)), "Memory difficulty policy contains unexpected fields.");
-      const remediationLapses = Number(record["remediationLapses"]);
-      const persistentDifficultyLapses = Number(record["persistentDifficultyLapses"]);
-      assert(Number.isSafeInteger(remediationLapses) && remediationLapses >= 2 && remediationLapses <= 99, "Memory remediation lapse threshold is invalid.");
-      assert(Number.isSafeInteger(persistentDifficultyLapses) && persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
+      const remediationLapses = requiredSafeInteger(record["remediationLapses"], "Memory remediation lapse threshold");
+      const persistentDifficultyLapses = requiredSafeInteger(record["persistentDifficultyLapses"], "Persistent-difficulty lapse threshold");
+      assert(remediationLapses >= 2 && remediationLapses <= 99, "Memory remediation lapse threshold is invalid.");
+      assert(persistentDifficultyLapses > remediationLapses && persistentDifficultyLapses <= 100, "Persistent-difficulty lapse threshold is invalid.");
       const automaticHoldRecord = requireRecord(record["automaticHold"], "Memory automatic-hold policy");
       const holdAllowed = new Set(["enabled", "lapseThreshold"]);
       assert(Object.keys(automaticHoldRecord).every((key) => holdAllowed.has(key)), "Memory automatic-hold policy contains unexpected fields.");
       const enabled = automaticHoldRecord["enabled"];
-      const lapseThreshold = Number(automaticHoldRecord["lapseThreshold"]);
+      const lapseThreshold = requiredSafeInteger(automaticHoldRecord["lapseThreshold"], "Memory automatic-hold lapse threshold");
       assert(typeof enabled === "boolean", "Memory automatic-hold flag is invalid.");
-      assert(Number.isSafeInteger(lapseThreshold) && lapseThreshold > persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold must be later than persistent difficulty.");
+      assert(lapseThreshold > persistentDifficultyLapses && lapseThreshold <= 1000, "Memory automatic-hold lapse threshold must be later than persistent difficulty.");
       return {
           remediationLapses,
           persistentDifficultyLapses,
@@ -2789,32 +2853,22 @@
   function memoryDifficultyAssessment(obligation, policy, memoryReviews = []) {
       assert(obligation.type === "memory-recall", "Persistent-difficulty assessment is only valid for memory recall.");
       const canonicalPolicy = canonicalMemoryDifficultyPolicy(policy);
-      const card = obligation.policyState.fsrsCard;
-      assert(card, "Memory obligation has no FSRS card for difficulty assessment.");
-      // Revision Director's one-day learning step can move an unsuccessful new card
-      // into FSRS Review state before the learner has ever demonstrated successful
-      // retrieval. Host difficulty semantics therefore follow canonical review
-      // outcomes: failures before the first Good/Easy observation are learning
-      // failures; only failures after establishment count as established lapses.
+      assert(obligation.policyState.fsrsCard, "Memory obligation has no FSRS card for difficulty assessment.");
+      // Host difficulty semantics derive only from canonical review evidence.
+      // The materialized FSRS card is a scheduling projection, not a second
+      // history source.
       let established = false;
       let earlyLearningFailures = 0;
       let establishedLapses = 0;
-      if (memoryReviews.length === 0) {
-          // Integrity/recovery callers may not have history in hand. The materialized
-          // FSRS lapse counter remains a conservative fallback in that narrow case.
-          establishedLapses = card.lapses;
-      }
-      else {
-          for (const review of memoryReviews) {
-              if (review.rating === Rating.Again) {
-                  if (established)
-                      establishedLapses += 1;
-                  else
-                      earlyLearningFailures += 1;
-              }
-              else if (review.rating >= Rating.Good) {
-                  established = true;
-              }
+      for (const review of memoryReviews) {
+          if (review.rating === Rating.Again) {
+              if (established)
+                  establishedLapses += 1;
+              else
+                  earlyLearningFailures += 1;
+          }
+          else if (review.rating >= Rating.Good) {
+              established = true;
           }
       }
       const level = establishedLapses >= canonicalPolicy.persistentDifficultyLapses ? "persistent-difficulty"
@@ -3663,9 +3717,20 @@
               const plans = db.createObjectStore(Store.DailyPlans, { keyPath: "id" });
               plans.createIndex("studyDayKey", "studyDayKey", { unique: true });
               plans.createIndex("updatedAt", "updatedAt");
-              db.createObjectStore(Store.Settings, { keyPath: "key" });
-              db.createObjectStore(Store.Metadata, { keyPath: "key" });
+              const settings = db.createObjectStore(Store.Settings, { keyPath: "key" });
+              const metadata = db.createObjectStore(Store.Metadata, { keyPath: "key" });
               db.createObjectStore(Store.ActiveRetrieval, { keyPath: "id" });
+              const createdAt = nowIso();
+              settings.add(defaultSettings());
+              metadata.add({
+                  schemaVersion: DOCUMENT_SCHEMA_VERSION,
+                  key: "database",
+                  databaseName: DB_NAME,
+                  databaseVersion: DB_VERSION,
+                  applicationVersion: APP_VERSION,
+                  createdAt,
+                  updatedAt: createdAt,
+              });
           };
           const db = await new Promise((resolve, reject) => {
               request.onsuccess = () => resolve(request.result);
@@ -3692,19 +3757,6 @@
           const values = await requestResult(tx.objectStore(store).getAll());
           await transactionDone(tx);
           return values;
-      }
-      async hasAnyStoredData(excluded = []) {
-          const excludedStores = new Set(excluded);
-          for (const store of Object.values(Store)) {
-              if (excludedStores.has(store))
-                  continue;
-              const tx = this.db.transaction(store, "readonly");
-              const count = await requestResult(tx.objectStore(store).count());
-              await transactionDone(tx);
-              if (count > 0)
-                  return true;
-          }
-          return false;
       }
       async put(store, value) {
           const tx = this.db.transaction(store, "readwrite");
@@ -3847,9 +3899,12 @@
       }
       async rawDump() {
           const stores = Object.values(Store);
+          const tx = this.db.transaction(stores, "readonly");
+          const requests = stores.map((store) => requestResult(tx.objectStore(store).getAll()));
+          const values = await Promise.all(requests);
+          await transactionDone(tx);
           const dump = {};
-          for (const store of stores)
-              dump[store] = await this.getAll(store);
+          stores.forEach((store, index) => { dump[store] = values[index] ?? []; });
           return dump;
       }
       async replaceFromBackup(payload, activeTreatment) {
@@ -4076,37 +4131,21 @@
       }
       async ensureMetadata() {
           const existing = await this.repository.get(Store.Metadata, "database");
-          if (existing) {
-              const canonical = canonicalAppMetadata(existing);
-              assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
-              if (canonical.applicationVersion !== APP_VERSION) {
-                  try {
-                      await this.repository.put(Store.Metadata, canonicalAppMetadata({
-                          ...canonical,
-                          applicationVersion: APP_VERSION,
-                          updatedAt: nowIso(),
-                      }));
-                  }
-                  catch (error) {
-                      this.diagnosticsJournal.record("storage.metadata.release-refresh", "refresh database release provenance", error);
-                  }
+          assert(existing, "Database metadata is missing from this Revision Director database. Existing data was not modified.");
+          const canonical = canonicalAppMetadata(existing);
+          assert(canonical.databaseName === DB_NAME && canonical.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
+          if (canonical.applicationVersion !== APP_VERSION) {
+              try {
+                  await this.repository.put(Store.Metadata, canonicalAppMetadata({
+                      ...canonical,
+                      applicationVersion: APP_VERSION,
+                      updatedAt: nowIso(),
+                  }));
               }
-              return;
+              catch (error) {
+                  this.diagnosticsJournal.record("storage.metadata.release-refresh", "refresh database release provenance", error);
+              }
           }
-          if (await this.repository.hasAnyStoredData([Store.Metadata])) {
-              throw new Error("Database metadata is missing from a populated Revision Director database. Existing data was not modified.");
-          }
-          const time = nowIso();
-          const metadata = {
-              schemaVersion: DOCUMENT_SCHEMA_VERSION,
-              key: "database",
-              databaseName: DB_NAME,
-              databaseVersion: DB_VERSION,
-              applicationVersion: APP_VERSION,
-              createdAt: time,
-              updatedAt: time,
-          };
-          await this.repository.put(Store.Metadata, canonicalAppMetadata(metadata));
       }
       async operation(name, action) {
           try {
@@ -4135,9 +4174,6 @@
       }
       async putMany(store, values) {
           await this.operation(`putMany.${store}`, () => this.repository.putMany(store, values.map((value) => this.normalize(store, value))));
-      }
-      async hasStoredData(excluded = []) {
-          return this.operation("hasStoredData", () => this.repository.hasAnyStoredData(excluded));
       }
       async putProfileAndSettings(profile, settings) {
           await this.operation("putProfileAndSettings", () => this.repository.putProfileAndSettings(canonicalExamProfile(profile), canonicalAppSettings(settings)));
@@ -4176,6 +4212,31 @@
       }
       async replaceSettingsAndObligations(settings, obligations) {
           await this.operation("replaceSettingsAndObligations", () => this.repository.replaceSettingsAndObligations(canonicalAppSettings(settings), obligations.map(canonicalRevisionObligation)));
+      }
+      async backupState() {
+          return this.operation("backupState", async () => {
+              const raw = await this.repository.rawDump();
+              const settings = raw[Store.Settings];
+              const metadata = raw[Store.Metadata];
+              const activeRetrieval = raw[Store.ActiveRetrieval];
+              assert(settings.length === 1, "Canonical storage must contain exactly one application-settings document.");
+              assert(metadata.length === 1, "Canonical storage must contain exactly one database-metadata document.");
+              const canonicalMetadata = canonicalDocument("metadata", metadata[0]);
+              assert(canonicalMetadata.databaseName === DB_NAME && canonicalMetadata.databaseVersion === DB_VERSION, "Database metadata does not match this production database.");
+              assert(activeRetrieval.length <= 1, "Canonical storage may contain at most one active retrieval session.");
+              return {
+                  profiles: canonicalDocumentArray("profile", raw[Store.Profiles], "Stored exam profiles"),
+                  nodes: canonicalDocumentArray("node", raw[Store.Nodes], "Stored knowledge nodes"),
+                  units: canonicalDocumentArray("unit", raw[Store.Units], "Stored knowledge units"),
+                  studyEvents: canonicalDocumentArray("study-event", raw[Store.StudyEvents], "Stored study events"),
+                  obligations: canonicalDocumentArray("obligation", raw[Store.Obligations], "Stored revision obligations"),
+                  evidenceEvents: canonicalDocumentArray("evidence-event", raw[Store.EvidenceEvents], "Stored evidence events"),
+                  chunks: canonicalDocumentArray("chunk", raw[Store.Chunks], "Stored obligation chunks"),
+                  dailyPlans: canonicalDocumentArray("daily-plan", raw[Store.DailyPlans], "Stored daily plans"),
+                  settings: canonicalDocument("settings", settings[0]),
+                  activeRetrieval: activeRetrieval.length === 1 ? canonicalDocument("active-retrieval", activeRetrieval[0]) : null,
+              };
+          });
       }
       async rawDump() {
           return this.operation("rawDump", () => this.repository.rawDump());
@@ -4911,17 +4972,10 @@
       }
       async initialize() {
           this.invalidateMemoryReviewAnalysis();
-          const stored = await this.repo.get(Store.Settings, "app");
-          if (stored) {
-              this.settings = canonicalAppSettings(stored);
-          }
-          else {
-              assert(!(await this.repo.hasStoredData([Store.Settings, Store.Metadata])), "Application settings are missing from a populated Revision Director database. Existing data was not modified.");
-              this.settings = defaultSettings();
-              await this.repo.put(Store.Settings, this.settings);
-          }
-          this.assertActiveProfileSelection(await this.profiles(), this.settings);
-          await this.verifyMemoryProjectionIntegrity();
+          const state = await this.repo.backupState();
+          this.settings = clone(state.settings);
+          this.assertActiveProfileSelection(state.profiles, this.settings);
+          await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);
       }
       assertActiveProfileSelection(profiles, settings) {
           const active = profiles.filter((profile) => profile.status === "active");
@@ -4931,12 +4985,8 @@
           }
           assert(active.some((profile) => profile.id === settings.activeProfileId), "Default exam profile must reference an active exam profile.");
       }
-      async verifyMemoryProjectionIntegrity() {
-          const [obligations, evidenceEvents] = await Promise.all([
-              this.repo.getAll(Store.Obligations),
-              this.evidenceEvents(),
-          ]);
-          await verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), this.settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(this.settings), fsrsPersonalizationProfileCatalog(this.settings));
+      async verifyMemoryProjectionIntegrity(obligations, evidenceEvents, settings) {
+          await verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(settings), fsrsPersonalizationProfileCatalog(settings));
       }
       storageHealth() {
           return this.repo.storageHealth();
@@ -5273,6 +5323,7 @@
           return unit;
       }
       async createUnit(draft) {
+          assert(draft.obligationType !== "relearn", "A new knowledge unit cannot begin with a system-owned relearning obligation.");
           assert(draft.title.trim().length >= 2, "Enter a knowledge-unit name.");
           assert(draft.scope.trim().length >= 3, "Define the unit scope.");
           assert(draft.protocol.trim().length >= 3, "Define a retrieval protocol.");
@@ -5373,17 +5424,11 @@
               obligation.returnObligationId = relation.returnObligationId;
           return obligation;
       }
-      async createObligation(draft, relation) {
+      async createObligation(draft) {
           const unit = await this.unit(draft.unitId);
-          if (relation?.parentObligationId) {
-              const parent = await this.obligation(relation.parentObligationId);
-              assert(parent.unitId === unit.id, "Parent obligation belongs to a different knowledge unit.");
-          }
-          if (relation?.returnObligationId) {
-              const target = await this.obligation(relation.returnObligationId);
-              assert(target.unitId === unit.id, "Return obligation belongs to a different knowledge unit.");
-          }
-          const obligation = this.buildObligation(draft, relation);
+          assert(unit.status === "active", "Activate the knowledge unit before adding a revision obligation.");
+          assert(draft.type !== "relearn", "Relearning obligations are created only by failed retrievals that record their exact origin.");
+          const obligation = this.buildObligation(draft);
           await this.repo.put(Store.Obligations, obligation);
           return obligation;
       }
@@ -6054,6 +6099,7 @@
           assert(draft.area.trim() && draft.task.trim() && draft.measure.trim(), "Area, task and measure are required.");
           assert(Number.isFinite(draft.durationMinutes) && draft.durationMinutes >= 1 && draft.durationMinutes <= 1440, "Duration is invalid.");
           assert(Array.isArray(draft.linkedUnitIds), "Study Event links are invalid.");
+          assert(new Set(draft.linkedUnitIds).size === draft.linkedUnitIds.length, "Study Event links cannot contain duplicates.");
           for (const unitId of draft.linkedUnitIds) {
               const unit = await this.unit(unitId);
               assert(unit.profileId === draft.profileId, "Study Event cannot link a knowledge unit from another exam profile.");
@@ -6070,7 +6116,7 @@
               source: draft.source.trim(),
               durationMinutes: Math.round(draft.durationMinutes),
               understanding: draft.understanding,
-              linkedUnitIds: [...new Set(draft.linkedUnitIds)],
+              linkedUnitIds: [...draft.linkedUnitIds],
               notes: draft.notes.trim(),
               origin: draft.origin,
               createdAt: nowIso(),
@@ -6085,29 +6131,19 @@
           const obligation = await this.obligation(relearningObligationId);
           if (obligation.type !== "relearn")
               return undefined;
-          const events = await this.evidenceEvents();
-          return events.find((event) => event.followUpObligationId === obligation.id)
-              ?? events.find((event) => event.obligationId === obligation.parentObligationId);
+          return (await this.evidenceEvents()).find((event) => event.followUpObligationId === obligation.id);
       }
       async currentActiveRetrieval() {
           return await this.repo.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null;
       }
       async exportBackup() {
+          const state = await this.repo.backupState();
           return {
               format: BACKUP_FORMAT,
               schemaVersion: BACKUP_SCHEMA_VERSION,
               exportedAt: nowIso(),
               appVersion: APP_VERSION,
-              profiles: await this.profiles(),
-              nodes: await this.nodes(),
-              units: await this.units(),
-              studyEvents: await this.studyEvents(),
-              obligations: await this.obligations(),
-              evidenceEvents: await this.evidenceEvents(),
-              chunks: await this.chunks(),
-              dailyPlans: await this.dailyPlanHistory(),
-              settings: this.getSettings(),
-              activeRetrieval: await this.repo.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null,
+              ...state,
           };
       }
       async createBackupArchive(preferCompression = true) {
@@ -6522,12 +6558,6 @@
               activeRetrieval: canonicalActive,
           };
       }
-      async importBackup(input) {
-          const payload = this.validateBackup(input);
-          await this.repo.replaceFromBackup(payload, "discard");
-          this.settings = clone(payload.settings);
-          this.invalidateMemoryReviewAnalysis();
-      }
   }
   /* ==========================================================================
      USER INTERFACE CONTROLLER
@@ -6746,6 +6776,7 @@
       }
       static parseManifest(input) {
           const value = requireRecord(input, "Backup manifest");
+          assertExactKeys(value, "Backup manifest", ["kind", "format", "version", "exportedAt", "appVersion", "payloadFormat", "payloadSchemaVersion", "compression", "hashAlgorithm", "chunkTargetBytes", "chunkMaxItems", "chunkCount", "counts", "stateChecksum"]);
           assert(value["kind"] === "manifest" && value["format"] === BACKUP_ARCHIVE_FORMAT && value["version"] === BACKUP_ARCHIVE_VERSION, "This is not a supported Revision Director backup archive.");
           const appVersion = canonicalId(requiredString(value["appVersion"], "Backup application version"), "Backup application version");
           assert(value["payloadFormat"] === BACKUP_FORMAT && value["payloadSchemaVersion"] === BACKUP_SCHEMA_VERSION, "Backup payload version is unsupported.");
@@ -6755,7 +6786,7 @@
           const chunkCount = value["chunkCount"];
           assert(typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup manifest chunk count is invalid.");
           const stateChecksum = value["stateChecksum"];
-          assert(typeof stateChecksum === "string" && /^[0-9a-f]{16,64}$/.test(stateChecksum), "Backup state checksum is invalid.");
+          assert(typeof stateChecksum === "string" && /^[0-9a-f]{64}$/.test(stateChecksum), "Backup state checksum is invalid.");
           return {
               kind: "manifest",
               format: BACKUP_ARCHIVE_FORMAT,
@@ -6775,6 +6806,7 @@
       }
       static parseCounts(input) {
           const value = requireRecord(input, "Backup counts");
+          assertExactKeys(value, "Backup counts", BACKUP_ENTITY_ORDER);
           const counts = this.zeroCounts();
           for (const key of BACKUP_ENTITY_ORDER) {
               const count = value[key];
@@ -6785,6 +6817,7 @@
       }
       static parseChunk(input) {
           const value = requireRecord(input, "Backup chunk");
+          assertExactKeys(value, "Backup chunk", ["kind", "sequence", "entityType", "count", "items", "checksum"]);
           const sequence = value["sequence"];
           assert(value["kind"] === "chunk" && typeof sequence === "number" && Number.isInteger(sequence) && sequence >= 0, "Backup chunk sequence is invalid.");
           const entityType = literalChoice(value["entityType"], BACKUP_ENTITY_ORDER, "Backup chunk entity type");
@@ -6792,17 +6825,18 @@
           const items = value["items"];
           assert(typeof count === "number" && Number.isInteger(count) && Array.isArray(items), "Backup chunk contents are invalid.");
           const checksum = value["checksum"];
-          assert(typeof checksum === "string" && /^[0-9a-f]{16,64}$/.test(checksum), "Backup chunk checksum is invalid.");
+          assert(typeof checksum === "string" && /^[0-9a-f]{64}$/.test(checksum), "Backup chunk checksum is invalid.");
           return { kind: "chunk", sequence, entityType, count, items, checksum };
       }
       static parseCompletion(input) {
           const value = requireRecord(input, "Backup completion proof");
+          assertExactKeys(value, "Backup completion proof", ["kind", "chunkCount", "counts", "chunkHashes", "checksum"]);
           const chunkCount = value["chunkCount"];
           assert(value["kind"] === "complete" && typeof chunkCount === "number" && Number.isInteger(chunkCount) && chunkCount >= 0, "Backup completion proof is invalid.");
           const chunkHashes = value["chunkHashes"];
-          assert(Array.isArray(chunkHashes) && chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{16,64}$/.test(hash)), "Backup completion hashes are invalid.");
+          assert(Array.isArray(chunkHashes) && chunkHashes.every((hash) => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)), "Backup completion hashes are invalid.");
           const checksum = value["checksum"];
-          assert(typeof checksum === "string" && /^[0-9a-f]{16,64}$/.test(checksum), "Backup final checksum is invalid.");
+          assert(typeof checksum === "string" && /^[0-9a-f]{64}$/.test(checksum), "Backup final checksum is invalid.");
           return { kind: "complete", chunkCount, counts: this.parseCounts(value["counts"]), chunkHashes, checksum };
       }
       static inspection(manifest, archiveChecksum, activeRetrievalStatus, compressedBytes, expandedBytes, warnings) {
