@@ -2,50 +2,34 @@
      BACKUP PAYLOAD VALIDATION · PURE CANONICAL RELATIONAL CONTRACT
      ========================================================================== */
 
-  function validateBackupPayload(input: unknown): BackupPayload {
-    const candidate = requireRecord(input, "Backup");
-    assertExactKeys(candidate, "Backup", ["format", "schemaVersion", "exportedAt", "appVersion", "profiles", "nodes", "units", "studyEvents", "obligations", "evidenceEvents", "chunks", "dailyPlans", "settings", "activeRetrieval"]);
-    assert(candidate["format"] === BACKUP_FORMAT && candidate["schemaVersion"] === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
-    const appVersion = canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version");
+  function backupUniqueMap<T extends { id: string }>(values: readonly T[], label: string): Map<string, T> {
+    const map = new Map<string, T>();
+    for (const value of values) {
+      assert(typeof value.id === "string" && value.id.trim().length > 0, `${label} has an invalid ID.`);
+      assert(!map.has(value.id), `${label} contains duplicate IDs.`);
+      map.set(value.id, value);
+    }
+    return map;
+  }
 
-    const profiles = canonicalDocumentArray("profile", candidate["profiles"], "Backup profiles");
-    const nodes = canonicalDocumentArray("node", candidate["nodes"], "Backup knowledge nodes");
-    const units = canonicalDocumentArray("unit", candidate["units"], "Backup knowledge units");
-    const studyEvents = canonicalDocumentArray("study-event", candidate["studyEvents"], "Backup study events");
-    const obligations = canonicalDocumentArray("obligation", candidate["obligations"], "Backup obligations");
-    const evidenceEvents = canonicalDocumentArray("evidence-event", candidate["evidenceEvents"], "Backup evidence events");
-    const chunks = canonicalDocumentArray("chunk", candidate["chunks"], "Backup chunks");
-    const dailyPlans = canonicalDocumentArray("daily-plan", candidate["dailyPlans"], "Backup daily plans");
-    const settings = canonicalDocument("settings", candidate["settings"]);
-    const activeInput = candidate["activeRetrieval"];
-    assert(activeInput === null || isRecord(activeInput), "Backup active retrieval is invalid.");
-    const activeRetrieval = activeInput === null ? null : canonicalDocument("active-retrieval", activeInput);
+  function validateBackupDate(value: unknown, label: string): void {
+    assert(typeof value === "string" && Number.isFinite(new Date(value).getTime()), `${label} has an invalid date.`);
+  }
 
-    const uniqueMap = <T extends { id: string }>(values: T[], label: string): Map<string, T> => {
-      const map = new Map<string, T>();
-      for (const value of values) {
-        assert(typeof value.id === "string" && value.id.trim().length > 0, `${label} has an invalid ID.`);
-        assert(!map.has(value.id), `${label} contains duplicate IDs.`);
-        map.set(value.id, value);
-      }
-      return map;
-    };
-    const validDate = (value: unknown, label: string): void => {
-      assert(typeof value === "string" && Number.isFinite(new Date(value).getTime()), `${label} has an invalid date.`);
-    };
-    const validRatingValue = (value: unknown, label: string): void => {
-      assert(value === 1 || value === 2 || value === 3 || value === 4, `${label} has an invalid rating.`);
-    };
-    const profileMap = uniqueMap(profiles, "Profiles");
-    const nodeMap = uniqueMap(nodes, "Knowledge nodes");
-    const unitMap = uniqueMap(units, "Knowledge units");
-    const obligationMap = uniqueMap(obligations, "Revision obligations");
-    uniqueMap(studyEvents, "Study events");
-    const evidenceMap = uniqueMap(evidenceEvents, "Evidence events");
-    const chunkMap = uniqueMap(chunks, "Obligation chunks");
-    uniqueMap(dailyPlans, "Daily plans");
-    const studyDayKeys = new Set<string>();
-    const nodePathKeys = new Set<string>();
+  function validateBackupRatingValue(value: unknown, label: string): void {
+    assert(value === 1 || value === 2 || value === 3 || value === 4, `${label} has an invalid rating.`);
+  }
+
+  function validateBackupDocumentSchemas(
+    profiles: BackupPayload["profiles"],
+    nodes: BackupPayload["nodes"],
+    units: BackupPayload["units"],
+    studyEvents: BackupPayload["studyEvents"],
+    obligations: BackupPayload["obligations"],
+    evidenceEvents: BackupPayload["evidenceEvents"],
+    chunks: BackupPayload["chunks"],
+    dailyPlans: BackupPayload["dailyPlans"],
+  ): void {
     for (const profile of profiles) assertDocumentSchema(profile, "Backup exam profile");
     for (const node of nodes) assertDocumentSchema(node, "Backup knowledge node");
     for (const unit of units) assertDocumentSchema(unit, "Backup knowledge unit");
@@ -54,11 +38,22 @@
     for (const event of evidenceEvents) assertDocumentSchema(event, "Backup Evidence Event");
     for (const chunk of chunks) assertDocumentSchema(chunk, "Backup obligation chunk");
     for (const plan of dailyPlans) assertDocumentSchema(plan, "Backup daily plan");
+  }
 
+  function validateBackupKnowledgeStructure(
+    profiles: BackupPayload["profiles"],
+    nodes: BackupPayload["nodes"],
+    units: BackupPayload["units"],
+    studyEvents: BackupPayload["studyEvents"],
+    profileMap: ReadonlyMap<string, BackupPayload["profiles"][number]>,
+    nodeMap: ReadonlyMap<string, BackupPayload["nodes"][number]>,
+    unitMap: ReadonlyMap<string, BackupPayload["units"][number]>,
+  ): void {
+    const nodePathKeys = new Set<string>();
     for (const profile of profiles) {
       assert(profile.name.trim().length > 0 && ["active", "suspended", "archived"].includes(profile.status), "Profile data is invalid.");
       if (profile.examDate) validateCalendarDate(profile.examDate, "Profile exam date");
-      validDate(profile.createdAt, "Profile"); validDate(profile.updatedAt, "Profile");
+      validateBackupDate(profile.createdAt, "Profile"); validateBackupDate(profile.updatedAt, "Profile");
     }
     for (const node of nodes) {
       const profile = profileMap.get(node.profileId);
@@ -76,7 +71,7 @@
         const parent = node.parentId ? nodeMap.get(node.parentId) : undefined;
         assert(parent?.kind === "section" && parent.profileId === node.profileId, "Topic must belong to a section in the same profile.");
       }
-      validDate(node.createdAt, "Knowledge node"); validDate(node.updatedAt, "Knowledge node");
+      validateBackupDate(node.createdAt, "Knowledge node"); validateBackupDate(node.updatedAt, "Knowledge node");
     }
     for (const unit of units) {
       const topic = nodeMap.get(unit.topicNodeId);
@@ -84,12 +79,12 @@
       assert(unit.title.trim().length > 0 && unit.scope.trim().length > 0, "Knowledge unit title or scope is missing.");
       assert(unit.importance === 1 || unit.importance === 2 || unit.importance === 3, "Knowledge unit importance is invalid.");
       assert(Number.isInteger(unit.evidenceCount) && unit.evidenceCount >= 0 && Number.isInteger(unit.lapseCount) && unit.lapseCount >= 0, "Knowledge unit counters are invalid.");
-      if (unit.latestEvidenceAt) validDate(unit.latestEvidenceAt, "Knowledge unit evidence");
-      if (unit.latestEvidenceRating !== undefined) validRatingValue(unit.latestEvidenceRating, "Knowledge unit");
+      if (unit.latestEvidenceAt) validateBackupDate(unit.latestEvidenceAt, "Knowledge unit evidence");
+      if (unit.latestEvidenceRating !== undefined) validateBackupRatingValue(unit.latestEvidenceRating, "Knowledge unit");
     }
     for (const event of studyEvents) {
       assert(profileMap.has(event.profileId), "Study event references a missing profile.");
-      validDate(event.occurredAt, "Study event"); validDate(event.createdAt, "Study event");
+      validateBackupDate(event.occurredAt, "Study event"); validateBackupDate(event.createdAt, "Study event");
       assert(["learn", "review", "practice", "test"].includes(event.activityMode), "Study event activity is invalid.");
       assert(typeof event.area === "string" && event.area.trim().length > 0 && typeof event.task === "string" && event.task.trim().length > 0 && typeof event.measure === "string" && event.measure.trim().length > 0, "Study event canonical inputs are invalid.");
       assert(Number.isFinite(event.durationMinutes) && event.durationMinutes >= 1 && event.durationMinutes <= 1440, "Study event duration is invalid.");
@@ -100,6 +95,13 @@
         assert(unit?.profileId === event.profileId, "Study event links a missing or cross-profile knowledge unit.");
       }
     }
+  }
+
+  function validateBackupObligations(
+    obligations: BackupPayload["obligations"],
+    unitMap: ReadonlyMap<string, BackupPayload["units"][number]>,
+    obligationMap: ReadonlyMap<string, BackupPayload["obligations"][number]>,
+  ): void {
     const unresolvedRelearningReturnIds = new Set<string>();
     for (const item of obligations) {
       if (item.type === "relearn" && (item.status === "active" || item.status === "suspended") && item.returnObligationId) {
@@ -117,7 +119,7 @@
         assert(unresolvedRelearningReturnIds.has(obligation.id), "Relearning suspension lacks its unresolved repair obligation.");
       }
       if (obligation.suspensionReason === "persistent-difficulty") assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
-      validDate(obligation.dueAt, "Obligation"); validDate(obligation.createdAt, "Obligation"); validDate(obligation.updatedAt, "Obligation");
+      validateBackupDate(obligation.dueAt, "Obligation"); validateBackupDate(obligation.createdAt, "Obligation"); validateBackupDate(obligation.updatedAt, "Obligation");
       assert(Number.isFinite(obligation.expectedMinutes) && obligation.expectedMinutes >= 1 && obligation.expectedMinutes <= 240, "Obligation duration is invalid.");
       assert(Number.isFinite(obligation.baselineMinutes) && obligation.baselineMinutes >= 1 && obligation.baselineMinutes <= 240, "Obligation baseline duration is invalid.");
       assert(Number.isInteger(obligation.durationSampleCount) && obligation.durationSampleCount >= 0, "Obligation duration sample count is invalid.");
@@ -128,7 +130,7 @@
         assert(Number.isInteger(obligation.chunking.capacityMinutes) && obligation.chunking.capacityMinutes >= 5 && obligation.chunking.capacityMinutes <= 600, "Obligation chunking capacity is invalid.");
         assert(obligation.chunking.originalMinutes === obligation.expectedMinutes, "Obligation chunking duration no longer matches its parent estimate.");
         assert(Number.isInteger(obligation.chunking.totalChunks) && obligation.chunking.totalChunks >= 2 && Number.isInteger(obligation.chunking.completedChunks) && obligation.chunking.completedChunks >= 0 && obligation.chunking.completedChunks <= obligation.chunking.totalChunks, "Obligation chunk counts are invalid.");
-        validDate(obligation.chunking.createdAt, "Obligation chunking state");
+        validateBackupDate(obligation.chunking.createdAt, "Obligation chunking state");
       }
       assert(obligation.protocol.trim().length > 0 && obligation.successCriteria.trim().length > 0, "Obligation protocol is incomplete.");
       validateWorkflowSpec(obligation.workflow, obligation.type);
@@ -140,9 +142,9 @@
         assert(fsrsCard.cardId === obligation.id, "FSRS card identity does not match its obligation.");
         assert(fsrsCard.scheduleStatus === "new" || fsrsCard.scheduleStatus === "learning" || fsrsCard.scheduleStatus === "review" || fsrsCard.scheduleStatus === "suspended", "FSRS card schedule status is invalid.");
         requiredFsrs7StabilityFast(fsrsCard.stabilityFast);
-        validDate(fsrsCard.dueAt, "FSRS card");
+        validateBackupDate(fsrsCard.dueAt, "FSRS card");
         assert(fsrsCard.dueAt === obligation.dueAt, "Memory obligation due date is not synchronized with its FSRS-7 card.");
-        if (fsrsCard.lastReviewAt) validDate(fsrsCard.lastReviewAt, "FSRS last review");
+        if (fsrsCard.lastReviewAt) validateBackupDate(fsrsCard.lastReviewAt, "FSRS last review");
       }
       if (obligation.parentObligationId) assert(obligationMap.has(obligation.parentObligationId), "Obligation references a missing parent.");
       if (obligation.returnObligationId) assert(obligationMap.has(obligation.returnObligationId), "Relearning obligation references a missing return obligation.");
@@ -152,12 +154,21 @@
         assert(original?.unitId === obligation.unitId && original.type !== "relearn", "Relearning return target is invalid.");
       }
     }
+  }
+
+  function validateBackupEvidenceEvents(
+    evidenceEvents: BackupPayload["evidenceEvents"],
+    obligations: BackupPayload["obligations"],
+    profileMap: ReadonlyMap<string, BackupPayload["profiles"][number]>,
+    unitMap: ReadonlyMap<string, BackupPayload["units"][number]>,
+    obligationMap: ReadonlyMap<string, BackupPayload["obligations"][number]>,
+  ): MemoryReviewObservationIndex {
     for (const event of evidenceEvents) {
       const unit = unitMap.get(event.unitId);
       const obligation = obligationMap.get(event.obligationId);
       assert(unit && obligation && profileMap.has(event.profileId), "Evidence event references missing records.");
       assert(unit.profileId === event.profileId && obligation.unitId === event.unitId && obligation.type === event.obligationType, "Evidence event relationships are inconsistent.");
-      validDate(event.reviewedAt, "Evidence event"); validDate(event.beforeDueAt, "Evidence event"); validDate(event.afterDueAt, "Evidence event");
+      validateBackupDate(event.reviewedAt, "Evidence event"); validateBackupDate(event.beforeDueAt, "Evidence event"); validateBackupDate(event.afterDueAt, "Evidence event");
       assert(Number.isFinite(event.elapsedMs) && event.elapsedMs >= 0 && event.elapsedMs <= 7 * DAY_MS, "Evidence duration is invalid.");
       const duration = event.durationObservation;
       assert(duration && typeof duration.accepted === "boolean", "Evidence duration observation is invalid.");
@@ -172,7 +183,7 @@
       validateEvidence(event.evidence);
       assert(event.workflow === obligation.workflow.kind, "Evidence workflow does not match the obligation.");
       validateWorkflowResult(event.workflowResult, event.workflow);
-      validRatingValue(event.suggestedRating, "Evidence event"); validRatingValue(event.confirmedRating, "Evidence event");
+      validateBackupRatingValue(event.suggestedRating, "Evidence event"); validateBackupRatingValue(event.confirmedRating, "Evidence event");
       assert(event.beforePolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType] && event.afterPolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType], "Evidence policy states do not match the obligation type.");
       if (event.followUpObligationId) assert(obligationMap.has(event.followUpObligationId), "Evidence event references a missing follow-up obligation.");
       if (event.obligationType === "memory-recall") {
@@ -193,8 +204,8 @@
         assert(correctiveTarget?.type === "memory-recall", "Corrective-memory transition lacks a valid memory target.");
         assert(corrective.obligationId === correctiveTarget.id, "Corrective-memory transition targets the wrong obligation.");
         assert(corrective.rating === correctiveMemoryRating(event.confirmedRating, event.evidence), "Corrective-memory transition rating does not match the closed-book verification outcome.");
-        validDate(corrective.beforeDueAt, "Corrective-memory prior due date");
-        validDate(corrective.afterDueAt, "Corrective-memory next due date");
+        validateBackupDate(corrective.beforeDueAt, "Corrective-memory prior due date");
+        validateBackupDate(corrective.afterDueAt, "Corrective-memory next due date");
         assert(corrective.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Corrective-memory policy provenance is invalid.");
         assert(corrective.schedulerPackage === "ts-fsrs" && corrective.schedulerVersion === FSRS_PACKAGE_VERSION && corrective.schedulerModel === FSRS_MODEL, "Corrective-memory scheduler provenance is invalid.");
         validateFsrsConfigSnapshot(corrective.schedulerConfig);
@@ -207,7 +218,14 @@
     }
     const canonicalMemoryReviews = memoryReviewObservationIndex(evidenceEvents);
     validateMemoryDatasetProjectionChain(obligations, canonicalMemoryReviews);
+    return canonicalMemoryReviews;
+  }
 
+  function validateBackupChunks(
+    chunks: BackupPayload["chunks"],
+    obligations: BackupPayload["obligations"],
+    obligationMap: ReadonlyMap<string, BackupPayload["obligations"][number]>,
+  ): void {
     const chunksByObligation = new Map<string, ObligationChunk[]>();
     for (const chunk of chunks) {
       const obligation = obligationMap.get(chunk.obligationId);
@@ -216,8 +234,8 @@
       assert(typeof chunk.cycleId === "string" && chunk.cycleId.trim().length > 0 && typeof chunk.label === "string" && chunk.label.trim().length > 0 && typeof chunk.scope === "string" && chunk.scope.trim().length > 0, "Chunk identity or scope is invalid.");
       assert(Number.isInteger(chunk.ordinal) && Number.isInteger(chunk.total) && chunk.ordinal >= 1 && chunk.ordinal <= chunk.total, "Chunk order is invalid.");
       assert(Number.isFinite(chunk.expectedMinutes) && chunk.expectedMinutes >= 1 && chunk.expectedMinutes <= 240, "Chunk duration is invalid.");
-      validDate(chunk.createdAt, "Chunk"); validDate(chunk.updatedAt, "Chunk");
-      if (chunk.completedAt) validDate(chunk.completedAt, "Chunk completion");
+      validateBackupDate(chunk.createdAt, "Chunk"); validateBackupDate(chunk.updatedAt, "Chunk");
+      if (chunk.completedAt) validateBackupDate(chunk.completedAt, "Chunk completion");
       if (chunk.status === "completed") {
         assert(Number.isFinite(chunk.actualMinutes) && (chunk.actualMinutes ?? 0) > 0, "Completed chunk lacks actual duration.");
         assert(chunk.timing !== undefined, "Completed chunk lacks timing evidence.");
@@ -245,11 +263,22 @@
       else assert(active.some((chunk) => chunk.status === "pending"), "An active chunking cycle must retain pending work.");
       assert(related.filter((chunk) => chunk.cycleId !== chunking.cycleId).every((chunk) => chunk.status === "archived"), "Prior chunk cycles must be archived.");
     }
+  }
+
+  function validateBackupDailyPlans(
+    dailyPlans: BackupPayload["dailyPlans"],
+    profileMap: ReadonlyMap<string, BackupPayload["profiles"][number]>,
+    unitMap: ReadonlyMap<string, BackupPayload["units"][number]>,
+    obligationMap: ReadonlyMap<string, BackupPayload["obligations"][number]>,
+    evidenceMap: ReadonlyMap<string, BackupPayload["evidenceEvents"][number]>,
+    chunkMap: ReadonlyMap<string, BackupPayload["chunks"][number]>,
+  ): void {
+    const studyDayKeys = new Set<string>();
     for (const plan of dailyPlans) {
       validateCalendarDate(plan.studyDayKey, "Daily plan study day");
       assert(!studyDayKeys.has(plan.studyDayKey), "Daily plans contain duplicate study days.");
       studyDayKeys.add(plan.studyDayKey);
-      validDate(plan.createdAt, "Daily plan"); validDate(plan.updatedAt, "Daily plan");
+      validateBackupDate(plan.createdAt, "Daily plan"); validateBackupDate(plan.updatedAt, "Daily plan");
       assert(new Date(plan.updatedAt).getTime() >= new Date(plan.createdAt).getTime(), "Daily plan timestamps are inconsistent.");
       assert(plan.plannerVersion === PLANNER_VERSION, "Daily plan planner version is invalid.");
       assert(Array.isArray(plan.versions) && plan.versions.length >= 1 && Array.isArray(plan.outcomes), "Daily plan history is incomplete.");
@@ -261,7 +290,7 @@
         assert(version.reason === "initial" || version.reason === "manual-regeneration" || version.reason === "data-change" || version.reason === "manual-addition", "Daily plan version reason is invalid.");
         assert(!versionNumbers.has(version.version), "Daily plan version numbers are duplicated.");
         versionNumbers.add(version.version);
-        validDate(version.generatedAt, "Daily plan version");
+        validateBackupDate(version.generatedAt, "Daily plan version");
         assert(Array.isArray(version.items), "Daily plan version items are invalid.");
         const versionKeys = new Set<string>();
         for (const item of version.items) {
@@ -294,8 +323,8 @@
         assert(planKeys.has(outcome.itemKey), "Daily plan outcome references an unknown item.");
         assert(!outcomeKeys.has(outcome.itemKey), "Daily plan contains duplicate outcomes for an item.");
         outcomeKeys.add(outcome.itemKey);
-        if (outcome.startedAt) validDate(outcome.startedAt, "Daily plan outcome");
-        if (outcome.completedAt) validDate(outcome.completedAt, "Daily plan outcome");
+        if (outcome.startedAt) validateBackupDate(outcome.startedAt, "Daily plan outcome");
+        if (outcome.completedAt) validateBackupDate(outcome.completedAt, "Daily plan outcome");
         if (outcome.status === "started") assert(Boolean(outcome.startedAt), "Started daily-plan outcomes require a start time.");
         if (outcome.startedAt && outcome.completedAt) assert(new Date(outcome.completedAt).getTime() >= new Date(outcome.startedAt).getTime(), "Daily-plan outcome timestamps are inconsistent.");
         if (outcome.status === "completed") {
@@ -309,6 +338,13 @@
         }
       }
     }
+  }
+
+  function validateBackupHistoricalCounters(
+    units: BackupPayload["units"],
+    obligations: BackupPayload["obligations"],
+    evidenceEvents: BackupPayload["evidenceEvents"],
+  ): void {
     const evidenceCounts = new Map<string, { total: number; lapses: number }>();
     const acceptedDurationsByObligation = new Map<string, number>();
     for (const event of evidenceEvents) {
@@ -327,6 +363,17 @@
     for (const obligation of obligations) {
       assert(obligation.durationSampleCount === (acceptedDurationsByObligation.get(obligation.id) ?? 0), "Obligation duration sample count does not match its accepted history.");
     }
+  }
+
+  function validateBackupActiveAndSettings(
+    activeRetrieval: BackupPayload["activeRetrieval"],
+    settings: BackupPayload["settings"],
+    profiles: BackupPayload["profiles"],
+    obligations: BackupPayload["obligations"],
+    chunkMap: ReadonlyMap<string, BackupPayload["chunks"][number]>,
+    obligationMap: ReadonlyMap<string, BackupPayload["obligations"][number]>,
+    canonicalMemoryReviews: MemoryReviewObservationIndex,
+  ): ActiveRetrievalSession | null {
     let canonicalActive: ActiveRetrievalSession | null = null;
     if (activeRetrieval) {
       canonicalActive = canonicalActiveRetrievalSession(activeRetrieval);
@@ -349,6 +396,45 @@
     }
     assert(Number.isFinite(settings.dailyCapacityMinutes) && settings.dailyCapacityMinutes >= 5 && settings.dailyCapacityMinutes <= 600, "Daily revision capacity is invalid.");
     assert(Number.isInteger(settings.studyDayBoundaryHour) && settings.studyDayBoundaryHour >= 0 && settings.studyDayBoundaryHour <= 12, "Study-day boundary is invalid.");
+    return canonicalActive;
+  }
+
+  function validateBackupPayload(input: unknown): BackupPayload {
+    const candidate = requireRecord(input, "Backup");
+    assertExactKeys(candidate, "Backup", ["format", "schemaVersion", "exportedAt", "appVersion", "profiles", "nodes", "units", "studyEvents", "obligations", "evidenceEvents", "chunks", "dailyPlans", "settings", "activeRetrieval"]);
+    assert(candidate["format"] === BACKUP_FORMAT && candidate["schemaVersion"] === BACKUP_SCHEMA_VERSION, "This is not a supported Revision Director backup.");
+    const appVersion = canonicalId(requiredString(candidate["appVersion"], "Backup application version"), "Backup application version");
+
+    const profiles = canonicalDocumentArray("profile", candidate["profiles"], "Backup profiles");
+    const nodes = canonicalDocumentArray("node", candidate["nodes"], "Backup knowledge nodes");
+    const units = canonicalDocumentArray("unit", candidate["units"], "Backup knowledge units");
+    const studyEvents = canonicalDocumentArray("study-event", candidate["studyEvents"], "Backup study events");
+    const obligations = canonicalDocumentArray("obligation", candidate["obligations"], "Backup obligations");
+    const evidenceEvents = canonicalDocumentArray("evidence-event", candidate["evidenceEvents"], "Backup evidence events");
+    const chunks = canonicalDocumentArray("chunk", candidate["chunks"], "Backup chunks");
+    const dailyPlans = canonicalDocumentArray("daily-plan", candidate["dailyPlans"], "Backup daily plans");
+    const settings = canonicalDocument("settings", candidate["settings"]);
+    const activeInput = candidate["activeRetrieval"];
+    assert(activeInput === null || isRecord(activeInput), "Backup active retrieval is invalid.");
+    const activeRetrieval = activeInput === null ? null : canonicalDocument("active-retrieval", activeInput);
+
+    const profileMap = backupUniqueMap(profiles, "Profiles");
+    const nodeMap = backupUniqueMap(nodes, "Knowledge nodes");
+    const unitMap = backupUniqueMap(units, "Knowledge units");
+    const obligationMap = backupUniqueMap(obligations, "Revision obligations");
+    backupUniqueMap(studyEvents, "Study events");
+    const evidenceMap = backupUniqueMap(evidenceEvents, "Evidence events");
+    const chunkMap = backupUniqueMap(chunks, "Obligation chunks");
+    backupUniqueMap(dailyPlans, "Daily plans");
+    validateBackupDocumentSchemas(profiles, nodes, units, studyEvents, obligations, evidenceEvents, chunks, dailyPlans);
+
+    validateBackupKnowledgeStructure(profiles, nodes, units, studyEvents, profileMap, nodeMap, unitMap);
+    validateBackupObligations(obligations, unitMap, obligationMap);
+    const canonicalMemoryReviews = validateBackupEvidenceEvents(evidenceEvents, obligations, profileMap, unitMap, obligationMap);
+    validateBackupChunks(chunks, obligations, obligationMap);
+    validateBackupDailyPlans(dailyPlans, profileMap, unitMap, obligationMap, evidenceMap, chunkMap);
+    validateBackupHistoricalCounters(units, obligations, evidenceEvents);
+    const canonicalActive = validateBackupActiveAndSettings(activeRetrieval, settings, profiles, obligations, chunkMap, obligationMap, canonicalMemoryReviews);
     return {
       format: BACKUP_FORMAT,
       schemaVersion: BACKUP_SCHEMA_VERSION,

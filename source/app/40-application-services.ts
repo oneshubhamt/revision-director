@@ -974,6 +974,65 @@
       return policy.preview(obligation, now, { memoryReviews });
     }
 
+    private async createEvidenceFollowUp(
+      completion: PolicyCompletion,
+      primary: PrimaryEvidenceTransition,
+      committedObligation: RevisionObligation,
+      reviewedAt: Date,
+      reviewedAtIso: ISODateTime,
+    ): Promise<RevisionObligation | undefined> {
+      if (completion.followUpType !== "relearn" || committedObligation.type === "relearn") return undefined;
+      const existing = (await this.obligationsForUnit(primary.unit.id)).find((item) =>
+        item.type === "relearn" && item.status === "active" && item.returnObligationId === committedObligation.id
+      );
+      if (existing) return undefined;
+      const dueAt = correctiveRelearnDueAt(await this.profile(primary.unit.profileId), reviewedAt);
+      const followUpId = uid("obligation");
+      return createRelearningFollowUp({
+        obligation: committedObligation,
+        unit: primary.unit,
+        dueAt,
+        followUpId,
+        policyState: this.router.get("relearn").createInitialState(dueAt, followUpId),
+        reviewedAt: reviewedAtIso,
+        ...(primary.memoryDifficulty ? { memoryDifficulty: primary.memoryDifficulty } : {}),
+      });
+    }
+
+    private async applyCorrectiveEvidenceReturn(
+      committedObligation: RevisionObligation,
+      rating: EvidenceRatingDecision,
+      prepared: EvidenceDraftPreparation,
+      reviewedAt: Date,
+      reviewedAtIso: ISODateTime,
+      memoryReviewIndex: MemoryReviewObservationIndex,
+    ): Promise<CorrectiveRelearningResult | undefined> {
+      if (committedObligation.type !== "relearn" || !committedObligation.returnObligationId) return undefined;
+      const original = await this.repo.get(Store.Obligations, committedObligation.returnObligationId);
+      assert(original, "Relearning return target is missing.");
+      const priorOriginalReviews = original.type === "memory-recall"
+        ? memoryReviewIndex.get(original.id) ?? []
+        : [];
+      const memoryVerification = original.type === "memory-recall"
+        ? this.router.get("memory-recall").complete(
+            original,
+            rating.confirmedRating,
+            prepared.draft,
+            reviewedAt,
+            { memoryReviews: priorOriginalReviews },
+          )
+        : undefined;
+      return applyCorrectiveRelearningTransition({
+        relearningObligation: committedObligation,
+        original,
+        rating: rating.confirmedRating,
+        reviewedAt: reviewedAtIso,
+        memoryDifficultyPolicy: this.settings.memoryDifficultyPolicy,
+        priorOriginalReviews,
+        ...(memoryVerification ? { memoryVerification } : {}),
+      });
+    }
+
     async recordEvidence(obligationId: string, draft: EvidenceDraft, reviewedAt = new Date(), commitGuard?: ActiveCommitGuard, postCommitSession?: ActiveRetrievalSession): Promise<EvidenceEvent> {
       const prepared = prepareEvidenceDraft(draft);
       const obligation = await this.obligation(obligationId);
@@ -1012,52 +1071,19 @@
       const synthesisArchive = archiveSynthesisCycle(primary.obligation, chunks, reviewedAtIso);
       let committedObligation = synthesisArchive.obligation;
 
-      let followUp: RevisionObligation | undefined;
-      if (completion.followUpType === "relearn" && committedObligation.type !== "relearn") {
-        const existing = (await this.obligationsForUnit(primary.unit.id)).find((item) =>
-          item.type === "relearn" && item.status === "active" && item.returnObligationId === committedObligation.id
-        );
-        if (!existing) {
-          const dueAt = correctiveRelearnDueAt(await this.profile(primary.unit.profileId), reviewedAt);
-          const followUpId = uid("obligation");
-          followUp = createRelearningFollowUp({
-            obligation: committedObligation,
-            unit: primary.unit,
-            dueAt,
-            followUpId,
-            policyState: this.router.get("relearn").createInitialState(dueAt, followUpId),
-            reviewedAt: reviewedAtIso,
-            ...(primary.memoryDifficulty ? { memoryDifficulty: primary.memoryDifficulty } : {}),
-          });
-        }
-      }
+      const followUp = await this.createEvidenceFollowUp(completion, primary, committedObligation, reviewedAt, reviewedAtIso);
 
+      const corrective = await this.applyCorrectiveEvidenceReturn(
+        committedObligation,
+        rating,
+        prepared,
+        reviewedAt,
+        reviewedAtIso,
+        memoryReviewIndex,
+      );
       let relatedObligation: RevisionObligation | undefined;
       let correctiveMemoryTransition: CorrectiveMemoryTransition | undefined;
-      if (committedObligation.type === "relearn" && committedObligation.returnObligationId) {
-        const original = await this.repo.get(Store.Obligations, committedObligation.returnObligationId);
-        assert(original, "Relearning return target is missing.");
-        const priorOriginalReviews = original.type === "memory-recall"
-          ? memoryReviewIndex.get(original.id) ?? []
-          : [];
-        const memoryVerification = original.type === "memory-recall"
-          ? this.router.get("memory-recall").complete(
-              original,
-              rating.confirmedRating,
-              prepared.draft,
-              reviewedAt,
-              { memoryReviews: priorOriginalReviews },
-            )
-          : undefined;
-        const corrective = applyCorrectiveRelearningTransition({
-          relearningObligation: committedObligation,
-          original,
-          rating: rating.confirmedRating,
-          reviewedAt: reviewedAtIso,
-          memoryDifficultyPolicy: this.settings.memoryDifficultyPolicy,
-          priorOriginalReviews,
-          ...(memoryVerification ? { memoryVerification } : {}),
-        });
+      if (corrective) {
         committedObligation = corrective.relearningObligation;
         relatedObligation = corrective.relatedObligation;
         correctiveMemoryTransition = corrective.correctiveMemoryTransition;

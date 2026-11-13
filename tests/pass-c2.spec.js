@@ -8,11 +8,13 @@ const source = parts.map(item=>fs.readFileSync(path.join(root, "source", item.pa
 const runtime = fs.readFileSync(path.join(root, "source/app/45-ui-runtime.ts"), "utf8");
 const workflowFormAdapter = fs.readFileSync(path.join(root, "source/app/46-workflow-form-adapter.ts"), "utf8");
 const activeRetrieval = fs.readFileSync(path.join(root, "source/app/47-active-retrieval-workspace.ts"), "utf8");
+const settingsWorkspace = fs.readFileSync(path.join(root, "source/app/48-settings-workspace.ts"), "utf8");
 const domainKernel = fs.readFileSync(path.join(root, "source/app/11-domain-kernel.ts"), "utf8");
 const backupValidation = fs.readFileSync(path.join(root, "source/app/22-backup-validation.ts"), "utf8");
 const evidenceTransition = fs.readFileSync(path.join(root, "source/app/23-evidence-transition.ts"), "utf8");
 const service = fs.readFileSync(path.join(root, "source/app/40-application-services.ts"), "utf8");
 const ui = fs.readFileSync(path.join(root, "source/app/50-ui-controller.ts"), "utf8");
+const uiSurfaces = ui + settingsWorkspace;
 const shell = fs.readFileSync(path.join(root, "source/revision-director.shell.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "source/revision-director.va7.css"), "utf8");
 let checks = 0;
@@ -46,9 +48,11 @@ check("Central input delegation", ui.includes('document.addEventListener("input"
 check("Central change delegation", ui.includes('document.addEventListener("change"'));
 check("Central keyboard delegation", ui.includes('document.addEventListener("keydown"'));
 check("Form ID shadowing guarded", ui.includes('form.getAttribute("id")'));
-check("Delegated settings uses submitted form", ui.includes('event.target;') && ui.includes('form.getAttribute("id") === "settings-form"'));
+check("Delegated settings uses submitted form",
+  ui.includes("this.settingsWorkspace.submit(event)")
+  && settingsWorkspace.includes('form.getAttribute("id") === "settings-form"'));
 check("Read-only state is a render finalizer", ui.includes('this.applyReadOnlyState();') && ui.indexOf('this.applyReadOnlyState();') < ui.indexOf('if (this.gapFocus.isOpen())'));
-check("Settings replacement is fail-closed", /settingsContent\.innerHTML[\s\S]*?this\.applyReadOnlyState\(\);/.test(ui));
+check("Settings replacement is fail-closed", /settingsContent\.innerHTML[\s\S]*?this\.host\.applyReadOnlyState\(\);/.test(settingsWorkspace));
 check("Diagram pointer stream remains direct", activeRetrieval.includes('canvas.addEventListener("pointerdown"') && activeRetrieval.includes('canvas.addEventListener("pointermove"'));
 check("Static ARIA tablist", shell.includes('role="tablist"'));
 check("Six static ARIA tabs", (shell.match(/role="tab"/g)||[]).length === 6);
@@ -87,6 +91,20 @@ check("Active retrieval durable commit envelope is canonical",
   && (activeRetrieval.match(/activePersistence\.acceptCommittedTransition\(post\)/g) || []).length === 1
   && (activeRetrieval.match(/const guard: ActiveCommitGuard/g) || []).length === 1
   && (activeRetrieval.match(/commitActiveRetrievalTransition\(/g) || []).length === 3);
+check("Settings workspace has coherent ownership",
+  parts.some(item=>item.path === "app/48-settings-workspace.ts")
+  && settingsWorkspace.includes("class SettingsWorkspace")
+  && settingsWorkspace.includes("async render(): Promise<void>")
+  && settingsWorkspace.includes("async submit(event: SubmitEvent)")
+  && settingsWorkspace.includes("private async exportBackup()")
+  && settingsWorkspace.includes("private async performRestore()")
+  && ui.includes("private readonly settingsWorkspace: SettingsWorkspace")
+  && ui.includes("this.settingsWorkspace.handleAction(element)")
+  && ui.includes("this.settingsWorkspace.handleChange(event)")
+  && !ui.includes("private async renderSettings")
+  && !ui.includes("private async exportBackup")
+  && !ui.includes("fsrsOptimizerRun")
+  && !ui.includes("restoreCandidateId"));
 check("Domain kernel is DOM-free",
   !/FormData|HTMLFormElement|HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|innerHTML|document\./.test(domainKernel));
 check("Workflow form machinery lives in UI adapter",
@@ -99,6 +117,16 @@ check("Backup validator is a pure owned module",
   && backupValidation.includes("function validateBackupPayload")
   && !backupValidation.includes("this.")
   && !service.includes("validateBackup(input: unknown)"));
+check("Backup validator is internally decomposed but canonical",
+  backupValidation.includes("function validateBackupDocumentSchemas(")
+  && backupValidation.includes("function validateBackupKnowledgeStructure(")
+  && backupValidation.includes("function validateBackupObligations(")
+  && backupValidation.includes("function validateBackupEvidenceEvents(")
+  && backupValidation.includes("function validateBackupChunks(")
+  && backupValidation.includes("function validateBackupDailyPlans(")
+  && backupValidation.includes("function validateBackupHistoricalCounters(")
+  && backupValidation.includes("function validateBackupActiveAndSettings(")
+  && (backupValidation.match(/function validateBackupPayload\(/g) || []).length === 1);
 check("Evidence transition is a pure owned module",
   parts.some(item=>item.path === "app/23-evidence-transition.ts")
   && evidenceTransition.includes("function applyPrimaryEvidenceTransition")
@@ -110,16 +138,22 @@ check("RevisionService recordEvidence is orchestration-only at transition bounda
   && service.includes("applyPrimaryEvidenceTransition({")
   && service.includes("buildEvidenceEvent({")
   && !service.includes("const evidence: ObjectiveEvidence = {"));
+check("RevisionService evidence subflows are modestly factored",
+  service.includes("private async createEvidenceFollowUp(")
+  && service.includes("private async applyCorrectiveEvidenceReturn(")
+  && service.includes("const followUp = await this.createEvidenceFollowUp(")
+  && service.includes("const corrective = await this.applyCorrectiveEvidenceReturn(")
+  && (service.match(/this\.repo\.recordReview\(/g) || []).length === 1);
 
 check("Durable identifier HTML sinks are escaped",
-  !ui.includes('data-id="${unit.id}"')
-  && !ui.includes('data-id="${obligation.id}"')
-  && !ui.includes('data-id="${event.id}"')
-  && !ui.includes('data-id="${profile.id}"')
-  && !ui.includes('value="${profile.id}"')
-  && !ui.includes('value="${unit.id}"')
-  && !ui.includes('data-profile-editor="${profile.id}"')
-  && ui.includes('data-id="${escapeHtml(unit.id)}"')
-  && ui.includes('value="${escapeHtml(profile.id)}"'));
+  !uiSurfaces.includes('data-id="${unit.id}"')
+  && !uiSurfaces.includes('data-id="${obligation.id}"')
+  && !uiSurfaces.includes('data-id="${event.id}"')
+  && !uiSurfaces.includes('data-id="${profile.id}"')
+  && !uiSurfaces.includes('value="${profile.id}"')
+  && !uiSurfaces.includes('value="${unit.id}"')
+  && !uiSurfaces.includes('data-profile-editor="${profile.id}"')
+  && uiSurfaces.includes('data-id="${escapeHtml(unit.id)}"')
+  && uiSurfaces.includes('value="${escapeHtml(profile.id)}"'));
 
 console.log(`PASS ${checks} Pass C2 UI-runtime and accessibility checks`);

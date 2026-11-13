@@ -123,11 +123,16 @@
     },
     {
       "order": 24,
+      "path": "app/48-settings-workspace.ts",
+      "layer": "Settings/System workspace: profiles, scheduler personalization, plugin controls, storage status and verified backup/restore UI."
+    },
+    {
+      "order": 25,
       "path": "app/50-ui-controller.ts",
       "layer": "DOM helpers and the current UI controller."
     },
     {
-      "order": 25,
+      "order": 26,
       "path": "app/60-public-bridge-bootstrap.ts",
       "layer": "Validated public bridge and boot sequence; the build owns the outer sealed IIFE."
     }
