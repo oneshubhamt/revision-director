@@ -476,6 +476,7 @@
     }
 
     async createUnit(draft: UnitDraft): Promise<KnowledgeUnit> {
+      assert(draft.obligationType !== "relearn", "A new knowledge unit cannot begin with a system-owned relearning obligation.");
       assert(draft.title.trim().length >= 2, "Enter a knowledge-unit name.");
       assert(draft.scope.trim().length >= 3, "Define the unit scope.");
       assert(draft.protocol.trim().length >= 3, "Define a retrieval protocol.");
@@ -578,7 +579,8 @@
     }
 
     async createObligation(draft: ObligationDraft): Promise<RevisionObligation> {
-      await this.unit(draft.unitId);
+      const unit = await this.unit(draft.unitId);
+      assert(unit.status === "active", "Activate the knowledge unit before adding a revision obligation.");
       assert(draft.type !== "relearn", "Relearning obligations are created only by a failed retrieval that records their exact origin.");
       const obligation = this.buildObligation(draft);
       await this.repo.put(Store.Obligations, obligation);
