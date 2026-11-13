@@ -1,22 +1,26 @@
 from __future__ import annotations
 from pathlib import Path
-import importlib.util
 import json
-import shutil
-import time
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, chromium_executable
+from helpers.browser_harness import (
+    ROOT,
+    accept_dialogs,
+    capture_browser_errors,
+    launch_chromium,
+    wait_until as shared_wait_until,
+)
+from helpers.persistent_browser import (
+    BASE_HTML,
+    PERSISTENT_BROWSER_SHIM,
+    create_persistent_frame,
+    host_state_all as state_all,
+    restore_backup_with_safety_copy,
+)
 FIXTURE = ROOT / "tests/fixtures/browser-baseline.rdbackup"
-BASE_HTML = (ROOT / "index.html").read_text()
-spec = importlib.util.spec_from_file_location("pass_b1_browser", TESTS / "scenarios/persistent-active-retrieval.py")
-module = importlib.util.module_from_spec(spec)
-assert spec.loader
-spec.loader.exec_module(module)
-PERSISTENT_BROWSER_SHIM = module.PERSISTENT_BROWSER_SHIM
 
 B3_SHARED_SHIM = r"""
 <script>
@@ -57,47 +61,21 @@ def check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 def wait_until(frame, predicate, timeout=10000):
-    deadline = time.monotonic() + timeout / 1000
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        frame.wait_for_timeout(60)
-    raise AssertionError("Timed out waiting for condition")
+    shared_wait_until(frame, predicate, timeout=timeout, interval=60)
 
 def boot_frame(page, name: str):
-    page.evaluate("""name => {
-      const old=document.querySelector('#'+name); if(old) old.remove();
-      const frame=document.createElement('iframe'); frame.id=name; frame.name=name;
-      frame.style.width='1220px'; frame.style.height='860px'; document.body.appendChild(frame);
-    }""", name)
-    frame = page.frame(name=name)
-    if frame is None:
-        raise AssertionError(f"Frame {name} was not created")
-    frame.set_content(HTML, wait_until="load")
+    frame = create_persistent_frame(page, HTML, name=name, width=1220, height=860)
     wait_until(frame, lambda: frame.evaluate("document.documentElement.dataset.reviewOwnership") in ["primary", "secondary", "faulted"])
     check(not frame.locator("#fatal-error").is_visible(), f"Fatal startup error in {name}")
     return frame
 
-def state_all(page, store: str):
-    return page.evaluate("""store => {
-      const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
-      return (raw?.stores?.[store]?.records ?? []).map(([,value]) => structuredClone(value));
-    }""", store)
-
-
-def restore_fixture_d2(page, frame, fixture) -> None:
-    module.restore_fixture_d2(page, frame, fixture)
-
 def main() -> None:
-    chromium = chromium_executable()
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True, executable_path=chromium if chromium else None)
+        browser = launch_chromium(pw)
         context = browser.new_context(viewport={"width": 2600, "height": 1000}, accept_downloads=True)
         page = context.new_page()
-        errors: list[str] = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
-        page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
-        page.on("dialog", lambda dialog: dialog.accept())
+        errors = capture_browser_errors(page)
+        accept_dialogs(page)
         page.set_content("<body style='display:flex;gap:12px;margin:0'><script>window.__RD_B1_QA_STATE__={local:{},databases:{},channels:{},storage:{persisted:false,persistResult:false,usage:1000,quota:50000000,persistCalls:0}}</script></body>")
 
         first = boot_frame(page, "first")
@@ -108,7 +86,7 @@ def main() -> None:
         wait_until(first, lambda: "available" in first.locator("#settings-content").inner_text().lower())
         check("available" in first.locator("#settings-content").inner_text().lower(), "Passive startup storage state was not reported")
 
-        restore_fixture_d2(page, first, FIXTURE)
+        restore_backup_with_safety_copy(page, first, FIXTURE)
         wait_until(first, lambda: "restored" in first.locator("#toast").inner_text().lower())
         first.locator('[data-pane="library"]').click()
         row = first.locator(".unit-row").filter(has_text="Staphylococcus aureus — recognition and clinical reasoning")
