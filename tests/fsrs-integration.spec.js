@@ -1,25 +1,11 @@
 'use strict';
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
-const { webcrypto } = require('crypto');
+const { createAppRuntime } = require('./helpers/runtime-harness');
 
-const root = path.resolve(__dirname, '..');
-let source = fs.readFileSync(path.join(root, 'dist', 'app.js'), 'utf8');
-const hook = 'window.__RD_FSRS_VERIFY__ = { FsrsMemoryPolicy, RevisionService, Rating, prepareFsrsScheduler, revisionSchedulerPort, memoryReviewObservationsFor, validateFsrsOptimizerProfile, validateFsrsConfigSnapshot, fsrsConfigSnapshot, canonicalFsrsSchedulingPolicy, costAdrPresetSchedulingPolicy, defaultFsrsSchedulingSettings, FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT, FSRS7_DEFAULT_WEIGHTS, buildPlanningCandidate, activeFsrsOptimizerProfile, fsrsOptimizerEvidenceRows, fsrsOptimizerEvidenceSnapshot, fsrsHoldoutDiagnostics, fsrsWeightsFingerprint, fsrsPersonalizationProfileCatalog, verifyHistoricalMemorySchedulerConfigurations };';
-if (!source.includes('void boot();')) throw new Error('Boot marker missing');
-source = source.replace('void boot();', hook);
-const vendor = fs.readFileSync(path.join(root, 'vendor', 'ts-fsrs-6.0.0', 'index.umd.js'), 'utf8');
-function createVerificationApi(){
-  const context = { crypto:webcrypto, structuredClone, console, Date, Intl, URL, Blob, TextEncoder, TextDecoder, setTimeout, clearTimeout, setInterval, clearInterval, Map, Set, Math, Number, String, Object, Array, JSON, Error, Promise, Int32Array, Uint8Array };
-  context.window=context; context.self=context; context.globalThis=context;
-  vm.createContext(context);
-  vm.runInContext(vendor, context, { filename:'ts-fsrs-6.0.0.umd.js' });
-  vm.runInContext(source, context, { filename:'app.js' });
-  if (!context.__RD_FSRS_VERIFY__) throw new Error('FSRS verification API unavailable');
-  return context.__RD_FSRS_VERIFY__;
-}
-const api=createVerificationApi();
+const { api, context } = createAppRuntime({
+  globalName: '__RD_FSRS_VERIFY__',
+  expose: ["FsrsMemoryPolicy","RevisionService","Rating","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsOptimizerProfile","validateFsrsConfigSnapshot","fsrsConfigSnapshot","canonicalFsrsSchedulingPolicy","costAdrPresetSchedulingPolicy","defaultFsrsSchedulingSettings","FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT","FSRS7_DEFAULT_WEIGHTS","buildPlanningCandidate","activeFsrsOptimizerProfile","fsrsOptimizerEvidenceRows","fsrsOptimizerEvidenceSnapshot","fsrsHoldoutDiagnostics","fsrsWeightsFingerprint","fsrsPersonalizationProfileCatalog","verifyHistoricalMemorySchedulerConfigurations"],
+  requireFsrs: true,
+});
 
 let checks=0;
 const clone=value=>structuredClone(value);
