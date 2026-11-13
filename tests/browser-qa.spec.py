@@ -364,22 +364,12 @@ def scenario_bridge(browser) -> None:
         )
         wait_until(
             page,
-            lambda profile_id=profile_id: page.evaluate(
-                """id=>new Promise((resolve,reject)=>{
-                  const request=indexedDB.open('revision-director');
-                  request.onerror=()=>reject(request.error);
-                  request.onsuccess=()=>{
-                    const db=request.result;
-                    const get=db.transaction('profiles','readonly').objectStore('profiles').get(id);
-                    get.onerror=()=>reject(get.error);
-                    get.onsuccess=()=>{ resolve(get.result?.status==='suspended'); db.close(); };
-                  };
-                })""",
-                profile_id,
-            ),
+            lambda profile_id=profile_id: page.locator(
+                f'[data-profile-editor="{profile_id}"] [data-profile-status]'
+            ).input_value() == "suspended",
             timeout=5_000,
             interval=40,
-            message=f"Profile suspension did not persist: {profile_id}",
+            message=f"Profile suspension did not render: {profile_id}",
         )
     wait_until(page, lambda: page.evaluate("async()=> (await RevisionDirector.records.getDueSummary()).dueCount") == 0, timeout=5000, interval=40, message="Paused profiles remained due")
     summary = page.evaluate("RevisionDirector.records.getDueSummary()")
