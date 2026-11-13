@@ -643,8 +643,3 @@
     for (const errorType of evidence.errorTypes) assert(ERROR_TYPES.has(errorType), "Evidence contains an invalid error type.");
     assert(typeof evidence.correctionNote === "string", "Evidence correction note is invalid.");
   }
-
-  /* ========================================================================== 
-     SCHEDULER-POLICY ROUTER
-     ========================================================================== */
-
