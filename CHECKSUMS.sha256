@@ -1,13 +1,13 @@
 8c8b2ec2d49893ef333988bd18ee8d5e80b1bef40fed6bfae1a9f6b596a882b4  ./build/build-hosted.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 e03fa0f9108eaa6bc3cb8cdc9a750e3783a1a962fecfd05750d2597d26cf181f  ./CHANGELOG.md
-9cd53d7ae7599fa845fb6f3fc4fbc159a56264ed572ac38dd661e89669cdf599  ./dist/app.js
+e8a92477cc681df2c225163790f4756f7f82b271cb147afe21dd4ca7d705f5d0  ./dist/app.js
 2aa4507050fcebca069e0874287856820a62a6f4febe7b8acd4de28decf6446d  ./docs/ARCHITECTURE.md
 c2d80f294d35ee76e5a7d221b045b03d579778111f0f0c4562fb36e3e9648221  ./docs/DATA_AND_STORAGE.md
 e1fce6fd7391d4f04537001ab9cb3a77a75bae9c08fef6862ec056724f71b896  ./docs/DEVELOPMENT_AND_QA.md
 e51338541f747e84ece0c4e20e7595db684df5e8679dc9b969e0bc97c98970a5  ./docs/README.md
 ba443230bfdda805284486e5b36639034180a19c288be052d9e329ab4d001404  ./docs/SCHEDULING_AND_PLANNING.md
-37400e4318a0a140a1ec54877c6b6970d82a50176a1aaef2445c28b1f19cc277  ./index.html
+a038884e9f03d2e26d2177de3e3a48e751ea501275800c1829e01a41c3072155  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -18,7 +18,7 @@ e58ca8bf7184a3b6430fda3a1415cd2dee7816d279840b426dbf3c919df2cbd7  ./README.md
 de8d46d2767a2cb078b3b2aacc097dc86a5e653a01b881fd3dcc43f575842c89  ./source/app/05-presentation-engine.ts
 899e58eab58e1ca287b40527658b23772d034ad2a3c6b9b50cf7cf63a1e87bb8  ./source/app/10-domain-model.ts
 87529b6271cc41f2bd911f690e0260217529919fbff4377700c9d613b9e5f57e  ./source/app/11-domain-kernel.ts
-f4f77d8b140ca6fecbff970d1ab0d85606efafce49713e29225efe5a3271bf56  ./source/app/12-production-contracts.ts
+0843f4ed1ba20b73a428656906a6d0631a2ddcd1619faa6672f1a0ac7c3f721a  ./source/app/12-production-contracts.ts
 90aa051ed9cce196a4ec656ead806dd169fd590daddf8478460b0401b2b9130a  ./source/app/18-fsrs-personalization.ts
 2d5512cd296f2137c8de43a858651393681ebfb4a1ae02832de3aa03151db5a0  ./source/app/18a-fsrs-browser-optimizer.ts
 c9fb42874e8aa2f7de935a0a988ef9de2591df1eeed61c42edbfbfe862261ace  ./source/app/19-revision-scheduler-port.ts

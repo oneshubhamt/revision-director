@@ -1239,67 +1239,59 @@
       validateCalendarDate(value.studyDayKey, "Daily plan study day");
       assert(Array.isArray(value.versions) && value.versions.length > 0, "Daily plan requires at least one version.");
       assert(Array.isArray(value.outcomes), "Daily plan outcomes must be an array.");
-      const versions = value.versions.map((version) => {
+      const plan = clone(value);
+      plan.schemaVersion = DOCUMENT_SCHEMA_VERSION;
+      plan.id = canonicalId(plan.id, "Daily-plan ID");
+      plan.createdAt = canonicalIso(plan.createdAt, "Daily-plan creation date");
+      plan.updatedAt = canonicalIso(plan.updatedAt, "Daily-plan update date");
+      plan.plannerVersion = canonicalId(plan.plannerVersion, "Daily-plan planner version");
+      plan.versions = plan.versions.map((version) => {
           assertExactKeys(version, "Daily-plan version", ["version", "generatedAt", "capacityMinutes", "items", "reason"]);
           assert(Number.isSafeInteger(version.version) && version.version >= 1, "Daily-plan version number is invalid.");
           assert(Number.isSafeInteger(version.capacityMinutes) && version.capacityMinutes >= 5 && version.capacityMinutes <= 600, "Daily-plan version capacity is invalid.");
           assert(["initial", "manual-regeneration", "data-change", "manual-addition"].includes(version.reason), "Daily-plan version reason is invalid.");
           assert(Array.isArray(version.items), "Daily-plan version items must be an array.");
-          const items = version.items.map((item) => {
+          const canonicalVersion = clone(version);
+          canonicalVersion.generatedAt = canonicalIso(canonicalVersion.generatedAt, "Daily-plan version date");
+          canonicalVersion.items = canonicalVersion.items.map((item) => {
               assertExactKeys(item, "Daily-plan item", ["key", "obligationId", "chunkId", "profileId", "unitId", "subject", "workflow", "title", "estimatedMinutes", "score", "disposition", "reasons"]);
               assert(RETRIEVAL_WORKFLOWS.includes(item.workflow), "Daily-plan item workflow is invalid.");
               assert(typeof item.estimatedMinutes === "number" && Number.isFinite(item.estimatedMinutes) && item.estimatedMinutes >= 1 && item.estimatedMinutes <= 240, "Daily-plan item duration is invalid.");
               assert(typeof item.score === "number" && Number.isFinite(item.score), "Daily-plan item score is invalid.");
               assert(["selected", "required-overrun", "must-split", "deferred"].includes(item.disposition), "Daily-plan item disposition is invalid.");
               assert(Array.isArray(item.reasons), "Daily-plan item reasons must be an array.");
-              return {
-                  key: canonicalId(item.key, "Daily-plan item key"),
-                  obligationId: canonicalId(item.obligationId, "Daily-plan obligation ID"),
-                  ...(item.chunkId !== undefined ? { chunkId: canonicalId(item.chunkId, "Daily-plan chunk ID") } : {}),
-                  profileId: canonicalId(item.profileId, "Daily-plan profile ID"),
-                  unitId: canonicalId(item.unitId, "Daily-plan unit ID"),
-                  subject: canonicalName(item.subject, "Daily-plan subject", 500),
-                  workflow: item.workflow,
-                  title: canonicalName(item.title, "Daily-plan title", 500),
-                  estimatedMinutes: item.estimatedMinutes,
-                  score: item.score,
-                  disposition: item.disposition,
-                  reasons: item.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500)),
-              };
+              const canonicalItem = clone(item);
+              canonicalItem.key = canonicalId(canonicalItem.key, "Daily-plan item key");
+              canonicalItem.obligationId = canonicalId(canonicalItem.obligationId, "Daily-plan obligation ID");
+              if (canonicalItem.chunkId !== undefined)
+                  canonicalItem.chunkId = canonicalId(canonicalItem.chunkId, "Daily-plan chunk ID");
+              canonicalItem.profileId = canonicalId(canonicalItem.profileId, "Daily-plan profile ID");
+              canonicalItem.unitId = canonicalId(canonicalItem.unitId, "Daily-plan unit ID");
+              canonicalItem.subject = canonicalName(canonicalItem.subject, "Daily-plan subject", 500);
+              canonicalItem.title = canonicalName(canonicalItem.title, "Daily-plan title", 500);
+              canonicalItem.reasons = canonicalItem.reasons.map((reason) => canonicalText(reason, "Daily-plan reason", 500));
+              return canonicalItem;
           });
-          return {
-              version: version.version,
-              generatedAt: canonicalIso(version.generatedAt, "Daily-plan version date"),
-              capacityMinutes: version.capacityMinutes,
-              items,
-              reason: version.reason,
-          };
+          return canonicalVersion;
       });
-      const outcomes = value.outcomes.map((outcome) => {
+      plan.outcomes = plan.outcomes.map((outcome) => {
           assertExactKeys(outcome, "Daily-plan outcome", ["itemKey", "status", "startedAt", "completedAt", "actualMinutes", "evidenceEventId", "note"]);
           assert(["planned", "started", "completed", "skipped"].includes(outcome.status), "Daily-plan outcome status is invalid.");
           if (outcome.actualMinutes !== undefined)
               assert(typeof outcome.actualMinutes === "number" && Number.isFinite(outcome.actualMinutes) && outcome.actualMinutes >= 0 && outcome.actualMinutes <= 10_080, "Daily-plan actual duration is invalid.");
-          return {
-              itemKey: canonicalId(outcome.itemKey, "Daily-plan outcome key"),
-              status: outcome.status,
-              ...(outcome.startedAt !== undefined ? { startedAt: canonicalIso(outcome.startedAt, "Daily-plan start date") } : {}),
-              ...(outcome.completedAt !== undefined ? { completedAt: canonicalIso(outcome.completedAt, "Daily-plan completion date") } : {}),
-              ...(outcome.actualMinutes !== undefined ? { actualMinutes: outcome.actualMinutes } : {}),
-              ...(outcome.evidenceEventId !== undefined ? { evidenceEventId: canonicalId(outcome.evidenceEventId, "Daily-plan evidence ID") } : {}),
-              ...(outcome.note !== undefined ? { note: canonicalText(outcome.note, "Daily-plan outcome note") } : {}),
-          };
+          const canonicalOutcome = clone(outcome);
+          canonicalOutcome.itemKey = canonicalId(canonicalOutcome.itemKey, "Daily-plan outcome key");
+          if (canonicalOutcome.startedAt !== undefined)
+              canonicalOutcome.startedAt = canonicalIso(canonicalOutcome.startedAt, "Daily-plan start date");
+          if (canonicalOutcome.completedAt !== undefined)
+              canonicalOutcome.completedAt = canonicalIso(canonicalOutcome.completedAt, "Daily-plan completion date");
+          if (canonicalOutcome.evidenceEventId !== undefined)
+              canonicalOutcome.evidenceEventId = canonicalId(canonicalOutcome.evidenceEventId, "Daily-plan evidence ID");
+          if (canonicalOutcome.note !== undefined)
+              canonicalOutcome.note = canonicalText(canonicalOutcome.note, "Daily-plan outcome note");
+          return canonicalOutcome;
       });
-      return {
-          schemaVersion: DOCUMENT_SCHEMA_VERSION,
-          id: canonicalId(value.id, "Daily-plan ID"),
-          studyDayKey: value.studyDayKey,
-          createdAt: canonicalIso(value.createdAt, "Daily-plan creation date"),
-          updatedAt: canonicalIso(value.updatedAt, "Daily-plan update date"),
-          plannerVersion: canonicalId(value.plannerVersion, "Daily-plan planner version"),
-          versions,
-          outcomes,
-      };
+      return plan;
   }
   function canonicalAppSettings(value) {
       assertDocumentSchema(value, "Application settings");
