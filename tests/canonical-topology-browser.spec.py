@@ -22,6 +22,10 @@ def fresh_host(page) -> None:
     page.evaluate("window.__RD_B1_QA_STATE__={local:{},databases:{}}")
 
 
+def detach_app(page) -> None:
+    page.evaluate("document.querySelector('#app')?.remove()")
+
+
 def boot(page):
     page.evaluate("""() => {
       document.querySelector('#app')?.remove();
@@ -72,6 +76,7 @@ def main() -> None:
         fresh_host(page)
         frame = boot(page); wait_ready(frame)
         before_settings = store_records(page, "settings")
+        detach_app(page)
         page.evaluate("""() => {
           const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
           raw.stores.metadata.records=[];
@@ -84,6 +89,7 @@ def main() -> None:
         # Missing settings in an existing database are never reconstructed.
         fresh_host(page)
         frame = boot(page); wait_ready(frame)
+        detach_app(page)
         page.evaluate("""() => {
           const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
           const now=new Date().toISOString();
@@ -101,6 +107,7 @@ def main() -> None:
         # Invalid current-schema relationships fail closed instead of being startup-repaired.
         fresh_host(page)
         frame = boot(page); wait_ready(frame)
+        detach_app(page)
         page.evaluate("""() => {
           const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
           const now=new Date().toISOString();
