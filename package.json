@@ -15,7 +15,8 @@
     "qa:browser:durability": "python3 tests/qa.py durability",
     "qa:browser": "python3 tests/qa.py browser",
     "qa:full": "python3 tests/qa.py full",
-    "qa:deep": "python3 tests/qa.py deep"
+    "qa:deep": "python3 tests/qa.py deep",
+    "qa:browser:performance": "python3 tests/qa.py performance"
   },
   "devDependencies": {
     "typescript": "7.0.2",
