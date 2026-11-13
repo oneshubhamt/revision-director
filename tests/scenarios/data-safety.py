@@ -8,7 +8,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_until
+from helpers.browser_harness import ROOT, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_backup_import_result, wait_until
 sys.path.insert(0,str(ROOT/'tests'))
 from backup_fixture_codec import decode_file
 base=load_browser_qa('revision_director_data_safety')
@@ -201,17 +201,15 @@ def main():
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(rescue))
-        wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='.rdrescue import handler did not finish')
-        check(not page.locator('#restore-dialog').is_visible(),'.rdrescue entered ordinary restore ceremony')
-        rescue_message=page.locator('#toast').inner_text().strip()
-        check(bool(rescue_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')"), f'.rdrescue rejection was not reported as an error · toast={rescue_message!r}')
+        rescue_result=wait_for_backup_import_result(page, timeout=5000)
+        check(not rescue_result['preview'],'.rdrescue entered ordinary restore ceremony')
+        check(bool(rescue_result['message']) and rescue_result['error'], f".rdrescue rejection was not reported as an error · result={rescue_result!r}")
         raw=tmp/'raw.json';raw.write_text(json.dumps({'format':'revision-director-backup'}))
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator('#import-backup').set_input_files([]); page.locator('#import-backup').set_input_files(str(raw))
-        wait_until(page, lambda: page.locator('#import-backup').evaluate('e=>e.value') == '', timeout=5000, interval=40, message='Raw JSON import handler did not finish')
-        raw_message=page.locator('#toast').inner_text().strip()
-        check(not page.locator('#restore-dialog').is_visible() and bool(raw_message) and page.locator('#toast').evaluate("e=>e.classList.contains('error')"),
-              f'Raw JSON did not fail through the rejection UI contract · toast={raw_message!r}')
+        raw_result=wait_for_backup_import_result(page, timeout=5000)
+        check(not raw_result['preview'] and bool(raw_result['message']) and raw_result['error'],
+              f"Raw JSON did not fail through the rejection UI contract · result={raw_result!r}")
 
         check(not errors,f'Browser errors: {errors}')
         browser.close()
