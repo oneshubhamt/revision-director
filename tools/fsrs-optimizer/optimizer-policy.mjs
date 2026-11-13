@@ -1,8 +1,5 @@
-import { readFileSync } from "node:fs";
-
-export const OPTIMIZER_CONTRACT=Object.freeze(JSON.parse(
- readFileSync(new URL("./optimizer-contract.json",import.meta.url),"utf8")
-));
+import {OPTIMIZER_CONTRACT} from "./optimizer-contract.mjs";
+export {OPTIMIZER_CONTRACT};
 export const HOLDOUT_SEGMENTS=OPTIMIZER_CONTRACT.holdoutSegments;
 export const MIN_TRAIN_ITEMS=OPTIMIZER_CONTRACT.minimumTrainItems;
 export const MIN_HOLDOUT_ITEMS=OPTIMIZER_CONTRACT.minimumHoldoutItems;
