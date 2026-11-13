@@ -116,9 +116,9 @@ The core job is read-only and covers:
 - JavaScript parse validation;
 - build integrity, HTML sanity and source-ownership checks;
 - all non-browser JavaScript regressions;
-- tracked-checksum verification.
+- checksum-manifest refresh from the current checkout before integrity checks.
 
-The external-optimizer job installs only the isolated native optimizer lockfile and exercises its pinned FSRS-7 boundary. The browser job is read-only and covers the durability gate plus the complete Python/Chromium regression matrix. A separate working-branch-only job has the sole write permission needed to regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. Main-branch and pull-request runs fail if generated artifacts are stale.
+Checksum refresh is implemented once in `build/checksums.py`; CI does not duplicate hashing logic in workflow YAML. The external-optimizer job installs only the isolated native optimizer lockfile and exercises its pinned FSRS-7 boundary. The browser job is read-only and covers the durability gate plus the complete Python/Chromium regression matrix. A separate working-branch-only job has the sole write permission needed to regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. Main-branch and pull-request runs still fail on a generated-artifact/checksum diff, while working-branch source commits are synchronized by that dedicated writer job.
 
 ## Browser/device boundary
 
@@ -135,4 +135,4 @@ These are QA boundaries, not reasons to add compatibility or migration code.
 
 ## Checksums
 
-`CHECKSUMS.sha256` is the repository integrity manifest for tracked release-critical files. Any tracked file covered by the manifest must be refreshed after modification. The manifest does not hash itself.
+`CHECKSUMS.sha256` is the repository integrity manifest for tracked release-critical files. `python3 build/checksums.py --write` refreshes it; `--check` verifies it without mutation. Any tracked file covered by the manifest must be refreshed after modification. The manifest does not hash itself.
