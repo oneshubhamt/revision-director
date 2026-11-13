@@ -3,7 +3,7 @@ const fs=require('fs'),vm=require('vm'),path=require('path');
 const {webcrypto}=require('crypto');
 const root=path.resolve(__dirname,'..');
 let source=fs.readFileSync(path.join(root,'dist/app.js'),'utf8');
-source=source.replace('void boot();','window.__RD_STAGE_D_TEST__={APP_VERSION,RevisionService,BackupCodec,BackupController,BACKUP_ARCHIVE_VERSION,BACKUP_SCHEMA_VERSION};');
+source=source.replace('void boot();','window.__RD_STAGE_D_TEST__={APP_VERSION,RevisionService,BackupCodec,BackupController,BACKUP_ARCHIVE_VERSION,BACKUP_SCHEMA_VERSION,validateBackupPayload};');
 const vendor=fs.readFileSync(path.join(root,'vendor/ts-fsrs-6.0.0','index.umd.js'),'utf8');
 const storage=new Map();
 const context={crypto:webcrypto,structuredClone,console,Date,Intl,URL,Blob,TextEncoder,TextDecoder,CompressionStream,DecompressionStream,ReadableStream,setTimeout,clearTimeout,setInterval,clearInterval,Map,Set,Math,Number,String,Object,Array,JSON,Error,Promise,Int32Array,Uint8Array,BigInt,navigator:{},localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(String(k),String(v)),removeItem:k=>storage.delete(String(k))}};
@@ -13,13 +13,11 @@ function check(v,m){checks++;if(!v)throw new Error(m)}
 async function mustFail(fn,text){checks++;try{await fn()}catch(e){if(text&&!String(e.message).toLowerCase().includes(text.toLowerCase()))throw e;return}throw new Error('Expected failure: '+text)}
 const settings={schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}};
 const empty=()=>({format:'revision-director-backup',schemaVersion:2,exportedAt:new Date().toISOString(),appVersion:'va7.1-pass-f1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:structuredClone(settings),activeRetrieval:null});
-const validator=new api.RevisionService({});
 class FakeService{
   constructor(){this.payload=empty();this.raw={profiles:[]};this.restores=0;this.failCreate=false;this.diags=[];this.decodeMode='normal'}
   async currentActiveRetrieval(){return this.payload.activeRetrieval}
-  async createBackupArchive(prefer=true){if(this.failCreate)throw new Error('current relational state invalid');return api.BackupCodec.create(validator.validateBackup(this.payload),prefer)}
-  async decodeBackupArchive(bytes){const decoded=await api.BackupCodec.decode(bytes,x=>validator.validateBackup(x));if(this.decodeMode==='mismatch')decoded.inspection.totalDocuments+=1;return decoded}
-  validateBackup(x){return validator.validateBackup(x)}
+  async createBackupArchive(prefer=true){if(this.failCreate)throw new Error('current relational state invalid');return api.BackupCodec.create(api.validateBackupPayload(this.payload),prefer)}
+  async decodeBackupArchive(bytes){const decoded=await api.BackupCodec.decode(bytes,x=>api.validateBackupPayload(x));if(this.decodeMode==='mismatch')decoded.inspection.totalDocuments+=1;return decoded}
   async exportBackup(){return structuredClone(this.payload)}
   async restoreBackupPayload(payload,treatment){this.restores++;this.payload=structuredClone(payload);if(treatment==='discard')this.payload.activeRetrieval=null}
   async rawStateForRescue(){return structuredClone(this.raw)}
@@ -28,7 +26,7 @@ class FakeService{
 (async()=>{
   check(api.BACKUP_ARCHIVE_VERSION===2&&api.BACKUP_SCHEMA_VERSION===2,'Stage D versions are not closed at v2');
 
-  const sourceBytes=(await api.BackupCodec.create(validator.validateBackup(empty()),false)).bytes;
+  const sourceBytes=(await api.BackupCodec.create(api.validateBackupPayload(empty()),false)).bytes;
   const service=new FakeService();
   const controller=new api.BackupController(service);
   const mutableInput=sourceBytes.slice();
@@ -40,7 +38,7 @@ class FakeService{
 
   const safety=await controller.createSafetyCopy(candidate.id);
   check(safety.kind==='verified-backup'&&safety.filename.endsWith('.rdbackup'),'Healthy state did not create a verified safety backup');
-  const safetyDecoded=await api.BackupCodec.decode(safety.bytes,x=>validator.validateBackup(x));
+  const safetyDecoded=await api.BackupCodec.decode(safety.bytes,x=>api.validateBackupPayload(x));
   check(safetyDecoded.payload.settings.dailyCapacityMinutes===60,'Safety backup does not represent current state');
   const publicSafety=safety.bytes.slice();publicSafety[0]^=0xff;
   await mustFail(()=>controller.restore(candidate.id,safety.proofId,'discard'),'confirm');
@@ -89,7 +87,7 @@ class FakeService{
   check(rescue.kind==='forensic-rescue'&&rescue.filename.endsWith('.rdrescue'),'Corrupt current state did not produce forensic rescue');
   const rescueObject=JSON.parse(new TextDecoder().decode(rescue.bytes));
   check(rescueObject.format==='revision-director-forensic-rescue'&&rescueObject.importable===false,'Forensic rescue identity is unsafe');
-  await mustFail(()=>api.BackupCodec.decode(rescue.bytes,x=>validator.validateBackup(x)),'backup');
+  await mustFail(()=>api.BackupCodec.decode(rescue.bytes,x=>api.validateBackupPayload(x)),'backup');
   forensicController.acknowledgeSafetyCopy(rescue.proofId);
   forensicService.raw={profiles:[{bad:true},{changed:true}]};
   await mustFail(()=>forensicController.restore(forensicCandidate.id,rescue.proofId,'discard'),'changed');
