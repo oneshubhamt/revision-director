@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from .browser_harness import ROOT
+from .browser_harness import ROOT, wait_until
 
 BASE_HTML = (ROOT / "index.html").read_text()
 PERSISTENT_BROWSER_SHIM = r"""
@@ -217,7 +217,6 @@ def restore_backup_with_safety_copy(
     fixture: str | Path,
     *,
     treatment: str = "discard",
-    settle_ms: int = 1100,
 ) -> None:
     frame.locator("#import-backup").set_input_files([])
     frame.locator("#import-backup").set_input_files(str(fixture))
@@ -247,4 +246,11 @@ def restore_backup_with_safety_copy(
     frame.locator("#restore-safety-saved").check()
     frame.locator("#restore-replace-confirm").check()
     frame.locator("#restore-final-button").click()
-    frame.wait_for_timeout(settle_ms)
+    wait_until(
+        frame,
+        lambda: not frame.locator("#restore-dialog").is_visible()
+        and "restored" in frame.locator("#toast").inner_text().lower(),
+        timeout=8_000,
+        interval=40,
+        message="Restore did not complete",
+    )
