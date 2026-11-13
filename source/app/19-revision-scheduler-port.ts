@@ -601,15 +601,13 @@
 
   const FSRS_SCHEDULER_CACHE = new Map<string, RevisionSchedulerPort>();
 
-  async function createCostAdrFsrsScheduler(
-    runtime: FsrsUmdRuntime,
-    policy: Extract<FsrsSchedulingPolicy, { kind: "cost-adr" }>,
-    profile: FsrsOptimizerProfile | null,
-  ): Promise<FsrsSchedulerRuntime> {
-    const weights = profile ? profile.weights : [...FSRS7_DEFAULT_WEIGHTS];
-    const reference = await runtime.DefaultScheduler({
+  function fsrsBaseSchedulerOptions(
+    desiredRetention: number,
+    weights?: readonly number[],
+  ) {
+    return {
       version: FSRS_MODEL,
-      desiredRetention: 0.9,
+      desiredRetention,
       enableShortTerm: true,
       learningSteps: FSRS_LEARNING_STEPS,
       relearningSteps: FSRS_RELEARNING_STEPS,
@@ -618,8 +616,17 @@
       enableFuzz: false,
       maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
       clearStatsOnForget: false,
-      weights,
-    });
+      ...(weights ? { weights: [...weights] } : {}),
+    };
+  }
+
+  async function createCostAdrFsrsScheduler(
+    runtime: FsrsUmdRuntime,
+    policy: Extract<FsrsSchedulingPolicy, { kind: "cost-adr" }>,
+    profile: FsrsOptimizerProfile | null,
+  ): Promise<FsrsSchedulerRuntime> {
+    const weights = profile ? [...profile.weights] : [...FSRS7_DEFAULT_WEIGHTS];
+    const reference = await runtime.DefaultScheduler(fsrsBaseSchedulerOptions(0.9, weights));
     assert(typeof runtime.defineScheduler === "function", "Embedded ts-fsrs runtime does not expose scheduler composition.");
     return runtime.defineScheduler(reference.definition)
       .use(
@@ -656,19 +663,10 @@
     if (FSRS_SCHEDULER_CACHE.has(configuration.fingerprint)) return;
     const runtime = runtimeFsrs();
     const scheduler = policy.kind === "fixed-retention"
-      ? await runtime.DefaultScheduler({
-          version: FSRS_MODEL,
-          desiredRetention: fixedRetentionForPolicy(policy),
-          enableShortTerm: true,
-          learningSteps: FSRS_LEARNING_STEPS,
-          relearningSteps: FSRS_RELEARNING_STEPS,
-          graduatingInterval: FSRS_GRADUATING_INTERVAL_DAYS,
-          allowModelOverride: true,
-          enableFuzz: false,
-          maximumInterval: FSRS_MAXIMUM_INTERVAL_DAYS,
-          clearStatsOnForget: false,
-          ...(validatedProfile ? { weights: validatedProfile.weights } : {}),
-        })
+      ? await runtime.DefaultScheduler(fsrsBaseSchedulerOptions(
+          fixedRetentionForPolicy(policy),
+          validatedProfile?.weights,
+        ))
       : await createCostAdrFsrsScheduler(runtime, policy, validatedProfile);
     const port = new TsFsrsSchedulerPort(scheduler, configuration);
     const probe = port.newCard("2000-01-01T00:00:00.000Z", "revision-director-fsrs7-probe");
@@ -711,12 +709,11 @@
     return matches[0]!;
   }
 
-  async function prepareMemoryDatasetReplaySchedulers(
-    reviewIndex: MemoryReviewObservationIndex,
-    profileCatalog: readonly FsrsOptimizerProfile[],
-  ): Promise<void> {
+  function historicalFsrsConfigurations(
+    reviewGroups: Iterable<readonly MemoryReviewObservation[]>,
+  ): ReadonlyMap<string, FsrsConfigSnapshot> {
     const configurations = new Map<string, FsrsConfigSnapshot>();
-    for (const reviews of reviewIndex.values()) {
+    for (const reviews of reviewGroups) {
       for (const review of reviews) {
         const config = validateFsrsConfigSnapshot(review.schedulerConfig);
         const existing = configurations.get(config.fingerprint);
@@ -727,6 +724,14 @@
         }
       }
     }
+    return configurations;
+  }
+
+  async function prepareMemoryDatasetReplaySchedulers(
+    reviewIndex: MemoryReviewObservationIndex,
+    profileCatalog: readonly FsrsOptimizerProfile[],
+  ): Promise<void> {
+    const configurations = historicalFsrsConfigurations(reviewIndex.values());
     for (const config of configurations.values()) {
       const historicalProfile = profileForHistoricalFsrsConfiguration(config, profileCatalog);
       await prepareFsrsScheduler(config.schedulingPolicy, historicalProfile);
@@ -741,16 +746,7 @@
     currentConfigFingerprint?: string,
   ): void {
     if (reviews.length === 0) return;
-    const configurations = new Map<string, FsrsConfigSnapshot>();
-    for (const review of reviews) {
-      const config = validateFsrsConfigSnapshot(review.schedulerConfig);
-      const existing = configurations.get(config.fingerprint);
-      if (existing) {
-        assert(JSON.stringify(existing) === JSON.stringify(config), "A single FSRS configuration fingerprint maps to conflicting scheduler snapshots.");
-      } else {
-        configurations.set(config.fingerprint, clone(config));
-      }
-    }
+    const configurations = historicalFsrsConfigurations([reviews]);
     for (const config of configurations.values()) {
       if (config.fingerprint === currentConfigFingerprint) continue;
       const historicalProfile = profileForHistoricalFsrsConfiguration(config, profileCatalog);

@@ -851,6 +851,33 @@
       await this.host.openPane("review");
     }
 
+    private async commitActiveRetrievalTransition(
+      targetId: string,
+      commit: (guard: ActiveCommitGuard, postCommitSession: ActiveRetrievalSession) => Promise<void>,
+    ): Promise<ActiveRetrievalSession> {
+      const commitToken = uid("commit");
+      const committing = this.buildActiveRetrievalSession("committing", commitToken);
+      assert(committing, "Active retrieval state is missing.");
+      const post = await this.postCommitSession(commitToken);
+      try {
+        await this.activePersistence.flush(committing);
+        const guard: ActiveCommitGuard = {
+          sessionId: ACTIVE_RETRIEVAL_ID,
+          expectedRevision: committing.revision,
+          targetId,
+          commitToken,
+        };
+        await commit(guard, post);
+        await this.activePersistence.acceptCommittedTransition(post);
+        this.activeSessionRevision = post.revision;
+        return post;
+      } catch (error) {
+        const resumed = this.buildActiveRetrievalSession("active");
+        if (resumed) await this.activePersistence.flush(resumed).catch(() => undefined);
+        throw error;
+      }
+    }
+
     private async completeActiveChunk(): Promise<void> {
       if (!this.host.requireMutable("complete a retrieval chunk")) return;
       if (this.commitInFlight) return;
@@ -862,35 +889,26 @@
         assert(this.phaseTime && this.phaseTime.status() === "running", "Resume and classify interruptions before completing this chunk.");
         const timing = this.timingSummary();
         const note = this.reviewContent.querySelector<HTMLTextAreaElement>("#chunk-note")?.value ?? "";
-        const commitToken = uid("commit");
-        const committing = this.buildActiveRetrievalSession("committing", commitToken);
-        assert(committing, "Active retrieval state is missing.");
-        const post = await this.postCommitSession(commitToken);
-        try {
-          await this.activePersistence.flush(committing);
-          const guard: ActiveCommitGuard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: target, commitToken };
-          await this.service.completeChunk(chunkId, timing, note, new Date(), guard, post);
-          await this.activePersistence.acceptCommittedTransition(post);
-          this.activeSessionRevision = post.revision;
-          this.host.toast("Chunk completed. Parent scheduling remains unchanged until final synthesis.");
-          this.reviewDrafts.delete(target);
-          this.activeReviewIndex += 1;
-          this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
-          this.attemptElapsedMs = 0;
-          this.diagramStrokes = [];
-          if (this.activeReviewIndex >= this.activeReviewIds.length) {
-            await this.endReviewSession(false);
-            await this.host.openPane("today");
-            return;
-          }
-          this.reviewPhase = post.phase;
-          await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
-          await this.host.invalidateAfterCommit();
-        } catch (error) {
-          const resumed = this.buildActiveRetrievalSession("active");
-          if (resumed) await this.activePersistence.flush(resumed).catch(() => undefined);
-          throw error;
+        const post = await this.commitActiveRetrievalTransition(
+          target,
+          async (guard, postCommitSession) => {
+            await this.service.completeChunk(chunkId, timing, note, new Date(), guard, postCommitSession);
+          },
+        );
+        this.host.toast("Chunk completed. Parent scheduling remains unchanged until final synthesis.");
+        this.reviewDrafts.delete(target);
+        this.activeReviewIndex += 1;
+        this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
+        this.attemptElapsedMs = 0;
+        this.diagramStrokes = [];
+        if (this.activeReviewIndex >= this.activeReviewIds.length) {
+          await this.endReviewSession(false);
+          await this.host.openPane("today");
+          return;
         }
+        this.reviewPhase = post.phase;
+        await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
+        await this.host.invalidateAfterCommit();
       } finally {
         this.commitInFlight = false;
       }
@@ -933,35 +951,26 @@
           if (!proceed) return;
         }
         const committedEvidence = effectiveRating === rating ? evidence : { ...evidence, confirmedRating: effectiveRating };
-        const commitToken = uid("commit");
-        const committing = this.buildActiveRetrievalSession("committing", commitToken);
-        assert(committing, "Active retrieval state is missing.");
-        const post = await this.postCommitSession(commitToken);
-        try {
-          await this.activePersistence.flush(committing);
-          const guard: ActiveCommitGuard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: obligationId, commitToken };
-          await this.service.recordEvidence(obligationId, committedEvidence, new Date(), guard, post);
-          await this.activePersistence.acceptCommittedTransition(post);
-          this.activeSessionRevision = post.revision;
-          this.host.toast(`Recorded ${ratingName(effectiveRating)}. Next obligation scheduled.`);
-          this.reviewDrafts.delete(obligationId);
-          this.activeReviewIndex += 1;
-          this.diagramStrokes = [];
-          this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
-          this.attemptElapsedMs = 0;
-          if (this.activeReviewIndex >= this.activeReviewIds.length) {
-            await this.endReviewSession(false);
-            await this.host.openPane("today");
-            return;
-          }
-          this.reviewPhase = post.phase;
-          await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
-          await this.host.invalidateAfterCommit();
-        } catch (error) {
-          const resumed = this.buildActiveRetrievalSession("active");
-          if (resumed) await this.activePersistence.flush(resumed).catch(() => undefined);
-          throw error;
+        const post = await this.commitActiveRetrievalTransition(
+          obligationId,
+          async (guard, postCommitSession) => {
+            await this.service.recordEvidence(obligationId, committedEvidence, new Date(), guard, postCommitSession);
+          },
+        );
+        this.host.toast(`Recorded ${ratingName(effectiveRating)}. Next obligation scheduled.`);
+        this.reviewDrafts.delete(obligationId);
+        this.activeReviewIndex += 1;
+        this.diagramStrokes = [];
+        this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
+        this.attemptElapsedMs = 0;
+        if (this.activeReviewIndex >= this.activeReviewIds.length) {
+          await this.endReviewSession(false);
+          await this.host.openPane("today");
+          return;
         }
+        this.reviewPhase = post.phase;
+        await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
+        await this.host.invalidateAfterCommit();
       } finally {
         this.commitInFlight = false;
         this.reviewContent.querySelectorAll<HTMLButtonElement>('[data-action="rate"]').forEach((button) => { button.disabled = false; });

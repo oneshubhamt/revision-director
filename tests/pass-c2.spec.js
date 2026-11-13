@@ -81,6 +81,12 @@ check("Active retrieval workspace has dedicated ownership",
   && !ui.includes("private reviewPhase")
   && !ui.includes("private phaseTime")
   && !ui.includes("private commitInFlight"));
+check("Active retrieval durable commit envelope is canonical",
+  activeRetrieval.includes("private async commitActiveRetrievalTransition(")
+  && (activeRetrieval.match(/activePersistence\.flush\(committing\)/g) || []).length === 1
+  && (activeRetrieval.match(/activePersistence\.acceptCommittedTransition\(post\)/g) || []).length === 1
+  && (activeRetrieval.match(/const guard: ActiveCommitGuard/g) || []).length === 1
+  && (activeRetrieval.match(/commitActiveRetrievalTransition\(/g) || []).length === 3);
 check("Domain kernel is DOM-free",
   !/FormData|HTMLFormElement|HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|innerHTML|document\./.test(domainKernel));
 check("Workflow form machinery lives in UI adapter",

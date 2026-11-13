@@ -6,7 +6,7 @@ const root = ROOT;
 
 const runtimeOptions = {
   globalName: '__RD_FSRS_VERIFY__',
-  expose: ["FsrsMemoryPolicy","RevisionService","Rating","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsOptimizerProfile","validateFsrsConfigSnapshot","fsrsConfigSnapshot","canonicalFsrsSchedulingPolicy","costAdrPresetSchedulingPolicy","defaultFsrsSchedulingSettings","FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT","FSRS7_DEFAULT_WEIGHTS","buildPlanningCandidate","activeFsrsOptimizerProfile","fsrsOptimizerEvidenceRows","fsrsOptimizerEvidenceSnapshot","fsrsHoldoutDiagnostics","fsrsWeightsFingerprint","fsrsPersonalizationProfileCatalog","verifyHistoricalMemorySchedulerConfigurations"],
+  expose: ["FsrsMemoryPolicy","RevisionService","Rating","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsOptimizerProfile","validateFsrsConfigSnapshot","fsrsConfigSnapshot","canonicalFsrsSchedulingPolicy","costAdrPresetSchedulingPolicy","defaultFsrsSchedulingSettings","FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT","FSRS7_DEFAULT_WEIGHTS","buildPlanningCandidate","activeFsrsOptimizerProfile","fsrsOptimizerEvidenceRows","fsrsOptimizerEvidenceSnapshot","fsrsHoldoutDiagnostics","fsrsWeightsFingerprint","fsrsPersonalizationProfileCatalog","verifyHistoricalMemorySchedulerConfigurations","fsrsBaseSchedulerOptions","historicalFsrsConfigurations"],
   requireFsrs: true,
 };
 const createVerificationApi = () => createAppRuntime(runtimeOptions).api;
@@ -179,7 +179,14 @@ async function testSchedulingPolicyBoundary(){
   check(fixedConfig.schedulingPolicy.kind==='fixed-retention'&&fixedConfig.schedulingPolicy.desiredRetention===.9,'Fixed-retention policy must be explicit in scheduler provenance');
   check(adaptiveConfig.schedulingPolicy.kind==='cost-adr'&&adaptiveConfig.schedulingPolicy.goalCostWeight===1024&&adaptiveConfig.fingerprint!==fixedConfig.fingerprint,'Optional Cost-ADR preset must participate in scheduler identity');
   check(api.FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT===1024,'Optional Cost-ADR goal cost weight must remain pinned to the bounded preset');
-  const changedGoal=costAdr(); changedGoal.goalCostWeight=992;
+  const baseSchedulerOptions=api.fsrsBaseSchedulerOptions(.9,api.FSRS7_DEFAULT_WEIGHTS);
+  check(baseSchedulerOptions.version==='FSRS-7'&&baseSchedulerOptions.desiredRetention===.9&&baseSchedulerOptions.enableShortTerm===true&&baseSchedulerOptions.enableFuzz===false,'Canonical FSRS scheduler options must retain the pinned base runtime policy');
+  const originalWeight=api.FSRS7_DEFAULT_WEIGHTS[0];
+  baseSchedulerOptions.weights[0]+=1;
+  check(api.FSRS7_DEFAULT_WEIGHTS[0]===originalWeight,'Canonical FSRS scheduler options must own a defensive weight copy');
+  const historical=api.historicalFsrsConfigurations([[{schedulerConfig:clone(fixedConfig)},{schedulerConfig:clone(fixedConfig)}]]);
+  check(historical.size===1&&historical.get(fixedConfig.fingerprint).fingerprint===fixedConfig.fingerprint,'Historical FSRS configuration collection must deduplicate identical canonical snapshots by fingerprint');
+    const changedGoal=costAdr(); changedGoal.goalCostWeight=992;
   mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedGoal),'Arbitrary Cost-ADR goal weights must remain unavailable');
   const changedCoefficient=costAdr(); changedCoefficient.costAdrPolicy.coefficients[0]-=.001;
   mustFail(()=>api.canonicalFsrsSchedulingPolicy(changedCoefficient),'Arbitrary Cost-ADR coefficient variants must remain unavailable');
