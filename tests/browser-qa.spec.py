@@ -6,8 +6,7 @@ import os
 import json
 from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from playwright.sync_api import sync_playwright
-from helpers.browser_harness import launch_chromium
-import time
+from helpers.browser_harness import launch_chromium, wait_for_app_ready, wait_for_layout, wait_until
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_HTML = (ROOT / "index.html").read_text()
@@ -60,14 +59,13 @@ def check(condition: bool, message: str) -> None:
 
 
 def wait_for_text(page, selector: str, expected: str, timeout_seconds: float = 5.0) -> None:
-    deadline = time.monotonic() + timeout_seconds
-    last = ""
-    while time.monotonic() < deadline:
-        last = page.locator(selector).inner_text().strip()
-        if last == expected:
-            return
-        page.wait_for_timeout(80)
-    raise AssertionError(f"Timed out waiting for {selector}={expected!r}; last={last!r}")
+    wait_until(
+        page,
+        lambda: page.locator(selector).inner_text().strip() == expected,
+        timeout=int(timeout_seconds * 1000),
+        interval=40,
+        message=f"Timed out waiting for {selector}={expected!r}",
+    )
 
 
 def set_range(page, selector: str, value: int) -> None:
@@ -85,12 +83,11 @@ def check_all_checkpoints(page) -> None:
 
 def restore_selected_backup(page, backup_path: str | Path, treatment: str = "discard", wait_ms: int = 900, download_page=None) -> None:
     page.locator("#import-backup").set_input_files(str(backup_path))
-    deadline = time.monotonic() + max(5.0, wait_ms / 1000)
-    while time.monotonic() < deadline and not page.locator("#restore-dialog").is_visible():
-        page.wait_for_timeout(80)
-    if not page.locator("#restore-dialog").is_visible():
+    try:
+        page.locator("#restore-dialog").wait_for(state="visible", timeout=max(5000, wait_ms))
+    except Exception as error:
         toast = page.locator("#toast").inner_text().strip()
-        raise AssertionError(f"Restore preview did not open; toast={toast!r}")
+        raise AssertionError(f"Restore preview did not open; toast={toast!r}") from error
     with TemporaryDirectory() as tmpdir:
         download_surface = download_page or page
         with download_surface.expect_download() as download_info:
@@ -104,7 +101,7 @@ def restore_selected_backup(page, backup_path: str | Path, treatment: str = "dis
     page.locator("#restore-replace-confirm").check()
     check(page.locator("#restore-final-button").is_enabled(), "Final restore remained disabled")
     page.locator("#restore-final-button").click()
-    page.wait_for_timeout(1100)
+    wait_until(page, lambda: "restored" in page.locator("#toast").inner_text().lower(), timeout=8000, interval=40, message="Restore did not complete")
 
 def open_page(browser, viewport=None, baseline: bool = False):
     page = browser.new_page(viewport=viewport or {"width": 1440, "height": 1000})
@@ -113,11 +110,10 @@ def open_page(browser, viewport=None, baseline: bool = False):
     page.on("pageerror", lambda error: errors.append(("pageerror", str(error))))
     page.on("dialog", lambda dialog: dialog.accept())
     page.set_content(HTML, wait_until="load")
-    page.wait_for_timeout(1400)
-    check(not page.locator("#fatal-error").is_visible(), "Fatal startup error")
+    wait_for_app_ready(page)
     if baseline:
         page.locator('[data-pane="settings"]').click()
-        page.wait_for_timeout(120)
+        page.locator("#pane-settings").wait_for(state="visible")
         payload = decode_file(BASELINE_BACKUP)
         test_exam_date = (date.today() + timedelta(days=14)).isoformat()
         for profile in payload["profiles"]:
@@ -132,16 +128,15 @@ def open_page(browser, viewport=None, baseline: bool = False):
 
 def review_unit(page, title: str) -> None:
     page.locator('[data-pane="library"]').click()
-    page.wait_for_timeout(180)
+    page.locator("#pane-library").wait_for(state="visible")
     row = page.locator(".unit-row").filter(has_text=title)
     check(row.count() == 1, f"Knowledge Unit not found: {title}")
     row.locator('[data-action="review-unit"]').click()
-    page.wait_for_timeout(300)
+    page.locator("#review-content").wait_for(state="visible")
 
 
 def rate_good(page) -> None:
     page.locator('[data-action="rate"][data-rating="3"]').click()
-    page.wait_for_timeout(420)
 
 
 def scenario_basic(browser) -> None:
