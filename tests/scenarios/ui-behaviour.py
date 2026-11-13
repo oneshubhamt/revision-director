@@ -96,6 +96,12 @@ def main():
     check(page.evaluate("document.activeElement?.getAttribute('data-gap-action')")=='focus','Tab did not wrap')
    page.locator('[data-gap-action=break]').click(); overlay.wait_for(state='hidden', timeout=5000)
    check(not overlay.is_visible(),f'Gap overlay did not close on cycle {cycle+1}')
+   wait_until(
+    page,
+    lambda: not page.locator('.app-shell').evaluate('e=>e.inert')
+    and page.evaluate("document.activeElement?.getAttribute('data-action')")=='toggle-pause',
+    timeout=3000,
+   )
    check(not page.locator('.app-shell').evaluate('e=>e.inert'),f'Background remained inert on cycle {cycle+1}')
    check(page.evaluate("document.activeElement?.getAttribute('data-action')")=='toggle-pause',f'Return focus failed on cycle {cycle+1}')
 
