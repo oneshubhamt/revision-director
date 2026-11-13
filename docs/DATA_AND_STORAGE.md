@@ -98,7 +98,7 @@ A backup may contain zero or one stable active retrieval. Committing/completed a
 
 ## Atomic state snapshots
 
-Backup export and startup initialization read all durable stores through one multi-store readonly IndexedDB transaction. This prevents a concurrent atomic write from producing a torn mixture of pre-commit and post-commit records.
+Backup export and startup initialization read durable stores through one multi-store readonly IndexedDB transaction. This prevents a concurrent atomic write from producing a torn mixture of pre-commit and post-commit learning records. Startup deliberately does not canonicalize the active-retrieval record in this snapshot: active-session reconciliation remains owned by the recovery subsystem, which can repair a damaged IndexedDB copy from the bounded emergency copy. Backup export still validates any active-retrieval record strictly.
 
 ## Destructive restore
 
