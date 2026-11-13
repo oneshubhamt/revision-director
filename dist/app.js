@@ -3685,9 +3685,12 @@
               assert(unit?.profileId === event.profileId, "Study event links a missing or cross-profile knowledge unit.");
           }
       }
-      const unresolvedRelearningReturnIds = new Set(obligations
-          .filter((item) => item.type === "relearn" && (item.status === "active" || item.status === "suspended") && item.returnObligationId)
-          .map((item) => item.returnObligationId));
+      const unresolvedRelearningReturnIds = new Set();
+      for (const item of obligations) {
+          if (item.type === "relearn" && (item.status === "active" || item.status === "suspended") && item.returnObligationId) {
+              unresolvedRelearningReturnIds.add(item.returnObligationId);
+          }
+      }
       for (const obligation of obligations) {
           const unit = unitMap.get(obligation.unitId);
           assert(unit, "Obligation references a missing unit.");
@@ -5609,15 +5612,9 @@
       async initialize() {
           this.invalidateMemoryReviewAnalysis();
           const state = await this.repo.backupState("ignore");
-          const validated = validateBackupPayload({
-              format: BACKUP_FORMAT,
-              schemaVersion: BACKUP_SCHEMA_VERSION,
-              exportedAt: nowIso(),
-              appVersion: APP_VERSION,
-              ...state,
-          });
-          this.settings = clone(validated.settings);
-          await this.verifyMemoryProjectionIntegrity(validated.obligations, validated.evidenceEvents, this.settings);
+          this.settings = clone(state.settings);
+          assertActiveProfileSelection(state.profiles, this.settings);
+          await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);
       }
       async verifyMemoryProjectionIntegrity(obligations, evidenceEvents, settings) {
           await verifyMemoryDatasetIntegrityWithIndex(obligations, this.memoryReviewIndexFor(evidenceEvents), settings.fsrsScheduling.policy, activeFsrsOptimizerProfile(settings), fsrsPersonalizationProfileCatalog(settings));
