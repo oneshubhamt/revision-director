@@ -40,7 +40,9 @@ def snapshot(root: int):
     alive = {pid: processes[pid] for pid in descendants if pid in processes}
     browsers = {
         pid for pid, (_, _, cmd) in alive.items()
-        if "chromium" in cmd and "--remote-debugging-pipe" in cmd and "--type=" not in cmd
+        if "chromium" in cmd
+        and ("--remote-debugging-pipe" in cmd or "--remote-debugging-port=" in cmd)
+        and "--type=" not in cmd
     }
     return alive, browsers
 
