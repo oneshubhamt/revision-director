@@ -93,7 +93,16 @@ def main():
         data=bytearray(FIXTURE.read_bytes()); data[-10]^=1
         tampered=tmp/'tampered.rdbackup';tampered.write_bytes(data)
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+        wait_until(
+            page,
+            lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
+            and page.locator('#import-backup').is_enabled(),
+            timeout=5000,
+            interval=40,
+            message='Restore surface did not return to mutable primary state',
+        )
         page.evaluate("document.querySelector('#toast').textContent=''")
+        page.locator('#import-backup').set_input_files([])
         page.locator('#import-backup').set_input_files(str(tampered))
         result=wait_for_backup_import_result(page, timeout=5000)
         check(bool(result['message']) and result['error'] and not result['preview'],
