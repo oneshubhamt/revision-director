@@ -1,5 +1,8 @@
 'use strict';
-const { createAppRuntime } = require('./helpers/runtime-harness');
+const fs = require('fs');
+const path = require('path');
+const { ROOT, createAppRuntime } = require('./helpers/runtime-harness');
+const root = ROOT;
 
 const { api, context } = createAppRuntime({
   globalName: '__RD_FSRS_CLOSURE__',
