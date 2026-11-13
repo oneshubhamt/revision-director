@@ -6,11 +6,12 @@ import shutil
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-HTML = (ROOT / "index.html").read_text().replace(
+APP = (ROOT / "dist/app.js").read_text().replace(
     "void boot();",
     "window.__RD_F1_RELIABILITY__={readwriteTransaction};",
     1,
 )
+VENDOR = (ROOT / "vendor/ts-fsrs-6.0.0/index.umd.js").read_text()
 
 
 def main() -> None:
@@ -22,7 +23,13 @@ def main() -> None:
             args=["--no-sandbox", "--disable-dev-shm-usage"],
         )
         page = browser.new_page()
-        page.set_content(HTML, wait_until="load")
+        page.route(
+            "http://revision-director.test/**",
+            lambda route: route.fulfill(status=200, content_type="text/html", body="<html><body></body></html>"),
+        )
+        page.goto("http://revision-director.test/", wait_until="load")
+        page.add_script_tag(content=VENDOR)
+        page.add_script_tag(content=APP)
         result = page.evaluate("""async () => {
           if (typeof window.__RD_F1_RELIABILITY__?.readwriteTransaction !== "function") {
             throw new Error("Reliability test hook missing");
