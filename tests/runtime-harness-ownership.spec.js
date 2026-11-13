@@ -4,17 +4,24 @@ const fs = require('fs');
 const path = require('path');
 
 const testsDir = __dirname;
-const specs = fs.readdirSync(testsDir).filter((name) => name.endsWith('.spec.js'));
+const scenariosDir = path.join(testsDir, 'scenarios');
+const files = [
+  ...fs.readdirSync(testsDir)
+    .filter((name) => name.endsWith('.spec.js') && name !== path.basename(__filename))
+    .map((name) => ({label:name, file:path.join(testsDir,name)})),
+  ...fs.readdirSync(scenariosDir)
+    .filter((name) => name.endsWith('.js'))
+    .map((name) => ({label:`scenarios/${name}`, file:path.join(scenariosDir,name)})),
+];
 const directVm = [];
 const directVendor = [];
 let harnessUsers = 0;
 
-for (const name of specs) {
-  if (name === path.basename(__filename)) continue;
-  const source = fs.readFileSync(path.join(testsDir, name), 'utf8');
-  if (source.includes("require('./helpers/runtime-harness')")) harnessUsers += 1;
-  if (source.includes('vm.createContext(')) directVm.push(name);
-  if (source.includes("vendor/ts-fsrs-6.0.0") || source.includes("vendor', 'ts-fsrs-6.0.0")) directVendor.push(name);
+for (const entry of files) {
+  const source = fs.readFileSync(entry.file, 'utf8');
+  if (source.includes("require('./helpers/runtime-harness')") || source.includes("require('../helpers/runtime-harness')")) harnessUsers += 1;
+  if (source.includes('vm.createContext(')) directVm.push(entry.label);
+  if (source.includes("vendor/ts-fsrs-6.0.0") || source.includes("vendor', 'ts-fsrs-6.0.0")) directVendor.push(entry.label);
 }
 
 if (directVm.length) throw new Error(`Direct VM setup bypasses shared harness: ${directVm.join(', ')}`);
