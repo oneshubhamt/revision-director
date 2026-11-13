@@ -30,7 +30,19 @@ const { createAppRuntime } = require('./helpers/runtime-harness');
     chronology: policy.OPTIMIZER_CHRONOLOGY,
     converterFixedUtcOffsetMinutes: policy.OPTIMIZER_FIXED_UTC_OFFSET_MINUTES,
     converterRolloverHour: policy.OPTIMIZER_ROLLOVER_HOUR,
-  }, canonical, 'Optimizer policy exports drifted from the canonical contract');
+  }, {
+    holdoutSegments: canonical.holdoutSegments,
+    minimumTrainItems: canonical.minimumTrainItems,
+    minimumHoldoutItems: canonical.minimumHoldoutItems,
+    minimumHoldoutCards: canonical.minimumHoldoutCards,
+    minimumAbsoluteLogLossImprovement: canonical.minimumAbsoluteLogLossImprovement,
+    minimumRelativeLogLossImprovement: canonical.minimumRelativeLogLossImprovement,
+    calibrationEpsilon: canonical.calibrationEpsilon,
+    holdoutStrategy: canonical.holdoutStrategy,
+    chronology: canonical.chronology,
+    converterFixedUtcOffsetMinutes: canonical.converterFixedUtcOffsetMinutes,
+    converterRolloverHour: canonical.converterRolloverHour,
+  }, 'Optimizer policy exports drifted from the canonical contract');
 
   console.log('PASS FSRS optimizer contract exact parity');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
