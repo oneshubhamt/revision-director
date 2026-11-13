@@ -6,10 +6,13 @@ import shutil
 import time
 from playwright.sync_api import sync_playwright
 
-ROOT = Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(TESTS))
+from helpers.browser_harness import ROOT, chromium_executable
 FIXTURE = ROOT / "tests/fixtures/browser-baseline.rdbackup"
 BASE_HTML = (ROOT / "index.html").read_text()
-spec = importlib.util.spec_from_file_location("pass_b1_browser", ROOT / "tests/pass-b1-browser.spec.py")
+spec = importlib.util.spec_from_file_location("pass_b1_browser", TESTS / "scenarios/persistent-active-retrieval.py")
 module = importlib.util.module_from_spec(spec)
 assert spec.loader
 spec.loader.exec_module(module)
@@ -86,7 +89,7 @@ def restore_fixture_d2(page, frame, fixture) -> None:
     module.restore_fixture_d2(page, frame, fixture)
 
 def main() -> None:
-    chromium = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+    chromium = chromium_executable()
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, executable_path=chromium if chromium else None)
         context = browser.new_context(viewport={"width": 2600, "height": 1000}, accept_downloads=True)

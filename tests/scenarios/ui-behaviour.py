@@ -3,7 +3,10 @@ from pathlib import Path
 import os, runpy, shutil
 from playwright.sync_api import sync_playwright
 
-ROOT=Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(TESTS))
+from helpers.browser_harness import ROOT, chromium_executable
 base=runpy.run_path(str(ROOT/'tests/browser-qa.spec.py'),run_name='rd_stage_c_behavior_base')
 restore_selected_backup=base['restore_selected_backup']
 CLOCK=r'''<script>(()=>{let current=Date.now();Date.now=()=>current;window.__RD_STAGE_C_CLOCK__={advance(ms){current+=Number(ms)||0;return current;}};})();</script>'''
@@ -18,7 +21,7 @@ def check(v,msg):
 def wait(page,ms=250):page.wait_for_timeout(ms)
 
 def main():
- executable=os.environ.get('CHROMIUM_EXECUTABLE') or shutil.which('chromium') or '/usr/bin/chromium'
+ executable=chromium_executable() or '/usr/bin/chromium'
  with sync_playwright() as pw:
   browser=pw.chromium.launch(headless=True,executable_path=executable,args=['--no-sandbox','--disable-dev-shm-usage'])
   page=browser.new_page(viewport={'width':1365,'height':950})

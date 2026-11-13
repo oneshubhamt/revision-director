@@ -3,7 +3,10 @@ from pathlib import Path
 import importlib.util
 from playwright.sync_api import sync_playwright
 
-ROOT = Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(TESTS))
+from helpers.browser_harness import ROOT, chromium_executable
 SPEC = importlib.util.spec_from_file_location('qa', ROOT/'tests/browser-qa.spec.py')
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError('Unable to load browser QA fixture')
@@ -85,7 +88,7 @@ def verify_corrupt_preference_fallback(browser) -> None:
 
 def main() -> None:
     with sync_playwright() as playwright:
-        browser=playwright.chromium.launch(headless=True, executable_path='/usr/bin/chromium', args=['--no-sandbox','--disable-dev-shm-usage'])
+        browser=playwright.chromium.launch(headless=True, executable_path=chromium_executable() or '/usr/bin/chromium', args=['--no-sandbox','--disable-dev-shm-usage'])
         verify_corrupt_preference_fallback(browser)
         for label,viewport in [('desktop',{'width':1440,'height':1000}),('phone',{'width':390,'height':844})]:
             page,errors=open_page(browser,viewport)

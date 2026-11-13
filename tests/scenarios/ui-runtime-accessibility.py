@@ -3,7 +3,10 @@ from pathlib import Path
 import os, runpy, shutil
 from playwright.sync_api import sync_playwright
 
-ROOT = Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(TESTS))
+from helpers.browser_harness import ROOT, chromium_executable
 base = runpy.run_path(str(ROOT / "tests/browser-qa.spec.py"), run_name="rd_c2_base")
 INDEXEDDB_SHIM = base["INDEXEDDB_SHIM"]
 BASELINE_BACKUP = ROOT / "tests/fixtures/browser-baseline.rdbackup"
@@ -46,7 +49,7 @@ def restore_baseline(page):
 
 def main():
     global checks
-    executable = os.environ.get("CHROMIUM_EXECUTABLE") or shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+    executable = os.environ.get("CHROMIUM_EXECUTABLE") or chromium_executable()
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, executable_path=executable if executable else None, args=["--no-sandbox", "--disable-dev-shm-usage"])
         page, errors = launch_page(browser)
