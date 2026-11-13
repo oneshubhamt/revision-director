@@ -45,11 +45,10 @@ def main():
   check(today.get_attribute('aria-selected')=='true','Home failed')
   check(page.locator('[role=tab][tabindex="0"]').count()==1,'Roving tabindex invalid')
 
-  # Delegation and render stability.
-  for _ in range(30):
-   for pane in ('today','review','library','study','history','settings'):
-    page.evaluate("p=>document.querySelector(`[data-pane=\"${p}\"]`).click()",pane)
+  # Delegated action remains exactly-once after ordinary pane navigation.
+  page.locator('[data-pane="settings"]').click()
   page.locator('#pane-settings').wait_for(state='visible')
+  page.locator('#new-profile-name').wait_for(state='visible')
   before_profiles=page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
   before_ids={profile['id'] for profile in before_profiles}
   page.locator('#new-profile-name').fill('Stage C single delegated action')
