@@ -209,6 +209,11 @@
     else delete obligation.parentObligationId;
     if (obligation.returnObligationId !== undefined) obligation.returnObligationId = canonicalId(obligation.returnObligationId, "Return obligation ID");
     else delete obligation.returnObligationId;
+    if (obligation.type === "relearn") {
+      assert(obligation.parentObligationId !== undefined && obligation.returnObligationId === obligation.parentObligationId, "Relearning obligation must carry one exact origin/return obligation ID.");
+    } else {
+      assert(obligation.parentObligationId === undefined && obligation.returnObligationId === undefined, "Only relearning obligations may carry obligation lineage fields.");
+    }
     obligation.createdAt = canonicalIso(obligation.createdAt, "Revision-obligation creation date");
     obligation.updatedAt = canonicalIso(obligation.updatedAt, "Revision-obligation update date");
     if (obligation.status === "suspended") {
@@ -218,6 +223,7 @@
       delete obligation.suspensionReason;
     }
     if (obligation.suspensionReason === "persistent-difficulty") assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
+    if (obligation.type === "relearn" && obligation.status === "suspended") assert(obligation.suspensionReason === "unit", "A suspended relearning obligation may only be held by its knowledge unit.");
     if (obligation.chunking) {
       assertExactKeys(obligation.chunking, "Chunking state", ["cycleId", "status", "originalMinutes", "synthesisMinutes", "capacityMinutes", "totalChunks", "completedChunks", "createdAt"]);
       obligation.chunking.cycleId = canonicalId(obligation.chunking.cycleId, "Chunk-cycle ID");
