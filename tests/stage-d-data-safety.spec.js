@@ -1,9 +1,12 @@
 'use strict';
-const { createAppRuntime } = require('./helpers/runtime-harness');
+const { createAppRuntime, memoryLocalStorage } = require('./helpers/runtime-harness');
 
+const memory = memoryLocalStorage();
+const storage = memory.values;
 const { api } = createAppRuntime({
   globalName: '__RD_STAGE_D_TEST__',
   expose: ["APP_VERSION","RevisionService","BackupCodec","BackupController","BACKUP_ARCHIVE_VERSION","BACKUP_SCHEMA_VERSION","validateBackupPayload"],
+  context: { localStorage: memory.api },
 });
 let checks=0;
 function check(v,m){checks++;if(!v)throw new Error(m)}
