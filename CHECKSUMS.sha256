@@ -39,6 +39,7 @@ db4f20d09fa64fa2b60bd157ef951c8e53859eec54b0e0391ab2d245e356c838  ./source/app/4
 0cededf4bb604246ea36f49159cc9145f2581a3e5842b75bc99c8efc13fc2442  ./source/app/45-ui-runtime.ts
 995a2f1a55be2ec3315fb1f228e31c74e2841f9f2d8ba6cb8b9ac0a40ff39015  ./source/app/46-workflow-form-adapter.ts
 625830e17dc53b61be05794420691b2ce7b723288a438a852321517d330c52ca  ./source/app/47-active-retrieval-workspace.ts
+0000000000000000000000000000000000000000000000000000000000000000  ./source/app/48-settings-workspace.ts
 5f55de8aa4ef394375347e075a17b9b1464babacfe6d5af3a6e23a76077f3ff5  ./source/app/50-ui-controller.ts
 82f5cb4afd81db6ee8a35817e53a56715233024848e7abcbf36875b2c57800d3  ./source/app/55-extension-runtime.ts
 77963fce015a51c7175b7b3b41faefd32600f5cae6c463f19a836e4333aef11b  ./source/app/60-public-bridge-bootstrap.ts
