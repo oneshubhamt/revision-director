@@ -1052,6 +1052,7 @@
           else
               delete state.fsrsCard.lastReviewAt;
           assert(state.stage === state.fsrsCard.state, "FSRS policy stage does not match its card state.");
+          assert(state.lastIntervalDays === state.fsrsCard.scheduledDays, "FSRS policy interval does not match its card state.");
       }
       else {
           assert(state.version === "1", "Interval policy state uses an unsupported version.");
@@ -1176,6 +1177,12 @@
           obligation.returnObligationId = canonicalId(obligation.returnObligationId, "Return obligation ID");
       else
           delete obligation.returnObligationId;
+      if (obligation.type === "relearn") {
+          assert(obligation.parentObligationId !== undefined && obligation.returnObligationId === obligation.parentObligationId, "Relearning obligation must carry one exact origin/return obligation ID.");
+      }
+      else {
+          assert(obligation.parentObligationId === undefined && obligation.returnObligationId === undefined, "Only relearning obligations may carry obligation lineage fields.");
+      }
       obligation.createdAt = canonicalIso(obligation.createdAt, "Revision-obligation creation date");
       obligation.updatedAt = canonicalIso(obligation.updatedAt, "Revision-obligation update date");
       if (obligation.status === "suspended") {
@@ -1187,6 +1194,8 @@
       }
       if (obligation.suspensionReason === "persistent-difficulty")
           assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
+      if (obligation.type === "relearn" && obligation.status === "suspended")
+          assert(obligation.suspensionReason === "unit", "A suspended relearning obligation may only be held by its knowledge unit.");
       if (obligation.chunking) {
           assertExactKeys(obligation.chunking, "Chunking state", ["cycleId", "status", "originalMinutes", "synthesisMinutes", "capacityMinutes", "totalChunks", "completedChunks", "createdAt"]);
           obligation.chunking.cycleId = canonicalId(obligation.chunking.cycleId, "Chunk-cycle ID");
@@ -2614,6 +2623,24 @@
           assert(currentProjection.reps === 0 && currentProjection.lastReviewAt === undefined, "Reviewed FSRS projection has no canonical review history.");
       }
   }
+  function validateMemoryHostPolicyProjection(obligation, reviews) {
+      const card = obligation.policyState.fsrsCard;
+      assert(card, "Memory obligation has no FSRS materialized projection.");
+      let successStreak = 0;
+      let failureCount = 0;
+      for (const review of reviews) {
+          if (review.rating >= Rating.Good)
+              successStreak += 1;
+          else
+              successStreak = 0;
+          if (review.rating === Rating.Again)
+              failureCount += 1;
+      }
+      assert(obligation.policyState.stage === card.state, "Memory policy stage does not match its FSRS card.");
+      assert(obligation.policyState.successStreak === successStreak, "Memory policy success streak does not match Evidence Event history.");
+      assert(obligation.policyState.failureCount === failureCount, "Memory policy failure count does not match Evidence Event history.");
+      assert(obligation.policyState.lastIntervalDays === card.scheduledDays, "Memory policy interval does not match its FSRS card.");
+  }
   function directMemoryReviewObservation(event) {
       const beforeCard = event.beforePolicyState.fsrsCard;
       const afterCard = event.afterPolicyState.fsrsCard;
@@ -2934,7 +2961,9 @@
               continue;
           const projection = obligation.policyState.fsrsCard;
           assert(projection, "Memory obligation has no FSRS materialized projection.");
-          validateMemoryObservationChain(obligation.id, reviewIndex.get(obligation.id) ?? [], projection);
+          const reviews = reviewIndex.get(obligation.id) ?? [];
+          validateMemoryObservationChain(obligation.id, reviews, projection);
+          validateMemoryHostPolicyProjection(obligation, reviews);
       }
   }
   function profileForHistoricalFsrsConfiguration(config, profileCatalog) {
@@ -3002,6 +3031,7 @@
           const projection = obligation.policyState.fsrsCard;
           assert(projection, "Memory obligation has no FSRS materialized projection.");
           const reviews = reviewIndex.get(obligation.id) ?? [];
+          validateMemoryHostPolicyProjection(obligation, reviews);
           verifyHistoricalMemorySchedulerConfigurations(reviews, profileCatalog, scheduler.configuration.fingerprint);
           scheduler.verifyProjection(projection, reviews, true);
       }
@@ -3669,7 +3699,8 @@
           return revisionSchedulerPort(this.schedulingPolicy(), this.optimizerProfile());
       }
       reviews(context) {
-          return context?.memoryReviews ?? [];
+          assert(context && Array.isArray(context.memoryReviews), "Memory scheduling requires canonical Evidence Event history.");
+          return context.memoryReviews;
       }
       createInitialState(firstDueAt, cardId) {
           const card = this.scheduler().newCard(firstDueAt, cardId);
@@ -5537,6 +5568,7 @@
           return unit;
       }
       async createUnit(draft) {
+          assert(draft.obligationType !== "relearn", "A new knowledge unit cannot begin with a system-owned relearning obligation.");
           assert(draft.title.trim().length >= 2, "Enter a knowledge-unit name.");
           assert(draft.scope.trim().length >= 3, "Define the unit scope.");
           assert(draft.protocol.trim().length >= 3, "Define a retrieval protocol.");
@@ -5605,7 +5637,7 @@
       async obligationsForUnit(unitId) {
           return (await this.repo.getByIndex(Store.Obligations, "unitId", unitId)).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
       }
-      buildObligation(draft, relation) {
+      buildObligation(draft) {
           assert(draft.expectedMinutes >= 1 && draft.expectedMinutes <= 240, "Expected minutes are invalid.");
           assert(draft.protocol.trim().length >= 3 && draft.successCriteria.trim().length >= 3, "Protocol and success criteria are required.");
           validateWorkflowSpec(draft.workflow, draft.type);
@@ -5632,23 +5664,13 @@
               createdAt: time,
               updatedAt: time,
           };
-          if (relation?.parentObligationId)
-              obligation.parentObligationId = relation.parentObligationId;
-          if (relation?.returnObligationId)
-              obligation.returnObligationId = relation.returnObligationId;
           return obligation;
       }
-      async createObligation(draft, relation) {
+      async createObligation(draft) {
           const unit = await this.unit(draft.unitId);
-          if (relation?.parentObligationId) {
-              const parent = await this.obligation(relation.parentObligationId);
-              assert(parent.unitId === unit.id, "Parent obligation belongs to a different knowledge unit.");
-          }
-          if (relation?.returnObligationId) {
-              const target = await this.obligation(relation.returnObligationId);
-              assert(target.unitId === unit.id, "Return obligation belongs to a different knowledge unit.");
-          }
-          const obligation = this.buildObligation(draft, relation);
+          assert(unit.status === "active", "Activate the knowledge unit before adding a revision obligation.");
+          assert(draft.type !== "relearn", "Relearning obligations are created only by a failed retrieval that records their exact origin.");
+          const obligation = this.buildObligation(draft);
           await this.repo.put(Store.Obligations, obligation);
           return obligation;
       }
@@ -6326,6 +6348,7 @@
           assert(draft.area.trim() && draft.task.trim() && draft.measure.trim(), "Area, task and measure are required.");
           assert(Number.isFinite(draft.durationMinutes) && draft.durationMinutes >= 1 && draft.durationMinutes <= 1440, "Duration is invalid.");
           assert(Array.isArray(draft.linkedUnitIds), "Study Event links are invalid.");
+          assert(new Set(draft.linkedUnitIds).size === draft.linkedUnitIds.length, "Study Event links cannot contain duplicates.");
           for (const unitId of draft.linkedUnitIds) {
               const unit = await this.unit(unitId);
               assert(unit.profileId === draft.profileId, "Study Event cannot link a knowledge unit from another exam profile.");
@@ -6342,7 +6365,7 @@
               source: draft.source.trim(),
               durationMinutes: Math.round(draft.durationMinutes),
               understanding: draft.understanding,
-              linkedUnitIds: [...new Set(draft.linkedUnitIds)],
+              linkedUnitIds: [...draft.linkedUnitIds],
               notes: draft.notes.trim(),
               origin: draft.origin,
               createdAt: nowIso(),
@@ -6357,9 +6380,9 @@
           const obligation = await this.obligation(relearningObligationId);
           if (obligation.type !== "relearn")
               return undefined;
-          const events = await this.evidenceEvents();
-          return events.find((event) => event.followUpObligationId === obligation.id)
-              ?? events.find((event) => event.obligationId === obligation.parentObligationId);
+          const matches = (await this.evidenceEvents()).filter((event) => event.followUpObligationId === obligation.id);
+          assert(matches.length === 1, "Relearning obligation must have exactly one triggering Evidence Event.");
+          return matches[0];
       }
       async currentActiveRetrieval() {
           return await this.repo.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null;
@@ -6507,9 +6530,10 @@
               else
                   assert(obligation.suspensionReason === undefined, "Only suspended obligations may retain a suspension reason.");
               if (obligation.suspensionReason === "relearning") {
-                  assert([...obligationMap.values()].some((item) => item.type === "relearn" &&
+                  const unresolvedRepairs = [...obligationMap.values()].filter((item) => item.type === "relearn" &&
                       (item.status === "active" || item.status === "suspended") &&
-                      item.returnObligationId === obligation.id), "Relearning suspension lacks its unresolved repair obligation.");
+                      item.returnObligationId === obligation.id);
+                  assert(unresolvedRepairs.length === 1, "Relearning suspension must have exactly one unresolved repair obligation.");
               }
               if (obligation.suspensionReason === "persistent-difficulty")
                   assert(obligation.type === "memory-recall", "Persistent-difficulty hold is only valid for memory recall.");
@@ -6545,8 +6569,14 @@
                   assert(obligation.returnObligationId && obligation.parentObligationId === obligation.returnObligationId, "Relearning obligation must point to its exact originating obligation.");
                   const original = obligation.returnObligationId ? obligationMap.get(obligation.returnObligationId) : undefined;
                   assert(original?.unitId === obligation.unitId && original.type !== "relearn", "Relearning return target is invalid.");
+                  if (obligation.status === "active" || obligation.status === "suspended") {
+                      assert(original.status === "suspended" && original.suspensionReason === "relearning", "Unresolved relearning obligation requires its origin to remain suspended for relearning.");
+                      if (obligation.status === "suspended")
+                          assert(obligation.suspensionReason === "unit", "A suspended relearning obligation may only be held by its knowledge unit.");
+                  }
               }
           }
+          const triggeringEvidenceByRelearn = new Map();
           for (const event of evidenceEvents) {
               const unit = unitMap.get(event.unitId);
               const obligation = obligationMap.get(event.obligationId);
@@ -6572,9 +6602,21 @@
               validateWorkflowResult(event.workflowResult, event.workflow);
               validRatingValue(event.suggestedRating, "Evidence event");
               validRatingValue(event.confirmedRating, "Evidence event");
+              assert(event.suggestedRating === suggestRating(event.obligationType, event.evidence), "Evidence suggested rating does not match its objective evidence.");
+              if (event.obligationType === "relearn") {
+                  assert(event.confirmedRating === correctiveMemoryRating(event.confirmedRating, event.evidence), "Relearning confirmed rating is incompatible with its closed-book evidence.");
+              }
               assert(event.beforePolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType] && event.afterPolicyState.engine === POLICY_ENGINE_BY_OBLIGATION[event.obligationType], "Evidence policy states do not match the obligation type.");
-              if (event.followUpObligationId)
-                  assert(obligationMap.has(event.followUpObligationId), "Evidence event references a missing follow-up obligation.");
+              if (event.followUpObligationId) {
+                  const followUp = obligationMap.get(event.followUpObligationId);
+                  assert(followUp?.type === "relearn" &&
+                      followUp.unitId === event.unitId &&
+                      followUp.parentObligationId === event.obligationId &&
+                      followUp.returnObligationId === event.obligationId, "Evidence event follow-up does not match its exact relearning child.");
+                  const triggers = triggeringEvidenceByRelearn.get(followUp.id) ?? [];
+                  triggers.push(event);
+                  triggeringEvidenceByRelearn.set(followUp.id, triggers);
+              }
               if (event.obligationType !== "memory-recall") {
                   const policy = this.router.get(event.obligationType);
                   const transitionInput = {
@@ -6597,7 +6639,12 @@
                       actualState.fsrsCard === undefined, "Evidence after-policy state does not match the current policy transition.");
               }
               if (event.obligationType === "memory-recall") {
+                  assert(event.policyId === `memory/ts-fsrs@${FSRS_PACKAGE_VERSION}/fsrs-7`, "Memory evidence policy provenance is invalid.");
                   assert(event.schedulerPackage === "ts-fsrs" && event.schedulerVersion === FSRS_PACKAGE_VERSION && event.schedulerModel === FSRS_MODEL, "Memory evidence lacks exact FSRS-7 provenance.");
+                  const beforeCard = event.beforePolicyState.fsrsCard;
+                  const afterCard = event.afterPolicyState.fsrsCard;
+                  assert(beforeCard && afterCard, "Memory evidence lacks FSRS card state.");
+                  assert(event.beforeDueAt === beforeCard.dueAt && event.afterDueAt === afterCard.dueAt, "Memory evidence due dates do not match its FSRS card transition.");
                   const config = event.schedulerConfig;
                   assert(config, "Memory evidence lacks scheduler configuration.");
                   validateFsrsConfigSnapshot(config);
@@ -6624,10 +6671,47 @@
                       assert(state.fsrsCard.cardId === corrective.obligationId, "Corrective-memory card identity is invalid.");
                       requiredFsrs7StabilityFast(state.fsrsCard.stabilityFast);
                   }
+                  assert(corrective.beforeDueAt === corrective.beforePolicyState.fsrsCard.dueAt &&
+                      corrective.afterDueAt === corrective.afterPolicyState.fsrsCard.dueAt, "Corrective-memory due dates do not match its FSRS card transition.");
               }
+          }
+          for (const obligation of obligations) {
+              if (obligation.type !== "relearn")
+                  continue;
+              const triggers = triggeringEvidenceByRelearn.get(obligation.id) ?? [];
+              assert(triggers.length === 1, "Relearning obligation must have exactly one triggering Evidence Event.");
           }
           const canonicalMemoryReviews = memoryReviewObservationIndex(evidenceEvents);
           validateMemoryDatasetProjectionChain(obligations, canonicalMemoryReviews);
+          for (const obligation of obligations) {
+              if (obligation.type !== "memory-recall")
+                  continue;
+              const reviews = canonicalMemoryReviews.get(obligation.id) ?? [];
+              let successStreak = 0;
+              let failureCount = 0;
+              for (const review of reviews) {
+                  const sourceEvent = evidenceMap.get(review.evidenceEventId);
+                  assert(sourceEvent, "Memory review references a missing Evidence Event.");
+                  const beforeState = review.source === "direct-memory"
+                      ? sourceEvent.beforePolicyState
+                      : sourceEvent.correctiveMemoryTransition?.beforePolicyState;
+                  const afterState = review.source === "direct-memory"
+                      ? sourceEvent.afterPolicyState
+                      : sourceEvent.correctiveMemoryTransition?.afterPolicyState;
+                  assert(beforeState && afterState, "Memory review lacks host policy state.");
+                  assert(beforeState.successStreak === successStreak &&
+                      beforeState.failureCount === failureCount &&
+                      beforeState.stage === review.beforeCard.state &&
+                      beforeState.lastIntervalDays === review.beforeCard.scheduledDays, "Memory review before-policy state does not continue canonical host history.");
+                  successStreak = review.rating >= Rating.Good ? successStreak + 1 : 0;
+                  if (review.rating === Rating.Again)
+                      failureCount += 1;
+                  assert(afterState.successStreak === successStreak &&
+                      afterState.failureCount === failureCount &&
+                      afterState.stage === review.afterCard.state &&
+                      afterState.lastIntervalDays === review.afterCard.scheduledDays, "Memory review after-policy state does not match canonical host history.");
+              }
+          }
           const chunksByObligation = new Map();
           for (const chunk of chunks) {
               const obligation = obligationMap.get(chunk.obligationId);
@@ -6735,9 +6819,15 @@
                       if (!item.chunkId) {
                           const event = outcome.evidenceEventId ? evidenceMap.get(outcome.evidenceEventId) : undefined;
                           assert(event?.obligationId === item.obligationId, "Completed parent-plan outcomes require matching retrieval evidence.");
+                          assert(outcome.completedAt === event.reviewedAt, "Completed parent-plan outcome time does not match its retrieval evidence.");
+                          assert(outcome.actualMinutes === roundTo(event.timing.totalActiveMs / 60_000, 1), "Completed parent-plan duration does not match its retrieval timing.");
                       }
-                      else
+                      else {
                           assert(outcome.evidenceEventId === undefined, "Chunk outcomes cannot claim parent retrieval evidence.");
+                          const chunk = chunkMap.get(item.chunkId);
+                          assert(chunk?.status === "completed" && chunk.completedAt !== undefined && chunk.actualMinutes !== undefined, "Completed chunk-plan outcome requires a completed source chunk.");
+                          assert(outcome.completedAt === chunk.completedAt && outcome.actualMinutes === chunk.actualMinutes, "Completed chunk-plan outcome does not match its source chunk.");
+                      }
                   }
               }
           }
@@ -6824,11 +6914,37 @@
                   ? chunkMap.has(targetId.slice(6))
                   : obligationMap.has(targetId);
               assert(canonicalActive.queueTargetIds.every(validTarget), "Backup active retrieval references an unknown target.");
+              const activeTargetEligible = (targetId) => {
+                  if (targetId.startsWith("chunk:")) {
+                      const chunk = chunkMap.get(targetId.slice(6));
+                      const obligation = chunk ? obligationMap.get(chunk.obligationId) : undefined;
+                      const unit = obligation ? unitMap.get(obligation.unitId) : undefined;
+                      const profile = unit ? profileMap.get(unit.profileId) : undefined;
+                      return chunk?.status === "pending" && obligation?.status === "active" && unit?.status === "active" && profile?.status === "active";
+                  }
+                  const obligation = obligationMap.get(targetId);
+                  const unit = obligation ? unitMap.get(obligation.unitId) : undefined;
+                  const profile = unit ? profileMap.get(unit.profileId) : undefined;
+                  return obligation?.status === "active" && unit?.status === "active" && profile?.status === "active";
+              };
+              assert(activeTargetEligible(canonicalActive.activeTargetId), "Backup active retrieval target is no longer executable.");
           }
           assertDocumentSchema(settings, "Backup settings");
           assert(settings.key === "app", "Backup settings key is invalid.");
           this.assertActiveProfileSelection(profiles, settings);
           canonicalFsrsSchedulingSettings(settings.fsrsScheduling);
+          const personalization = effectiveFsrsPersonalization(settings);
+          const currentFsrsConfig = fsrsConfigSnapshot(settings.fsrsScheduling.policy, personalization.active ? personalization.profile : null);
+          const lastRebase = settings.fsrsScheduling.lastRebase;
+          if (lastRebase) {
+              assert(lastRebase.toConfigFingerprint === currentFsrsConfig.fingerprint, "FSRS last-rebase target does not match the current scheduler configuration.");
+              if (lastRebase.reason === "activate-profile" || lastRebase.reason === "replace-profile") {
+                  assert(personalization.active && personalization.profile, "FSRS profile-activation rebase provenance disagrees with current personalization state.");
+              }
+              if (lastRebase.reason === "deactivate-profile") {
+                  assert(!personalization.active, "FSRS profile-deactivation rebase provenance disagrees with current personalization state.");
+              }
+          }
           const memoryDifficultyPolicy = canonicalMemoryDifficultyPolicy(settings.memoryDifficultyPolicy);
           for (const obligation of obligations) {
               if (obligation.suspensionReason !== "persistent-difficulty")
