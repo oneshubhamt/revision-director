@@ -33,7 +33,7 @@ Never hand-edit `dist/app.js` or `index.html`.
 
 ## Test philosophy
 
-Tests are organized by behaviour and safety boundary. Historical pass/stage entrypoints have been consolidated into behavior-named suites; their assertion bodies remain isolated under `tests/scenarios/` so failures retain narrow diagnostics without recreating implementation-pass sprawl.
+Tests are organized by behaviour and safety boundary. `tests/qa.py` is the single suite-membership registry; substantive scenario bodies live under `tests/scenarios/`, while thin wrapper-only entrypoints are intentionally absent. Static architecture tests protect published build boundaries rather than private method names or source phrasing.
 
 The permanent suite covers:
 
@@ -62,9 +62,9 @@ npm run qa:browser
 npm run qa:full
 ```
 
-`qa:core` rebuilds the authoritative artifacts, refreshes the tracked checksum manifest in the working tree, checks source/build ownership, and runs every non-browser JavaScript regression. `qa:optimizer` exercises the isolated native optimizer runtime. `qa:browser:durability` is the focused phase-time/durability gate. `qa:browser` runs the complete Python/Chromium matrix plus full browser/WASM optimizer training. `qa:full` runs all four surfaces in order. Browser commands require Playwright and Chromium; local hosted-optimizer runs require `npm ci --prefix tools/fsrs-optimizer` and `npm run build:hosted` if the hosted distribution is not already present.
+`qa:core` performs exactly one authoritative build, verifies `CHECKSUMS.sha256` read-only, checks the build/architecture contract and HTML structure, and runs every non-browser JavaScript regression. `qa:optimizer` exercises the isolated native optimizer runtime. `qa:browser:durability` is the focused phase-time/durability gate. `qa:browser` runs the complete Python/Chromium matrix plus full browser/WASM optimizer training. `qa:full` runs all four surfaces in order. Browser commands require Playwright and Chromium; local hosted-optimizer runs require `npm ci --prefix tools/fsrs-optimizer` and `npm run build:hosted` if the hosted distribution is not already present.
 
-The Python browser suite shares stable launch, error-capture, wait, module-loading and scenario-runner primitives from `tests/helpers/browser_harness.py`. The reusable persistent IndexedDB shim, host-state access, iframe bootstrapping and safety-copy restore ceremony live in `tests/helpers/persistent_browser.py`. Clock manipulation, hostile-commit injection, broadcast-channel behavior and other scenario-specific shims remain with the scenarios that own them.
+The Python browser suite shares stable launch, error-capture, wait and module-loading primitives from `tests/helpers/browser_harness.py`; scenario ordering belongs only to `tests/qa.py`. The reusable persistent IndexedDB shim, host-state access, iframe bootstrapping and safety-copy restore ceremony live in `tests/helpers/persistent_browser.py`. Clock manipulation, hostile-commit injection, broadcast-channel behavior and other scenario-specific shims remain with the scenarios that own them.
 
 ## Required QA discipline
 
@@ -126,9 +126,9 @@ The two-checker configuration was selected because it matched the fastest median
 
 The permanent GitHub Actions workflow uses an explicit Ubuntu 24.04 runner, the pinned project Node/npm/TypeScript toolchain, Python 3.13 and full-sha-pinned official GitHub actions.
 
-The core job is read-only and invokes `npm run qa:core`, covering the strict TypeScript 7 build, JavaScript parse validation, build integrity, HTML sanity, source ownership, checksum refresh in the checkout, and every non-browser JavaScript regression.
+The core job is read-only and invokes `npm run qa:core`, covering one strict TypeScript 7 build, JavaScript parse validation, authoritative build/architecture checks, HTML sanity, read-only checksum verification and every non-browser JavaScript regression.
 
-Checksum refresh is implemented once in `build/checksums.py`; CI does not duplicate hashing logic in workflow YAML. The external-optimizer job installs only the isolated native optimizer lockfile and invokes `npm run qa:optimizer`. The browser job is read-only and invokes the same `qa:browser:durability` and `qa:browser` commands used locally. A separate working-branch-only job has the sole write permission needed to regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. Main-branch and pull-request runs still fail on a generated-artifact/checksum diff, while working-branch source commits are synchronized by that dedicated writer job.
+`build/checksums.py --check` is the normal QA path. `--write` is reserved for the working-branch generated-artifact synchronization job or deliberate release-manifest maintenance; tests and prose are not checksum targets. The external-optimizer job installs only the isolated native optimizer lockfile and invokes `npm run qa:optimizer`. The browser job is read-only and invokes the same `qa:browser:durability` and `qa:browser` commands used locally. A separate working-branch-only writer can regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. It runs independently of read-only core QA and tags its synchronization commit so it does not recurse. Main-branch and pull-request QA remain read-only and require committed generated artifacts.
 
 ## Browser/device boundary
 
@@ -145,4 +145,4 @@ These are QA boundaries, not reasons to add compatibility or migration code.
 
 ## Checksums
 
-`CHECKSUMS.sha256` is the repository integrity manifest for tracked release-critical files. `python3 build/checksums.py --write` refreshes it; `--check` verifies it without mutation. Any tracked file covered by the manifest must be refreshed after modification. The manifest does not hash itself.
+`CHECKSUMS.sha256` covers release-critical source, build inputs, generated artifacts, vendored/runtime assets and optimizer tooling. QA code, workflow YAML and prose documentation are deliberately outside this release manifest. `python3 build/checksums.py --check` is the ordinary verification command; `--write` is an explicit maintenance operation. The manifest does not hash itself.
