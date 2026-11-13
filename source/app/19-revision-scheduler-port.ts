@@ -298,6 +298,25 @@
     }
   }
 
+  function validateMemoryHostPolicyProjection(
+    obligation: RevisionObligation,
+    reviews: readonly MemoryReviewObservation[],
+  ): void {
+    const card = obligation.policyState.fsrsCard;
+    assert(card, "Memory obligation has no FSRS materialized projection.");
+    let successStreak = 0;
+    let failureCount = 0;
+    for (const review of reviews) {
+      if (review.rating >= Rating.Good) successStreak += 1;
+      else successStreak = 0;
+      if (review.rating === Rating.Again) failureCount += 1;
+    }
+    assert(obligation.policyState.stage === card.state, "Memory policy stage does not match its FSRS card.");
+    assert(obligation.policyState.successStreak === successStreak, "Memory policy success streak does not match Evidence Event history.");
+    assert(obligation.policyState.failureCount === failureCount, "Memory policy failure count does not match Evidence Event history.");
+    assert(obligation.policyState.lastIntervalDays === card.scheduledDays, "Memory policy interval does not match its FSRS card.");
+  }
+
   type MemoryReviewObservationIndex = ReadonlyMap<string, readonly MemoryReviewObservation[]>;
 
   function directMemoryReviewObservation(event: EvidenceEvent): MemoryReviewObservation {
@@ -691,7 +710,9 @@
       if (obligation.type !== "memory-recall") continue;
       const projection = obligation.policyState.fsrsCard;
       assert(projection, "Memory obligation has no FSRS materialized projection.");
-      validateMemoryObservationChain(obligation.id, reviewIndex.get(obligation.id) ?? [], projection);
+      const reviews = reviewIndex.get(obligation.id) ?? [];
+      validateMemoryObservationChain(obligation.id, reviews, projection);
+      validateMemoryHostPolicyProjection(obligation, reviews);
     }
   }
 
@@ -775,6 +796,7 @@
       const projection = obligation.policyState.fsrsCard;
       assert(projection, "Memory obligation has no FSRS materialized projection.");
       const reviews = reviewIndex.get(obligation.id) ?? [];
+      validateMemoryHostPolicyProjection(obligation, reviews);
       verifyHistoricalMemorySchedulerConfigurations(reviews, profileCatalog, scheduler.configuration.fingerprint);
       scheduler.verifyProjection(projection, reviews, true);
     }
