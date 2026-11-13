@@ -29,10 +29,24 @@ def check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+class AppHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def do_GET(self):
+        if self.path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+        super().do_GET()
+
+    def log_message(self, format, *args):
+        pass
+
+
 @contextmanager
 def app_server():
-    handler = lambda *args, **kwargs: SimpleHTTPRequestHandler(*args, directory=str(ROOT), **kwargs)
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
