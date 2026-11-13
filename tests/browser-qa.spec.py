@@ -371,13 +371,18 @@ def scenario_bridge(browser) -> None:
             interval=40,
             message=f"Profile save did not complete: {profile_id}",
         )
-    wait_until(
-        page,
-        lambda: all(profile["status"] == "suspended" for profile in page.evaluate("async()=>await RevisionDirector.records.listProfiles()")),
-        timeout=5000,
-        interval=40,
-        message="Public profile summary did not reflect both suspensions",
-    )
+        wait_until(
+            page,
+            lambda profile_id=profile_id: next(
+                (profile["status"] for profile in page.evaluate("async()=>await RevisionDirector.records.listProfiles()") if profile["id"] == profile_id),
+                None,
+            ) == "suspended",
+            timeout=5_000,
+            interval=40,
+            message=f"Public profile summary did not reflect suspension: {profile_id}",
+        )
+    profiles = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
+    check(all(profile["status"] == "suspended" for profile in profiles), f"Public profile summary did not preserve both suspensions: {profiles}")
     wait_until(page, lambda: page.evaluate("async()=> (await RevisionDirector.records.getDueSummary()).dueCount") == 0, timeout=5000, interval=40, message="Paused profiles remained due")
     summary = page.evaluate("RevisionDirector.records.getDueSummary()")
     check(summary["dueCount"] == 0, f"Paused profiles remained in bridge due summary: {summary}")
