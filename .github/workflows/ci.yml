@@ -59,8 +59,7 @@ jobs:
 
   sync-generated:
     name: Sync generated artifacts
-    needs: core
-    if: github.event_name == 'push' && github.ref == 'refs/heads/working'
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/working' && !contains(github.event.head_commit.message, '[generated-sync]') }}
     permissions:
       contents: write
     runs-on: ubuntu-24.04
