@@ -143,7 +143,10 @@ def wait_for_app_ready(page: Page, *, timeout: int = 10_000) -> None:
     page.wait_for_function(
         """() => {
           const fatal=document.querySelector('#fatal-error');
-          return (fatal && fatal.offsetParent !== null) || typeof window.RevisionDirector === 'object';
+          if (fatal && fatal.offsetParent !== null) return true;
+          const ownership=document.documentElement.dataset.reviewOwnership;
+          return typeof window.RevisionDirector === 'object'
+            && ['primary','secondary','faulted'].includes(ownership);
         }""",
         timeout=timeout,
     )
