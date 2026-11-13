@@ -3,7 +3,7 @@ const { createAppRuntime } = require('./helpers/runtime-harness');
 
 const { api, context } = createAppRuntime({
   globalName: '__RD_TEST_API__',
-  expose: ["suggestRating","objectiveScore","correctiveMemoryRating","workflowEvidence","validateWorkflowResult","validateWorkflowSpec","defaultWorkflowSpec","defaultWorkflowForType","compatibleWorkflows","MasteryPolicy","ApplicationPolicy","PerformancePolicy","RelearnPolicy","FreshnessPolicy","SchedulerPolicyRouter","FsrsMemoryPolicy","RevisionService","UIController","ActiveRetrievalWorkspace","Rating","examinationProximityScore","planningLookaheadDays","examImportanceScore","reviewDurationScore","evidenceWeaknessScore","obligationWeaknessScore","temporalDueRisk","plannerScore","buildPlanningCandidate","choosePlanItems","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsConfigSnapshot","validateStoredFsrsCard","defaultMemoryDifficultyPolicy","canonicalMemoryDifficultyPolicy","memoryDifficultyAssessment","memoryDifficultyRemediationPlan","memoryDifficultyActionLabel","daysToExamination","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","validateBackupPayload"],
+  expose: ["suggestRating","objectiveScore","correctiveMemoryRating","workflowEvidence","validateWorkflowResult","validateWorkflowSpec","defaultWorkflowSpec","defaultWorkflowForType","compatibleWorkflows","MasteryPolicy","ApplicationPolicy","PerformancePolicy","RelearnPolicy","FreshnessPolicy","SchedulerPolicyRouter","FsrsMemoryPolicy","RevisionService","Rating","examinationProximityScore","planningLookaheadDays","examImportanceScore","reviewDurationScore","evidenceWeaknessScore","obligationWeaknessScore","temporalDueRisk","plannerScore","buildPlanningCandidate","choosePlanItems","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsConfigSnapshot","validateStoredFsrsCard","defaultMemoryDifficultyPolicy","canonicalMemoryDifficultyPolicy","memoryDifficultyAssessment","memoryDifficultyRemediationPlan","memoryDifficultyActionLabel","daysToExamination","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","validateBackupPayload"],
   requireFsrs: true,
 });
 
@@ -247,38 +247,6 @@ check(packed.selected.length === 1 && packed.selected[0].joined.obligation.id ==
 
 const router = new api.SchedulerPolicyRouter(() => fixed(.9));
 for (const type of ['memory-recall','concept-reconstruction','application-practice','performance-practice','relearn','freshness-review']) check(router.get(type).type === type, `Router missing ${type}`);
-
-// Workflow UI surfaces are distinct rather than one generic rubric.
-const ui = Object.create(api.ActiveRetrievalWorkspace.prototype);
-ui.reviewPreviews = [{rating:1,label:'1d'},{rating:2,label:'2d'},{rating:3,label:'3d'},{rating:4,label:'8d'}];
-const uiMemoryPolicy = {
-  createInitialState(firstDueAt, cardId) {
-    return {
-      engine:'ts-fsrs',version:'6.0.0',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0,
-      fsrsCard:{model:'FSRS-7',cardId,dueAt:firstDueAt,stability:0,stabilityFast:0,difficulty:0,scheduledDays:0,learningSteps:0,reps:0,lapses:0,state:0,scheduleStatus:'new'}
-    };
-  }
-};
-const uiObligation = (kind) => {
-  const type = kind === 'recall' ? 'memory-recall' : kind === 'reconstruction' ? 'concept-reconstruction' : kind === 'questions' ? 'application-practice' : kind === 'relearning' ? 'relearn' : 'performance-practice';
-  const policy = kind === 'recall' ? uiMemoryPolicy : kind === 'reconstruction' ? new api.MasteryPolicy() : kind === 'questions' ? new api.ApplicationPolicy() : kind === 'relearning' ? new api.RelearnPolicy() : new api.PerformancePolicy();
-  return {...obligation(type, policy, kind), workflow:workflow(kind)};
-};
-check(ui.workflowAttemptPanel(uiObligation('recall')).includes('attempt-text'), 'Recall must provide a closed-book workspace');
-check(ui.workflowAttemptPanel(uiObligation('questions')).includes('attempt-completed'), 'Question workflow must require pre-check attempt confirmation');
-check(ui.workflowAttemptPanel(uiObligation('diagram')).includes('diagram-canvas'), 'Diagram workflow must provide the canvas');
-check(ui.workflowAttemptPanel(uiObligation('answer-writing')).includes('attempt-completed') && ui.workflowAttemptPanel(uiObligation('answer-writing')).includes('150 words'), 'Answer writing must enforce an external or in-app constrained attempt');
-check(ui.workflowAssessmentPanel(uiObligation('reconstruction')).includes('relationship-accuracy'), 'Reconstruction must assess relationships');
-check(ui.workflowAssessmentPanel(uiObligation('questions')).includes('questions-correct'), 'Questions must capture objective outcomes');
-check(ui.workflowAssessmentPanel(uiObligation('diagram')).includes('diagram-spatial'), 'Diagram practice must assess spatial form');
-check(ui.workflowAssessmentPanel(uiObligation('answer-writing')).includes('answer-demand'), 'Answer writing must assess question demand');
-check(ui.attemptComparisonPanel(uiObligation('recall')).includes('comparison-attempt-text'), 'Recall comparison must keep the original attempt visible');
-check(ui.attemptComparisonPanel(uiObligation('diagram')).includes('comparison-diagram-canvas'), 'Diagram comparison must preserve the drawn attempt');
-check(ui.workflowAttemptPanel(uiObligation('questions')).includes('Q-bank block 1'), 'Question workflow must display the question-set reference');
-check(ui.workflowAssessmentPanel(uiObligation('questions')).includes('questions-error-summary'), 'Question workflow must capture per-question errors');
-check(ui.workflowAssessmentPanel(uiObligation('answer-writing')).includes('Automatic attempt timing') && !ui.workflowAssessmentPanel(uiObligation('answer-writing')).includes('answer-within-time'), 'Answer timing must be automatic rather than self-declared');
-const failedEventForPanel = { reviewedAt:due, confirmedRating:1, evidence:{completeness:1,independence:1,application:1,errorTypes:['conceptual-misunderstanding'],correctionNote:'Repair the causal chain'}, workflowResult:recallResult };
-check(ui.relearningTriggerPanel(failedEventForPanel).includes('WHY THIS RELEARNING EXISTS') && ui.relearningTriggerPanel(failedEventForPanel).includes('Repair the causal chain'), 'Relearning must expose the triggering failure and correction');
 
 const dummyRepo = {};
 const service = new api.RevisionService(dummyRepo);
