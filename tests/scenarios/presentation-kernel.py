@@ -4,7 +4,7 @@ from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
-sys.path.insert(0, str(TESTS))
+sys.path.insert(0, str(TESTS))\nfrom backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, launch_chromium, load_browser_qa, open_html_page
 QA = load_browser_qa("revision_director_presentation_kernel")
 TIME_SHIM = r'''<script>(()=>{const RealDate=Date;const fixed=RealDate.parse('2026-07-27T06:30:00.000Z');class FixedDate extends RealDate{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed}}Object.defineProperty(window,'Date',{configurable:true,value:FixedDate});})();</script>'''
@@ -28,7 +28,7 @@ def open_page(browser, viewport):
     )
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup error')
     page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(100)
-    QA.restore_selected_backup(page, ROOT/'tests/fixtures/browser-baseline.rdbackup')
+    QA.restore_selected_backup(page, baseline_backup_path())
     page.add_style_tag(content='*{animation:none!important;transition:none!important;caret-color:transparent!important}html{scroll-behavior:auto!important}')
     return page, errors
 
