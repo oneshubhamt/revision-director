@@ -14064,37 +14064,22 @@ exports.withFuzzing = withFuzzing;
       populateWorkflowForm(form, defaultWorkflowSpec(type, protocol, success), type);
   }
 
-  function requiredElement(selector, constructor) {
-      const element = document.querySelector(selector);
-      assert(element instanceof constructor, `Missing or invalid required element: ${selector}`);
-      return element;
+  /* ==========================================================================
+     ACTIVE RETRIEVAL WORKSPACE · REVIEW UI + DURABLE SESSION STATE MACHINE
+     ========================================================================== */
+  function reviewPhaseLabel(phase) {
+      return phase === "attempt" ? "Attempt" : phase === "compare" ? "Compare / correct" : phase === "relearn-repair" ? "Repair" : "Closed-book verification";
   }
-  function downloadBlob(filename, content, type) {
-      const part = content instanceof Uint8Array ? ownedArrayBuffer(content) : content;
-      const blob = new Blob([part], { type });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = filename;
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-  function formatFileSize(bytes) {
-      if (bytes < 1024)
-          return `${bytes} B`;
-      if (bytes < 1024 * 1024)
-          return `${roundTo(bytes / 1024, 1)} KiB`;
-      return `${roundTo(bytes / (1024 * 1024), 1)} MiB`;
-  }
-  class UIController {
+  class ActiveRetrievalWorkspace {
       service;
       activePersistence;
       ownership;
-      backupController;
-      extensions;
-      currentPane = "today";
-      historyTab = "evidence";
-      libraryFilter = "";
+      reviewContent;
+      gapMeta;
+      gapSplit;
+      gapFocusMinutes;
+      gapFocus;
+      host;
       activeReviewIds = [];
       activeReviewIndex = 0;
       reviewPhase = "attempt";
@@ -14107,179 +14092,119 @@ exports.withFuzzing = withFuzzing;
       reviewPreviews = [];
       activeSessionRevision = 0;
       commitInFlight = false;
-      ownershipSnapshot;
-      restoreCandidateId = "";
-      restoreSafetyProofId = "";
-      fsrsOptimizerRun;
-      fsrsOptimizerProgress;
-      todayContent = requiredElement("#today-content", HTMLDivElement);
-      reviewContent = requiredElement("#review-content", HTMLDivElement);
-      libraryContent = requiredElement("#library-content", HTMLDivElement);
-      studyContent = requiredElement("#study-content", HTMLDivElement);
-      historyContent = requiredElement("#history-content", HTMLDivElement);
-      settingsContent = requiredElement("#settings-content", HTMLDivElement);
-      toastElement = requiredElement("#toast", HTMLDivElement);
-      gapOverlay = requiredElement("#gap-overlay", HTMLDivElement);
-      gapMeta = requiredElement("#gap-meta", HTMLDivElement);
-      gapSplit = requiredElement("#gap-split", HTMLDivElement);
-      gapFocusMinutes = requiredElement("#gap-focus-minutes", HTMLInputElement);
-      unitDialog = requiredElement("#unit-dialog", HTMLDialogElement);
-      studyDialog = requiredElement("#study-dialog", HTMLDialogElement);
-      obligationDialog = requiredElement("#obligation-dialog", HTMLDialogElement);
-      restoreDialog = requiredElement("#restore-dialog", HTMLDialogElement);
-      restorePreview = requiredElement("#restore-preview", HTMLDivElement);
-      unitForm = requiredElement("#unit-form", HTMLFormElement);
-      studyForm = requiredElement("#study-form", HTMLFormElement);
-      obligationForm = requiredElement("#obligation-form", HTMLFormElement);
-      ownershipBanner = requiredElement("#ownership-banner", HTMLDivElement);
-      ownershipTitle = requiredElement("#ownership-title", HTMLElement);
-      ownershipMessage = requiredElement("#ownership-message", HTMLElement);
-      takeControlButton = requiredElement("#take-review-control", HTMLButtonElement);
-      storageCapacityBanner = requiredElement("#storage-capacity-banner", HTMLDivElement);
-      appShell = requiredElement(".app-shell", HTMLElement);
-      primaryNav = requiredElement(".nav", HTMLElement);
-      renderCoordinator;
-      tabRegistry;
-      dialogFocus;
-      gapFocus;
-      constructor(service, activePersistence, ownership, backupController, extensions) {
+      constructor(service, activePersistence, ownership, reviewContent, gapMeta, gapSplit, gapFocusMinutes, gapFocus, host) {
           this.service = service;
           this.activePersistence = activePersistence;
           this.ownership = ownership;
-          this.backupController = backupController;
-          this.extensions = extensions;
-          this.ownershipSnapshot = ownership.snapshot();
-          this.renderCoordinator = new RenderCoordinator(() => captureDocumentFocus(), (snapshot) => {
-              this.applyReadOnlyState();
-              if (this.gapFocus.isOpen())
-                  this.gapFocus.ensureFocus();
-              else if (!document.querySelector("dialog[open]"))
-                  restoreDocumentFocus(snapshot);
-          });
-          this.tabRegistry = new AriaTabRegistry(this.primaryNav, ["today", "review", "library", "study", "history", "settings"], (pane) => this.openPane(pane));
-          this.dialogFocus = new NativeDialogFocusManager([this.unitDialog, this.studyDialog, this.obligationDialog, this.restoreDialog]);
-          this.gapFocus = new OverlayFocusManager(this.gapOverlay, [this.appShell, this.ownershipBanner, this.storageCapacityBanner]);
-          this.registerRenderDomains();
+          this.reviewContent = reviewContent;
+          this.gapMeta = gapMeta;
+          this.gapSplit = gapSplit;
+          this.gapFocusMinutes = gapFocusMinutes;
+          this.gapFocus = gapFocus;
+          this.host = host;
       }
-      async start() {
-          this.bindStaticEvents();
-          this.tabRegistry.initialize(this.currentPane);
-          this.startClock();
-          await this.renderAll();
-          await this.ownership.start({
-              flush: () => this.flushForOwnershipRelease(),
-              hydrate: (reason) => this.hydrateCanonicalState(reason),
-              changed: (snapshot) => this.handleOwnershipChanged(snapshot),
-          });
-          this.handleOwnershipChanged(this.ownership.snapshot());
+      stopForOwnershipLoss() {
+          this.stopTimer();
+          this.hideGapOverlay();
+      }
+      resetEmergencyAfterRestore(session) {
+          this.activePersistence.resetEmergencyAfterRestore(session);
+      }
+      forceSaveForLifecycle(source) {
+          if (!this.ownership.canMutate())
+              return;
+          this.reconcilePhaseTime(source);
+          this.forceActiveRetrievalSave();
+      }
+      async handleAction(element) {
+          const action = element.dataset["action"];
+          if (![
+              "start-due", "review-one", "review-chunk", "review-unit", "reveal", "begin-verification",
+              "check-verification", "diagram-clear", "diagram-undo", "complete-chunk", "rate", "end-session", "toggle-pause",
+          ].includes(action ?? ""))
+              return false;
+          if (!this.host.requireMutable("change Revision Director data"))
+              return true;
+          if (action === "start-due")
+              await this.startDueSession();
+          else if (action === "review-one")
+              await this.startObligationSession(element.dataset["id"] ?? "");
+          else if (action === "review-chunk")
+              await this.startReviewSession([`chunk:${element.dataset["id"] ?? ""}`]);
+          else if (action === "review-unit")
+              await this.startUnitSession(element.dataset["id"] ?? "");
+          else if (action === "reveal") {
+              const obligationId = this.activeReviewIds[this.activeReviewIndex];
+              assert(obligationId, "Review obligation is missing.");
+              const obligation = await this.service.obligation(obligationId);
+              this.validateAttemptBeforeCompare(obligation);
+              assert(this.phaseTime && this.phaseTime.status() === "running", "Resume the retrieval before opening the source.");
+              this.phaseTime.reconcile(Date.now(), "snapshot");
+              assert(!this.phaseTime.hasPendingGap(), "Classify the inactive gap before opening the source.");
+              this.attemptElapsedMs = Math.max(this.attemptElapsedMs, this.closedBookAttemptMs());
+              this.phaseTime.transition("compare", "source-reveal", true);
+              this.reviewPhase = "compare";
+              this.applyReviewPhase();
+              this.forceActiveRetrievalSave();
+              this.syncComparisonAttempt(obligation);
+              this.updateDerivedWorkflowDisplays(obligation);
+              this.updateEvidenceSuggestion(obligation);
+          }
+          else if (action === "begin-verification") {
+              assert((this.reviewContent.querySelector("#relearn-repair-action")?.value.trim().length ?? 0) >= 3, "Record the repair action.");
+              assert(this.reviewContent.querySelector("#relearn-repair-completed")?.checked, "Complete the repair before verification.");
+              assert(this.activeReviewIds[this.activeReviewIndex], "Review obligation is missing.");
+              assert(this.phaseTime && this.phaseTime.status() === "running", "Resume the retrieval before beginning verification.");
+              this.phaseTime.transition("relearn-verify", "begin-verification", false);
+              this.reviewPhase = "relearn-verify";
+              this.applyReviewPhase();
+              this.forceActiveRetrievalSave();
+          }
+          else if (action === "check-verification") {
+              assert((this.reviewContent.querySelector("#relearn-verification-text")?.value.trim().length ?? 0) >= 3, "Complete the closed-book verification.");
+              assert(this.reviewContent.querySelector("#relearn-source-closed")?.checked, "Confirm that the source remained closed during verification.");
+              const obligationId = this.activeReviewIds[this.activeReviewIndex];
+              assert(obligationId, "Review obligation is missing.");
+              const obligation = await this.service.obligation(obligationId);
+              assert(this.phaseTime && this.phaseTime.status() === "running", "Resume the retrieval before checking verification.");
+              this.phaseTime.reconcile(Date.now(), "snapshot");
+              assert(!this.phaseTime.hasPendingGap(), "Classify the inactive gap before checking verification.");
+              this.attemptElapsedMs = Math.max(this.attemptElapsedMs, this.closedBookAttemptMs());
+              this.phaseTime.transition("compare", "verification-reveal", true);
+              this.reviewPhase = "compare";
+              this.applyReviewPhase();
+              this.forceActiveRetrievalSave();
+              this.syncComparisonAttempt(obligation);
+              this.updateEvidenceSuggestion(obligation);
+          }
+          else if (action === "diagram-clear") {
+              this.diagramStrokes = [];
+              this.redrawDiagram();
+              this.scheduleActiveRetrievalSave();
+          }
+          else if (action === "diagram-undo") {
+              this.diagramStrokes.pop();
+              this.redrawDiagram();
+              this.scheduleActiveRetrievalSave();
+          }
+          else if (action === "complete-chunk")
+              await this.completeActiveChunk();
+          else if (action === "rate")
+              await this.commitRating(validateRating(Number(element.dataset["rating"])));
+          else if (action === "end-session") {
+              await this.endReviewSession();
+              await this.host.openPane("today");
+          }
+          else
+              this.togglePause();
+          return true;
       }
       activeReviewTarget(index = this.activeReviewIndex) {
           const target = this.activeReviewIds[index];
           assert(target, "Review target is missing.");
           return target;
       }
-      registerRenderDomains() {
-          this.renderCoordinator.register("today", () => this.renderToday());
-          this.renderCoordinator.register("review", () => this.renderReview());
-          this.renderCoordinator.register("library", () => this.renderLibrary());
-          this.renderCoordinator.register("study", () => this.renderStudy());
-          this.renderCoordinator.register("history", () => this.renderHistory());
-          this.renderCoordinator.register("settings", () => this.renderSettings());
-          this.renderCoordinator.register("sidebar", () => this.renderSidebar());
-          this.renderCoordinator.register("ownership", () => this.applyReadOnlyState());
-          this.renderCoordinator.register("storage", () => this.renderStorageCapacity());
-      }
-      bindStaticEvents() {
-          document.addEventListener("click", (event) => void this.handleDelegatedClick(event));
-          document.addEventListener("submit", (event) => void this.handleDelegatedSubmit(event));
-          document.addEventListener("input", (event) => void this.handleDelegatedInput(event));
-          document.addEventListener("change", (event) => void this.handleDelegatedChange(event));
-          document.addEventListener("keydown", (event) => this.handleDelegatedKeydown(event));
-          document.addEventListener("visibilitychange", () => {
-              if (document.visibilityState === "hidden") {
-                  if (this.ownership.canMutate()) {
-                      this.reconcilePhaseTime("visibility");
-                      this.forceActiveRetrievalSave();
-                  }
-                  this.ownership.noteVisibilityHidden();
-                  return;
-              }
-              void this.handleLifecycleReturn("visibility");
-          });
-          window.addEventListener("focus", () => void this.handleLifecycleReturn("focus"));
-          window.addEventListener("pageshow", () => void this.handleLifecycleReturn("pageshow"));
-          window.addEventListener("pagehide", () => void this.handlePageExit());
-          window.addEventListener("beforeunload", () => void this.handlePageExit());
-          window.addEventListener(REVISION_DIRECTOR_PLUGIN_STATUS_EVENT, () => {
-              if (this.currentPane === "settings")
-                  this.renderCoordinator.invalidate("settings", "ownership");
-          });
-      }
-      async handleDelegatedClick(event) {
-          const target = event.target instanceof Element ? event.target.closest("button,[data-action],[data-pane],[data-filter],[data-history-tab],[data-close-dialog],[data-gap-action]") : null;
-          if (!target || (target instanceof HTMLButtonElement && target.disabled))
-              return;
-          const pane = literalChoiceOrUndefined(target.dataset["pane"], ["today", "review", "library", "study", "history", "settings"]);
-          if (pane) {
-              await this.openPane(pane);
-              return;
-          }
-          if (target.id === "quick-add-unit") {
-              if (this.requireMutable("add a knowledge unit"))
-                  await this.openUnitDialog();
-              return;
-          }
-          if (target.id === "quick-log-study") {
-              if (this.requireMutable("log a Study Event"))
-                  await this.openStudyDialog();
-              return;
-          }
-          if (target.id === "take-review-control") {
-              await this.takeControl();
-              return;
-          }
-          const closeId = target.dataset["closeDialog"];
-          if (closeId) {
-              this.dialogFocus.close(requiredElement(`#${closeId}`, HTMLDialogElement));
-              return;
-          }
-          const gapAction = target.dataset["gapAction"];
-          if (gapAction) {
-              await this.handleGapAction(gapAction);
-              return;
-          }
-          if (target.hasAttribute("data-filter")) {
-              this.libraryFilter = target.dataset["filter"] ?? "";
-              await this.renderCoordinator.invalidateAndWait("library", "ownership");
-              return;
-          }
-          const historyTab = target.dataset["historyTab"];
-          if (historyTab === "evidence" || historyTab === "study") {
-              this.historyTab = historyTab;
-              await this.renderCoordinator.invalidateAndWait("history", "ownership");
-              return;
-          }
-          if (target.dataset["action"])
-              await this.handleAction(target);
-      }
-      async handleDelegatedSubmit(event) {
-          const form = event.target;
-          if (!(form instanceof HTMLFormElement))
-              return;
-          const formId = form.getAttribute("id") ?? "";
-          if (!["unit-form", "study-form", "obligation-form", "settings-form"].includes(formId))
-              return;
-          event.preventDefault();
-          if (formId === "unit-form")
-              await this.submitUnit(event);
-          else if (formId === "study-form")
-              await this.submitStudy(event);
-          else if (formId === "obligation-form")
-              await this.submitObligation(event);
-          else
-              await this.submitSettings(event);
-      }
-      async updateActiveReviewInputs(target) {
+      async updateInputs(target) {
           if (!(target instanceof HTMLElement) || !this.reviewContent.contains(target))
               return;
           this.scheduleActiveRetrievalSave();
@@ -14298,182 +14223,6 @@ exports.withFuzzing = withFuzzing;
           if (target.matches("#answer-text,#questions-attempted,#questions-correct,#questions-partial"))
               this.updateDerivedWorkflowDisplays(obligation);
       }
-      async handleDelegatedInput(event) {
-          const target = event.target;
-          if (target instanceof HTMLInputElement && target.id === "library-search") {
-              this.libraryFilter = target.value;
-              this.renderCoordinator.invalidateDebounced("library-search", 160, "library", "ownership");
-              return;
-          }
-          await this.updateActiveReviewInputs(target);
-      }
-      async handleDelegatedChange(event) {
-          const target = event.target;
-          if (target instanceof HTMLInputElement && target.id === "import-backup") {
-              await this.importBackup(event);
-              return;
-          }
-          if (target instanceof HTMLInputElement && target.id === "import-fsrs-profile") {
-              await this.importFsrsOptimizerProfile(target);
-              return;
-          }
-          if (target instanceof HTMLInputElement && target.id === "load-plugin-files") {
-              await this.loadPluginFiles(target);
-              return;
-          }
-          if (target instanceof HTMLInputElement && (target.id === "restore-safety-saved" || target.id === "restore-replace-confirm" || target.name === "restore-active-treatment")) {
-              if (target.id === "restore-safety-saved" && target.checked && this.restoreSafetyProofId)
-                  this.backupController.acknowledgeSafetyCopy(this.restoreSafetyProofId);
-              this.updateRestoreActionState();
-              return;
-          }
-          if (target instanceof HTMLSelectElement) {
-              const form = target.closest("#unit-form,#obligation-form");
-              if (form) {
-                  const typeName = form.getAttribute("id") === "unit-form" ? "obligationType" : "type";
-                  const typeSelect = formSelect(form, typeName);
-                  if (target === typeSelect) {
-                      applyDefaultWorkflowToForm(form, literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type"));
-                      return;
-                  }
-                  if (target === formSelect(form, "workflowKind")) {
-                      const type = literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type");
-                      const protocol = formTextarea(form, "protocol").value;
-                      const success = formTextarea(form, "successCriteria").value;
-                      const selected = literalChoice(target.value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
-                      const spec = defaultWorkflowSpec(type, protocol, success);
-                      spec.kind = selected;
-                      spec.responseMedium = selected === "answer-writing" ? "paper" : "in-app";
-                      if (selected === "reconstruction")
-                          spec.reconstructionShape = "outline";
-                      if (selected === "questions") {
-                          spec.targetCount = 10;
-                          spec.questionSetRef = "External question set";
-                      }
-                      if (selected === "diagram")
-                          spec.diagramSurface = "canvas";
-                      if (selected === "answer-writing") {
-                          spec.answerMode = "full-answer";
-                          spec.timeLimitMinutes = 10;
-                          spec.wordLimit = 150;
-                      }
-                      populateWorkflowForm(form, spec, type);
-                      return;
-                  }
-              }
-          }
-          await this.updateActiveReviewInputs(target);
-      }
-      handleDelegatedKeydown(event) {
-          if (this.gapFocus.handleKeydown(event))
-              return;
-          if (this.tabRegistry.handleKeydown(event))
-              return;
-          if (event.target === this.gapFocusMinutes && event.key === "Enter") {
-              event.preventDefault();
-              void this.handleGapAction("apply-split");
-              return;
-          }
-          this.handleKeyboard(event);
-      }
-      requireMutable(reason) {
-          if (this.ownership.canMutate())
-              return true;
-          this.handleOwnershipChanged(this.ownership.snapshot());
-          this.toast(this.ownershipSnapshot.state === "faulted"
-              ? `Review control is unavailable because the ownership lease failed. Browser storage must recover before you can ${reason}.`
-              : `This tab is read-only. Take control here to ${reason}.`, true);
-          return false;
-      }
-      async takeControl() {
-          this.takeControlButton.disabled = true;
-          try {
-              const acquired = await this.ownership.takeControl();
-              if (!acquired)
-                  this.toast("Review control could not be acquired.", true);
-          }
-          finally {
-              this.takeControlButton.disabled = false;
-          }
-      }
-      handleOwnershipChanged(snapshot) {
-          const wasPrimary = this.ownershipSnapshot.canMutate;
-          this.ownershipSnapshot = snapshot;
-          if (wasPrimary && !snapshot.canMutate) {
-              this.stopTimer();
-              this.hideGapOverlay();
-              this.fsrsOptimizerRun?.cancel();
-          }
-          const primary = snapshot.canMutate;
-          this.ownershipBanner.hidden = primary;
-          this.ownershipBanner.classList.toggle("faulted", snapshot.state === "faulted");
-          this.takeControlButton.hidden = snapshot.state === "hydrating" || snapshot.state === "acquiring" || snapshot.state === "releasing";
-          this.ownershipTitle.textContent = snapshot.state === "faulted" ? "Review control unavailable" : snapshot.state === "hydrating" ? "Reloading canonical state" : snapshot.state === "acquiring" || snapshot.state === "releasing" ? "Review control changing" : "Read-only tab";
-          this.ownershipMessage.textContent = snapshot.state === "faulted"
-              ? snapshot.lastError ?? "The ownership lease could not be safely stored. Browsing and export remain available."
-              : snapshot.state === "hydrating"
-                  ? "The latest IndexedDB and emergency copies are being reconciled before mutation is enabled."
-                  : snapshot.state === "acquiring" || snapshot.state === "releasing"
-                      ? "A safe flush and ownership handoff is in progress."
-                      : "Another tab owns all Revision Director mutations. You may browse and export here.";
-          if (!wasPrimary && snapshot.canMutate)
-              void this.renderAll();
-          else
-              this.renderCoordinator.invalidate("ownership", "storage");
-      }
-      applyReadOnlyState() {
-          const primary = this.ownership.canMutate();
-          const controls = document.querySelectorAll("input,textarea,select,button");
-          controls.forEach((control) => {
-              const action = control instanceof HTMLElement ? control.dataset["action"] : undefined;
-              const safe = control === this.takeControlButton
-                  || control.matches("[data-pane],[data-history-tab],[data-close-dialog]")
-                  || action === "export-backup"
-                  || action === "cancel-restore"
-                  || control.id === "library-search";
-              if (!primary && !safe) {
-                  if (!control.disabled)
-                      control.dataset["ownershipDisabled"] = "1";
-                  control.disabled = true;
-              }
-              else if (primary && control.dataset["ownershipDisabled"] === "1") {
-                  control.disabled = false;
-                  delete control.dataset["ownershipDisabled"];
-              }
-          });
-          const canvas = this.reviewContent.querySelector("#diagram-canvas");
-          if (canvas) {
-              canvas.style.pointerEvents = primary ? "auto" : "none";
-              canvas.setAttribute("aria-disabled", String(!primary));
-          }
-      }
-      renderStorageCapacity() {
-          const storage = this.service.storageHealth();
-          if (storage.level === "healthy") {
-              this.storageCapacityBanner.hidden = true;
-              this.storageCapacityBanner.textContent = "";
-              return;
-          }
-          const ratio = storage.usageRatio === undefined ? "" : ` Storage usage is ${Math.round(storage.usageRatio * 100)}%.`;
-          const persistence = storage.persistence === "granted" ? "" : ` Persistent storage: ${storage.persistence}.`;
-          this.storageCapacityBanner.textContent = `${storage.level === "critical" ? "Storage capacity is critical." : "Storage needs attention."}${ratio}${persistence}${storage.lastError ? ` ${storage.lastError}` : ""}`;
-          this.storageCapacityBanner.hidden = false;
-      }
-      async handleLifecycleReturn(source) {
-          await this.ownership.evaluate("reacquire");
-          await this.service.refreshStorageHealth(false).catch(() => this.service.storageHealth());
-          if (this.ownership.canMutate())
-              this.reconcileAndPersistPhaseTime(source);
-          await this.renderCoordinator.invalidateAndWait("storage", "ownership");
-      }
-      async handlePageExit() {
-          this.fsrsOptimizerRun?.cancel();
-          if (this.ownership.canMutate()) {
-              this.reconcilePhaseTime("snapshot");
-              this.forceActiveRetrievalSave();
-          }
-          await this.ownership.releaseForExit();
-      }
       async flushForOwnershipRelease() {
           if (this.commitInFlight)
               throw new Error("A review commit is still in progress.");
@@ -14485,7 +14234,7 @@ exports.withFuzzing = withFuzzing;
               await this.activePersistence.flush(session);
           }
       }
-      resetLocalReviewState() {
+      resetLocalState() {
           this.stopTimer();
           this.activeReviewIds = [];
           this.activeReviewIndex = 0;
@@ -14498,16 +14247,6 @@ exports.withFuzzing = withFuzzing;
           this.activeSessionRevision = 0;
           this.commitInFlight = false;
           this.hideGapOverlay();
-      }
-      async hydrateCanonicalState(reason) {
-          this.resetLocalReviewState();
-          await this.service.initialize();
-          await this.renderAll();
-          await this.recoverUnfinishedSession(reason === "startup");
-          await this.renderCoordinator.invalidateAndWait("storage", "ownership");
-      }
-      phaseLabel(phase) {
-          return phase === "attempt" ? "Attempt" : phase === "compare" ? "Compare / correct" : phase === "relearn-repair" ? "Repair" : "Closed-book verification";
       }
       activeElapsedMs() { return this.phaseTime?.activeMs() ?? 0; }
       closedBookAttemptMs() {
@@ -14532,7 +14271,7 @@ exports.withFuzzing = withFuzzing;
               this.showGapOverlay();
           this.updateTimerDisplay();
       }
-      reconcileAndPersistPhaseTime(source) {
+      reconcileAndPersist(source) {
           if (!this.phaseTime || this.commitInFlight)
               return;
           const before = this.phaseTime.hasPendingGap();
@@ -14547,7 +14286,7 @@ exports.withFuzzing = withFuzzing;
           const state = this.reviewContent.querySelector("#review-time-state");
           if (state) {
               const status = this.phaseTime?.status() ?? "running";
-              state.textContent = `${this.phaseLabel(this.reviewPhase)} · ${status === "paused" ? "Paused" : status === "gap-pending" ? "Classify gap" : "Active"}`;
+              state.textContent = `${reviewPhaseLabel(this.reviewPhase)} · ${status === "paused" ? "Paused" : status === "gap-pending" ? "Classify gap" : "Active"}`;
               state.classList.toggle("paused", status !== "running");
           }
           const button = this.reviewContent.querySelector('[data-action="toggle-pause"]');
@@ -14558,20 +14297,20 @@ exports.withFuzzing = withFuzzing;
       }
       reviewTimerMarkup() {
           const status = this.phaseTime?.status() ?? "running";
-          return `<div class="review-controls"><div class="review-time-cluster"><div class="review-timer" id="review-timer">${formatDuration(this.activeElapsedMs())}</div><span class="review-time-state ${status !== "running" ? "paused" : ""}" id="review-time-state">${escapeHtml(this.phaseLabel(this.reviewPhase))} · ${status === "paused" ? "Paused" : status === "gap-pending" ? "Classify gap" : "Active"}</span></div><button class="mini-btn" data-action="toggle-pause" ${status === "gap-pending" ? "disabled" : ""}>${status === "paused" ? "RESUME" : "PAUSE"}</button></div>`;
+          return `<div class="review-controls"><div class="review-time-cluster"><div class="review-timer" id="review-timer">${formatDuration(this.activeElapsedMs())}</div><span class="review-time-state ${status !== "running" ? "paused" : ""}" id="review-time-state">${escapeHtml(reviewPhaseLabel(this.reviewPhase))} · ${status === "paused" ? "Paused" : status === "gap-pending" ? "Classify gap" : "Active"}</span></div><button class="mini-btn" data-action="toggle-pause" ${status === "gap-pending" ? "disabled" : ""}>${status === "paused" ? "RESUME" : "PAUSE"}</button></div>`;
       }
       showGapOverlay() {
           const gap = this.phaseTime?.pendingGap();
           if (!gap)
               return;
-          this.gapMeta.textContent = `${formatDuration(gap.gapMs)} · ${this.phaseLabel(gap.phase)} · ${gap.source}`;
+          this.gapMeta.textContent = `${formatDuration(gap.gapMs)} · ${reviewPhaseLabel(gap.phase)} · ${gap.source}`;
           this.gapFocusMinutes.value = String(roundTo(gap.gapMs / 60_000, 1));
           this.gapSplit.hidden = true;
           this.gapFocus.show('[data-gap-action="focus"]', '[data-action="toggle-pause"]');
       }
       hideGapOverlay() { this.gapSplit.hidden = true; this.gapFocus.hide(); }
       async handleGapAction(action) {
-          if (!this.requireMutable("classify an interruption"))
+          if (!this.host.requireMutable("classify an interruption"))
               return;
           if (!this.phaseTime?.hasPendingGap()) {
               this.hideGapOverlay();
@@ -14588,12 +14327,12 @@ exports.withFuzzing = withFuzzing;
           this.hideGapOverlay();
           this.updateTimerDisplay();
           this.forceActiveRetrievalSave();
-          this.toast(classification === "ignore" ? "Gap ignored. This duration will not train adaptive estimates." : `Gap classified as ${classification}.`);
+          this.host.toast(classification === "ignore" ? "Gap ignored. This duration will not train adaptive estimates." : `Gap classified as ${classification}.`);
           if (record.classification === "ignore")
               this.scheduleActiveRetrievalSave();
       }
       togglePause() {
-          assert(this.requireMutable("pause or resume retrieval"), "This tab is read-only.");
+          assert(this.host.requireMutable("pause or resume retrieval"), "This tab is read-only.");
           assert(this.phaseTime, "No active retrieval timer is available.");
           if (this.phaseTime.isPaused())
               this.phaseTime.resume();
@@ -14733,297 +14472,10 @@ exports.withFuzzing = withFuzzing;
               if (resumed)
                   await this.activePersistence.flush(resumed);
           }
-          await this.openPane("review");
+          await this.host.openPane("review");
           if (this.phaseTime.hasPendingGap())
               this.showGapOverlay();
-          this.toast(askBeforeResume ? "Unfinished retrieval session recovered." : "Canonical retrieval state hydrated after ownership transfer.");
-      }
-      startClock() {
-          const clock = requiredElement("#clock", HTMLDivElement);
-          const update = () => { clock.textContent = new Date().toLocaleTimeString("en-IN", { hour12: false }); };
-          update();
-          window.setInterval(update, 1000);
-      }
-      async openPane(pane) {
-          if (this.currentPane === "review" && pane !== "review")
-              this.captureReviewDraft();
-          this.currentPane = pane;
-          this.tabRegistry.activate(pane);
-          await this.renderPane(pane);
-      }
-      async renderAll() {
-          await this.renderCoordinator.invalidateAndWait("today", "review", "library", "study", "history", "settings", "sidebar", "ownership", "storage");
-      }
-      async renderPane(pane) {
-          await this.renderCoordinator.invalidateAndWait(pane, "sidebar", "ownership", "storage");
-      }
-      async renderSidebar() {
-          const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
-          const units = (await this.service.units()).filter((unit) => unit.status === "active");
-          requiredElement("#sb-due", HTMLElement).textContent = String(plan.selected.length);
-          requiredElement("#sb-units", HTMLElement).textContent = String(units.length);
-          requiredElement("#sb-load", HTMLElement).textContent = `${plan.plannedMinutes}m`;
-      }
-      pageHead(eyebrow, title, description, actions = "") {
-          return `<header class="page-head"><div><div class="eyebrow">${escapeHtml(eyebrow)}</div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p></div><div class="actions">${actions}</div></header>`;
-      }
-      async renderToday() {
-          const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
-          const capacityDifference = plan.capacityMinutes - plan.plannedMinutes;
-          const capacityStatus = capacityDifference >= 0 ? `${capacityDifference}m reserve` : `${Math.abs(capacityDifference)}m necessary overrun`;
-          const deferredMinutes = plan.deferred.reduce((sum, item) => sum + item.executionMinutes, 0);
-          const exceptionCount = plan.requiredOverrun.length + plan.mustSplit.length;
-          const requiredOverrunIds = new Set(plan.requiredOverrun.map((item) => item.joined.obligation.id));
-          this.todayContent.innerHTML = `
-          ${this.pageHead("REVISION PLANNING", "Today", "A capacity-bounded daily plan selected from current memory and exam evidence.", `<button class="btn" data-action="log-study">LOG STUDY</button><button class="btn" data-action="regenerate-plan">REGENERATE PLAN</button><button class="btn primary" data-action="start-due" ${plan.selected.length ? "" : "disabled"}>START DAILY PLAN</button>`)}
-          <div class="summary-grid">
-            <div class="metric"><span>Planned obligations</span><strong>${plan.selected.length}</strong><small>${plan.overdueCount} overdue · ${plan.broughtForwardCount} brought forward</small></div>
-            <div class="metric"><span>Planned load</span><strong>${plan.plannedMinutes}m</strong><small>${escapeHtml(capacityStatus)}</small></div>
-            <div class="metric"><span>Deferred today</span><strong>${plan.deferred.length}</strong><small>${deferredMinutes}m outside capacity</small></div>
-            <div class="metric"><span>Capacity exceptions</span><strong>${exceptionCount}</strong><small>${plan.requiredOverrun.length} required overrun · ${plan.mustSplit.length} must split</small></div>
-          </div>
-          <div class="policy-box planner-principle"><strong>Planning model:</strong> each candidate receives a transparent score from due risk, exam importance, obligation-specific weakness, learned duration, examination proximity, weekly subject balance and the ${plan.capacityMinutes}m daily limit. Exams that have passed are automatically excluded. Relearning and severe overdue risk receive narrow safety boosts. Scheduling engines still decide <em>when work becomes eligible</em>; the planner decides <em>what fits today</em>.</div>
-          <section class="section-block">
-            <div class="section-head"><h2>Daily revision queue</h2><span class="section-note">Study day ${escapeHtml(plan.studyDayKey)} · persisted plan version ${plan.versionNumber} · highest-value feasible set within capacity.</span></div>
-            ${plan.selected.length ? `<div class="queue-list planner-list">${plan.selected.map((item, index) => this.plannerRow(item, index + 1, requiredOverrunIds.has(item.joined.obligation.id) ? "required-overrun" : "selected")).join("")}</div>` : this.emptyState("No revision planned", "No active obligation is due or close enough to bring forward within the planning horizon.")}
-          </section>
-          ${plan.mustSplit.length ? `<section class="section-block"><div class="section-head"><h2>Critical work requiring split</h2><span class="section-note">These obligations are too long for the daily capacity. They remain explicit and should be redesigned as smaller complete sessions or reviewed manually.</span></div><div class="queue-list planner-list split-list">${plan.mustSplit.map((item, index) => this.plannerRow(item, index + 1, "must-split")).join("")}</div></section>` : ""}
-          <section class="section-block">
-            <div class="section-head"><h2>Deferred by capacity</h2><span class="section-note">Visible rather than silently lost; review any item manually when circumstances change.</span></div>
-            ${plan.deferred.length ? `<div class="queue-list planner-list deferred-list">${plan.deferred.slice(0, 20).map((item, index) => this.plannerRow(item, index + 1, "deferred")).join("")}</div>` : this.emptyState("Nothing deferred", "All eligible revision obligations fit within today’s capacity.")}
-          </section>`;
-      }
-      factorMeter(label, value) {
-          const percent = Math.round(clamp(value, 0, 1) * 100);
-          return `<div class="factor-meter"><span>${escapeHtml(label)}</span><div class="factor-track"><i style="width:${percent}%"></i></div><strong>${percent}</strong></div>`;
-      }
-      plannerRow(item, order, disposition) {
-          const joined = item.joined;
-          const selected = disposition === "selected" || disposition === "required-overrun";
-          const stateLabel = item.dueState === "brought-forward" ? "brought forward" : item.dueState;
-          const retrieval = item.retrievability === undefined ? "" : `<span>Memory availability ${Math.round(item.retrievability * 100)}%</span>`;
-          const exceptionChip = disposition === "required-overrun" ? `<span class="chip capacity-exception">required overrun</span>` : disposition === "must-split" ? `<span class="chip capacity-exception">must split</span>` : "";
-          const actionLabel = disposition === "selected" ? "REVIEW" : disposition === "required-overrun" ? "REVIEW OVERRUN" : disposition === "must-split" ? "REVIEW ANYWAY" : "REVIEW ANYWAY";
-          return `<article class="queue-row planner-row ${escapeHtml(disposition)}">
-          <div class="planner-order">${selected ? String(order).padStart(2, "0") : "—"}</div>
-          <div class="planner-main">
-            <div class="breadcrumb">${escapeHtml(joined.profile.name)} · ${escapeHtml(joined.subject)} › ${escapeHtml(joined.section)} › ${escapeHtml(joined.topic)}</div>
-            <div class="row-title">${escapeHtml(item.chunk?.label ?? joined.unit.title)}</div>
-            <div class="row-meta"><span class="chip ${obligationChip(joined.obligation.type)}">${escapeHtml(obligationLabel(joined.obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(joined.obligation.workflow.kind))}</span><span class="chip ${item.dueState === "brought-forward" ? "upcoming" : item.dueState}">${escapeHtml(stateLabel)}</span>${exceptionChip}<span>${item.executionMinutes}m planned</span>${joined.obligation.durationSampleCount ? `<span>${joined.obligation.durationSampleCount} duration samples</span>` : ""}<span>${item.examDateKnown ? `Exam in ${item.daysToExam}d` : "Exam date not set"}</span>${retrieval}</div>
-            <div class="planner-reasons">${item.reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
-            <details class="planner-details"><summary>Why score ${item.score}</summary><div class="factor-grid">${this.factorMeter("Due risk", item.factors.dueRisk)}${this.factorMeter("Exam importance", item.factors.examImportance)}${this.factorMeter("Weakness", item.factors.weakness)}${this.factorMeter("Duration fit", item.factors.reviewDuration)}${this.factorMeter("Exam proximity", item.factors.examinationProximity)}${this.factorMeter("Weekly balance", item.factors.weeklyBalance)}</div></details>
-          </div>
-          <div class="row-actions"><button class="mini-btn" data-action="${item.chunk ? "review-chunk" : "review-one"}" data-id="${escapeHtml(item.chunk?.id ?? joined.obligation.id)}">${item.chunk ? "WORK CHUNK" : actionLabel}</button></div>
-        </article>`;
-      }
-      emptyState(title, message) {
-          return `<div class="empty-state"><strong>${escapeHtml(title)}</strong>${escapeHtml(message)}</div>`;
-      }
-      async renderLibrary() {
-          const settings = this.service.getSettings();
-          const profiles = await this.service.profiles();
-          const units = (await this.service.units()).filter((unit) => unit.status !== "archived");
-          const nodes = await this.service.nodes();
-          const obligations = await this.service.obligations();
-          const evidenceEvents = await this.service.evidenceEvents();
-          const memoryReviews = memoryReviewObservationIndex(evidenceEvents);
-          const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-          const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
-          const filtered = units.filter((unit) => {
-              if (!this.libraryFilter)
-                  return true;
-              const topic = nodeMap.get(unit.topicNodeId);
-              const section = topic?.parentId ? nodeMap.get(topic.parentId) : undefined;
-              const subject = section?.parentId ? nodeMap.get(section.parentId) : undefined;
-              return [unit.title, unit.scope, topic?.name, section?.name, subject?.name].some((value) => normalizeName(value ?? "").includes(normalizeName(this.libraryFilter)));
-          });
-          const subjects = nodes.filter((node) => node.kind === "subject").sort((a, b) => a.name.localeCompare(b.name));
-          this.libraryContent.innerHTML = `
-          ${this.pageHead("KNOWLEDGE RECORD", "Library", "A durable hierarchy of what must remain available for examination performance.", `<button class="btn primary" data-action="add-unit">ADD UNIT</button>`)}
-          <div class="filter-bar"><input id="library-search" value="${escapeHtml(this.libraryFilter)}" placeholder="Search unit or hierarchy..."></div>
-          <div class="library-grid">
-            <aside class="panel hierarchy-panel"><div class="tree-label">Exam hierarchy</div><button class="tree-item ${this.libraryFilter ? "" : "on"}" data-filter="">All knowledge</button>${subjects.map((subject) => `<button class="tree-item" data-filter="${escapeHtml(subject.name)}">${escapeHtml(profileMap.get(subject.profileId)?.name ?? "Exam")} · ${escapeHtml(subject.name)}</button>`).join("")}</aside>
-            <div>${filtered.length ? `<div class="unit-list">${filtered.map((unit) => {
-              const topic = nodeMap.get(unit.topicNodeId);
-              const section = topic?.parentId ? nodeMap.get(topic.parentId) : undefined;
-              const subject = section?.parentId ? nodeMap.get(section.parentId) : undefined;
-              const unitObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.status === "active");
-              const memoryObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.type === "memory-recall" && obligation.status !== "archived");
-              const difficultyPanels = memoryObligations.map((obligation) => {
-                  const assessment = memoryDifficultyAssessment(obligation, settings.memoryDifficultyPolicy, memoryReviews.get(obligation.id) ?? []);
-                  if (assessment.level === "normal")
-                      return "";
-                  const label = assessment.level === "persistent-difficulty"
-                      ? "Persistent difficulty"
-                      : assessment.level === "remediation"
-                          ? "Remediation"
-                          : "Early learning difficulty";
-                  const burden = assessment.level === "learning-difficulty"
-                      ? `${assessment.earlyLearningFailures} failed learning recalls`
-                      : `${assessment.establishedLapses} established recall failures`;
-                  const actions = assessment.recommendedActions.map(memoryDifficultyActionLabel).join(" · ");
-                  return `<div class="policy-box"><strong>${label} · ${burden}.</strong> ${escapeHtml(actions)}.</div>`;
-              }).join("");
-              const heldMemory = memoryObligations.filter((obligation) => obligation.status === "suspended" && obligation.suspensionReason === "persistent-difficulty");
-              return `<article class="unit-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(unit.profileId)?.name ?? "Exam")} · ${escapeHtml(subject?.name ?? "")} › ${escapeHtml(section?.name ?? "")} › ${escapeHtml(topic?.name ?? "")}</div><div class="row-title">${escapeHtml(unit.title)}</div><p>${escapeHtml(unit.scope)}</p><div class="row-meta">${unitObligations.map((obligation) => `<span class="chip ${obligationChip(obligation.type)}">${escapeHtml(obligationLabel(obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(obligation.workflow.kind))}</span>`).join("")}<span>${unit.evidenceCount} evidence events</span><span>${unit.lapseCount} failures</span></div>${difficultyPanels}</div><div class="row-actions"><button class="mini-btn" data-action="review-unit" data-id="${escapeHtml(unit.id)}">REVIEW</button><button class="mini-btn" data-action="add-obligation" data-id="${escapeHtml(unit.id)}">ADD OBLIGATION</button>${heldMemory.map((obligation) => `<button class="mini-btn" data-action="resume-persistent-difficulty" data-id="${escapeHtml(obligation.id)}">RESUME MEMORY</button>`).join("")}<button class="mini-btn" data-action="toggle-unit" data-id="${escapeHtml(unit.id)}" data-status="${unit.status === "active" ? "suspended" : "active"}">${unit.status === "active" ? "SUSPEND" : "ACTIVATE"}</button></div></article>`;
-          }).join("")}</div>` : this.emptyState("No matching knowledge", "Create a unit or change the search filter.")}</div>
-          </div>`;
-      }
-      async renderStudy() {
-          const events = await this.service.studyEvents();
-          const profiles = await this.service.profiles();
-          const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
-          const recentMinutes = events.filter((event) => new Date(event.occurredAt).getTime() > Date.now() - 7 * DAY_MS).reduce((sum, event) => sum + event.durationMinutes, 0);
-          const linkedCount = events.filter((event) => event.linkedUnitIds.length > 0).length;
-          this.studyContent.innerHTML = `
-          ${this.pageHead("ORIGINAL LEARNING", "Study Log", "Study Events preserve what was learned, practised or tested before it becomes a revision obligation.", `<button class="btn primary" data-action="log-study">LOG STUDY EVENT</button>`)}
-          <div class="summary-grid">
-            <div class="metric"><span>Study events</span><strong>${events.length}</strong><small>Immutable learning records</small></div>
-            <div class="metric"><span>Last seven days</span><strong>${recentMinutes}m</strong><small>Recorded study time</small></div>
-            <div class="metric"><span>Linked events</span><strong>${linkedCount}</strong><small>Connected to knowledge units</small></div>
-            <div class="metric"><span>Unlinked events</span><strong>${events.length - linkedCount}</strong><small>Candidates for later revision</small></div>
-          </div>
-          <div class="study-grid">
-            <section>
-              <div class="section-head"><h2>Recent study events</h2><span class="section-note">Area · Task · Measure remain canonical Study Director inputs.</span></div>
-              ${events.length ? `<div class="record-list">${events.slice(0, 30).map((event) => `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.occurredAt)}</div><div class="row-title">${escapeHtml(event.area)} · ${escapeHtml(event.task)}</div><div class="row-meta"><span class="chip">${escapeHtml(event.activityMode)}</span><span>${escapeHtml(event.measure)}</span><span>${event.durationMinutes}m</span><span>Understanding ${event.understanding}/4</span><span>${event.linkedUnitIds.length} linked units</span></div>${event.notes ? `<p>${escapeHtml(event.notes)}</p>` : ""}</div><div class="row-actions"><button class="mini-btn" data-action="derive-unit" data-id="${escapeHtml(event.id)}">CREATE UNIT</button></div></article>`).join("")}</div>` : this.emptyState("No study events", "Log what you studied, practised or tested.")}
-            </section>
-            <aside class="panel info-card"><h3>Why this exists</h3><p>A timer records effort. A Study Event records the academic meaning of that effort.</p><ul><li>It anchors revision to actual learning.</li><li>It distinguishes learning, review, practice and testing.</li><li>It allows later AI or rule-based diagnosis without bloating every Plan row.</li><li>It does not itself prove retention.</li></ul></aside>
-          </div>`;
-      }
-      async renderHistory() {
-          const evidence = await this.service.evidenceEvents();
-          const study = await this.service.studyEvents();
-          const units = await this.service.units();
-          const profiles = await this.service.profiles();
-          const plans = await this.service.dailyPlanHistory();
-          const unitMap = new Map(units.map((unit) => [unit.id, unit]));
-          const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
-          const content = this.historyTab === "evidence"
-              ? (evidence.length ? `<div class="record-list">${evidence.slice(0, 80).map((event) => {
-                  const unit = unitMap.get(event.unitId);
-                  const accuracy = event.evidence.accuracyPercent === undefined ? "" : `<span>Accuracy ${roundTo(event.evidence.accuracyPercent, 0)}%</span>`;
-                  return `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.reviewedAt)}</div><div class="row-title">${escapeHtml(unit?.title ?? "Deleted unit")}</div><div class="row-meta"><span class="chip ${obligationChip(event.obligationType)}">${escapeHtml(obligationLabel(event.obligationType))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(event.workflow))}</span><span>${ratingName(event.confirmedRating)}</span><span>Suggested ${ratingName(event.suggestedRating)}</span>${accuracy}<span>${formatDuration(event.elapsedMs)}</span><span>Estimate ${event.durationObservation.estimateBefore}→${event.durationObservation.estimateAfter}m</span><span>${event.durationObservation.accepted ? "duration learned" : `duration ignored: ${escapeHtml(event.durationObservation.reason)}`}</span><span>${escapeHtml(event.policyId)}</span></div><p>Evidence: completeness ${event.evidence.completeness}/4 · independence ${event.evidence.independence}/4 · application ${event.evidence.application}/4. Next: ${formatDateTime(event.afterDueAt)}.</p>${event.evidence.correctionNote ? `<p>Correction: ${escapeHtml(event.evidence.correctionNote)}</p>` : ""}</div></article>`;
-              }).join("")}</div>` : this.emptyState("No retrieval evidence", "Complete a review to create evidence."))
-              : (study.length ? `<div class="record-list">${study.slice(0, 80).map((event) => `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.occurredAt)}</div><div class="row-title">${escapeHtml(event.area)} · ${escapeHtml(event.task)}</div><div class="row-meta"><span class="chip">${escapeHtml(event.activityMode)}</span><span>${escapeHtml(event.measure)}</span><span>${event.durationMinutes}m</span><span>${escapeHtml(event.origin)}</span></div></div></article>`).join("")}</div>` : this.emptyState("No study history", "Log a Study Event first."));
-          const planHistory = plans.length ? `<section class="section-block"><div class="section-head"><h2>Persisted daily plans</h2><span class="section-note">Original recommendation, regenerations and actual outcomes remain separate.</span></div><div class="record-list">${plans.slice(0, 14).map((plan) => { const latest = latestPlanVersion(plan); const completed = plan.outcomes.filter((outcome) => outcome.status === "completed"); const actual = completed.reduce((sum, outcome) => sum + (outcome.actualMinutes ?? 0), 0); const selected = latest.items.filter((item) => item.disposition === "selected" || item.disposition === "required-overrun"); return `<article class="record-row"><div><div class="breadcrumb">Study day ${escapeHtml(plan.studyDayKey)} · plan v${latest.version} · ${escapeHtml(plan.plannerVersion)}</div><div class="row-title">${selected.length} planned · ${completed.length} completed</div><div class="row-meta"><span>${latest.capacityMinutes}m capacity</span><span>${selected.reduce((sum, item) => sum + item.estimatedMinutes, 0)}m estimated</span><span>${roundTo(actual, 1)}m actual</span><span>${plan.versions.length} version${plan.versions.length === 1 ? "" : "s"}</span></div></div></article>`; }).join("")}</div></section>` : "";
-          this.historyContent.innerHTML = `
-          ${this.pageHead("AUDIT TRAIL", "History", "Study records, retrieval evidence and daily-plan history remain separate but linked.")}
-          <div class="tab-bar"><button class="tab-btn ${this.historyTab === "evidence" ? "on" : ""}" data-history-tab="evidence">EVIDENCE EVENTS</button><button class="tab-btn ${this.historyTab === "study" ? "on" : ""}" data-history-tab="study">STUDY EVENTS</button></div>
-          ${content}${planHistory}`;
-      }
-      pluginSettingsCard() {
-          const status = this.extensions.status();
-          const pluginRows = status.registered.length
-              ? status.registered.map((entry) => `<div class="dependency-status"><span>${escapeHtml(entry.name)}${entry.version ? ` · ${escapeHtml(entry.version)}` : ""}</span><strong class="${entry.state === "registered" ? "ok" : entry.state === "failed" || entry.state === "incompatible" ? "bad" : ""}">${escapeHtml(entry.state)}</strong>${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ""}</div>`).join("")
-              : `<p class="helper">No plugins are registered in this session.</p>`;
-          const fileRows = status.localFiles.length
-              ? `<div class="plugin-file-list">${status.localFiles.slice(0, 8).map((entry) => `<div class="dependency-status"><span>${escapeHtml(entry.name)} · ${escapeHtml(formatFileSize(entry.size))}</span><strong class="${entry.state === "loaded" ? "ok" : entry.state === "failed" || entry.state === "rejected" ? "bad" : ""}">${escapeHtml(entry.state)}</strong>${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ""}</div>`).join("")}</div>`
-              : "";
-          return `<section class="panel settings-card"><h3>Optional plugins</h3><label class="btn file-btn">LOAD LOCAL PLUGIN<input id="load-plugin-files" type="file" accept=".js,text/javascript,application/javascript" multiple></label><p class="helper">Trusted JavaScript only. A local plugin runs with this page’s privileges, is not stored by Revision Director, and is removed by reloading the page.</p>${pluginRows}${fileRows}</section>`;
-      }
-      fsrsPersonalizationCard(settings, summary) {
-          const personalization = effectiveFsrsPersonalization(settings);
-          const profile = personalization.profile;
-          const status = personalization.active ? "ACTIVE" : profile ? "STAGED" : "STOCK";
-          const statusClass = personalization.active ? "ok" : "";
-          const optimizer = browserFsrsOptimizerAvailability();
-          const running = this.fsrsOptimizerRun !== undefined;
-          const progress = this.fsrsOptimizerProgress;
-          const progressText = progress
-              ? `${progress.stage} · ${progress.total > 0 ? `${progress.current}/${progress.total}` : "working"}`
-              : running ? "Preparing local optimizer…" : optimizer.reason;
-          const progressValue = progress && progress.total > 0
-              ? Math.max(0, Math.min(progress.total, progress.current))
-              : 0;
-          const progressMax = progress && progress.total > 0 ? progress.total : 1;
-          const canOptimize = optimizer.available && !running && summary.reviews > 0;
-          const holdoutDiagnostics = profile
-              ? fsrsHoldoutDiagnostics(profile.evaluation.holdout.stock, profile.evaluation.holdout.personalized)
-              : undefined;
-          const incumbent = profile?.evaluation.holdout.incumbent;
-          const incumbentDiagnostics = incumbent && profile
-              ? fsrsHoldoutDiagnostics(incumbent.metrics, profile.evaluation.holdout.personalized)
-              : undefined;
-          const profileDetail = profile && holdoutDiagnostics
-              ? `<div class="dependency-status"><span>Profile</span><strong>${escapeHtml(profile.sourceSha256.slice(0, 12))}…</strong></div>
-             <div class="dependency-status"><span>Held-out log loss · stock</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)} · ${roundTo(holdoutDiagnostics.logLossImprovement.relative * 100, 2)}% better</strong></div>
-             ${incumbentDiagnostics && incumbent ? `<div class="dependency-status"><span>Held-out log loss · prior profile</span><strong>${roundTo(incumbent.metrics.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)} · ${roundTo(incumbentDiagnostics.logLossImprovement.relative * 100, 2)}% better</strong></div>` : ""}
-             <div class="dependency-status"><span>Calibration · RMSE bins</span><strong>${roundTo(profile.evaluation.holdout.stock.rmseBins, 4)} → ${roundTo(profile.evaluation.holdout.personalized.rmseBins, 4)} · ${holdoutDiagnostics.calibration.status}</strong></div>
-             <div class="dependency-status"><span>Time-series CV</span><strong>LL ${roundTo(profile.evaluation.crossValidation.logLoss, 4)} · RMSE ${roundTo(profile.evaluation.crossValidation.rmseBins, 4)}</strong></div>`
-              : `<p class="helper">No validated personalized profile is staged. Stock FSRS-7 remains authoritative.</p>`;
-          const profileActions = running
-              ? ""
-              : personalization.active
-                  ? `<button class="mini-btn" type="button" data-action="deactivate-fsrs-profile">RETURN TO STOCK + REPROJECT</button>`
-                  : profile
-                      ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
-                      : "";
-          const localAction = running
-              ? `<button class="mini-btn" type="button" data-action="cancel-fsrs-optimization">CANCEL OPTIMIZATION</button>`
-              : `<button class="mini-btn" type="button" data-action="optimize-fsrs-locally" ${canOptimize ? "" : "disabled"}>${personalization.active ? "RE-OPTIMIZE + SWITCH IF BETTER" : profile ? "RE-OPTIMIZE LOCALLY" : "OPTIMIZE LOCALLY"}</button>`;
-          return `<section class="panel settings-card wide" id="fsrs-personalization-card"><h3>FSRS-7 personalization</h3>
-          <div class="dependency-status"><span>Weights</span><strong class="${statusClass}">${status}</strong></div>
-          <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards · ${summary.reliableDurations} timed · ${summary.unavailableDurations} untimed</strong></div>
-          <div class="dependency-status"><span>Local optimizer</span><strong class="${optimizer.available ? "ok" : ""}">${optimizer.available ? "AVAILABLE" : "HOSTED BUILD REQUIRED"}</strong></div>
-          <div class="optimizer-progress" data-fsrs-optimizer-progress ${running ? "" : "hidden"}><div><span data-fsrs-optimizer-progress-label>${escapeHtml(progressText)}</span></div><progress data-fsrs-optimizer-progress-bar max="${progressMax}" value="${progressValue}"></progress></div>
-          ${profileDetail}
-          <div class="settings-actions">${localAction}<button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn ${running ? "disabled" : ""}">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json" ${running ? "disabled" : ""}></label>${profileActions}</div>
-          <p class="helper">${escapeHtml(progressText)} Local optimization uses a dedicated Worker and the pinned FSRS-7 WASM binding; review evidence does not leave the browser. Optimizer duration is closed-book recall/verification time only; unreliable timing remains in recall history with unavailable cost rather than full-session time. The exact gate remains 64 historical training items, 64 later holdout items and 16 distinct holdout cards after conversion. From stock, a successful run is <strong>staged only</strong>. While personalized weights are active, optimization evaluates the candidate against both stock and the active profile on the same holdout; only a candidate that clears both gates replaces the active profile, using one atomic scheduler rebase.</p>
-        </section>`;
-      }
-      async refreshFsrsPersonalizationCard() {
-          const card = this.settingsContent.querySelector("#fsrs-personalization-card");
-          if (!card)
-              return;
-          const summary = await this.service.optimizerEvidenceSummary();
-          card.outerHTML = this.fsrsPersonalizationCard(this.service.getSettings(), summary);
-          this.applyReadOnlyState();
-      }
-      updateFsrsOptimizerProgress(progress) {
-          this.fsrsOptimizerProgress = progress;
-          const region = this.settingsContent.querySelector("[data-fsrs-optimizer-progress]");
-          const label = this.settingsContent.querySelector("[data-fsrs-optimizer-progress-label]");
-          const bar = this.settingsContent.querySelector("[data-fsrs-optimizer-progress-bar]");
-          if (region)
-              region.hidden = false;
-          if (label)
-              label.textContent = `${progress.stage} · ${progress.total > 0 ? `${progress.current}/${progress.total}` : "working"}`;
-          if (bar) {
-              bar.max = progress.total > 0 ? progress.total : 1;
-              bar.value = progress.total > 0 ? Math.max(0, Math.min(progress.total, progress.current)) : 0;
-          }
-      }
-      async renderSettings() {
-          const settings = this.service.getSettings();
-          const [profiles, optimizerEvidence] = await Promise.all([
-              this.service.profiles(),
-              this.service.optimizerEvidenceSummary(),
-          ]);
-          const planningReference = studyDayStart(new Date(), settings.studyDayBoundaryHour);
-          const schedulingPolicy = settings.fsrsScheduling.policy;
-          const fixedRetentionValue = schedulingPolicy.kind === "fixed-retention" ? schedulingPolicy.desiredRetention : 0.9;
-          const fsrsOk = fsrsRuntimeAvailable();
-          const storage = this.service.storageHealth();
-          const storageUsage = storage.usageRatio === undefined ? "Usage estimate unavailable" : `${roundTo(storage.usageRatio * 100, 1)}% of browser quota used`;
-          const persistenceLabel = storage.persistence === "granted" ? "Persistent storage granted" : storage.persistence === "available" ? "Persistent storage not guaranteed" : storage.persistence === "denied" ? "Persistent storage denied" : "Persistence API unavailable";
-          this.settingsContent.innerHTML = `
-          ${this.pageHead("SYSTEM CONTROL", "Settings", "Revision Director remains deterministic and local-first; AI can later advise without owning the record.")}
-          <form id="settings-form" class="settings-grid">
-            <section class="panel settings-card"><h3>Planning</h3><label>Default exam profile for new records<select name="activeProfileId" ${profiles.length ? "" : "disabled"}>${profiles.length ? profiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${profile.id === settings.activeProfileId ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("") : '<option value="">Create an exam profile first</option>'}</select></label><label>Daily revision capacity<input name="dailyCapacityMinutes" type="number" min="5" max="600" value="${settings.dailyCapacityMinutes}"></label><label>Study-day boundary hour<input name="studyDayBoundaryHour" type="number" min="0" max="12" value="${settings.studyDayBoundaryHour}"></label></section>
-            <section class="panel settings-card"><h3>Memory scheduling</h3><label>Scheduling policy<select name="memorySchedulingPolicy"><option value="fixed-retention" ${schedulingPolicy.kind === "fixed-retention" ? "selected" : ""}>Fixed retention · 90% default</option><option value="cost-adr" ${schedulingPolicy.kind === "cost-adr" ? "selected" : ""}>Adaptive workload · Cost-ADR · optional preset</option></select></label><label>Fixed-retention target · fixed mode only<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${fixedRetentionValue}"></label><div class="dependency-status"><span>Active policy</span><strong>${schedulingPolicy.kind === "cost-adr" ? `Cost-ADR · cost weight ${FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT}` : `Fixed · ${roundTo(schedulingPolicy.desiredRetention * 100, 0)}%`}</strong></div><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">The outcome-sensitive FSRS-R2 benchmark selected fixed 90% for new installations. Cost-ADR remains available only as the bounded 1024 preset for explicit comparison; arbitrary Cost-ADR tuning remains unavailable. Existing saved policy choices are preserved until you change them. Switching policy performs an atomic FSRS replay/rebase.</p></section>
-            <section class="panel settings-card"><h3>Persistent difficulty</h3><label>Escalate to remediation after established recall failures<input name="difficultyRemediationLapses" type="number" min="2" max="99" value="${settings.memoryDifficultyPolicy.remediationLapses}"></label><label>Persistent difficulty after established recall failures<input name="difficultyPersistentLapses" type="number" min="3" max="100" value="${settings.memoryDifficultyPolicy.persistentDifficultyLapses}"></label><label class="check-option strong-check"><input name="difficultyAutomaticHold" type="checkbox" ${settings.memoryDifficultyPolicy.automaticHold.enabled ? "checked" : ""}>Hold persistent-difficulty memory out of the normal queue after successful remediation</label><label>Automatic-hold failure threshold<input name="difficultyAutomaticHoldLapses" type="number" min="${settings.memoryDifficultyPolicy.persistentDifficultyLapses + 1}" max="1000" value="${settings.memoryDifficultyPolicy.automaticHold.lapseThreshold}"></label><p class="helper">Difficulty is derived from canonical memory history: failures before the first successful retrieval are early-learning failures; only later Again outcomes count as established recall failures. The raw FSRS lapse counter remains scheduler state but does not independently decide host remediation or queue holds.</p></section>
-            ${this.fsrsPersonalizationCard(settings, optimizerEvidence)}
-            <section class="panel settings-card"><h3>Add exam profile</h3><label>Name<input id="new-profile-name" placeholder="IFoS 2027, USMLE Step 1..."></label><label>Exam date<input id="new-profile-date" type="date"></label><button class="btn" type="button" data-action="add-profile">ADD PROFILE</button></section>
-            <section class="panel settings-card"><h3>Backup and recovery</h3><button class="btn" type="button" data-action="export-backup">EXPORT BACKUP</button><label class="btn file-btn">IMPORT BACKUP<input id="import-backup" type="file" accept=".rdbackup,application/x-revision-director-backup,application/gzip,application/octet-stream"></label><p class="helper">Export remains one click. Import verifies and previews the file first, then requires a current-state safety copy and explicit restore confirmation.</p></section>
-            ${this.pluginSettingsCard()}
-            <section class="panel settings-card"><h3>Storage health</h3><div class="dependency-status"><span>IndexedDB</span><strong class="${storage.indexedDbAvailable ? "ok" : "bad"}">${storage.indexedDbAvailable ? "Available" : "Unavailable"}</strong></div><div class="dependency-status"><span>Persistence</span><strong class="${storage.persistence === "granted" ? "ok" : ""}">${escapeHtml(persistenceLabel)}</strong></div><p class="helper">${escapeHtml(storageUsage)} · ${storage.diagnosticCount} bounded diagnostic record${storage.diagnosticCount === 1 ? "" : "s"}.</p><button class="mini-btn" type="button" data-action="refresh-storage">REFRESH STORAGE STATUS</button></section>
-            <section class="panel settings-card wide"><h3>Exam horizons</h3><p class="helper">Proximity affects cross-exam priority and how far the planner may bring an obligation forward. Profiles whose examination date has passed are automatically excluded until the date is updated for a new cycle.</p><div class="profile-planner-list">${profiles.filter((profile) => profile.status !== "archived").map((profile) => { const passed = Boolean(examDateTime(profile)) && daysToExamination(profile, planningReference) < 0; return `<div class="profile-planner-row" data-profile-editor="${escapeHtml(profile.id)}"><label>Profile<input data-profile-name value="${escapeHtml(profile.name)}"></label><label>Examination date<input data-profile-date type="date" value="${escapeHtml(profile.examDate)}"></label><label>Planning status<select data-profile-status><option value="active" ${profile.status === "active" ? "selected" : ""}>Active</option><option value="suspended" ${profile.status === "suspended" ? "selected" : ""}>Paused</option></select><small>${passed ? "Exam passed — excluded automatically" : profile.status === "suspended" ? "Paused manually" : "Included in planning"}</small></label><button class="mini-btn" type="button" data-action="save-profile" data-id="${escapeHtml(profile.id)}">SAVE</button></div>`; }).join("")}</div></section>
-            <section class="panel settings-card wide"><h3>Policy router</h3><div class="engine-list"><div><dt>Memory recall</dt><dd>ts-fsrs 6.0.0 · FSRS-7</dd></div><div><dt>Concept reconstruction</dt><dd>Mastery policy v1</dd></div><div><dt>Application practice</dt><dd>Application policy v1</dd></div><div><dt>Performance practice</dt><dd>Performance policy v1</dd></div><div><dt>Relearn</dt><dd>Relearning policy v1</dd></div><div><dt>Freshness review</dt><dd>Freshness horizon policy v1</dd></div></div></section>
-            <section class="panel settings-card wide"><h3>Retrieval workflows</h3><div class="engine-list"><div><dt>Recall</dt><dd>Closed-book response + checkpoints + cueing</dd></div><div><dt>Reconstruction</dt><dd>Structure + relationships + checkpoints</dd></div><div><dt>Questions / application</dt><dd>Attempted, correct, partial, novel and cueing</dd></div><div><dt>Diagram practice</dt><dd>Canvas or paper + labels, form and process</dd></div><div><dt>Answer writing</dt><dd>Demand, structure, content, evidence and time</dd></div><div><dt>Relearning</dt><dd>Diagnose → repair → closed-book verification</dd></div></div></section>
-            <button class="btn primary settings-save" type="submit">SAVE SETTINGS</button>
-          </form>`;
-          this.applyReadOnlyState();
+          this.host.toast(askBeforeResume ? "Unfinished retrieval session recovered." : "Canonical retrieval state hydrated after ownership transfer.");
       }
       async renderChunkReview(chunkId) {
           const chunk = await this.service.chunk(chunkId);
@@ -15051,13 +14503,10 @@ exports.withFuzzing = withFuzzing;
           this.restoreReviewDraft(`chunk:${chunkId}`);
           this.startTimer();
       }
-      async renderReview() {
+      async render() {
           if (this.activeReviewIds.length === 0 || this.activeReviewIndex >= this.activeReviewIds.length) {
               this.stopTimer();
-              const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
-              this.reviewContent.innerHTML = `
-            ${this.pageHead("ACTIVE RETRIEVAL", "Review", "Each workflow requires an attempt, comparison, modality-specific evidence and a confirmed outcome.")}
-            ${plan.selected.length ? `<div class="queue-list planner-list">${plan.selected.map((item, index) => this.plannerRow(item, index + 1, "selected")).join("")}</div>` : this.emptyState("No active review session", "Start the daily plan from Today or select a unit from the Library.")}`;
+              await this.host.renderIdleReview();
               return;
           }
           const obligationId = this.activeReviewTarget();
@@ -15073,7 +14522,7 @@ exports.withFuzzing = withFuzzing;
           }
           catch {
               this.activeReviewIndex += 1;
-              await this.renderReview();
+              await this.render();
               return;
           }
           validateWorkflowSpec(obligation.workflow, obligation.type);
@@ -15400,7 +14849,7 @@ exports.withFuzzing = withFuzzing;
               }
           }
       }
-      captureReviewDraft() {
+      captureDraft() {
           const targetId = this.activeReviewIds[this.activeReviewIndex];
           if (!targetId || !this.reviewContent.querySelector(".review-card"))
               return;
@@ -15448,7 +14897,7 @@ exports.withFuzzing = withFuzzing;
               const rect = canvas.getBoundingClientRect();
               return { x: clamp((event.clientX - rect.left) / rect.width, 0, 1), y: clamp((event.clientY - rect.top) / rect.height, 0, 1) };
           };
-          canvas.addEventListener("pointerdown", (event) => { if (!this.requireMutable("draw this diagram"))
+          canvas.addEventListener("pointerdown", (event) => { if (!this.host.requireMutable("draw this diagram"))
               return; canvas.setPointerCapture(event.pointerId); this.activeDiagramStroke = [point(event)]; this.diagramStrokes.push(this.activeDiagramStroke); this.redrawDiagram(canvas); });
           canvas.addEventListener("pointermove", (event) => { if (!this.ownership.canMutate() || !this.activeDiagramStroke)
               return; this.activeDiagramStroke.push(point(event)); this.redrawDiagram(canvas); });
@@ -15502,9 +14951,905 @@ exports.withFuzzing = withFuzzing;
               window.clearInterval(this.timerHandle);
           this.timerHandle = 0;
       }
+      async startObligationSession(obligationId) {
+          const obligation = await this.service.obligation(obligationId);
+          const chunking = obligation.chunking;
+          if (chunking?.status === "chunking") {
+              const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending");
+              if (pending) {
+                  await this.startReviewSession([`chunk:${pending.id}`]);
+                  return;
+              }
+          }
+          await this.startReviewSession([obligation.id]);
+      }
+      async startDueSession() {
+          assert(this.host.requireMutable("start the daily review"), "This tab is read-only.");
+          const plan = await this.service.dailyPlan(new Date(), false, true);
+          await this.startReviewSession(plan.selected.map((item) => item.chunk ? `chunk:${item.chunk.id}` : item.joined.obligation.id));
+      }
+      async startUnitSession(unitId) {
+          const obligations = (await this.service.obligationsForUnit(unitId)).filter((item) => item.status === "active");
+          assert(obligations.length > 0, "This unit has no active revision obligations.");
+          const targets = [];
+          for (const obligation of obligations) {
+              const chunking = obligation.chunking;
+              if (chunking?.status === "chunking") {
+                  const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending");
+                  if (pending) {
+                      targets.push(`chunk:${pending.id}`);
+                      continue;
+                  }
+              }
+              targets.push(obligation.id);
+          }
+          await this.startReviewSession(targets);
+      }
+      async startReviewSession(ids) {
+          if (!this.host.requireMutable("start a retrieval session"))
+              return;
+          this.activeReviewIds = ids.filter(Boolean);
+          assert(this.activeReviewIds.length > 0, "There is nothing to review.");
+          this.activeReviewIndex = 0;
+          const firstTarget = this.activeReviewTarget(0);
+          this.reviewPhase = await this.initialPhaseForTarget(firstTarget);
+          this.reviewDrafts.clear();
+          this.diagramStrokes = [];
+          this.phaseTime = PhaseTimeRuntime.create(this.reviewPhase, await this.initialSourceVisibleForTarget(firstTarget, this.reviewPhase));
+          this.attemptElapsedMs = 0;
+          this.activeSessionRevision = 0;
+          this.commitInFlight = false;
+          await this.service.markReviewTargetsStarted([firstTarget]);
+          const session = this.buildActiveRetrievalSession();
+          if (session)
+              await this.activePersistence.flush(session);
+          await this.host.openPane("review");
+      }
+      async completeActiveChunk() {
+          if (!this.host.requireMutable("complete a retrieval chunk"))
+              return;
+          if (this.commitInFlight)
+              return;
+          this.commitInFlight = true;
+          try {
+              const target = this.activeReviewIds[this.activeReviewIndex];
+              assert(target && target.startsWith("chunk:"), "Split-session target is missing.");
+              const chunkId = target.slice(6);
+              assert(this.phaseTime && this.phaseTime.status() === "running", "Resume and classify interruptions before completing this chunk.");
+              const timing = this.timingSummary();
+              const note = this.reviewContent.querySelector("#chunk-note")?.value ?? "";
+              const commitToken = uid("commit");
+              const committing = this.buildActiveRetrievalSession("committing", commitToken);
+              assert(committing, "Active retrieval state is missing.");
+              const post = await this.postCommitSession(commitToken);
+              try {
+                  await this.activePersistence.flush(committing);
+                  const guard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: target, commitToken };
+                  await this.service.completeChunk(chunkId, timing, note, new Date(), guard, post);
+                  await this.activePersistence.acceptCommittedTransition(post);
+                  this.activeSessionRevision = post.revision;
+                  this.host.toast("Chunk completed. Parent scheduling remains unchanged until final synthesis.");
+                  this.reviewDrafts.delete(target);
+                  this.activeReviewIndex += 1;
+                  this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
+                  this.attemptElapsedMs = 0;
+                  this.diagramStrokes = [];
+                  if (this.activeReviewIndex >= this.activeReviewIds.length) {
+                      await this.endReviewSession(false);
+                      await this.host.openPane("today");
+                      return;
+                  }
+                  this.reviewPhase = post.phase;
+                  await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
+                  await this.host.invalidateAfterCommit();
+              }
+              catch (error) {
+                  const resumed = this.buildActiveRetrievalSession("active");
+                  if (resumed)
+                      await this.activePersistence.flush(resumed).catch(() => undefined);
+                  throw error;
+              }
+          }
+          finally {
+              this.commitInFlight = false;
+          }
+      }
+      async endReviewSession(clearPersistence = true) {
+          this.stopTimer();
+          this.activeReviewIds = [];
+          this.activeReviewIndex = 0;
+          this.reviewPhase = "attempt";
+          this.reviewDrafts.clear();
+          this.diagramStrokes = [];
+          this.phaseTime = undefined;
+          this.hideGapOverlay();
+          this.attemptElapsedMs = 0;
+          this.activeSessionRevision = 0;
+          this.commitInFlight = false;
+          if (clearPersistence)
+              await this.activePersistence.clear();
+      }
+      async commitRating(rating) {
+          if (!this.host.requireMutable("commit review evidence"))
+              return;
+          if (this.commitInFlight)
+              return;
+          this.commitInFlight = true;
+          this.reviewContent.querySelectorAll('[data-action="rate"]').forEach((button) => { button.disabled = true; });
+          try {
+              const obligationId = this.activeReviewIds[this.activeReviewIndex];
+              assert(obligationId, "Review obligation is missing.");
+              const obligation = await this.service.obligation(obligationId);
+              const evidence = this.collectEvidence(rating, obligation);
+              const suggestion = suggestRating(obligation.type, evidence);
+              const effectiveRating = obligation.type === "relearn"
+                  ? correctiveMemoryRating(rating, evidence)
+                  : rating;
+              if (effectiveRating !== rating) {
+                  const proceed = window.confirm(`Closed-book verification does not support ${ratingName(rating)}. It will be recorded as ${ratingName(effectiveRating)} and corrective work will remain active. Continue?`);
+                  if (!proceed)
+                      return;
+              }
+              else if (Math.abs(rating - suggestion) >= 2) {
+                  const proceed = window.confirm(`Objective evidence suggests ${ratingName(suggestion)}, but you selected ${ratingName(rating)}. Keep your rating?`);
+                  if (!proceed)
+                      return;
+              }
+              const committedEvidence = effectiveRating === rating ? evidence : { ...evidence, confirmedRating: effectiveRating };
+              const commitToken = uid("commit");
+              const committing = this.buildActiveRetrievalSession("committing", commitToken);
+              assert(committing, "Active retrieval state is missing.");
+              const post = await this.postCommitSession(commitToken);
+              try {
+                  await this.activePersistence.flush(committing);
+                  const guard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: obligationId, commitToken };
+                  await this.service.recordEvidence(obligationId, committedEvidence, new Date(), guard, post);
+                  await this.activePersistence.acceptCommittedTransition(post);
+                  this.activeSessionRevision = post.revision;
+                  this.host.toast(`Recorded ${ratingName(effectiveRating)}. Next obligation scheduled.`);
+                  this.reviewDrafts.delete(obligationId);
+                  this.activeReviewIndex += 1;
+                  this.diagramStrokes = [];
+                  this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
+                  this.attemptElapsedMs = 0;
+                  if (this.activeReviewIndex >= this.activeReviewIds.length) {
+                      await this.endReviewSession(false);
+                      await this.host.openPane("today");
+                      return;
+                  }
+                  this.reviewPhase = post.phase;
+                  await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
+                  await this.host.invalidateAfterCommit();
+              }
+              catch (error) {
+                  const resumed = this.buildActiveRetrievalSession("active");
+                  if (resumed)
+                      await this.activePersistence.flush(resumed).catch(() => undefined);
+                  throw error;
+              }
+          }
+          finally {
+              this.commitInFlight = false;
+              this.reviewContent.querySelectorAll('[data-action="rate"]').forEach((button) => { button.disabled = false; });
+          }
+      }
+      async flushForBackup() {
+          assert(!this.commitInFlight, "A review Evidence commit is still in progress.");
+          if (!this.ownership.canMutate())
+              return;
+          if (this.phaseTime)
+              this.reconcilePhaseTime("snapshot");
+          const session = this.buildActiveRetrievalSession();
+          if (session) {
+              assert(session.status === "active", "A committing retrieval cannot be backed up.");
+              this.activePersistence.forceEmergency(session);
+              await this.activePersistence.flush(session);
+          }
+      }
+      handleKeyboard(event) {
+          if (!this.ownership.canMutate())
+              return;
+          if (this.activeReviewIds.length === 0)
+              return;
+          if (this.activeReviewIds[this.activeReviewIndex]?.startsWith("chunk:"))
+              return;
+          const target = event.target instanceof HTMLElement ? event.target : null;
+          if (target?.matches("input,textarea,select"))
+              return;
+          if (this.reviewPhase === "attempt" && (event.key === " " || event.key === "Enter")) {
+              const reveal = this.reviewContent.querySelector('[data-action="reveal"]');
+              if (!reveal)
+                  return;
+              event.preventDefault();
+              reveal.click();
+              return;
+          }
+          if (this.reviewPhase === "compare" && ["1", "2", "3", "4"].includes(event.key)) {
+              event.preventDefault();
+              void this.commitRating(validateRating(Number(event.key)));
+          }
+      }
+  }
+
+  function requiredElement(selector, constructor) {
+      const element = document.querySelector(selector);
+      assert(element instanceof constructor, `Missing or invalid required element: ${selector}`);
+      return element;
+  }
+  function downloadBlob(filename, content, type) {
+      const part = content instanceof Uint8Array ? ownedArrayBuffer(content) : content;
+      const blob = new Blob([part], { type });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function formatFileSize(bytes) {
+      if (bytes < 1024)
+          return `${bytes} B`;
+      if (bytes < 1024 * 1024)
+          return `${roundTo(bytes / 1024, 1)} KiB`;
+      return `${roundTo(bytes / (1024 * 1024), 1)} MiB`;
+  }
+  class UIController {
+      service;
+      ownership;
+      backupController;
+      extensions;
+      currentPane = "today";
+      historyTab = "evidence";
+      libraryFilter = "";
+      ownershipSnapshot;
+      restoreCandidateId = "";
+      restoreSafetyProofId = "";
+      fsrsOptimizerRun;
+      fsrsOptimizerProgress;
+      todayContent = requiredElement("#today-content", HTMLDivElement);
+      reviewContent = requiredElement("#review-content", HTMLDivElement);
+      libraryContent = requiredElement("#library-content", HTMLDivElement);
+      studyContent = requiredElement("#study-content", HTMLDivElement);
+      historyContent = requiredElement("#history-content", HTMLDivElement);
+      settingsContent = requiredElement("#settings-content", HTMLDivElement);
+      toastElement = requiredElement("#toast", HTMLDivElement);
+      gapOverlay = requiredElement("#gap-overlay", HTMLDivElement);
+      gapMeta = requiredElement("#gap-meta", HTMLDivElement);
+      gapSplit = requiredElement("#gap-split", HTMLDivElement);
+      gapFocusMinutes = requiredElement("#gap-focus-minutes", HTMLInputElement);
+      unitDialog = requiredElement("#unit-dialog", HTMLDialogElement);
+      studyDialog = requiredElement("#study-dialog", HTMLDialogElement);
+      obligationDialog = requiredElement("#obligation-dialog", HTMLDialogElement);
+      restoreDialog = requiredElement("#restore-dialog", HTMLDialogElement);
+      restorePreview = requiredElement("#restore-preview", HTMLDivElement);
+      unitForm = requiredElement("#unit-form", HTMLFormElement);
+      studyForm = requiredElement("#study-form", HTMLFormElement);
+      obligationForm = requiredElement("#obligation-form", HTMLFormElement);
+      ownershipBanner = requiredElement("#ownership-banner", HTMLDivElement);
+      ownershipTitle = requiredElement("#ownership-title", HTMLElement);
+      ownershipMessage = requiredElement("#ownership-message", HTMLElement);
+      takeControlButton = requiredElement("#take-review-control", HTMLButtonElement);
+      storageCapacityBanner = requiredElement("#storage-capacity-banner", HTMLDivElement);
+      appShell = requiredElement(".app-shell", HTMLElement);
+      primaryNav = requiredElement(".nav", HTMLElement);
+      renderCoordinator;
+      tabRegistry;
+      dialogFocus;
+      gapFocus;
+      activeRetrieval;
+      constructor(service, activePersistence, ownership, backupController, extensions) {
+          this.service = service;
+          this.ownership = ownership;
+          this.backupController = backupController;
+          this.extensions = extensions;
+          this.ownershipSnapshot = ownership.snapshot();
+          this.renderCoordinator = new RenderCoordinator(() => captureDocumentFocus(), (snapshot) => {
+              this.applyReadOnlyState();
+              if (this.gapFocus.isOpen())
+                  this.gapFocus.ensureFocus();
+              else if (!document.querySelector("dialog[open]"))
+                  restoreDocumentFocus(snapshot);
+          });
+          this.tabRegistry = new AriaTabRegistry(this.primaryNav, ["today", "review", "library", "study", "history", "settings"], (pane) => this.openPane(pane));
+          this.dialogFocus = new NativeDialogFocusManager([this.unitDialog, this.studyDialog, this.obligationDialog, this.restoreDialog]);
+          this.gapFocus = new OverlayFocusManager(this.gapOverlay, [this.appShell, this.ownershipBanner, this.storageCapacityBanner]);
+          this.activeRetrieval = new ActiveRetrievalWorkspace(this.service, activePersistence, this.ownership, this.reviewContent, this.gapMeta, this.gapSplit, this.gapFocusMinutes, this.gapFocus, {
+              requireMutable: (reason) => this.requireMutable(reason),
+              openPane: (pane) => this.openPane(pane),
+              renderIdleReview: () => this.renderIdleReview(),
+              invalidateAfterCommit: () => this.renderCoordinator.invalidateAndWait("review", "sidebar", "ownership", "storage"),
+              toast: (message, error) => this.toast(message, error),
+          });
+          this.registerRenderDomains();
+      }
+      async start() {
+          this.bindStaticEvents();
+          this.tabRegistry.initialize(this.currentPane);
+          this.startClock();
+          await this.renderAll();
+          await this.ownership.start({
+              flush: () => this.activeRetrieval.flushForOwnershipRelease(),
+              hydrate: (reason) => this.hydrateCanonicalState(reason),
+              changed: (snapshot) => this.handleOwnershipChanged(snapshot),
+          });
+          this.handleOwnershipChanged(this.ownership.snapshot());
+      }
+      registerRenderDomains() {
+          this.renderCoordinator.register("today", () => this.renderToday());
+          this.renderCoordinator.register("review", () => this.activeRetrieval.render());
+          this.renderCoordinator.register("library", () => this.renderLibrary());
+          this.renderCoordinator.register("study", () => this.renderStudy());
+          this.renderCoordinator.register("history", () => this.renderHistory());
+          this.renderCoordinator.register("settings", () => this.renderSettings());
+          this.renderCoordinator.register("sidebar", () => this.renderSidebar());
+          this.renderCoordinator.register("ownership", () => this.applyReadOnlyState());
+          this.renderCoordinator.register("storage", () => this.renderStorageCapacity());
+      }
+      bindStaticEvents() {
+          document.addEventListener("click", (event) => void this.handleDelegatedClick(event));
+          document.addEventListener("submit", (event) => void this.handleDelegatedSubmit(event));
+          document.addEventListener("input", (event) => void this.handleDelegatedInput(event));
+          document.addEventListener("change", (event) => void this.handleDelegatedChange(event));
+          document.addEventListener("keydown", (event) => this.handleDelegatedKeydown(event));
+          document.addEventListener("visibilitychange", () => {
+              if (document.visibilityState === "hidden") {
+                  this.activeRetrieval.forceSaveForLifecycle("visibility");
+                  this.ownership.noteVisibilityHidden();
+                  return;
+              }
+              void this.handleLifecycleReturn("visibility");
+          });
+          window.addEventListener("focus", () => void this.handleLifecycleReturn("focus"));
+          window.addEventListener("pageshow", () => void this.handleLifecycleReturn("pageshow"));
+          window.addEventListener("pagehide", () => void this.handlePageExit());
+          window.addEventListener("beforeunload", () => void this.handlePageExit());
+          window.addEventListener(REVISION_DIRECTOR_PLUGIN_STATUS_EVENT, () => {
+              if (this.currentPane === "settings")
+                  this.renderCoordinator.invalidate("settings", "ownership");
+          });
+      }
+      async handleDelegatedClick(event) {
+          const target = event.target instanceof Element ? event.target.closest("button,[data-action],[data-pane],[data-filter],[data-history-tab],[data-close-dialog],[data-gap-action]") : null;
+          if (!target || (target instanceof HTMLButtonElement && target.disabled))
+              return;
+          const pane = literalChoiceOrUndefined(target.dataset["pane"], ["today", "review", "library", "study", "history", "settings"]);
+          if (pane) {
+              await this.openPane(pane);
+              return;
+          }
+          if (target.id === "quick-add-unit") {
+              if (this.requireMutable("add a knowledge unit"))
+                  await this.openUnitDialog();
+              return;
+          }
+          if (target.id === "quick-log-study") {
+              if (this.requireMutable("log a Study Event"))
+                  await this.openStudyDialog();
+              return;
+          }
+          if (target.id === "take-review-control") {
+              await this.takeControl();
+              return;
+          }
+          const closeId = target.dataset["closeDialog"];
+          if (closeId) {
+              this.dialogFocus.close(requiredElement(`#${closeId}`, HTMLDialogElement));
+              return;
+          }
+          const gapAction = target.dataset["gapAction"];
+          if (gapAction) {
+              await this.activeRetrieval.handleGapAction(gapAction);
+              return;
+          }
+          if (target.hasAttribute("data-filter")) {
+              this.libraryFilter = target.dataset["filter"] ?? "";
+              await this.renderCoordinator.invalidateAndWait("library", "ownership");
+              return;
+          }
+          const historyTab = target.dataset["historyTab"];
+          if (historyTab === "evidence" || historyTab === "study") {
+              this.historyTab = historyTab;
+              await this.renderCoordinator.invalidateAndWait("history", "ownership");
+              return;
+          }
+          if (target.dataset["action"])
+              await this.handleAction(target);
+      }
+      async handleDelegatedSubmit(event) {
+          const form = event.target;
+          if (!(form instanceof HTMLFormElement))
+              return;
+          const formId = form.getAttribute("id") ?? "";
+          if (!["unit-form", "study-form", "obligation-form", "settings-form"].includes(formId))
+              return;
+          event.preventDefault();
+          if (formId === "unit-form")
+              await this.submitUnit(event);
+          else if (formId === "study-form")
+              await this.submitStudy(event);
+          else if (formId === "obligation-form")
+              await this.submitObligation(event);
+          else
+              await this.submitSettings(event);
+      }
+      async handleDelegatedInput(event) {
+          const target = event.target;
+          if (target instanceof HTMLInputElement && target.id === "library-search") {
+              this.libraryFilter = target.value;
+              this.renderCoordinator.invalidateDebounced("library-search", 160, "library", "ownership");
+              return;
+          }
+          await this.activeRetrieval.updateInputs(target);
+      }
+      async handleDelegatedChange(event) {
+          const target = event.target;
+          if (target instanceof HTMLInputElement && target.id === "import-backup") {
+              await this.importBackup(event);
+              return;
+          }
+          if (target instanceof HTMLInputElement && target.id === "import-fsrs-profile") {
+              await this.importFsrsOptimizerProfile(target);
+              return;
+          }
+          if (target instanceof HTMLInputElement && target.id === "load-plugin-files") {
+              await this.loadPluginFiles(target);
+              return;
+          }
+          if (target instanceof HTMLInputElement && (target.id === "restore-safety-saved" || target.id === "restore-replace-confirm" || target.name === "restore-active-treatment")) {
+              if (target.id === "restore-safety-saved" && target.checked && this.restoreSafetyProofId)
+                  this.backupController.acknowledgeSafetyCopy(this.restoreSafetyProofId);
+              this.updateRestoreActionState();
+              return;
+          }
+          if (target instanceof HTMLSelectElement) {
+              const form = target.closest("#unit-form,#obligation-form");
+              if (form) {
+                  const typeName = form.getAttribute("id") === "unit-form" ? "obligationType" : "type";
+                  const typeSelect = formSelect(form, typeName);
+                  if (target === typeSelect) {
+                      applyDefaultWorkflowToForm(form, literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type"));
+                      return;
+                  }
+                  if (target === formSelect(form, "workflowKind")) {
+                      const type = literalChoice(typeSelect.value, OBLIGATION_TYPES, "Obligation type");
+                      const protocol = formTextarea(form, "protocol").value;
+                      const success = formTextarea(form, "successCriteria").value;
+                      const selected = literalChoice(target.value, RETRIEVAL_WORKFLOWS, "Retrieval workflow");
+                      const spec = defaultWorkflowSpec(type, protocol, success);
+                      spec.kind = selected;
+                      spec.responseMedium = selected === "answer-writing" ? "paper" : "in-app";
+                      if (selected === "reconstruction")
+                          spec.reconstructionShape = "outline";
+                      if (selected === "questions") {
+                          spec.targetCount = 10;
+                          spec.questionSetRef = "External question set";
+                      }
+                      if (selected === "diagram")
+                          spec.diagramSurface = "canvas";
+                      if (selected === "answer-writing") {
+                          spec.answerMode = "full-answer";
+                          spec.timeLimitMinutes = 10;
+                          spec.wordLimit = 150;
+                      }
+                      populateWorkflowForm(form, spec, type);
+                      return;
+                  }
+              }
+          }
+          await this.activeRetrieval.updateInputs(target);
+      }
+      handleDelegatedKeydown(event) {
+          if (this.gapFocus.handleKeydown(event))
+              return;
+          if (this.tabRegistry.handleKeydown(event))
+              return;
+          if (event.target === this.gapFocusMinutes && event.key === "Enter") {
+              event.preventDefault();
+              void this.activeRetrieval.handleGapAction("apply-split");
+              return;
+          }
+          if (this.currentPane === "review")
+              this.activeRetrieval.handleKeyboard(event);
+      }
+      requireMutable(reason) {
+          if (this.ownership.canMutate())
+              return true;
+          this.handleOwnershipChanged(this.ownership.snapshot());
+          this.toast(this.ownershipSnapshot.state === "faulted"
+              ? `Review control is unavailable because the ownership lease failed. Browser storage must recover before you can ${reason}.`
+              : `This tab is read-only. Take control here to ${reason}.`, true);
+          return false;
+      }
+      async takeControl() {
+          this.takeControlButton.disabled = true;
+          try {
+              const acquired = await this.ownership.takeControl();
+              if (!acquired)
+                  this.toast("Review control could not be acquired.", true);
+          }
+          finally {
+              this.takeControlButton.disabled = false;
+          }
+      }
+      handleOwnershipChanged(snapshot) {
+          const wasPrimary = this.ownershipSnapshot.canMutate;
+          this.ownershipSnapshot = snapshot;
+          if (wasPrimary && !snapshot.canMutate) {
+              this.activeRetrieval.stopForOwnershipLoss();
+              this.fsrsOptimizerRun?.cancel();
+          }
+          const primary = snapshot.canMutate;
+          this.ownershipBanner.hidden = primary;
+          this.ownershipBanner.classList.toggle("faulted", snapshot.state === "faulted");
+          this.takeControlButton.hidden = snapshot.state === "hydrating" || snapshot.state === "acquiring" || snapshot.state === "releasing";
+          this.ownershipTitle.textContent = snapshot.state === "faulted" ? "Review control unavailable" : snapshot.state === "hydrating" ? "Reloading canonical state" : snapshot.state === "acquiring" || snapshot.state === "releasing" ? "Review control changing" : "Read-only tab";
+          this.ownershipMessage.textContent = snapshot.state === "faulted"
+              ? snapshot.lastError ?? "The ownership lease could not be safely stored. Browsing and export remain available."
+              : snapshot.state === "hydrating"
+                  ? "The latest IndexedDB and emergency copies are being reconciled before mutation is enabled."
+                  : snapshot.state === "acquiring" || snapshot.state === "releasing"
+                      ? "A safe flush and ownership handoff is in progress."
+                      : "Another tab owns all Revision Director mutations. You may browse and export here.";
+          if (!wasPrimary && snapshot.canMutate)
+              void this.renderAll();
+          else
+              this.renderCoordinator.invalidate("ownership", "storage");
+      }
+      applyReadOnlyState() {
+          const primary = this.ownership.canMutate();
+          const controls = document.querySelectorAll("input,textarea,select,button");
+          controls.forEach((control) => {
+              const action = control instanceof HTMLElement ? control.dataset["action"] : undefined;
+              const safe = control === this.takeControlButton
+                  || control.matches("[data-pane],[data-history-tab],[data-close-dialog]")
+                  || action === "export-backup"
+                  || action === "cancel-restore"
+                  || control.id === "library-search";
+              if (!primary && !safe) {
+                  if (!control.disabled)
+                      control.dataset["ownershipDisabled"] = "1";
+                  control.disabled = true;
+              }
+              else if (primary && control.dataset["ownershipDisabled"] === "1") {
+                  control.disabled = false;
+                  delete control.dataset["ownershipDisabled"];
+              }
+          });
+          const canvas = this.reviewContent.querySelector("#diagram-canvas");
+          if (canvas) {
+              canvas.style.pointerEvents = primary ? "auto" : "none";
+              canvas.setAttribute("aria-disabled", String(!primary));
+          }
+      }
+      renderStorageCapacity() {
+          const storage = this.service.storageHealth();
+          if (storage.level === "healthy") {
+              this.storageCapacityBanner.hidden = true;
+              this.storageCapacityBanner.textContent = "";
+              return;
+          }
+          const ratio = storage.usageRatio === undefined ? "" : ` Storage usage is ${Math.round(storage.usageRatio * 100)}%.`;
+          const persistence = storage.persistence === "granted" ? "" : ` Persistent storage: ${storage.persistence}.`;
+          this.storageCapacityBanner.textContent = `${storage.level === "critical" ? "Storage capacity is critical." : "Storage needs attention."}${ratio}${persistence}${storage.lastError ? ` ${storage.lastError}` : ""}`;
+          this.storageCapacityBanner.hidden = false;
+      }
+      async handleLifecycleReturn(source) {
+          await this.ownership.evaluate("reacquire");
+          await this.service.refreshStorageHealth(false).catch(() => this.service.storageHealth());
+          if (this.ownership.canMutate())
+              this.activeRetrieval.reconcileAndPersist(source);
+          await this.renderCoordinator.invalidateAndWait("storage", "ownership");
+      }
+      async handlePageExit() {
+          this.fsrsOptimizerRun?.cancel();
+          this.activeRetrieval.forceSaveForLifecycle("snapshot");
+          await this.ownership.releaseForExit();
+      }
+      async hydrateCanonicalState(reason) {
+          this.activeRetrieval.resetLocalState();
+          await this.service.initialize();
+          await this.renderAll();
+          await this.activeRetrieval.recoverUnfinishedSession(reason === "startup");
+          await this.renderCoordinator.invalidateAndWait("storage", "ownership");
+      }
+      startClock() {
+          const clock = requiredElement("#clock", HTMLDivElement);
+          const update = () => { clock.textContent = new Date().toLocaleTimeString("en-IN", { hour12: false }); };
+          update();
+          window.setInterval(update, 1000);
+      }
+      async openPane(pane) {
+          if (this.currentPane === "review" && pane !== "review")
+              this.activeRetrieval.captureDraft();
+          this.currentPane = pane;
+          this.tabRegistry.activate(pane);
+          await this.renderPane(pane);
+      }
+      async renderAll() {
+          await this.renderCoordinator.invalidateAndWait("today", "review", "library", "study", "history", "settings", "sidebar", "ownership", "storage");
+      }
+      async renderPane(pane) {
+          await this.renderCoordinator.invalidateAndWait(pane, "sidebar", "ownership", "storage");
+      }
+      async renderSidebar() {
+          const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
+          const units = (await this.service.units()).filter((unit) => unit.status === "active");
+          requiredElement("#sb-due", HTMLElement).textContent = String(plan.selected.length);
+          requiredElement("#sb-units", HTMLElement).textContent = String(units.length);
+          requiredElement("#sb-load", HTMLElement).textContent = `${plan.plannedMinutes}m`;
+      }
+      pageHead(eyebrow, title, description, actions = "") {
+          return `<header class="page-head"><div><div class="eyebrow">${escapeHtml(eyebrow)}</div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p></div><div class="actions">${actions}</div></header>`;
+      }
+      async renderToday() {
+          const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
+          const capacityDifference = plan.capacityMinutes - plan.plannedMinutes;
+          const capacityStatus = capacityDifference >= 0 ? `${capacityDifference}m reserve` : `${Math.abs(capacityDifference)}m necessary overrun`;
+          const deferredMinutes = plan.deferred.reduce((sum, item) => sum + item.executionMinutes, 0);
+          const exceptionCount = plan.requiredOverrun.length + plan.mustSplit.length;
+          const requiredOverrunIds = new Set(plan.requiredOverrun.map((item) => item.joined.obligation.id));
+          this.todayContent.innerHTML = `
+          ${this.pageHead("REVISION PLANNING", "Today", "A capacity-bounded daily plan selected from current memory and exam evidence.", `<button class="btn" data-action="log-study">LOG STUDY</button><button class="btn" data-action="regenerate-plan">REGENERATE PLAN</button><button class="btn primary" data-action="start-due" ${plan.selected.length ? "" : "disabled"}>START DAILY PLAN</button>`)}
+          <div class="summary-grid">
+            <div class="metric"><span>Planned obligations</span><strong>${plan.selected.length}</strong><small>${plan.overdueCount} overdue · ${plan.broughtForwardCount} brought forward</small></div>
+            <div class="metric"><span>Planned load</span><strong>${plan.plannedMinutes}m</strong><small>${escapeHtml(capacityStatus)}</small></div>
+            <div class="metric"><span>Deferred today</span><strong>${plan.deferred.length}</strong><small>${deferredMinutes}m outside capacity</small></div>
+            <div class="metric"><span>Capacity exceptions</span><strong>${exceptionCount}</strong><small>${plan.requiredOverrun.length} required overrun · ${plan.mustSplit.length} must split</small></div>
+          </div>
+          <div class="policy-box planner-principle"><strong>Planning model:</strong> each candidate receives a transparent score from due risk, exam importance, obligation-specific weakness, learned duration, examination proximity, weekly subject balance and the ${plan.capacityMinutes}m daily limit. Exams that have passed are automatically excluded. Relearning and severe overdue risk receive narrow safety boosts. Scheduling engines still decide <em>when work becomes eligible</em>; the planner decides <em>what fits today</em>.</div>
+          <section class="section-block">
+            <div class="section-head"><h2>Daily revision queue</h2><span class="section-note">Study day ${escapeHtml(plan.studyDayKey)} · persisted plan version ${plan.versionNumber} · highest-value feasible set within capacity.</span></div>
+            ${plan.selected.length ? `<div class="queue-list planner-list">${plan.selected.map((item, index) => this.plannerRow(item, index + 1, requiredOverrunIds.has(item.joined.obligation.id) ? "required-overrun" : "selected")).join("")}</div>` : this.emptyState("No revision planned", "No active obligation is due or close enough to bring forward within the planning horizon.")}
+          </section>
+          ${plan.mustSplit.length ? `<section class="section-block"><div class="section-head"><h2>Critical work requiring split</h2><span class="section-note">These obligations are too long for the daily capacity. They remain explicit and should be redesigned as smaller complete sessions or reviewed manually.</span></div><div class="queue-list planner-list split-list">${plan.mustSplit.map((item, index) => this.plannerRow(item, index + 1, "must-split")).join("")}</div></section>` : ""}
+          <section class="section-block">
+            <div class="section-head"><h2>Deferred by capacity</h2><span class="section-note">Visible rather than silently lost; review any item manually when circumstances change.</span></div>
+            ${plan.deferred.length ? `<div class="queue-list planner-list deferred-list">${plan.deferred.slice(0, 20).map((item, index) => this.plannerRow(item, index + 1, "deferred")).join("")}</div>` : this.emptyState("Nothing deferred", "All eligible revision obligations fit within today’s capacity.")}
+          </section>`;
+      }
+      factorMeter(label, value) {
+          const percent = Math.round(clamp(value, 0, 1) * 100);
+          return `<div class="factor-meter"><span>${escapeHtml(label)}</span><div class="factor-track"><i style="width:${percent}%"></i></div><strong>${percent}</strong></div>`;
+      }
+      plannerRow(item, order, disposition) {
+          const joined = item.joined;
+          const selected = disposition === "selected" || disposition === "required-overrun";
+          const stateLabel = item.dueState === "brought-forward" ? "brought forward" : item.dueState;
+          const retrieval = item.retrievability === undefined ? "" : `<span>Memory availability ${Math.round(item.retrievability * 100)}%</span>`;
+          const exceptionChip = disposition === "required-overrun" ? `<span class="chip capacity-exception">required overrun</span>` : disposition === "must-split" ? `<span class="chip capacity-exception">must split</span>` : "";
+          const actionLabel = disposition === "selected" ? "REVIEW" : disposition === "required-overrun" ? "REVIEW OVERRUN" : disposition === "must-split" ? "REVIEW ANYWAY" : "REVIEW ANYWAY";
+          return `<article class="queue-row planner-row ${escapeHtml(disposition)}">
+          <div class="planner-order">${selected ? String(order).padStart(2, "0") : "—"}</div>
+          <div class="planner-main">
+            <div class="breadcrumb">${escapeHtml(joined.profile.name)} · ${escapeHtml(joined.subject)} › ${escapeHtml(joined.section)} › ${escapeHtml(joined.topic)}</div>
+            <div class="row-title">${escapeHtml(item.chunk?.label ?? joined.unit.title)}</div>
+            <div class="row-meta"><span class="chip ${obligationChip(joined.obligation.type)}">${escapeHtml(obligationLabel(joined.obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(joined.obligation.workflow.kind))}</span><span class="chip ${item.dueState === "brought-forward" ? "upcoming" : item.dueState}">${escapeHtml(stateLabel)}</span>${exceptionChip}<span>${item.executionMinutes}m planned</span>${joined.obligation.durationSampleCount ? `<span>${joined.obligation.durationSampleCount} duration samples</span>` : ""}<span>${item.examDateKnown ? `Exam in ${item.daysToExam}d` : "Exam date not set"}</span>${retrieval}</div>
+            <div class="planner-reasons">${item.reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
+            <details class="planner-details"><summary>Why score ${item.score}</summary><div class="factor-grid">${this.factorMeter("Due risk", item.factors.dueRisk)}${this.factorMeter("Exam importance", item.factors.examImportance)}${this.factorMeter("Weakness", item.factors.weakness)}${this.factorMeter("Duration fit", item.factors.reviewDuration)}${this.factorMeter("Exam proximity", item.factors.examinationProximity)}${this.factorMeter("Weekly balance", item.factors.weeklyBalance)}</div></details>
+          </div>
+          <div class="row-actions"><button class="mini-btn" data-action="${item.chunk ? "review-chunk" : "review-one"}" data-id="${escapeHtml(item.chunk?.id ?? joined.obligation.id)}">${item.chunk ? "WORK CHUNK" : actionLabel}</button></div>
+        </article>`;
+      }
+      emptyState(title, message) {
+          return `<div class="empty-state"><strong>${escapeHtml(title)}</strong>${escapeHtml(message)}</div>`;
+      }
+      async renderLibrary() {
+          const settings = this.service.getSettings();
+          const profiles = await this.service.profiles();
+          const units = (await this.service.units()).filter((unit) => unit.status !== "archived");
+          const nodes = await this.service.nodes();
+          const obligations = await this.service.obligations();
+          const evidenceEvents = await this.service.evidenceEvents();
+          const memoryReviews = memoryReviewObservationIndex(evidenceEvents);
+          const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+          const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
+          const filtered = units.filter((unit) => {
+              if (!this.libraryFilter)
+                  return true;
+              const topic = nodeMap.get(unit.topicNodeId);
+              const section = topic?.parentId ? nodeMap.get(topic.parentId) : undefined;
+              const subject = section?.parentId ? nodeMap.get(section.parentId) : undefined;
+              return [unit.title, unit.scope, topic?.name, section?.name, subject?.name].some((value) => normalizeName(value ?? "").includes(normalizeName(this.libraryFilter)));
+          });
+          const subjects = nodes.filter((node) => node.kind === "subject").sort((a, b) => a.name.localeCompare(b.name));
+          this.libraryContent.innerHTML = `
+          ${this.pageHead("KNOWLEDGE RECORD", "Library", "A durable hierarchy of what must remain available for examination performance.", `<button class="btn primary" data-action="add-unit">ADD UNIT</button>`)}
+          <div class="filter-bar"><input id="library-search" value="${escapeHtml(this.libraryFilter)}" placeholder="Search unit or hierarchy..."></div>
+          <div class="library-grid">
+            <aside class="panel hierarchy-panel"><div class="tree-label">Exam hierarchy</div><button class="tree-item ${this.libraryFilter ? "" : "on"}" data-filter="">All knowledge</button>${subjects.map((subject) => `<button class="tree-item" data-filter="${escapeHtml(subject.name)}">${escapeHtml(profileMap.get(subject.profileId)?.name ?? "Exam")} · ${escapeHtml(subject.name)}</button>`).join("")}</aside>
+            <div>${filtered.length ? `<div class="unit-list">${filtered.map((unit) => {
+              const topic = nodeMap.get(unit.topicNodeId);
+              const section = topic?.parentId ? nodeMap.get(topic.parentId) : undefined;
+              const subject = section?.parentId ? nodeMap.get(section.parentId) : undefined;
+              const unitObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.status === "active");
+              const memoryObligations = obligations.filter((obligation) => obligation.unitId === unit.id && obligation.type === "memory-recall" && obligation.status !== "archived");
+              const difficultyPanels = memoryObligations.map((obligation) => {
+                  const assessment = memoryDifficultyAssessment(obligation, settings.memoryDifficultyPolicy, memoryReviews.get(obligation.id) ?? []);
+                  if (assessment.level === "normal")
+                      return "";
+                  const label = assessment.level === "persistent-difficulty"
+                      ? "Persistent difficulty"
+                      : assessment.level === "remediation"
+                          ? "Remediation"
+                          : "Early learning difficulty";
+                  const burden = assessment.level === "learning-difficulty"
+                      ? `${assessment.earlyLearningFailures} failed learning recalls`
+                      : `${assessment.establishedLapses} established recall failures`;
+                  const actions = assessment.recommendedActions.map(memoryDifficultyActionLabel).join(" · ");
+                  return `<div class="policy-box"><strong>${label} · ${burden}.</strong> ${escapeHtml(actions)}.</div>`;
+              }).join("");
+              const heldMemory = memoryObligations.filter((obligation) => obligation.status === "suspended" && obligation.suspensionReason === "persistent-difficulty");
+              return `<article class="unit-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(unit.profileId)?.name ?? "Exam")} · ${escapeHtml(subject?.name ?? "")} › ${escapeHtml(section?.name ?? "")} › ${escapeHtml(topic?.name ?? "")}</div><div class="row-title">${escapeHtml(unit.title)}</div><p>${escapeHtml(unit.scope)}</p><div class="row-meta">${unitObligations.map((obligation) => `<span class="chip ${obligationChip(obligation.type)}">${escapeHtml(obligationLabel(obligation.type))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(obligation.workflow.kind))}</span>`).join("")}<span>${unit.evidenceCount} evidence events</span><span>${unit.lapseCount} failures</span></div>${difficultyPanels}</div><div class="row-actions"><button class="mini-btn" data-action="review-unit" data-id="${escapeHtml(unit.id)}">REVIEW</button><button class="mini-btn" data-action="add-obligation" data-id="${escapeHtml(unit.id)}">ADD OBLIGATION</button>${heldMemory.map((obligation) => `<button class="mini-btn" data-action="resume-persistent-difficulty" data-id="${escapeHtml(obligation.id)}">RESUME MEMORY</button>`).join("")}<button class="mini-btn" data-action="toggle-unit" data-id="${escapeHtml(unit.id)}" data-status="${unit.status === "active" ? "suspended" : "active"}">${unit.status === "active" ? "SUSPEND" : "ACTIVATE"}</button></div></article>`;
+          }).join("")}</div>` : this.emptyState("No matching knowledge", "Create a unit or change the search filter.")}</div>
+          </div>`;
+      }
+      async renderStudy() {
+          const events = await this.service.studyEvents();
+          const profiles = await this.service.profiles();
+          const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
+          const recentMinutes = events.filter((event) => new Date(event.occurredAt).getTime() > Date.now() - 7 * DAY_MS).reduce((sum, event) => sum + event.durationMinutes, 0);
+          const linkedCount = events.filter((event) => event.linkedUnitIds.length > 0).length;
+          this.studyContent.innerHTML = `
+          ${this.pageHead("ORIGINAL LEARNING", "Study Log", "Study Events preserve what was learned, practised or tested before it becomes a revision obligation.", `<button class="btn primary" data-action="log-study">LOG STUDY EVENT</button>`)}
+          <div class="summary-grid">
+            <div class="metric"><span>Study events</span><strong>${events.length}</strong><small>Immutable learning records</small></div>
+            <div class="metric"><span>Last seven days</span><strong>${recentMinutes}m</strong><small>Recorded study time</small></div>
+            <div class="metric"><span>Linked events</span><strong>${linkedCount}</strong><small>Connected to knowledge units</small></div>
+            <div class="metric"><span>Unlinked events</span><strong>${events.length - linkedCount}</strong><small>Candidates for later revision</small></div>
+          </div>
+          <div class="study-grid">
+            <section>
+              <div class="section-head"><h2>Recent study events</h2><span class="section-note">Area · Task · Measure remain canonical Study Director inputs.</span></div>
+              ${events.length ? `<div class="record-list">${events.slice(0, 30).map((event) => `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.occurredAt)}</div><div class="row-title">${escapeHtml(event.area)} · ${escapeHtml(event.task)}</div><div class="row-meta"><span class="chip">${escapeHtml(event.activityMode)}</span><span>${escapeHtml(event.measure)}</span><span>${event.durationMinutes}m</span><span>Understanding ${event.understanding}/4</span><span>${event.linkedUnitIds.length} linked units</span></div>${event.notes ? `<p>${escapeHtml(event.notes)}</p>` : ""}</div><div class="row-actions"><button class="mini-btn" data-action="derive-unit" data-id="${escapeHtml(event.id)}">CREATE UNIT</button></div></article>`).join("")}</div>` : this.emptyState("No study events", "Log what you studied, practised or tested.")}
+            </section>
+            <aside class="panel info-card"><h3>Why this exists</h3><p>A timer records effort. A Study Event records the academic meaning of that effort.</p><ul><li>It anchors revision to actual learning.</li><li>It distinguishes learning, review, practice and testing.</li><li>It allows later AI or rule-based diagnosis without bloating every Plan row.</li><li>It does not itself prove retention.</li></ul></aside>
+          </div>`;
+      }
+      async renderHistory() {
+          const evidence = await this.service.evidenceEvents();
+          const study = await this.service.studyEvents();
+          const units = await this.service.units();
+          const profiles = await this.service.profiles();
+          const plans = await this.service.dailyPlanHistory();
+          const unitMap = new Map(units.map((unit) => [unit.id, unit]));
+          const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
+          const content = this.historyTab === "evidence"
+              ? (evidence.length ? `<div class="record-list">${evidence.slice(0, 80).map((event) => {
+                  const unit = unitMap.get(event.unitId);
+                  const accuracy = event.evidence.accuracyPercent === undefined ? "" : `<span>Accuracy ${roundTo(event.evidence.accuracyPercent, 0)}%</span>`;
+                  return `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.reviewedAt)}</div><div class="row-title">${escapeHtml(unit?.title ?? "Deleted unit")}</div><div class="row-meta"><span class="chip ${obligationChip(event.obligationType)}">${escapeHtml(obligationLabel(event.obligationType))}</span><span class="chip workflow-chip">${escapeHtml(workflowLabel(event.workflow))}</span><span>${ratingName(event.confirmedRating)}</span><span>Suggested ${ratingName(event.suggestedRating)}</span>${accuracy}<span>${formatDuration(event.elapsedMs)}</span><span>Estimate ${event.durationObservation.estimateBefore}→${event.durationObservation.estimateAfter}m</span><span>${event.durationObservation.accepted ? "duration learned" : `duration ignored: ${escapeHtml(event.durationObservation.reason)}`}</span><span>${escapeHtml(event.policyId)}</span></div><p>Evidence: completeness ${event.evidence.completeness}/4 · independence ${event.evidence.independence}/4 · application ${event.evidence.application}/4. Next: ${formatDateTime(event.afterDueAt)}.</p>${event.evidence.correctionNote ? `<p>Correction: ${escapeHtml(event.evidence.correctionNote)}</p>` : ""}</div></article>`;
+              }).join("")}</div>` : this.emptyState("No retrieval evidence", "Complete a review to create evidence."))
+              : (study.length ? `<div class="record-list">${study.slice(0, 80).map((event) => `<article class="record-row"><div><div class="breadcrumb">${escapeHtml(profileMap.get(event.profileId)?.name ?? "Exam")} · ${formatDateTime(event.occurredAt)}</div><div class="row-title">${escapeHtml(event.area)} · ${escapeHtml(event.task)}</div><div class="row-meta"><span class="chip">${escapeHtml(event.activityMode)}</span><span>${escapeHtml(event.measure)}</span><span>${event.durationMinutes}m</span><span>${escapeHtml(event.origin)}</span></div></div></article>`).join("")}</div>` : this.emptyState("No study history", "Log a Study Event first."));
+          const planHistory = plans.length ? `<section class="section-block"><div class="section-head"><h2>Persisted daily plans</h2><span class="section-note">Original recommendation, regenerations and actual outcomes remain separate.</span></div><div class="record-list">${plans.slice(0, 14).map((plan) => { const latest = latestPlanVersion(plan); const completed = plan.outcomes.filter((outcome) => outcome.status === "completed"); const actual = completed.reduce((sum, outcome) => sum + (outcome.actualMinutes ?? 0), 0); const selected = latest.items.filter((item) => item.disposition === "selected" || item.disposition === "required-overrun"); return `<article class="record-row"><div><div class="breadcrumb">Study day ${escapeHtml(plan.studyDayKey)} · plan v${latest.version} · ${escapeHtml(plan.plannerVersion)}</div><div class="row-title">${selected.length} planned · ${completed.length} completed</div><div class="row-meta"><span>${latest.capacityMinutes}m capacity</span><span>${selected.reduce((sum, item) => sum + item.estimatedMinutes, 0)}m estimated</span><span>${roundTo(actual, 1)}m actual</span><span>${plan.versions.length} version${plan.versions.length === 1 ? "" : "s"}</span></div></div></article>`; }).join("")}</div></section>` : "";
+          this.historyContent.innerHTML = `
+          ${this.pageHead("AUDIT TRAIL", "History", "Study records, retrieval evidence and daily-plan history remain separate but linked.")}
+          <div class="tab-bar"><button class="tab-btn ${this.historyTab === "evidence" ? "on" : ""}" data-history-tab="evidence">EVIDENCE EVENTS</button><button class="tab-btn ${this.historyTab === "study" ? "on" : ""}" data-history-tab="study">STUDY EVENTS</button></div>
+          ${content}${planHistory}`;
+      }
+      pluginSettingsCard() {
+          const status = this.extensions.status();
+          const pluginRows = status.registered.length
+              ? status.registered.map((entry) => `<div class="dependency-status"><span>${escapeHtml(entry.name)}${entry.version ? ` · ${escapeHtml(entry.version)}` : ""}</span><strong class="${entry.state === "registered" ? "ok" : entry.state === "failed" || entry.state === "incompatible" ? "bad" : ""}">${escapeHtml(entry.state)}</strong>${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ""}</div>`).join("")
+              : `<p class="helper">No plugins are registered in this session.</p>`;
+          const fileRows = status.localFiles.length
+              ? `<div class="plugin-file-list">${status.localFiles.slice(0, 8).map((entry) => `<div class="dependency-status"><span>${escapeHtml(entry.name)} · ${escapeHtml(formatFileSize(entry.size))}</span><strong class="${entry.state === "loaded" ? "ok" : entry.state === "failed" || entry.state === "rejected" ? "bad" : ""}">${escapeHtml(entry.state)}</strong>${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ""}</div>`).join("")}</div>`
+              : "";
+          return `<section class="panel settings-card"><h3>Optional plugins</h3><label class="btn file-btn">LOAD LOCAL PLUGIN<input id="load-plugin-files" type="file" accept=".js,text/javascript,application/javascript" multiple></label><p class="helper">Trusted JavaScript only. A local plugin runs with this page’s privileges, is not stored by Revision Director, and is removed by reloading the page.</p>${pluginRows}${fileRows}</section>`;
+      }
+      fsrsPersonalizationCard(settings, summary) {
+          const personalization = effectiveFsrsPersonalization(settings);
+          const profile = personalization.profile;
+          const status = personalization.active ? "ACTIVE" : profile ? "STAGED" : "STOCK";
+          const statusClass = personalization.active ? "ok" : "";
+          const optimizer = browserFsrsOptimizerAvailability();
+          const running = this.fsrsOptimizerRun !== undefined;
+          const progress = this.fsrsOptimizerProgress;
+          const progressText = progress
+              ? `${progress.stage} · ${progress.total > 0 ? `${progress.current}/${progress.total}` : "working"}`
+              : running ? "Preparing local optimizer…" : optimizer.reason;
+          const progressValue = progress && progress.total > 0
+              ? Math.max(0, Math.min(progress.total, progress.current))
+              : 0;
+          const progressMax = progress && progress.total > 0 ? progress.total : 1;
+          const canOptimize = optimizer.available && !running && summary.reviews > 0;
+          const holdoutDiagnostics = profile
+              ? fsrsHoldoutDiagnostics(profile.evaluation.holdout.stock, profile.evaluation.holdout.personalized)
+              : undefined;
+          const incumbent = profile?.evaluation.holdout.incumbent;
+          const incumbentDiagnostics = incumbent && profile
+              ? fsrsHoldoutDiagnostics(incumbent.metrics, profile.evaluation.holdout.personalized)
+              : undefined;
+          const profileDetail = profile && holdoutDiagnostics
+              ? `<div class="dependency-status"><span>Profile</span><strong>${escapeHtml(profile.sourceSha256.slice(0, 12))}…</strong></div>
+             <div class="dependency-status"><span>Held-out log loss · stock</span><strong>${roundTo(profile.evaluation.holdout.stock.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)} · ${roundTo(holdoutDiagnostics.logLossImprovement.relative * 100, 2)}% better</strong></div>
+             ${incumbentDiagnostics && incumbent ? `<div class="dependency-status"><span>Held-out log loss · prior profile</span><strong>${roundTo(incumbent.metrics.logLoss, 4)} → ${roundTo(profile.evaluation.holdout.personalized.logLoss, 4)} · ${roundTo(incumbentDiagnostics.logLossImprovement.relative * 100, 2)}% better</strong></div>` : ""}
+             <div class="dependency-status"><span>Calibration · RMSE bins</span><strong>${roundTo(profile.evaluation.holdout.stock.rmseBins, 4)} → ${roundTo(profile.evaluation.holdout.personalized.rmseBins, 4)} · ${holdoutDiagnostics.calibration.status}</strong></div>
+             <div class="dependency-status"><span>Time-series CV</span><strong>LL ${roundTo(profile.evaluation.crossValidation.logLoss, 4)} · RMSE ${roundTo(profile.evaluation.crossValidation.rmseBins, 4)}</strong></div>`
+              : `<p class="helper">No validated personalized profile is staged. Stock FSRS-7 remains authoritative.</p>`;
+          const profileActions = running
+              ? ""
+              : personalization.active
+                  ? `<button class="mini-btn" type="button" data-action="deactivate-fsrs-profile">RETURN TO STOCK + REPROJECT</button>`
+                  : profile
+                      ? `<button class="mini-btn" type="button" data-action="activate-fsrs-profile">ACTIVATE + REPROJECT</button><button class="mini-btn" type="button" data-action="clear-fsrs-profile">REMOVE STAGED PROFILE</button>`
+                      : "";
+          const localAction = running
+              ? `<button class="mini-btn" type="button" data-action="cancel-fsrs-optimization">CANCEL OPTIMIZATION</button>`
+              : `<button class="mini-btn" type="button" data-action="optimize-fsrs-locally" ${canOptimize ? "" : "disabled"}>${personalization.active ? "RE-OPTIMIZE + SWITCH IF BETTER" : profile ? "RE-OPTIMIZE LOCALLY" : "OPTIMIZE LOCALLY"}</button>`;
+          return `<section class="panel settings-card wide" id="fsrs-personalization-card"><h3>FSRS-7 personalization</h3>
+          <div class="dependency-status"><span>Weights</span><strong class="${statusClass}">${status}</strong></div>
+          <div class="dependency-status"><span>Optimizer evidence</span><strong>${summary.reviews} reviews · ${summary.cards} cards · ${summary.reliableDurations} timed · ${summary.unavailableDurations} untimed</strong></div>
+          <div class="dependency-status"><span>Local optimizer</span><strong class="${optimizer.available ? "ok" : ""}">${optimizer.available ? "AVAILABLE" : "HOSTED BUILD REQUIRED"}</strong></div>
+          <div class="optimizer-progress" data-fsrs-optimizer-progress ${running ? "" : "hidden"}><div><span data-fsrs-optimizer-progress-label>${escapeHtml(progressText)}</span></div><progress data-fsrs-optimizer-progress-bar max="${progressMax}" value="${progressValue}"></progress></div>
+          ${profileDetail}
+          <div class="settings-actions">${localAction}<button class="mini-btn" type="button" data-action="export-fsrs-evidence">EXPORT OPTIMIZER EVIDENCE</button><label class="mini-btn file-btn ${running ? "disabled" : ""}">IMPORT VALIDATED PROFILE<input id="import-fsrs-profile" type="file" accept=".json,application/json" ${running ? "disabled" : ""}></label>${profileActions}</div>
+          <p class="helper">${escapeHtml(progressText)} Local optimization uses a dedicated Worker and the pinned FSRS-7 WASM binding; review evidence does not leave the browser. Optimizer duration is closed-book recall/verification time only; unreliable timing remains in recall history with unavailable cost rather than full-session time. The exact gate remains 64 historical training items, 64 later holdout items and 16 distinct holdout cards after conversion. From stock, a successful run is <strong>staged only</strong>. While personalized weights are active, optimization evaluates the candidate against both stock and the active profile on the same holdout; only a candidate that clears both gates replaces the active profile, using one atomic scheduler rebase.</p>
+        </section>`;
+      }
+      async refreshFsrsPersonalizationCard() {
+          const card = this.settingsContent.querySelector("#fsrs-personalization-card");
+          if (!card)
+              return;
+          const summary = await this.service.optimizerEvidenceSummary();
+          card.outerHTML = this.fsrsPersonalizationCard(this.service.getSettings(), summary);
+          this.applyReadOnlyState();
+      }
+      updateFsrsOptimizerProgress(progress) {
+          this.fsrsOptimizerProgress = progress;
+          const region = this.settingsContent.querySelector("[data-fsrs-optimizer-progress]");
+          const label = this.settingsContent.querySelector("[data-fsrs-optimizer-progress-label]");
+          const bar = this.settingsContent.querySelector("[data-fsrs-optimizer-progress-bar]");
+          if (region)
+              region.hidden = false;
+          if (label)
+              label.textContent = `${progress.stage} · ${progress.total > 0 ? `${progress.current}/${progress.total}` : "working"}`;
+          if (bar) {
+              bar.max = progress.total > 0 ? progress.total : 1;
+              bar.value = progress.total > 0 ? Math.max(0, Math.min(progress.total, progress.current)) : 0;
+          }
+      }
+      async renderIdleReview() {
+          const plan = await this.service.dailyPlan(new Date(), false, this.ownership.canMutate());
+          this.reviewContent.innerHTML = `
+          ${this.pageHead("ACTIVE RETRIEVAL", "Review", "Each workflow requires an attempt, comparison, modality-specific evidence and a confirmed outcome.")}
+          ${plan.selected.length ? `<div class="queue-list planner-list">${plan.selected.map((item, index) => this.plannerRow(item, index + 1, "selected")).join("")}</div>` : this.emptyState("No active review session", "Start the daily plan from Today or select a unit from the Library.")}`;
+      }
+      async renderSettings() {
+          const settings = this.service.getSettings();
+          const [profiles, optimizerEvidence] = await Promise.all([
+              this.service.profiles(),
+              this.service.optimizerEvidenceSummary(),
+          ]);
+          const planningReference = studyDayStart(new Date(), settings.studyDayBoundaryHour);
+          const schedulingPolicy = settings.fsrsScheduling.policy;
+          const fixedRetentionValue = schedulingPolicy.kind === "fixed-retention" ? schedulingPolicy.desiredRetention : 0.9;
+          const fsrsOk = fsrsRuntimeAvailable();
+          const storage = this.service.storageHealth();
+          const storageUsage = storage.usageRatio === undefined ? "Usage estimate unavailable" : `${roundTo(storage.usageRatio * 100, 1)}% of browser quota used`;
+          const persistenceLabel = storage.persistence === "granted" ? "Persistent storage granted" : storage.persistence === "available" ? "Persistent storage not guaranteed" : storage.persistence === "denied" ? "Persistent storage denied" : "Persistence API unavailable";
+          this.settingsContent.innerHTML = `
+          ${this.pageHead("SYSTEM CONTROL", "Settings", "Revision Director remains deterministic and local-first; AI can later advise without owning the record.")}
+          <form id="settings-form" class="settings-grid">
+            <section class="panel settings-card"><h3>Planning</h3><label>Default exam profile for new records<select name="activeProfileId" ${profiles.length ? "" : "disabled"}>${profiles.length ? profiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${profile.id === settings.activeProfileId ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("") : '<option value="">Create an exam profile first</option>'}</select></label><label>Daily revision capacity<input name="dailyCapacityMinutes" type="number" min="5" max="600" value="${settings.dailyCapacityMinutes}"></label><label>Study-day boundary hour<input name="studyDayBoundaryHour" type="number" min="0" max="12" value="${settings.studyDayBoundaryHour}"></label></section>
+            <section class="panel settings-card"><h3>Memory scheduling</h3><label>Scheduling policy<select name="memorySchedulingPolicy"><option value="fixed-retention" ${schedulingPolicy.kind === "fixed-retention" ? "selected" : ""}>Fixed retention · 90% default</option><option value="cost-adr" ${schedulingPolicy.kind === "cost-adr" ? "selected" : ""}>Adaptive workload · Cost-ADR · optional preset</option></select></label><label>Fixed-retention target · fixed mode only<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${fixedRetentionValue}"></label><div class="dependency-status"><span>Active policy</span><strong>${schedulingPolicy.kind === "cost-adr" ? `Cost-ADR · cost weight ${FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT}` : `Fixed · ${roundTo(schedulingPolicy.desiredRetention * 100, 0)}%`}</strong></div><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">The outcome-sensitive FSRS-R2 benchmark selected fixed 90% for new installations. Cost-ADR remains available only as the bounded 1024 preset for explicit comparison; arbitrary Cost-ADR tuning remains unavailable. Existing saved policy choices are preserved until you change them. Switching policy performs an atomic FSRS replay/rebase.</p></section>
+            <section class="panel settings-card"><h3>Persistent difficulty</h3><label>Escalate to remediation after established recall failures<input name="difficultyRemediationLapses" type="number" min="2" max="99" value="${settings.memoryDifficultyPolicy.remediationLapses}"></label><label>Persistent difficulty after established recall failures<input name="difficultyPersistentLapses" type="number" min="3" max="100" value="${settings.memoryDifficultyPolicy.persistentDifficultyLapses}"></label><label class="check-option strong-check"><input name="difficultyAutomaticHold" type="checkbox" ${settings.memoryDifficultyPolicy.automaticHold.enabled ? "checked" : ""}>Hold persistent-difficulty memory out of the normal queue after successful remediation</label><label>Automatic-hold failure threshold<input name="difficultyAutomaticHoldLapses" type="number" min="${settings.memoryDifficultyPolicy.persistentDifficultyLapses + 1}" max="1000" value="${settings.memoryDifficultyPolicy.automaticHold.lapseThreshold}"></label><p class="helper">Difficulty is derived from canonical memory history: failures before the first successful retrieval are early-learning failures; only later Again outcomes count as established recall failures. The raw FSRS lapse counter remains scheduler state but does not independently decide host remediation or queue holds.</p></section>
+            ${this.fsrsPersonalizationCard(settings, optimizerEvidence)}
+            <section class="panel settings-card"><h3>Add exam profile</h3><label>Name<input id="new-profile-name" placeholder="IFoS 2027, USMLE Step 1..."></label><label>Exam date<input id="new-profile-date" type="date"></label><button class="btn" type="button" data-action="add-profile">ADD PROFILE</button></section>
+            <section class="panel settings-card"><h3>Backup and recovery</h3><button class="btn" type="button" data-action="export-backup">EXPORT BACKUP</button><label class="btn file-btn">IMPORT BACKUP<input id="import-backup" type="file" accept=".rdbackup,application/x-revision-director-backup,application/gzip,application/octet-stream"></label><p class="helper">Export remains one click. Import verifies and previews the file first, then requires a current-state safety copy and explicit restore confirmation.</p></section>
+            ${this.pluginSettingsCard()}
+            <section class="panel settings-card"><h3>Storage health</h3><div class="dependency-status"><span>IndexedDB</span><strong class="${storage.indexedDbAvailable ? "ok" : "bad"}">${storage.indexedDbAvailable ? "Available" : "Unavailable"}</strong></div><div class="dependency-status"><span>Persistence</span><strong class="${storage.persistence === "granted" ? "ok" : ""}">${escapeHtml(persistenceLabel)}</strong></div><p class="helper">${escapeHtml(storageUsage)} · ${storage.diagnosticCount} bounded diagnostic record${storage.diagnosticCount === 1 ? "" : "s"}.</p><button class="mini-btn" type="button" data-action="refresh-storage">REFRESH STORAGE STATUS</button></section>
+            <section class="panel settings-card wide"><h3>Exam horizons</h3><p class="helper">Proximity affects cross-exam priority and how far the planner may bring an obligation forward. Profiles whose examination date has passed are automatically excluded until the date is updated for a new cycle.</p><div class="profile-planner-list">${profiles.filter((profile) => profile.status !== "archived").map((profile) => { const passed = Boolean(examDateTime(profile)) && daysToExamination(profile, planningReference) < 0; return `<div class="profile-planner-row" data-profile-editor="${escapeHtml(profile.id)}"><label>Profile<input data-profile-name value="${escapeHtml(profile.name)}"></label><label>Examination date<input data-profile-date type="date" value="${escapeHtml(profile.examDate)}"></label><label>Planning status<select data-profile-status><option value="active" ${profile.status === "active" ? "selected" : ""}>Active</option><option value="suspended" ${profile.status === "suspended" ? "selected" : ""}>Paused</option></select><small>${passed ? "Exam passed — excluded automatically" : profile.status === "suspended" ? "Paused manually" : "Included in planning"}</small></label><button class="mini-btn" type="button" data-action="save-profile" data-id="${escapeHtml(profile.id)}">SAVE</button></div>`; }).join("")}</div></section>
+            <section class="panel settings-card wide"><h3>Policy router</h3><div class="engine-list"><div><dt>Memory recall</dt><dd>ts-fsrs 6.0.0 · FSRS-7</dd></div><div><dt>Concept reconstruction</dt><dd>Mastery policy v1</dd></div><div><dt>Application practice</dt><dd>Application policy v1</dd></div><div><dt>Performance practice</dt><dd>Performance policy v1</dd></div><div><dt>Relearn</dt><dd>Relearning policy v1</dd></div><div><dt>Freshness review</dt><dd>Freshness horizon policy v1</dd></div></div></section>
+            <section class="panel settings-card wide"><h3>Retrieval workflows</h3><div class="engine-list"><div><dt>Recall</dt><dd>Closed-book response + checkpoints + cueing</dd></div><div><dt>Reconstruction</dt><dd>Structure + relationships + checkpoints</dd></div><div><dt>Questions / application</dt><dd>Attempted, correct, partial, novel and cueing</dd></div><div><dt>Diagram practice</dt><dd>Canvas or paper + labels, form and process</dd></div><div><dt>Answer writing</dt><dd>Demand, structure, content, evidence and time</dd></div><div><dt>Relearning</dt><dd>Diagnose → repair → closed-book verification</dd></div></div></section>
+            <button class="btn primary settings-save" type="submit">SAVE SETTINGS</button>
+          </form>`;
+          this.applyReadOnlyState();
+      }
       async handleAction(element) {
           const action = element.dataset["action"];
           try {
+              if (await this.activeRetrieval.handleAction(element))
+                  return;
               const nonMutating = action === "export-backup" || action === "export-fsrs-evidence";
               if (!nonMutating && !this.requireMutable("change Revision Director data"))
                   return;
@@ -15512,19 +15857,11 @@ exports.withFuzzing = withFuzzing;
                   await this.openUnitDialog();
               else if (action === "log-study")
                   await this.openStudyDialog();
-              else if (action === "start-due")
-                  await this.startDueSession();
-              else if (action === "review-one")
-                  await this.startObligationSession(element.dataset["id"] ?? "");
-              else if (action === "review-chunk")
-                  await this.startReviewSession([`chunk:${element.dataset["id"] ?? ""}`]);
               else if (action === "regenerate-plan") {
                   await this.service.dailyPlan(new Date(), true);
                   await this.renderAll();
                   this.toast("Daily plan regenerated and previous version preserved.");
               }
-              else if (action === "review-unit")
-                  await this.startUnitSession(element.dataset["id"] ?? "");
               else if (action === "add-obligation")
                   await this.openObligationDialog(element.dataset["id"] ?? "");
               else if (action === "resume-persistent-difficulty") {
@@ -15539,75 +15876,10 @@ exports.withFuzzing = withFuzzing;
               }
               else if (action === "derive-unit")
                   await this.deriveUnitFromStudy(element.dataset["id"] ?? "");
-              else if (action === "reveal") {
-                  const obligationId = this.activeReviewIds[this.activeReviewIndex];
-                  assert(obligationId, "Review obligation is missing.");
-                  const obligation = await this.service.obligation(obligationId);
-                  this.validateAttemptBeforeCompare(obligation);
-                  assert(this.phaseTime && this.phaseTime.status() === "running", "Resume the retrieval before opening the source.");
-                  this.phaseTime.reconcile(Date.now(), "snapshot");
-                  assert(!this.phaseTime.hasPendingGap(), "Classify the inactive gap before opening the source.");
-                  this.attemptElapsedMs = Math.max(this.attemptElapsedMs, this.closedBookAttemptMs());
-                  this.phaseTime.transition("compare", "source-reveal", true);
-                  this.reviewPhase = "compare";
-                  this.applyReviewPhase();
-                  this.forceActiveRetrievalSave();
-                  this.syncComparisonAttempt(obligation);
-                  this.updateDerivedWorkflowDisplays(obligation);
-                  this.updateEvidenceSuggestion(obligation);
-              }
-              else if (action === "begin-verification") {
-                  assert((this.reviewContent.querySelector("#relearn-repair-action")?.value.trim().length ?? 0) >= 3, "Record the repair action.");
-                  assert(this.reviewContent.querySelector("#relearn-repair-completed")?.checked, "Complete the repair before verification.");
-                  const obligationId = this.activeReviewIds[this.activeReviewIndex];
-                  assert(obligationId, "Review obligation is missing.");
-                  assert(this.phaseTime && this.phaseTime.status() === "running", "Resume the retrieval before beginning verification.");
-                  this.phaseTime.transition("relearn-verify", "begin-verification", false);
-                  this.reviewPhase = "relearn-verify";
-                  this.applyReviewPhase();
-                  this.forceActiveRetrievalSave();
-              }
-              else if (action === "check-verification") {
-                  assert((this.reviewContent.querySelector("#relearn-verification-text")?.value.trim().length ?? 0) >= 3, "Complete the closed-book verification.");
-                  assert(this.reviewContent.querySelector("#relearn-source-closed")?.checked, "Confirm that the source remained closed during verification.");
-                  const obligationId = this.activeReviewIds[this.activeReviewIndex];
-                  assert(obligationId, "Review obligation is missing.");
-                  const obligation = await this.service.obligation(obligationId);
-                  assert(this.phaseTime && this.phaseTime.status() === "running", "Resume the retrieval before checking verification.");
-                  this.phaseTime.reconcile(Date.now(), "snapshot");
-                  assert(!this.phaseTime.hasPendingGap(), "Classify the inactive gap before checking verification.");
-                  this.attemptElapsedMs = Math.max(this.attemptElapsedMs, this.closedBookAttemptMs());
-                  this.phaseTime.transition("compare", "verification-reveal", true);
-                  this.reviewPhase = "compare";
-                  this.applyReviewPhase();
-                  this.forceActiveRetrievalSave();
-                  this.syncComparisonAttempt(obligation);
-                  this.updateEvidenceSuggestion(obligation);
-              }
-              else if (action === "diagram-clear") {
-                  this.diagramStrokes = [];
-                  this.redrawDiagram();
-                  this.scheduleActiveRetrievalSave();
-              }
-              else if (action === "diagram-undo") {
-                  this.diagramStrokes.pop();
-                  this.redrawDiagram();
-                  this.scheduleActiveRetrievalSave();
-              }
-              else if (action === "complete-chunk")
-                  await this.completeActiveChunk();
-              else if (action === "rate")
-                  await this.commitRating(validateRating(Number(element.dataset["rating"])));
-              else if (action === "end-session") {
-                  await this.endReviewSession();
-                  await this.openPane("today");
-              }
               else if (action === "add-profile")
                   await this.addProfileFromSettings();
               else if (action === "save-profile")
                   await this.saveProfileFromSettings(element.dataset["id"] ?? "");
-              else if (action === "toggle-pause")
-                  this.togglePause();
               else if (action === "refresh-storage") {
                   await this.service.refreshStorageHealth(true);
                   await this.renderCoordinator.invalidateAndWait("settings", "storage", "ownership");
@@ -15645,188 +15917,6 @@ exports.withFuzzing = withFuzzing;
           }
           catch (error) {
               this.toast(error instanceof Error ? error.message : "Action failed.", true);
-          }
-      }
-      async startObligationSession(obligationId) {
-          const obligation = await this.service.obligation(obligationId);
-          const chunking = obligation.chunking;
-          if (chunking?.status === "chunking") {
-              const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending");
-              if (pending) {
-                  await this.startReviewSession([`chunk:${pending.id}`]);
-                  return;
-              }
-          }
-          await this.startReviewSession([obligation.id]);
-      }
-      async startDueSession() {
-          assert(this.requireMutable("start the daily review"), "This tab is read-only.");
-          const plan = await this.service.dailyPlan(new Date(), false, true);
-          await this.startReviewSession(plan.selected.map((item) => item.chunk ? `chunk:${item.chunk.id}` : item.joined.obligation.id));
-      }
-      async startUnitSession(unitId) {
-          const obligations = (await this.service.obligationsForUnit(unitId)).filter((item) => item.status === "active");
-          assert(obligations.length > 0, "This unit has no active revision obligations.");
-          const targets = [];
-          for (const obligation of obligations) {
-              const chunking = obligation.chunking;
-              if (chunking?.status === "chunking") {
-                  const pending = (await this.service.chunksForObligation(obligation.id)).find((chunk) => chunk.cycleId === chunking.cycleId && chunk.status === "pending");
-                  if (pending) {
-                      targets.push(`chunk:${pending.id}`);
-                      continue;
-                  }
-              }
-              targets.push(obligation.id);
-          }
-          await this.startReviewSession(targets);
-      }
-      async startReviewSession(ids) {
-          if (!this.requireMutable("start a retrieval session"))
-              return;
-          this.activeReviewIds = ids.filter(Boolean);
-          assert(this.activeReviewIds.length > 0, "There is nothing to review.");
-          this.activeReviewIndex = 0;
-          const firstTarget = this.activeReviewTarget(0);
-          this.reviewPhase = await this.initialPhaseForTarget(firstTarget);
-          this.reviewDrafts.clear();
-          this.diagramStrokes = [];
-          this.phaseTime = PhaseTimeRuntime.create(this.reviewPhase, await this.initialSourceVisibleForTarget(firstTarget, this.reviewPhase));
-          this.attemptElapsedMs = 0;
-          this.activeSessionRevision = 0;
-          this.commitInFlight = false;
-          await this.service.markReviewTargetsStarted([firstTarget]);
-          const session = this.buildActiveRetrievalSession();
-          if (session)
-              await this.activePersistence.flush(session);
-          await this.openPane("review");
-      }
-      async completeActiveChunk() {
-          if (!this.requireMutable("complete a retrieval chunk"))
-              return;
-          if (this.commitInFlight)
-              return;
-          this.commitInFlight = true;
-          try {
-              const target = this.activeReviewIds[this.activeReviewIndex];
-              assert(target && target.startsWith("chunk:"), "Split-session target is missing.");
-              const chunkId = target.slice(6);
-              assert(this.phaseTime && this.phaseTime.status() === "running", "Resume and classify interruptions before completing this chunk.");
-              const timing = this.timingSummary();
-              const note = this.reviewContent.querySelector("#chunk-note")?.value ?? "";
-              const commitToken = uid("commit");
-              const committing = this.buildActiveRetrievalSession("committing", commitToken);
-              assert(committing, "Active retrieval state is missing.");
-              const post = await this.postCommitSession(commitToken);
-              try {
-                  await this.activePersistence.flush(committing);
-                  const guard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: target, commitToken };
-                  await this.service.completeChunk(chunkId, timing, note, new Date(), guard, post);
-                  await this.activePersistence.acceptCommittedTransition(post);
-                  this.activeSessionRevision = post.revision;
-                  this.toast("Chunk completed. Parent scheduling remains unchanged until final synthesis.");
-                  this.reviewDrafts.delete(target);
-                  this.activeReviewIndex += 1;
-                  this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
-                  this.attemptElapsedMs = 0;
-                  this.diagramStrokes = [];
-                  if (this.activeReviewIndex >= this.activeReviewIds.length) {
-                      await this.endReviewSession(false);
-                      await this.openPane("today");
-                      return;
-                  }
-                  this.reviewPhase = post.phase;
-                  await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
-                  await this.renderCoordinator.invalidateAndWait("review", "sidebar", "ownership", "storage");
-              }
-              catch (error) {
-                  const resumed = this.buildActiveRetrievalSession("active");
-                  if (resumed)
-                      await this.activePersistence.flush(resumed).catch(() => undefined);
-                  throw error;
-              }
-          }
-          finally {
-              this.commitInFlight = false;
-          }
-      }
-      async endReviewSession(clearPersistence = true) {
-          this.stopTimer();
-          this.activeReviewIds = [];
-          this.activeReviewIndex = 0;
-          this.reviewPhase = "attempt";
-          this.reviewDrafts.clear();
-          this.diagramStrokes = [];
-          this.phaseTime = undefined;
-          this.hideGapOverlay();
-          this.attemptElapsedMs = 0;
-          this.activeSessionRevision = 0;
-          this.commitInFlight = false;
-          if (clearPersistence)
-              await this.activePersistence.clear();
-      }
-      async commitRating(rating) {
-          if (!this.requireMutable("commit review evidence"))
-              return;
-          if (this.commitInFlight)
-              return;
-          this.commitInFlight = true;
-          this.reviewContent.querySelectorAll('[data-action="rate"]').forEach((button) => { button.disabled = true; });
-          try {
-              const obligationId = this.activeReviewIds[this.activeReviewIndex];
-              assert(obligationId, "Review obligation is missing.");
-              const obligation = await this.service.obligation(obligationId);
-              const evidence = this.collectEvidence(rating, obligation);
-              const suggestion = suggestRating(obligation.type, evidence);
-              const effectiveRating = obligation.type === "relearn"
-                  ? correctiveMemoryRating(rating, evidence)
-                  : rating;
-              if (effectiveRating !== rating) {
-                  const proceed = window.confirm(`Closed-book verification does not support ${ratingName(rating)}. It will be recorded as ${ratingName(effectiveRating)} and corrective work will remain active. Continue?`);
-                  if (!proceed)
-                      return;
-              }
-              else if (Math.abs(rating - suggestion) >= 2) {
-                  const proceed = window.confirm(`Objective evidence suggests ${ratingName(suggestion)}, but you selected ${ratingName(rating)}. Keep your rating?`);
-                  if (!proceed)
-                      return;
-              }
-              const committedEvidence = effectiveRating === rating ? evidence : { ...evidence, confirmedRating: effectiveRating };
-              const commitToken = uid("commit");
-              const committing = this.buildActiveRetrievalSession("committing", commitToken);
-              assert(committing, "Active retrieval state is missing.");
-              const post = await this.postCommitSession(commitToken);
-              try {
-                  await this.activePersistence.flush(committing);
-                  const guard = { sessionId: ACTIVE_RETRIEVAL_ID, expectedRevision: committing.revision, targetId: obligationId, commitToken };
-                  await this.service.recordEvidence(obligationId, committedEvidence, new Date(), guard, post);
-                  await this.activePersistence.acceptCommittedTransition(post);
-                  this.activeSessionRevision = post.revision;
-                  this.toast(`Recorded ${ratingName(effectiveRating)}. Next obligation scheduled.`);
-                  this.reviewDrafts.delete(obligationId);
-                  this.activeReviewIndex += 1;
-                  this.diagramStrokes = [];
-                  this.phaseTime = new PhaseTimeRuntime(post.timeRuntime);
-                  this.attemptElapsedMs = 0;
-                  if (this.activeReviewIndex >= this.activeReviewIds.length) {
-                      await this.endReviewSession(false);
-                      await this.openPane("today");
-                      return;
-                  }
-                  this.reviewPhase = post.phase;
-                  await this.service.markReviewTargetsStarted([this.activeReviewTarget()]);
-                  await this.renderCoordinator.invalidateAndWait("review", "sidebar", "ownership", "storage");
-              }
-              catch (error) {
-                  const resumed = this.buildActiveRetrievalSession("active");
-                  if (resumed)
-                      await this.activePersistence.flush(resumed).catch(() => undefined);
-                  throw error;
-              }
-          }
-          finally {
-              this.commitInFlight = false;
-              this.reviewContent.querySelectorAll('[data-action="rate"]').forEach((button) => { button.disabled = false; });
           }
       }
       async openUnitDialog(prefill) {
@@ -16061,19 +16151,6 @@ exports.withFuzzing = withFuzzing;
           await this.renderAll();
           this.toast("Exam profile created.");
       }
-      async flushCurrentRetrievalForBackup() {
-          assert(!this.commitInFlight, "A review Evidence commit is still in progress.");
-          if (!this.ownership.canMutate())
-              return;
-          if (this.phaseTime)
-              this.reconcilePhaseTime("snapshot");
-          const session = this.buildActiveRetrievalSession();
-          if (session) {
-              assert(session.status === "active", "A committing retrieval cannot be backed up.");
-              this.activePersistence.forceEmergency(session);
-              await this.activePersistence.flush(session);
-          }
-      }
       async loadPluginFiles(input) {
           if (!this.requireMutable("load a plugin")) {
               input.value = "";
@@ -16182,7 +16259,7 @@ exports.withFuzzing = withFuzzing;
           }
       }
       async exportBackup() {
-          await this.flushCurrentRetrievalForBackup();
+          await this.activeRetrieval.flushForBackup();
           const archive = await this.backupController.createVerified(true);
           const date = new Date().toISOString().slice(0, 10);
           downloadBlob(`revision-director-backup-${date}.rdbackup`, archive.bytes, BACKUP_ARCHIVE_MIME);
@@ -16216,7 +16293,7 @@ exports.withFuzzing = withFuzzing;
           const inspection = candidate.inspection;
           const active = candidate.payload.activeRetrieval;
           const warnings = inspection.warnings.length ? `<div class="restore-step restore-warning"><h3>Verification notes</h3>${inspection.warnings.map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}</div>` : "";
-          const activeSection = active ? `<section class="restore-step"><h3>Unfinished retrieval in backup</h3><p>${escapeHtml(active.activeTargetId)} · ${escapeHtml(this.phaseLabel(active.phase))} · revision ${active.revision}</p><div class="restore-session-options"><label class="restore-check"><input type="radio" name="restore-active-treatment" value="restore">Restore this unfinished retrieval after replacement</label><label class="restore-check"><input type="radio" name="restore-active-treatment" value="discard">Discard it and restore records only</label></div></section>` : `<section class="restore-step"><h3>Active retrieval</h3><p>This backup contains no unfinished retrieval session.</p></section>`;
+          const activeSection = active ? `<section class="restore-step"><h3>Unfinished retrieval in backup</h3><p>${escapeHtml(active.activeTargetId)} · ${escapeHtml(reviewPhaseLabel(active.phase))} · revision ${active.revision}</p><div class="restore-session-options"><label class="restore-check"><input type="radio" name="restore-active-treatment" value="restore">Restore this unfinished retrieval after replacement</label><label class="restore-check"><input type="radio" name="restore-active-treatment" value="discard">Discard it and restore records only</label></div></section>` : `<section class="restore-step"><h3>Active retrieval</h3><p>This backup contains no unfinished retrieval session.</p></section>`;
           this.restorePreview.innerHTML = `
           <section class="restore-step"><h3>Verified restore preview</h3><p>The file has been decoded, integrity-checked and relationally validated. No application data has been changed.</p><div class="restore-summary">
             <div class="restore-stat"><span>Created</span><strong>${escapeHtml(formatDateTime(inspection.exportedAt))}</strong></div>
@@ -16234,7 +16311,7 @@ exports.withFuzzing = withFuzzing;
       }
       async createRestoreSafetyCopy() {
           assert(this.restoreCandidateId, "No inspected backup is available.");
-          await this.flushCurrentRetrievalForBackup();
+          await this.activeRetrieval.flushForBackup();
           const artifact = await this.backupController.createSafetyCopy(this.restoreCandidateId);
           this.restoreSafetyProofId = artifact.proofId;
           downloadBlob(artifact.filename, artifact.bytes, artifact.mimeType);
@@ -16269,7 +16346,7 @@ exports.withFuzzing = withFuzzing;
           if (!proceed)
               return;
           const result = await this.backupController.restore(this.restoreCandidateId, this.restoreSafetyProofId, treatment);
-          this.activePersistence.resetEmergencyAfterRestore(result.restoredActiveRetrieval);
+          this.activeRetrieval.resetEmergencyAfterRestore(result.restoredActiveRetrieval);
           this.restoreCandidateId = "";
           this.restoreSafetyProofId = "";
           this.dialogFocus.close(this.restoreDialog);
@@ -16282,29 +16359,6 @@ exports.withFuzzing = withFuzzing;
           this.restoreSafetyProofId = "";
           if (this.restoreDialog.open)
               this.dialogFocus.close(this.restoreDialog);
-      }
-      handleKeyboard(event) {
-          if (!this.ownership.canMutate())
-              return;
-          if (this.currentPane !== "review" || this.activeReviewIds.length === 0)
-              return;
-          if (this.activeReviewIds[this.activeReviewIndex]?.startsWith("chunk:"))
-              return;
-          const target = event.target instanceof HTMLElement ? event.target : null;
-          if (target?.matches("input,textarea,select"))
-              return;
-          if (this.reviewPhase === "attempt" && (event.key === " " || event.key === "Enter")) {
-              const reveal = this.reviewContent.querySelector('[data-action="reveal"]');
-              if (!reveal)
-                  return;
-              event.preventDefault();
-              reveal.click();
-              return;
-          }
-          if (this.reviewPhase === "compare" && ["1", "2", "3", "4"].includes(event.key)) {
-              event.preventDefault();
-              void this.commitRating(validateRating(Number(event.key)));
-          }
       }
       toast(message, error = false) {
           this.toastElement.textContent = message;
