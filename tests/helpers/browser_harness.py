@@ -142,13 +142,16 @@ def wait_until(
 
 
 def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) -> dict[str, object]:
-    wait_until(
-        page,
-        lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
-        and page.locator("#import-backup").is_enabled(),
+    page.wait_for_function(
+        """() => {
+          const pane=document.querySelector('#pane-settings');
+          const input=document.querySelector('#import-backup');
+          return document.documentElement.dataset.reviewOwnership === 'primary'
+            && pane?.classList.contains('on')
+            && input instanceof HTMLInputElement
+            && !input.disabled;
+        }""",
         timeout=timeout,
-        interval=40,
-        message="Restore surface did not settle into mutable primary state",
     )
     page.evaluate("document.querySelector('#toast').textContent=''")
     input_element = page.locator("#import-backup")
@@ -158,27 +161,15 @@ def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) ->
 
 
 def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[str, object]:
-    started = time.monotonic()
-    terminal = lambda: page.locator("#restore-dialog").is_visible() or bool(page.locator("#toast").inner_text().strip())
-    # A settings rerender may replace the original file input while its async
-    # inspection is still finishing. Input reset/replacement is therefore only
-    # an intermediate signal; preview/error remains the terminal contract.
-    wait_until(
-        page,
-        lambda: terminal() or page.locator("#import-backup").input_value() == "",
+    page.wait_for_function(
+        """() => {
+          const dialog=document.querySelector('#restore-dialog');
+          const toast=document.querySelector('#toast');
+          return Boolean(dialog instanceof HTMLDialogElement && dialog.open)
+            || Boolean(toast?.textContent?.trim());
+        }""",
         timeout=timeout,
-        interval=40,
-        message="Timed out waiting for backup inspection progress",
     )
-    if not terminal():
-        remaining = max(1, int(timeout - (time.monotonic() - started) * 1000))
-        wait_until(
-            page,
-            terminal,
-            timeout=remaining,
-            interval=40,
-            message="Timed out waiting for backup import terminal state",
-        )
     message = page.locator("#toast").inner_text().strip()
     return {
         "preview": page.locator("#restore-dialog").is_visible(),
