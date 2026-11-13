@@ -33,6 +33,7 @@ EXPECTED_NAMES = [
     "45-ui-runtime.ts",
     "46-workflow-form-adapter.ts",
     "47-active-retrieval-workspace.ts",
+    "48-settings-workspace.ts",
     "50-ui-controller.ts",
     "60-public-bridge-bootstrap.ts",
 ]
@@ -89,6 +90,7 @@ check("extension runtime owned", "class ExtensionRuntime" in text_by_name["55-ex
 check("UI runtime owned", "class RenderCoordinator" in text_by_name["45-ui-runtime.ts"] and "class AriaTabRegistry" in text_by_name["45-ui-runtime.ts"] and "class OverlayFocusManager" in text_by_name["45-ui-runtime.ts"])
 check("workflow form adapter owned", "function workflowSpecFromForm" in text_by_name["46-workflow-form-adapter.ts"] and "function populateWorkflowForm" in text_by_name["46-workflow-form-adapter.ts"])
 check("active retrieval workspace owned", "class ActiveRetrievalWorkspace" in text_by_name["47-active-retrieval-workspace.ts"] and "async render()" in text_by_name["47-active-retrieval-workspace.ts"] and "async flushForOwnershipRelease()" in text_by_name["47-active-retrieval-workspace.ts"])
+check("settings workspace owned", "class SettingsWorkspace" in text_by_name["48-settings-workspace.ts"] and "async render()" in text_by_name["48-settings-workspace.ts"] and "async handleAction" in text_by_name["48-settings-workspace.ts"])
 check("domain kernel owns no DOM forms", all(token not in text_by_name["11-domain-kernel.ts"] for token in ["FormData", "HTMLFormElement", "HTMLInputElement", "HTMLSelectElement", "HTMLTextAreaElement", "innerHTML"]))
 check("UI owned", "class UIController" in text_by_name["50-ui-controller.ts"])
 check("UI shell does not own active retrieval state", all(token not in text_by_name["50-ui-controller.ts"] for token in ["private activeReviewIds", "private reviewPhase", "private phaseTime", "private reviewDrafts", "private commitInFlight"]))
