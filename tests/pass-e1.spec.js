@@ -13,13 +13,14 @@ async function mustReject(fn,m){checks++;try{await fn()}catch{return}throw new E
 const due=[{obligation:{type:'memory-recall',expectedMinutes:12}},{obligation:{type:'memory-recall',expectedMinutes:8}},{obligation:{type:'application-practice',expectedMinutes:20}}];
 const profiles=[{id:'p1',name:'Exam',examDate:'2027-01-01',status:'active'}];
 class FakeService{
- constructor(){this.study=[];this.units=[]}
+ constructor(){this.study=[];this.units=[];this.planEnsures=0}
  async dueQueue(){return structuredClone(due)}
  async profiles(){return structuredClone(profiles)}
  getSettings(){return {activeProfileId:'p1'}}
  storageHealth(){return {checkedAt:new Date().toISOString(),level:'healthy',indexedDbAvailable:true,persistence:'granted',diagnosticCount:0}}
  async logStudyEvent(payload){this.study.push(payload);return {id:'study-1'}}
  async createUnit(payload){this.units.push(payload);return {id:'unit-1'}}
+ async ensureDailyPlan(){this.planEnsures+=1;return {}}
 }
 class FakeOwnership{constructor(){this.mutable=true}canMutate(){return this.mutable}snapshot(){return {state:this.mutable?'primary':'secondary',tabId:'tab',canMutate:this.mutable,revision:1}}}
 (async()=>{
@@ -45,7 +46,7 @@ class FakeOwnership{constructor(){this.mutable=true}canMutate(){return this.muta
  check(study.id==='study-1'&&service.study.length===1&&service.study[0].origin==='study-director','Study intake failed');
  await mustReject(()=>api.intake.importStudyEvent({area:'A',task:'B',measure:'C',durationMinutes:10,activityMode:'invalid'}),'Invalid public activity mode was accepted');
  const candidate=await api.intake.createRevisionCandidate({subject:'Geology',section:'Geomorphology',topic:'Drainage',title:'Drainage patterns',scope:'Major patterns',protocol:'Recall and draw',successCriteria:'Accurate structure'});
- check(candidate.unitId==='unit-1'&&service.units.length===1,'Candidate intake failed');
+ check(candidate.unitId==='unit-1'&&service.units.length===1&&service.planEnsures===1,'Candidate intake failed or did not synchronize the persisted daily plan');
  await mustReject(()=>api.intake.createRevisionCandidate({subject:'S',section:'C',topic:'T',title:'U',scope:'Scope',protocol:'P',successCriteria:'Success',obligationType:'invalid'}),'Invalid public obligation type was accepted');
  ownership.mutable=false;
  let denied='';try{await api.intake.importStudyEvent({area:'A',task:'B',measure:'C',durationMinutes:1})}catch(e){denied=String(e.message||e)}

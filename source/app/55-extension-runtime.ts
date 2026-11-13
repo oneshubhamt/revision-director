@@ -455,6 +455,7 @@
         freshnessDays: 30,
         workflow: defaultWorkflowSpec(obligationType, protocol, successCriteria),
       });
+      await this.service.ensureDailyPlan(new Date());
       return Object.freeze({ unitId: unit.id });
     }
   }
