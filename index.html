@@ -12965,7 +12965,7 @@ exports.withFuzzing = withFuzzing;
      ========================================================================== */
 
   const BACKUP_ARCHIVE_FORMAT = "revision-director-backup-archive";
-  const BACKUP_ARCHIVE_VERSION = 2;
+  const BACKUP_ARCHIVE_VERSION = 3;
   const BACKUP_ARCHIVE_MIME = "application/x-revision-director-backup";
   const BACKUP_ARCHIVE_MAX_FILE_BYTES = 64 * 1024 * 1024;
   const BACKUP_ARCHIVE_MAX_EXPANDED_BYTES = 256 * 1024 * 1024;
@@ -13265,10 +13265,27 @@ exports.withFuzzing = withFuzzing;
               settings: payload.settings,
               activeRetrieval: payload.activeRetrieval,
           };
-          return this.hashJson(stable, algorithm);
+          return this.hashStableJson(stable, algorithm);
       }
       static async opaqueFingerprint(value) {
-          return this.hashJson(value, "sha256");
+          return this.hashStableJson(value, "sha256");
+      }
+      static stableJsonValue(value) {
+          if (Array.isArray(value))
+              return value.map((item) => this.stableJsonValue(item));
+          if (value instanceof Date)
+              return value.toJSON();
+          if (value && typeof value === "object") {
+              const record = value;
+              const sorted = {};
+              for (const key of Object.keys(record).sort())
+                  sorted[key] = this.stableJsonValue(record[key]);
+              return sorted;
+          }
+          return value;
+      }
+      static async hashStableJson(value, algorithm) {
+          return this.hashBytes(this.encode(JSON.stringify(this.stableJsonValue(value))), algorithm);
       }
       static async hashJson(value, algorithm) {
           return this.hashBytes(this.encode(JSON.stringify(value)), algorithm);
