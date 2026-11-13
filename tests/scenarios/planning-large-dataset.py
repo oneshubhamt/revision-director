@@ -35,6 +35,14 @@ def open_page(browser, viewport=None, *, baseline=True):
     )
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup')
     page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+    shared_wait_until(
+        page,
+        lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary"
+        and page.locator('#import-backup').is_enabled(),
+        timeout=8000,
+        interval=40,
+        message='Performance restore surface did not become mutable',
+    )
     if baseline:
         main_qa.restore_selected_backup(page, main_qa.BASELINE_BACKUP)
         check('restored' in page.locator('#toast').inner_text().lower(), 'Baseline fixture restore failed')
