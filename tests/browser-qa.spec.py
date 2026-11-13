@@ -6,7 +6,7 @@ import os
 import json
 from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from playwright.sync_api import sync_playwright
-from helpers.browser_harness import launch_chromium, wait_for_app_ready, wait_for_backup_import_result, wait_for_layout, wait_until
+from helpers.browser_harness import launch_chromium, select_backup_file, wait_for_app_ready, wait_for_layout, wait_until
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_HTML = (ROOT / "index.html").read_text()
@@ -82,14 +82,10 @@ def check_all_checkpoints(page) -> None:
 
 
 def restore_selected_backup(page, backup_path: str | Path, treatment: str = "discard", wait_ms: int = 900, download_page=None) -> None:
-    page.evaluate("document.querySelector('#toast').textContent=''")
-    page.locator("#import-backup").set_input_files(str(backup_path))
     timeout = max(20_000, wait_ms)
-    try:
-        page.locator("#restore-dialog").wait_for(state="visible", timeout=timeout)
-    except Exception as error:
-        toast = page.locator("#toast").inner_text().strip()
-        raise AssertionError(f"Restore preview did not open within {timeout}ms; toast={toast!r}") from error
+    result = select_backup_file(page, backup_path, timeout=timeout)
+    if not result["preview"]:
+        raise AssertionError(f"Restore preview did not open within {timeout}ms; result={result!r}")
     with TemporaryDirectory() as tmpdir:
         download_surface = download_page or page
         with download_surface.expect_download() as download_info:
@@ -242,10 +238,7 @@ def scenario_backups(browser) -> None:
         check(page.locator("[data-profile-editor]").count() == 2, "Backup restore did not replace temporary data")
 
         Path(hostile_path).write_bytes(encode_payload({**payload, 'settings':{**payload['settings'], 'activeProfileId':'missing-profile'}}))
-        page.evaluate("document.querySelector('#toast').textContent=''")
-        page.locator("#import-backup").set_input_files([])
-        page.locator("#import-backup").set_input_files(hostile_path)
-        result = wait_for_backup_import_result(page, timeout=5000)
+        result = select_backup_file(page, hostile_path, timeout=5000)
         check(
             bool(result["message"]) and result["error"] and not result["preview"],
             f"Hostile backup did not fail through the rejection UI contract · result={result!r}",
