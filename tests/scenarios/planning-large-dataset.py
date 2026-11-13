@@ -25,7 +25,7 @@ def check(value: bool, message: str) -> None:
     if not value:
         raise AssertionError(message)
 
-def open_page(browser, viewport=None):
+def open_page(browser, viewport=None, *, baseline=True):
     page, errors = open_html_page(
         browser,
         HTML,
@@ -34,8 +34,9 @@ def open_page(browser, viewport=None):
     )
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup')
     page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-    main_qa.restore_selected_backup(page, main_qa.BASELINE_BACKUP)
-    check('restored' in page.locator('#toast').inner_text().lower(), 'Baseline fixture restore failed')
+    if baseline:
+        main_qa.restore_selected_backup(page, main_qa.BASELINE_BACKUP)
+        check('restored' in page.locator('#toast').inner_text().lower(), 'Baseline fixture restore failed')
     return page, errors
 
 
@@ -172,7 +173,7 @@ def large_backup(count: int):
     return {'format':'revision-director-backup','schemaVersion':2,'exportedAt':now,'appVersion':current_app_version,'profiles':[profile],'nodes':nodes,'units':units,'studyEvents':[],'obligations':obligations,'evidenceEvents':[],'chunks':[],'dailyPlans':[],'activeRetrieval':None,'settings':{'schemaVersion':1,'key':'app','activeProfileId':'p','fsrsScheduling':{'policy':{'kind':'fixed-retention','desiredRetention':.9}},'memoryDifficultyPolicy':{'remediationLapses':2,'persistentDifficultyLapses':4,'automaticHold':{'enabled':False,'lapseThreshold':8}},'dailyCapacityMinutes':120,'studyDayBoundaryHour':4,'fsrsPersonalization':{'profile':None,'active':False}}}
 
 def scenario_large_dataset(browser):
-    page, errors=open_page(browser,{'width':1440,'height':1000})
+    page, errors=open_page(browser,{'width':1440,'height':1000},baseline=False)
     with TemporaryDirectory() as tmp:
         payload=large_backup(1000); p=Path(tmp)/'large.rdbackup'; p.write_bytes(encode_payload(payload))
         start=time.monotonic(); page.locator('[data-pane="settings"]').click(); main_qa.restore_selected_backup(page, p)
