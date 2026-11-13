@@ -53,66 +53,71 @@
     },
     {
       "order": 10,
+      "path": "app/22-backup-validation.ts",
+      "layer": "Pure canonical backup payload and relational-integrity validation."
+    },
+    {
+      "order": 11,
       "path": "app/30-indexeddb-repository.ts",
       "layer": "IndexedDB schema, repository transactions and backup replacement."
     },
     {
-      "order": 11,
+      "order": 12,
       "path": "app/31-storage-facade.ts",
       "layer": "Application-wide storage facade, bounded diagnostics and browser storage-health reporting."
     },
     {
-      "order": 12,
+      "order": 13,
       "path": "app/32-active-retrieval-persistence.ts",
       "layer": "Durable active retrieval persistence, emergency recovery, serialised writes and newest-copy reconciliation."
     },
     {
-      "order": 13,
+      "order": 14,
       "path": "app/33-phase-time-runtime.ts",
       "layer": "Phase-aware active-time accounting, pause history, inactive-gap classification and timing reliability."
     },
     {
-      "order": 14,
+      "order": 15,
       "path": "app/34-cross-tab-ownership.ts",
       "layer": "Cross-tab review ownership lease, takeover handshake, canonical hydration and read-only secondary state."
     },
     {
-      "order": 15,
+      "order": 16,
       "path": "app/40-application-services.ts",
       "layer": "Revision-domain use cases and atomic service operations."
     },
     {
-      "order": 16,
+      "order": 17,
       "path": "app/41-backup-codec.ts",
       "layer": "Versioned bounded backup archive codec, compression detection, integrity hashes, inspection metadata and relational decode."
     },
     {
-      "order": 17,
+      "order": 18,
       "path": "app/42-backup-controller.ts",
       "layer": "Verified backup creation, non-mutating inspection, safety-copy proofs, explicit restore orchestration and active-session treatment."
     },
     {
-      "order": 18,
+      "order": 19,
       "path": "app/55-extension-runtime.ts",
       "layer": "Frozen public capability API, plugin registration, failure isolation and trusted local plugin-file loader."
     },
     {
-      "order": 19,
+      "order": 20,
       "path": "app/45-ui-runtime.ts",
       "layer": "Delegated UI events, deterministic render coordination, ARIA tab registry and focus-management primitives."
     },
     {
-      "order": 20,
+      "order": 21,
       "path": "app/46-workflow-form-adapter.ts",
       "layer": "Workflow-specific DOM form serialization, population and visibility adapter."
     },
     {
-      "order": 21,
+      "order": 22,
       "path": "app/50-ui-controller.ts",
       "layer": "DOM helpers and the current UI controller."
     },
     {
-      "order": 22,
+      "order": 23,
       "path": "app/60-public-bridge-bootstrap.ts",
       "layer": "Validated public bridge and boot sequence; the build owns the outer sealed IIFE."
     }
