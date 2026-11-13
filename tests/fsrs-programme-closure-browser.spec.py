@@ -133,7 +133,14 @@ def scenario_corrective_memory_e2e(browser) -> None:
     check(len(direct_events) == 1 and direct_events[0]["confirmedRating"] == 1, "Direct Again was not persisted exactly once")
 
     start_obligation(page, relearn["id"])
-    check("WHY THIS RELEARNING EXISTS" in page.locator("#review-content").inner_text(), "Corrective relearning did not expose triggering failure")
+    repair_phase = page.locator('[data-review-phase="relearn-repair"]')
+    repair_phase.wait_for(state="visible")
+    trigger = repair_phase.locator(".trigger-evidence:not(.missing)")
+    check(trigger.count() == 1, "Corrective relearning did not resolve its triggering evidence")
+    check(
+        "Could not reconstruct the organism profile independently." in trigger.inner_text(),
+        "Corrective relearning did not expose the recorded triggering correction",
+    )
     perform_relearn_verification(page, successful=False)
 
     state = read_state(page)
