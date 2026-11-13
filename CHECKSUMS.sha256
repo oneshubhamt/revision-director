@@ -26,8 +26,8 @@ de8d46d2767a2cb078b3b2aacc097dc86a5e653a01b881fd3dcc43f575842c89  ./source/app/0
 c9fb42874e8aa2f7de935a0a988ef9de2591df1eeed61c42edbfbfe862261ace  ./source/app/19-revision-scheduler-port.ts
 c0630c2dec3e855fba04ab22bfc864a730f4658e2fb08cd2f789d121eafc14c5  ./source/app/20-policy-planning-kernel.ts
 7d6de3dcba9f7f27b47156e75f02525c64998736ced555e93eb41751d69f4eb8  ./source/app/21-policy-implementations.ts
-0000000000000000000000000000000000000000000000000000000000000000  ./source/app/22-backup-validation.ts
-0000000000000000000000000000000000000000000000000000000000000000  ./source/app/23-evidence-transition.ts
+685d9d6c500d0314b35acbc13c28a6bd793cf11b3958f78e803bef4b7fa718e5  ./source/app/22-backup-validation.ts
+a150b91027d89978b0ca0d8c61844d9c29d80b4ea1df38fbdf2049d210cf0026  ./source/app/23-evidence-transition.ts
 ef52d93f7a013f9852b646be84e3de8a602ac7caedd903b7861bb1a5b41f4c27  ./source/app/30-indexeddb-repository.ts
 3355b86ac8c7ab063bf315770de701b031bdd760c7d63ddc585e583aa6b17f16  ./source/app/31-storage-facade.ts
 c835f78e652f1a6b67657e474f4b179fbb568dcc05e807977d516d674819e482  ./source/app/32-active-retrieval-persistence.ts
@@ -37,8 +37,8 @@ b3786815bdb457003bfba464ef3316ef640a78a40d78522473c42a21ea764018  ./source/app/4
 db4f20d09fa64fa2b60bd157ef951c8e53859eec54b0e0391ab2d245e356c838  ./source/app/41-backup-codec.ts
 85ff6bec88cdb0a59a346f492f456d83dd33375218dd5512985f78040e9593c6  ./source/app/42-backup-controller.ts
 85ed6b35fef118800b5b3cb78af9cd8dc5056c980a11f69f52b884eb63e92273  ./source/app/45-ui-runtime.ts
-0000000000000000000000000000000000000000000000000000000000000000  ./source/app/46-workflow-form-adapter.ts
-0000000000000000000000000000000000000000000000000000000000000000  ./source/app/47-active-retrieval-workspace.ts
+995a2f1a55be2ec3315fb1f228e31c74e2841f9f2d8ba6cb8b9ac0a40ff39015  ./source/app/46-workflow-form-adapter.ts
+f3982ae82a2eaaaf597396f77963544dbe56b8d657ad9d9b93b856898aa48126  ./source/app/47-active-retrieval-workspace.ts
 9522c9954f15793d75e9ed3cb8fa15798ce71f2c3bffd7d5ad13e8ebac09ece6  ./source/app/50-ui-controller.ts
 f9560c8de7e7926321bb71dd697090c98ab34d680b3a4b225d5832f848f51949  ./source/app/55-extension-runtime.ts
 77963fce015a51c7175b7b3b41faefd32600f5cae6c463f19a836e4333aef11b  ./source/app/60-public-bridge-bootstrap.ts
@@ -50,7 +50,7 @@ e30f76f9a4dcb5f47b7decb1b68bf3e369b69864c56320fc41fbabb2225b192c  ./source/app/s
 52986982068bee4fc8f589953daf15476db8c1546426b0582f27ac024b827e4e  ./source/tsconfig.json
 b8acbd89a7a929b219e091e34a9723ab163d608bebec4a2739d6b62ce8a45acd  ./tests/backup_fixture_codec.py
 f56e423e6d32718522c26aefac13cebd150062aad46a7983f6ad352790281edb  ./tests/browser-qa.spec.py
-7255038debd43a5b5b9e87a3cc8498f0bcce3e3edd1aa70077f191969e34b58f  ./tests/build-integrity.spec.py
+d756d477121698e97f7ae4a17f9790832dbb07f6650a8144dd5465ccd12ee480  ./tests/build-integrity.spec.py
 cb0c953c10f8a02eb28ccc4fe487eb5e045d364835540d5534bd9779d19f8274  ./tests/fixtures/browser-baseline.json
 909124745204ba2ad8536712f53588bcd3b91422854fa9191c161d13d0b7867b  ./tests/fixtures/browser-baseline.rdbackup
 5094dfbfa9be0d50c066d7da20e99ecd206ada2981a47e8908c907d35b4079ed  ./tests/fsrs-browser-optimizer.spec.py
