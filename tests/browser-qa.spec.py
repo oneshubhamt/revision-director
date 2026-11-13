@@ -4,14 +4,14 @@ from datetime import date, timedelta
 from tempfile import TemporaryDirectory
 import os
 import json
-from backup_fixture_codec import decode_file, encode_payload
+from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from playwright.sync_api import sync_playwright
 from helpers.browser_harness import launch_chromium
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_HTML = (ROOT / "index.html").read_text()
-BASELINE_BACKUP = ROOT / "tests/fixtures/browser-baseline.rdbackup"
+BASELINE_BACKUP = baseline_backup_path()
 INDEXEDDB_SHIM = r"""
 <script>
 (() => {
