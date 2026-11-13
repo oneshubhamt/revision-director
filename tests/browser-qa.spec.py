@@ -141,6 +141,8 @@ def review_unit(page, title: str) -> None:
 def rate_good(page) -> None:
     page.locator('[data-action="rate"][data-rating="3"]').click()
     page.wait_for_timeout(420)
+    if page.locator("#toast.error.show").count():
+        raise AssertionError(f"Good-rating commit failed: {page.locator('#toast.error.show').inner_text()}")
 
 
 def scenario_basic(browser) -> None:
