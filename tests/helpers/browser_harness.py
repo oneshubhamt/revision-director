@@ -111,12 +111,30 @@ def load_browser_qa(name: str = "revision_director_browser_qa"):
     return load_test_module(TESTS / "browser-qa.spec.py", name)
 
 
+
+def wait_for_app_ready(page: Page, *, timeout: int = 10_000) -> None:
+    page.wait_for_function(
+        """() => {
+          const fatal=document.querySelector('#fatal-error');
+          return (fatal && fatal.offsetParent !== null) || typeof window.RevisionDirector === 'object';
+        }""",
+        timeout=timeout,
+    )
+    if page.locator("#fatal-error").count():
+        assert not page.locator("#fatal-error").is_visible(), "Fatal startup error"
+
+
+def wait_for_layout(page: Page) -> None:
+    page.evaluate(
+        """() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"""
+    )
+
 def open_html_page(
     browser: Browser,
     html: str,
     *,
     viewport: dict[str, int] | None = None,
-    settle_ms: int = 1_200,
+    settle_ms: int = 0,
     default_timeout: int = 10_000,
     include_warnings: bool = False,
     auto_accept_dialogs: bool = True,
@@ -127,8 +145,7 @@ def open_html_page(
     if auto_accept_dialogs:
         accept_dialogs(page)
     page.set_content(html, wait_until="load")
+    wait_for_app_ready(page, timeout=default_timeout)
     if settle_ms:
         page.wait_for_timeout(settle_ms)
-    if page.locator("#fatal-error").count():
-        assert not page.locator("#fatal-error").is_visible(), "Fatal startup error"
     return page, errors
