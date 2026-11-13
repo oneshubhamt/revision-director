@@ -6,7 +6,7 @@ import os
 import json
 from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from playwright.sync_api import sync_playwright
-from helpers.browser_harness import launch_chromium, wait_for_app_ready, wait_for_layout, wait_until
+from helpers.browser_harness import launch_chromium, wait_for_app_ready, wait_for_backup_import_result, wait_for_layout, wait_until
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_HTML = (ROOT / "index.html").read_text()
@@ -245,19 +245,10 @@ def scenario_backups(browser) -> None:
         page.evaluate("document.querySelector('#toast').textContent=''")
         page.locator("#import-backup").set_input_files([])
         page.locator("#import-backup").set_input_files(hostile_path)
-        wait_until(
-            page,
-            lambda: page.locator("#import-backup").evaluate("e=>e.value") == "",
-            timeout=5000,
-            interval=40,
-            message="Hostile backup import handler did not finish",
-        )
-        hostile_message = page.locator("#toast").inner_text().strip()
+        result = wait_for_backup_import_result(page, timeout=5000)
         check(
-            bool(hostile_message)
-            and page.locator("#toast").evaluate("e=>e.classList.contains('error')")
-            and not page.locator("#restore-dialog").is_visible(),
-            f"Hostile backup did not fail through the rejection UI contract · toast={hostile_message!r}",
+            bool(result["message"]) and result["error"] and not result["preview"],
+            f"Hostile backup did not fail through the rejection UI contract · result={result!r}",
         )
     check(not errors, f"Browser errors: {errors}")
     page.close()
