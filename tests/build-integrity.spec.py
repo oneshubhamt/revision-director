@@ -40,6 +40,8 @@ ui_controller_ts = (ROOT / "source/app/50-ui-controller.ts").read_text()
 backup_codec_ts = (ROOT / "source/app/41-backup-codec.ts").read_text()
 tsconfig = json.loads((ROOT / "source/tsconfig.json").read_text())
 build_script = (ROOT / "build/build.py").read_text()
+checksum_script = (ROOT / "build/checksums.py").read_text()
+ci_workflow = (ROOT / ".github/workflows/ci.yml").read_text()
 first_source = source_paths[0].read_text()
 last_source = source_paths[-1].read_text()
 shell = (ROOT / "source/revision-director.shell.html").read_text()
@@ -181,7 +183,7 @@ check("leech signal without parallel suspension", "schedulerLeechMiddleware" not
 check("FSRS rating semantics", 'if (type === "memory-recall")' in ts and '"Easy" remains a user judgement' in ts and "partial or cued recall" in ts)
 check("schema-owned persistence fail-closed", "event.oldVersion !== 0" in ts and "request.error?.name === \"VersionError\"" in ts and "Existing data was not modified" in ts and "storage.metadata.release-refresh" in ts and "canonical.applicationVersion !== APP_VERSION" in ts and "canonical.applicationVersion === APP_VERSION" not in ts and 'candidate["appVersion"] === APP_VERSION' not in ts and 'value["appVersion"] === APP_VERSION' not in ts)
 check("single canonical topology", all(token in ts for token in ["assertExactKeys", "putProfileAndSettings", "assertActiveProfileSelection", 'settings.add(defaultSettings())', 'metadata.add({', "Canonical storage must contain exactly one application-settings document.", "Database metadata is missing from this Revision Director database"]) and "hasAnyStoredData" not in ts and "hasStoredData" not in ts and all(token not in ts.lower() for token in ["migratelegacy", "legacyadapter", "migrationtable"]))
-check("atomic profile/settings persistence", "async putProfileAndSettings(profile: ExamProfile, settings: AppSettings)" in ts and "this.db.transaction([Store.Profiles, Store.Settings], \"readwrite\")" in ts and "await this.repo.putProfileAndSettings(profile, nextSettings);" in ts)
+check("atomic profile/settings persistence", "async putProfileAndSettings(profile: ExamProfile, settings: AppSettings)" in ts and 'readwriteTransaction(this.db, [Store.Profiles, Store.Settings], "strict")' in repository_ts and "await this.repo.putProfileAndSettings(profile, nextSettings);" in ts)
 check("strict current document shapes", all(token in contracts_ts for token in ['assertExactKeys(value, "Exam profile"', 'assertExactKeys(value, "Knowledge node"', 'assertExactKeys(value, "Knowledge unit"', 'assertExactKeys(value, "Study event"', 'assertExactKeys(value, "Revision obligation"', 'assertExactKeys(value, "Obligation chunk"', 'assertExactKeys(value, "Daily plan"', 'assertExactKeys(value, "Active retrieval session"', 'assertExactKeys(value, "Application metadata"']))
 check("transactional settings publication", "await this.repo.put(Store.Settings, canonical);\n      this.settings = canonical;" in ts and "await this.repo.put(Store.Settings, next);\n      this.settings = next;" in ts and "validateMemoryDatasetProjectionChain(updatedMemory, reviewIndex);" in ts and "verifyMemoryDatasetIntegrityWithIndex(" in ts and "await this.repo.replaceSettingsAndObligations(finalized, updatedMemory);" in ts)
 check("no timing compatibility synthesis", "fallbackElapsedMs" not in ts and "canonicalTimingEvidenceSummary(value: TimingEvidenceSummary)" in ts and "completeChunk(chunkId: string, timing: TimingEvidenceSummary" in ts)
@@ -199,6 +201,15 @@ check("CSS semantic tokens are closed", all(token not in css for token in ["var(
 check("CSS hidden invariant is singular", css.count("[hidden]{display:none!important}") == 1 and ".optimizer-progress[hidden]" not in css and ".gap-overlay[hidden]" not in css and ".ownership-banner[hidden]" not in css)
 check("CSS breakpoints consolidated", len(responsive_breakpoints) == len(set(responsive_breakpoints)) and "CONSOLIDATED RESPONSIVE OVERRIDES" in css)
 check("atomic durable snapshot", "this.db.transaction(stores, \"readonly\")" in repository_ts and "async backupState(activeRetrievalMode:" in storage_ts and 'this.repo.backupState("ignore")' in service_ts and "const state = await this.repo.backupState();" in service_ts)
+check("selective strict IndexedDB durability", 'type RevisionWriteDurability = "default" | "strict"' in repository_ts and 'db.transaction(stores, "readwrite", { durability: "strict" })' in repository_ts and repository_ts.count('readwriteTransaction(this.db, stores, "strict")') == 3 and 'readwriteTransaction(this.db, store, "strict")' not in repository_ts and 'readwriteTransaction(this.db, store)' in repository_ts)
+check("strict durability covers authoritative multi-store commits", all(token in repository_ts for token in [
+    'readwriteTransaction(this.db, [Store.Profiles, Store.Settings], "strict")',
+    'readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict")',
+    'readwriteTransaction(this.db, [Store.Obligations, Store.Chunks], "strict")',
+    'readwriteTransaction(this.db, [Store.Settings, Store.Obligations], "strict")',
+]) and '"TypeError"' in repository_ts)
+check("generated-artifact checksum CI is centralized", "def rendered_manifest()" in checksum_script and ci_workflow.count("python3 build/checksums.py --write") == 2 and "import hashlib" not in ci_workflow and "Verify tracked checksums" not in ci_workflow)
+check("working generated-artifact auto-sync retained", "Sync generated artifacts" in ci_workflow and "github.ref == 'refs/heads/working'" in ci_workflow and 'git commit -m "build: synchronize generated artifacts [skip ci]"' in ci_workflow)
 check("single verified restore path", "async importBackup(input: unknown)" not in service_ts and "restoreBackupPayload" in service_ts)
 check("canonical SHA-256 archive parser", all(token in backup_codec_ts for token in [
     'assertExactKeys(value, "Backup manifest"', 'assertExactKeys(value, "Backup counts"', 'assertExactKeys(value, "Backup chunk"', 'assertExactKeys(value, "Backup completion proof"',
