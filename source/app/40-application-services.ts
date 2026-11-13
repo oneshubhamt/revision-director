@@ -464,6 +464,7 @@
     }
 
     async createUnit(draft: UnitDraft): Promise<KnowledgeUnit> {
+      assert(draft.obligationType !== "relearn", "A new knowledge unit cannot begin with a system-owned relearning obligation.");
       assert(draft.title.trim().length >= 2, "Enter a knowledge-unit name.");
       assert(draft.scope.trim().length >= 3, "Define the unit scope.");
       assert(draft.protocol.trim().length >= 3, "Define a retrieval protocol.");
@@ -566,17 +567,11 @@
       return obligation;
     }
 
-    async createObligation(draft: ObligationDraft, relation?: { parentObligationId?: string; returnObligationId?: string }): Promise<RevisionObligation> {
+    async createObligation(draft: ObligationDraft): Promise<RevisionObligation> {
       const unit = await this.unit(draft.unitId);
-      if (relation?.parentObligationId) {
-        const parent = await this.obligation(relation.parentObligationId);
-        assert(parent.unitId === unit.id, "Parent obligation belongs to a different knowledge unit.");
-      }
-      if (relation?.returnObligationId) {
-        const target = await this.obligation(relation.returnObligationId);
-        assert(target.unitId === unit.id, "Return obligation belongs to a different knowledge unit.");
-      }
-      const obligation = this.buildObligation(draft, relation);
+      assert(unit.status === "active", "Activate the knowledge unit before adding a revision obligation.");
+      assert(draft.type !== "relearn", "Relearning obligations are created only by failed retrievals that record their exact origin.");
+      const obligation = this.buildObligation(draft);
       await this.repo.put(Store.Obligations, obligation);
       return obligation;
     }
@@ -1250,6 +1245,7 @@
       assert(draft.area.trim() && draft.task.trim() && draft.measure.trim(), "Area, task and measure are required.");
       assert(Number.isFinite(draft.durationMinutes) && draft.durationMinutes >= 1 && draft.durationMinutes <= 1440, "Duration is invalid.");
       assert(Array.isArray(draft.linkedUnitIds), "Study Event links are invalid.");
+      assert(new Set(draft.linkedUnitIds).size === draft.linkedUnitIds.length, "Study Event links cannot contain duplicates.");
       for (const unitId of draft.linkedUnitIds) {
         const unit = await this.unit(unitId);
         assert(unit.profileId === draft.profileId, "Study Event cannot link a knowledge unit from another exam profile.");
@@ -1266,7 +1262,7 @@
         source: draft.source.trim(),
         durationMinutes: Math.round(draft.durationMinutes),
         understanding: draft.understanding,
-        linkedUnitIds: [...new Set(draft.linkedUnitIds)],
+        linkedUnitIds: [...draft.linkedUnitIds],
         notes: draft.notes.trim(),
         origin: draft.origin,
         createdAt: nowIso(),
@@ -1282,9 +1278,7 @@
     async triggeringEvidence(relearningObligationId: string): Promise<EvidenceEvent | undefined> {
       const obligation = await this.obligation(relearningObligationId);
       if (obligation.type !== "relearn") return undefined;
-      const events = await this.evidenceEvents();
-      return events.find((event) => event.followUpObligationId === obligation.id)
-        ?? events.find((event) => event.obligationId === obligation.parentObligationId);
+      return (await this.evidenceEvents()).find((event) => event.followUpObligationId === obligation.id);
     }
 
     async currentActiveRetrieval(): Promise<ActiveRetrievalSession | null> {
@@ -1695,14 +1689,6 @@
         activeRetrieval: canonicalActive,
       };
     }
-
-    async importBackup(input: unknown): Promise<void> {
-      const payload = this.validateBackup(input);
-      await this.repo.replaceFromBackup(payload, "discard");
-      this.settings = clone(payload.settings);
-      this.invalidateMemoryReviewAnalysis();
-    }
-
 
   }
 
