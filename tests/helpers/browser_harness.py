@@ -140,6 +140,26 @@ def wait_until(
     raise AssertionError(message)
 
 
+
+def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[str, object]:
+    wait_until(
+        page,
+        lambda: page.locator("#import-backup").evaluate("e=>e.value") == ""
+        and (
+            page.locator("#restore-dialog").is_visible()
+            or bool(page.locator("#toast").inner_text().strip())
+        ),
+        timeout=timeout,
+        interval=40,
+        message="Timed out waiting for backup import terminal state",
+    )
+    message = page.locator("#toast").inner_text().strip()
+    return {
+        "preview": page.locator("#restore-dialog").is_visible(),
+        "message": message,
+        "error": page.locator("#toast").evaluate("e=>e.classList.contains('error')"),
+    }
+
 def load_test_module(path: str | Path, name: str):
     resolved = Path(path)
     spec = importlib.util.spec_from_file_location(name, resolved)
