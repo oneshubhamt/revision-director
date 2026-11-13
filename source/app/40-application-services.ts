@@ -34,16 +34,10 @@
 
     async initialize(): Promise<void> {
       this.invalidateMemoryReviewAnalysis();
-      const stored = await this.repo.get(Store.Settings, "app");
-      if (stored) {
-        this.settings = canonicalAppSettings(stored);
-      } else {
-        assert(!(await this.repo.hasStoredData([Store.Settings, Store.Metadata])), "Application settings are missing from a populated Revision Director database. Existing data was not modified.");
-        this.settings = defaultSettings();
-        await this.repo.put(Store.Settings, this.settings);
-      }
-      this.assertActiveProfileSelection(await this.profiles(), this.settings);
-      await this.verifyMemoryProjectionIntegrity();
+      const state = await this.repo.backupState();
+      this.settings = clone(state.settings);
+      this.assertActiveProfileSelection(state.profiles, this.settings);
+      await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);
     }
 
     private assertActiveProfileSelection(profiles: readonly ExamProfile[], settings: AppSettings): void {
@@ -55,17 +49,17 @@
       assert(active.some((profile) => profile.id === settings.activeProfileId), "Default exam profile must reference an active exam profile.");
     }
 
-    private async verifyMemoryProjectionIntegrity(): Promise<void> {
-      const [obligations, evidenceEvents] = await Promise.all([
-        this.repo.getAll(Store.Obligations),
-        this.evidenceEvents(),
-      ]);
+    private async verifyMemoryProjectionIntegrity(
+      obligations: readonly RevisionObligation[],
+      evidenceEvents: readonly EvidenceEvent[],
+      settings: AppSettings,
+    ): Promise<void> {
       await verifyMemoryDatasetIntegrityWithIndex(
         obligations,
         this.memoryReviewIndexFor(evidenceEvents),
-        this.settings.fsrsScheduling.policy,
-        activeFsrsOptimizerProfile(this.settings),
-        fsrsPersonalizationProfileCatalog(this.settings),
+        settings.fsrsScheduling.policy,
+        activeFsrsOptimizerProfile(settings),
+        fsrsPersonalizationProfileCatalog(settings),
       );
     }
 
@@ -1298,21 +1292,13 @@
     }
 
     async exportBackup(): Promise<BackupPayload> {
+      const state = await this.repo.backupState();
       return {
         format: BACKUP_FORMAT,
         schemaVersion: BACKUP_SCHEMA_VERSION,
         exportedAt: nowIso(),
         appVersion: APP_VERSION,
-        profiles: await this.profiles(),
-        nodes: await this.nodes(),
-        units: await this.units(),
-        studyEvents: await this.studyEvents(),
-        obligations: await this.obligations(),
-        evidenceEvents: await this.evidenceEvents(),
-        chunks: await this.chunks(),
-        dailyPlans: await this.dailyPlanHistory(),
-        settings: this.getSettings(),
-        activeRetrieval: await this.repo.get(Store.ActiveRetrieval, ACTIVE_RETRIEVAL_ID) ?? null,
+        ...state,
       };
     }
 
