@@ -29,12 +29,12 @@ EXPECTED_NAMES = [
     "40-application-services.ts",
     "41-backup-codec.ts",
     "42-backup-controller.ts",
-    "55-extension-runtime.ts",
     "45-ui-runtime.ts",
     "46-workflow-form-adapter.ts",
     "47-active-retrieval-workspace.ts",
     "48-settings-workspace.ts",
     "50-ui-controller.ts",
+    "55-extension-runtime.ts",
     "60-public-bridge-bootstrap.ts",
 ]
 

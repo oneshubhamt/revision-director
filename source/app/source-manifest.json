@@ -103,33 +103,33 @@
     },
     {
       "order": 20,
-      "path": "app/55-extension-runtime.ts",
-      "layer": "Frozen public capability API, plugin registration, failure isolation and trusted local plugin-file loader."
-    },
-    {
-      "order": 21,
       "path": "app/45-ui-runtime.ts",
       "layer": "Delegated UI events, deterministic render coordination, ARIA tab registry and focus-management primitives."
     },
     {
-      "order": 22,
+      "order": 21,
       "path": "app/46-workflow-form-adapter.ts",
       "layer": "Workflow-specific DOM form serialization, population and visibility adapter."
     },
     {
-      "order": 23,
+      "order": 22,
       "path": "app/47-active-retrieval-workspace.ts",
       "layer": "Active retrieval workspace: review rendering, phase timing, draft/diagram state, recovery and idempotent review commits."
     },
     {
-      "order": 24,
+      "order": 23,
       "path": "app/48-settings-workspace.ts",
       "layer": "Settings/System workspace: profiles, scheduler personalization, plugin controls, storage status and verified backup/restore UI."
     },
     {
-      "order": 25,
+      "order": 24,
       "path": "app/50-ui-controller.ts",
       "layer": "DOM helpers and the current UI controller."
+    },
+    {
+      "order": 25,
+      "path": "app/55-extension-runtime.ts",
+      "layer": "Frozen public capability API, plugin registration, failure isolation and trusted local plugin-file loader."
     },
     {
       "order": 26,
