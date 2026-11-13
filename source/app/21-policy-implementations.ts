@@ -12,7 +12,8 @@
     }
 
     private reviews(context?: SchedulerPolicyContext): readonly MemoryReviewObservation[] {
-      return context?.memoryReviews ?? [];
+      assert(context && Array.isArray(context.memoryReviews), "Memory scheduling requires canonical Evidence Event history.");
+      return context.memoryReviews;
     }
 
     createInitialState(firstDueAt: ISODateTime, cardId: string): PolicyState {
