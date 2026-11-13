@@ -29,11 +29,32 @@ def launch_chromium(
     headless: bool = True,
     args: list[str] | None = None,
 ):
+    endpoint = os.environ.get("REVISION_DIRECTOR_CDP_ENDPOINT")
+    if endpoint:
+        return playwright.chromium.connect_over_cdp(endpoint)
     executable = chromium_executable()
     return playwright.chromium.launch(
         headless=headless,
         executable_path=executable if executable else None,
         args=args if args is not None else DEFAULT_CHROMIUM_ARGS,
+    )
+
+
+def launch_persistent_chromium(
+    playwright: Playwright,
+    user_data_dir: str | Path,
+    *,
+    headless: bool = True,
+    args: list[str] | None = None,
+    viewport: dict[str, int] | None = None,
+):
+    executable = chromium_executable()
+    return playwright.chromium.launch_persistent_context(
+        str(user_data_dir),
+        headless=headless,
+        executable_path=executable if executable else None,
+        args=args if args is not None else DEFAULT_CHROMIUM_ARGS,
+        viewport=viewport or {"width": 1440, "height": 1000},
     )
 
 
