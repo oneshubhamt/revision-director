@@ -173,18 +173,20 @@ def create_persistent_frame(
     html: str,
     *,
     name: str = "revision-app",
+    element_id: str | None = None,
     width: int = 1280,
     height: int = 900,
 ):
-    page.evaluate("""([name,width,height]) => {
-      const old=document.querySelector('#'+name);
+    frame_id = element_id or name
+    page.evaluate("""([name,frameId,width,height]) => {
+      const old=document.querySelector('#'+CSS.escape(frameId));
       if(old) old.remove();
       const frame=document.createElement('iframe');
-      frame.id=name; frame.name=name;
+      frame.id=frameId; frame.name=name;
       frame.style.width=String(width)+'px';
       frame.style.height=String(height)+'px';
       document.body.appendChild(frame);
-    }""", [name, width, height])
+    }""", [name, frame_id, width, height])
     frame = page.frame(name=name)
     if frame is None:
         raise AssertionError(f"QA app frame was not created: {name}")

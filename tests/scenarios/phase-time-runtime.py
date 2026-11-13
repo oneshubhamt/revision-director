@@ -73,6 +73,7 @@ def boot_frame(page):
         page,
         HTML,
         name="revision-app",
+        element_id="app",
         width=1365,
         height=950,
     )

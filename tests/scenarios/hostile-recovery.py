@@ -118,7 +118,7 @@ def complete_good(frame) -> None:
 
 
 def boot_frame(page):
-    frame = create_persistent_frame(page, HTML, name="revision-app", width=1280, height=900)
+    frame = create_persistent_frame(page, HTML, name="revision-app", element_id="app", width=1280, height=900)
     wait_until(frame, lambda: frame.locator("html").get_attribute("data-review-ownership") == "primary")
     check(not frame.locator("#fatal-error").is_visible(), "Fatal startup error")
     return frame

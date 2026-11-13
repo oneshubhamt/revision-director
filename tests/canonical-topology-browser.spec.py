@@ -28,6 +28,7 @@ def boot(page):
         page,
         HTML,
         name="canonical-topology-app",
+        element_id="app",
         width=1280,
         height=900,
     )
