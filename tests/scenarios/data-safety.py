@@ -38,14 +38,12 @@ def confirm_restore(page, treatment=None, dismiss_first=False):
     check(page.locator('#restore-final-button').is_enabled(),'Final restore button did not enable')
     if dismiss_first:
         before=page.locator('#sb-units').inner_text()
-        with page.expect_event('dialog') as dialog_info:
-            page.locator('#restore-final-button').click()
-        dialog_info.value.dismiss()
+        page.once('dialog', lambda dialog: dialog.dismiss())
+        page.locator('#restore-final-button').click()
         check(page.locator('#restore-dialog').is_visible(),'Cancelled confirmation closed the restore preview')
         check(page.locator('#sb-units').inner_text()==before,'Cancelled final confirmation mutated data')
-    with page.expect_event('dialog') as dialog_info:
-        page.locator('#restore-final-button').click()
-    dialog_info.value.accept()
+    page.once('dialog', lambda dialog: dialog.accept())
+    page.locator('#restore-final-button').click()
     page.locator('#restore-dialog').wait_for(state='hidden')
     wait_until(page, lambda: 'restored' in page.locator('#toast').inner_text().lower(), timeout=8000, interval=40, message='Confirmed restore did not finish')
 
