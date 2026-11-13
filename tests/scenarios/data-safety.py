@@ -8,7 +8,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_backup_import_result, wait_until
+from helpers.browser_harness import ROOT, capture_browser_errors, launch_chromium, load_browser_qa, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_until
 sys.path.insert(0,str(ROOT/'tests'))
 from backup_fixture_codec import decode_file
 base=load_browser_qa('revision_director_data_safety')
@@ -23,10 +23,7 @@ def check(v,m):
     if not v: raise AssertionError(m)
 
 def ensure_settings(page) -> None:
-    tab=page.locator('[data-pane="settings"]')
-    if tab.get_attribute('aria-selected') != 'true':
-        tab.click()
-    page.locator('#pane-settings').wait_for(state='visible')
+    open_rendered_pane(page, 'settings')
 
 
 def wait_restore_mutable(page) -> None:
