@@ -6,6 +6,11 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, "source/app/source-m
 const parts = [...manifest.parts].sort((a,b)=>a.order-b.order);
 const source = parts.map(item=>fs.readFileSync(path.join(root, "source", item.path), "utf8")).join("");
 const runtime = fs.readFileSync(path.join(root, "source/app/45-ui-runtime.ts"), "utf8");
+const workflowFormAdapter = fs.readFileSync(path.join(root, "source/app/46-workflow-form-adapter.ts"), "utf8");
+const domainKernel = fs.readFileSync(path.join(root, "source/app/11-domain-kernel.ts"), "utf8");
+const backupValidation = fs.readFileSync(path.join(root, "source/app/22-backup-validation.ts"), "utf8");
+const evidenceTransition = fs.readFileSync(path.join(root, "source/app/23-evidence-transition.ts"), "utf8");
+const service = fs.readFileSync(path.join(root, "source/app/40-application-services.ts"), "utf8");
 const ui = fs.readFileSync(path.join(root, "source/app/50-ui-controller.ts"), "utf8");
 const shell = fs.readFileSync(path.join(root, "source/revision-director.shell.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "source/revision-director.va7.css"), "utf8");
@@ -56,6 +61,31 @@ check("Reduced motion", css.includes("@media (prefers-reduced-motion:reduce)"));
 check("Safe-area variables", css.includes("safe-area-inset-bottom") && css.includes("safe-area-inset-left"));
 check("Compact independent scroll", css.includes("height:calc(100dvh - 64px - env(safe-area-inset-bottom))") && css.includes("overflow-y:auto"));
 check("Viewport cover", shell.includes("viewport-fit=cover"));
+check("Workflow form adapter has dedicated ownership", parts.some(item=>item.path === "app/46-workflow-form-adapter.ts"));
+check("Domain kernel is DOM-free",
+  !/FormData|HTMLFormElement|HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|innerHTML|document\./.test(domainKernel));
+check("Workflow form machinery lives in UI adapter",
+  workflowFormAdapter.includes("function workflowSpecFromForm")
+  && workflowFormAdapter.includes("function populateWorkflowForm")
+  && runtime.includes("function formText")
+  && runtime.includes("function formInput"));
+check("Backup validator is a pure owned module",
+  parts.some(item=>item.path === "app/22-backup-validation.ts")
+  && backupValidation.includes("function validateBackupPayload")
+  && !backupValidation.includes("this.")
+  && !service.includes("validateBackup(input: unknown)"));
+check("Evidence transition is a pure owned module",
+  parts.some(item=>item.path === "app/23-evidence-transition.ts")
+  && evidenceTransition.includes("function applyPrimaryEvidenceTransition")
+  && evidenceTransition.includes("function applyCorrectiveRelearningTransition")
+  && evidenceTransition.includes("function buildEvidenceEvent")
+  && !/\bthis\.|RevisionData|IndexedDbRepository/.test(evidenceTransition));
+check("RevisionService recordEvidence is orchestration-only at transition boundary",
+  service.includes("prepareEvidenceDraft(draft)")
+  && service.includes("applyPrimaryEvidenceTransition({")
+  && service.includes("buildEvidenceEvent({")
+  && !service.includes("const evidence: ObjectiveEvidence = {"));
+
 check("Durable identifier HTML sinks are escaped",
   !ui.includes('data-id="${unit.id}"')
   && !ui.includes('data-id="${obligation.id}"')
