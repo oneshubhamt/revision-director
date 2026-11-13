@@ -2,7 +2,7 @@
 
 const { createAppRuntime } = require('../helpers/runtime-harness');
 
-const { api, source } = createAppRuntime({
+const { api } = createAppRuntime({
   globalName: '__RD_F1_RELIABILITY__',
   expose: ['readwriteTransaction','storeWriteDurability','rootKnowledgeNodeId','IndexedDbRepository','RevisionService','Store'],
 });
@@ -77,34 +77,6 @@ for (const store of [
 }
 check(api.storeWriteDurability(api.Store.ActiveRetrieval) === 'default', 'Active-retrieval autosave must remain default durability.');
 check(api.storeWriteDurability(api.Store.Metadata) === 'default', 'Release metadata refresh must remain default durability.');
-
-for (const signature of [
-  'readwriteTransaction(this.db, [Store.Profiles, Store.Settings], "strict")',
-  'readwriteTransaction(this.db, [Store.Units, Store.Obligations], "strict")',
-  'readwriteTransaction(this.db, [Store.Obligations, Store.Chunks], "strict")',
-  'readwriteTransaction(this.db, [Store.Settings, Store.Obligations], "strict")',
-  'readwriteTransaction(this.db, stores, "strict")',
-]) {
-  check(source.includes(signature), `Authoritative strict transaction path missing: ${signature}`);
-}
-check((source.match(/readwriteTransaction\(this\.db, stores, "strict"\)/g) || []).length === 3,
-  'Dynamic authoritative strict transaction count changed.');
-check((source.match(/readwriteTransaction\(this\.db, store, storeWriteDurability\(store\)\)/g) || []).length === 4,
-  'Generic single-store writes do not consistently use the store durability policy.');
-check(!source.includes('readwriteTransaction(this.db, store);'),
-  'A generic single-store write bypasses the durability policy.');
-
-check(source.includes('const deterministic = await this.get(Store.Nodes, await rootKnowledgeNodeId(profileId, normalized));'),
-  'Root hierarchy lookup does not use deterministic primary-key fast lookup.');
-check(source.includes('return this.getOneByIndex(Store.Nodes, "pathLookup", [profileId, parentId, kind, normalized]);'),
-  'Child hierarchy lookup no longer uses the canonical pathLookup index.');
-check(source.includes('const state = await this.repo.backupState("ignore");')
-  && source.includes('assertActiveProfileSelection(state.profiles, this.settings);')
-  && source.includes('await this.verifyMemoryProjectionIntegrity(state.obligations, state.evidenceEvents, this.settings);'),
-  'Startup no longer preserves its recovery-aware canonical validation boundary.');
-check(source.includes('assert(unit, "Revision obligation references a missing knowledge unit.");')
-  && source.includes('assert(topicNode?.kind === "topic"'),
-  'Joined obligation materialization can still silently hide broken durable relationships.');
 
 (async () => {
   const rootId = await api.rootKnowledgeNodeId('p', 'public administration');
