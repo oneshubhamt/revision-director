@@ -19,7 +19,7 @@ function item(id, score, minutes, options = {}) {
   const dueRisk = options.dueRisk === undefined ? 0.6 : options.dueRisk;
   const dueAt = options.dueAt || new Date(BASE_DUE).toISOString();
   return {
-    joined: { obligation: { id, type, dueAt, expectedMinutes: minutes }, unit: {}, profile: {} },
+    joined: { obligation: { id, type, dueAt, expectedMinutes: minutes, workflow:{kind:'reconstruction'} }, unit: {}, profile: {id:'p'}, subject:'Subject', section:'Section', topic:'Topic' },
     score, dueState, executionMinutes: minutes,
     factors: { dueRisk, examImportance:0.7, weakness:0.5, reviewDuration:0.8, examinationProximity:0.5, weeklyBalance:0.5 },
   };
