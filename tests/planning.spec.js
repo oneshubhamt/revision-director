@@ -54,12 +54,13 @@ check(weakSpecific.factors.weakness > strongSpecific.factors.weakness + .25, 'We
 const persistentObligation=structuredClone(weakObligation);
 persistentObligation.expectedMinutes=60;
 persistentObligation.policyState=structuredClone(weakObligation.policyState);
-persistentObligation.policyState.fsrsCard.lapses=4;
-persistentObligation.policyState.fsrsCard.reps=8;
-persistentObligation.policyState.fsrsCard.state=2;
-persistentObligation.policyState.fsrsCard.scheduleStatus='review';
-const persistentCandidate=api.buildPlanningCandidate({obligation:persistentObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},[],settings,ref);
-check(persistentCandidate&&persistentCandidate.factors.weakness>=.9&&persistentCandidate.reasons.some(reason=>reason.includes('persistent difficulty')),'Persistent FSRS lapse burden must surface as a strong planner weakness signal without changing the scheduler due date');
+persistentObligation.policyState.fsrsCard.lapses=99;
+const persistentReviews=new Map([['shared-recall',[
+  {rating:api.Rating.Good},
+  ...Array.from({length:4},()=>({rating:api.Rating.Again}))
+]]]);
+const persistentCandidate=api.buildPlanningCandidate({obligation:persistentObligation,unit:sharedUnit,profile:sharedProfile,subject:'S',section:'C',topic:'T'},[],settings,ref,.5,undefined,persistentReviews);
+check(persistentCandidate&&persistentCandidate.factors.weakness>=.9&&persistentCandidate.reasons.some(reason=>reason.includes('persistent difficulty')),'Persistent review-evidence burden must surface as a strong planner weakness signal without using the materialized FSRS lapse counter as history');
 
 const earlyLearningObligation=structuredClone(weakObligation);
 earlyLearningObligation.policyState=structuredClone(weakObligation.policyState);
