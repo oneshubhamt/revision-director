@@ -91,13 +91,14 @@ function createAppRuntime({
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(VENDOR_PATH, 'utf8'), context, { filename: 'ts-fsrs-6.0.0.umd.js' });
-  if (requireFsrs && (!context.FSRS || typeof context.FSRS.DefaultScheduler !== 'function')) {
+  const fsrs = context.FSRS;
+  if (requireFsrs && (!fsrs || typeof fsrs.DefaultScheduler !== 'function')) {
     throw new Error('Modern ts-fsrs runtime did not load');
   }
   vm.runInContext(source, context, { filename: 'app.js' });
   const api = context[globalName];
   if (!api) throw new Error(`${globalName} was not exposed`);
-  return { api, context };
+  return { api, context, fsrs };
 }
 
 module.exports = {
