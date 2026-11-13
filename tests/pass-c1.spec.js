@@ -1,9 +1,12 @@
 'use strict';
-const { createAppRuntime } = require('./helpers/runtime-harness');
+const { createAppRuntime, memoryLocalStorage } = require('./helpers/runtime-harness');
 
-const { api } = createAppRuntime({
+const storage = memoryLocalStorage();
+const memory = storage.values;
+const { api, context } = createAppRuntime({
   globalName: '__RD_C1_TEST__',
   expose: ["APP_VERSION","PRESENTATION_KERNEL"],
+  context: { localStorage: storage.api },
 });
 
 let checks = 0;
