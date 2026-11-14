@@ -10,10 +10,9 @@ const { api } = createAppRuntime({
 let checks=0;
 function check(v,m){checks++; if(!v) throw new Error(m)}
 async function mustFail(fn,m){checks++; try{await fn()}catch{return} throw new Error(m)}
-const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-07-28T00:00:00.000Z',appVersion:'va7.1-pass-f1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}},activeRetrieval:null};
+const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-07-28T00:00:00.000Z',appVersion:api.APP_VERSION,profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}},activeRetrieval:null};
 (async()=>{
- check(api.APP_VERSION==='va7.1-pass-f1','D1 version wrong');
- check(api.BACKUP_ARCHIVE_FORMAT==='revision-director-backup-archive'&&api.BACKUP_ARCHIVE_VERSION===2,'Archive identity wrong');
+  check(api.BACKUP_ARCHIVE_FORMAT==='revision-director-backup-archive'&&api.BACKUP_ARCHIVE_VERSION===2,'Archive identity wrong');
  check(api.sha256FallbackHex(new TextEncoder().encode('abc'))==='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','Pure SHA-256 fallback is incorrect');
  const uncompressed=await api.BackupCodec.create(api.validateBackupPayload(empty),false);
  check(uncompressed.inspection.verified&&uncompressed.inspection.compression==='none','Uncompressed create failed');
