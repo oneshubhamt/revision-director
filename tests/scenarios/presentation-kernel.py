@@ -49,29 +49,21 @@ def verify_kernel(page) -> None:
         'presentation':'revision-current','typography':'revision','shape':'tactical','material':'solid',
         'depth':'layered','density':'standard','responsive':'adaptive','motion':'precise','charts':'analytical'
     }, 'Pre-paint profile attributes are wrong')
+    # The Node suite owns the frozen registry, immutable registration and
+    # storage-key contract. Here test the actual browser prepaint/CSS boundary.
     summary = page.evaluate("""() => {
       const kernel=window[Symbol.for('revisionDirector.presentationKernel.v1')];
-      const profile=kernel.manifest.profiles['revision-current'];
       const styles=getComputedStyle(document.documentElement);
       const legacyPrimitives=['--bg','--s1','--s2','--s3','--b1','--acc','--acc2','--acc3','--txt','--txt2','--mut','--urg','--warn','--ok','--f-mono','--f-cond','--f-body','--f-display','--line-soft','--line-mid','--line-accent','--surface','--accent-soft','--danger-soft','--cyan-soft','--shadow','--radius','--sidebar'];
-      const legacyPrimitiveLeak=legacyPrimitives.some(token=>styles.getPropertyValue(token).trim());
-      const same=kernel.registerPresentation({...profile});
-      const replacement=kernel.registerPresentation({...profile,label:'Replacement'});
       return {
-        format:kernel.format,version:kernel.version,frozen:Object.isFrozen(kernel)&&Object.isFrozen(kernel.manifest)&&Object.isFrozen(profile),
-        defaultId:kernel.manifest.defaults.presentation,active:kernel.activePresentationId(),tokens:kernel.validatePublicTokens(),legacyPrimitiveLeak,same,replacement,
-        listed:kernel.listPresentations().map(item=>item.id),storageKey:kernel.manifest.storageKey,
+        active:kernel.activePresentationId(),tokens:kernel.validatePublicTokens(),
+        legacyPrimitiveLeak:legacyPrimitives.some(token=>styles.getPropertyValue(token).trim()),
         namedLeak:Object.prototype.hasOwnProperty.call(window,'RevisionDirectorPresentation')
       };
     }""")
-    check(summary['format']=='revision-director.presentation-kernel' and summary['version']==1, 'Browser kernel identity is wrong')
-    check(summary['frozen'], 'Browser kernel or default profile is mutable')
-    check(summary['defaultId']=='revision-current' and summary['active']=='revision-current', 'Browser default presentation changed')
-    check(summary['tokens'] and not summary['legacyPrimitiveLeak'], 'Semantic token contract is incomplete or legacy primitives remain')
-    check(summary['same'] is True and summary['replacement'] is False, 'Immutable default registration contract failed')
-    check(summary['listed']==['revision-current'], 'Unexpected presentation profile is bundled')
-    check(summary['storageKey']=='revisionDirector.presentation.v1', 'Presentation storage key changed')
-    check(summary['namedLeak'] is False, 'Presentation kernel leaked a named public global')
+    check(summary['active'] == attributes['presentation'], 'Browser prepaint and active presentation diverged')
+    check(summary['tokens'] and not summary['legacyPrimitiveLeak'], 'Public styles or legacy primitive isolation are invalid')
+    check(summary['namedLeak'] is False, 'Presentation kernel leaked a named window global')
 
 
 def verify_corrupt_preference_fallback(browser) -> None:

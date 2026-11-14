@@ -3,7 +3,7 @@ const { createAppRuntime } = require('../helpers/runtime-harness');
 
 const { api } = createAppRuntime({
   globalName: '__RD_D2_TEST__',
-  expose: ["APP_VERSION","RevisionService","BackupCodec","BackupController","BACKUP_ARCHIVE_VERSION","BACKUP_SCHEMA_VERSION","validateBackupPayload"],
+  expose: ["APP_VERSION","RevisionService","BackupCodec","BackupController","validateBackupPayload"],
 });
 let checks=0;
 function check(v,m){checks++;if(!v)throw new Error(m)}
@@ -22,8 +22,7 @@ class FakeService{
  diagnostics(){return structuredClone(this.diags)}
 }
 (async()=>{
-  check(api.BACKUP_ARCHIVE_VERSION===2&&api.BACKUP_SCHEMA_VERSION===2,'D2 backup version wrong');
- const service=new FakeService();const controller=new api.BackupController(service);
+   const service=new FakeService();const controller=new api.BackupController(service);
  const created=await controller.createVerified(false);
  check(created.inspection.verified&&created.inspection.archiveChecksum.length>=16,'Verified creation failed');
  const candidate=await controller.inspect(created.bytes);

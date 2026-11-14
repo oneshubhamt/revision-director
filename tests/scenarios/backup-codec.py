@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
-from helpers.browser_fixture import HTML, complete_open_restore
+from helpers.browser_fixture import HTML
 FIXTURE = baseline_backup_path()
 RAW=ROOT/'tests/fixtures/browser-baseline.json'
 checks=0
@@ -26,16 +26,18 @@ def main():
         errors=capture_browser_errors(page)
         accept_dialogs(page)
         page.set_content(HTML,wait_until='load'); wait_for_app_ready(page)
-        check(not page.locator('#fatal-error').is_visible(),'Fatal startup error')
         page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
         check('.rdbackup' in (page.locator('#import-backup').get_attribute('accept') or ''),'Backup picker does not advertise .rdbackup')
         with TemporaryDirectory() as tmpdir:
             tmp=Path(tmpdir)
             page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
-            check(page.locator('#restore-dialog').is_visible(),'Verified archive did not inspect')
-            complete_open_restore(page,page)
-            check(page.locator('#sb-units').inner_text()!='0','Restored archive did not populate units')
-            page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+            check(page.locator('#restore-preview .restore-proof').count() == 1,
+                  'Valid archive did not expose its verification proof')
+            # Successful state replacement is owned by backup-restore-controller.py.
+            # Codec browser coverage only needs valid inspection, export, reinspection
+            # and independent rejection of corrupted/raw files.
+            page.get_by_role('button', name='CANCEL', exact=True).click()
+            page.locator('#restore-dialog').wait_for(state='hidden')
             with page.expect_download() as download_info: page.locator('[data-action="export-backup"]').click()
             download=download_info.value; exported=tmp/download.suggested_filename; download.save_as(str(exported))
             check(exported.suffix=='.rdbackup','Export extension is not .rdbackup')

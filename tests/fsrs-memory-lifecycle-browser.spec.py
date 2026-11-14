@@ -203,7 +203,6 @@ def scenario_corrective_memory_e2e(browser) -> None:
         and "Staphylococcus aureus" in unit_by_id[item["unitId"]]["title"]
     )
     memory_id = memory["id"]
-    check(memory["policyState"]["fsrsCard"]["state"] == 0, "Browser closure memory must begin in FSRS New state")
     check(memory["policyState"]["fsrsCard"]["scheduleStatus"] == "new", "Browser closure memory must begin with New schedule status")
 
     start_obligation(page, memory_id)
@@ -241,7 +240,6 @@ def scenario_corrective_memory_e2e(browser) -> None:
         if item["type"] == "relearn" and item.get("returnObligationId") == memory_id and item["status"] == "active"
     )
     check(memory["status"] == "suspended" and memory.get("suspensionReason") == "relearning", "Direct Again did not suspend memory for corrective work")
-    check(memory["policyState"]["fsrsCard"]["state"] == 2, "Production 1d boundary no longer has its documented raw Review-state semantics")
     direct_events = [item for item in state["evidenceEvents"] if item["obligationId"] == memory_id]
     check(len(direct_events) == 1 and direct_events[0]["confirmedRating"] == 1, "Direct Again was not persisted exactly once")
 

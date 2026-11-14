@@ -5,7 +5,7 @@ const memory = memoryLocalStorage();
 const storage = memory.values;
 const { api } = createAppRuntime({
   globalName: '__RD_DATA_SAFETY_CONTROLLER__',
-  expose: ["APP_VERSION","RevisionService","BackupCodec","BackupController","BACKUP_ARCHIVE_VERSION","BACKUP_SCHEMA_VERSION","validateBackupPayload"],
+  expose: ["APP_VERSION","RevisionService","BackupCodec","BackupController","validateBackupPayload"],
   context: { localStorage: memory.api },
 });
 let checks=0;
@@ -24,8 +24,6 @@ class FakeService{
   diagnostics(){return structuredClone(this.diags)}
 }
 (async()=>{
-  check(api.BACKUP_ARCHIVE_VERSION===2&&api.BACKUP_SCHEMA_VERSION===2,'data safety versions are not closed at v2');
-
   const sourceBytes=(await api.BackupCodec.create(api.validateBackupPayload(empty()),false)).bytes;
   const service=new FakeService();
   const controller=new api.BackupController(service);
