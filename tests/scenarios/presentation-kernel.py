@@ -97,7 +97,7 @@ def main() -> None:
             check(not errors, f'Browser errors in {label}: {errors}')
             page.close()
         browser.close()
-    print(f'PASS {CHECKS} Pass C1 presentation-contract and responsive checks')
+    print(f'PASS {CHECKS} presentation presentation-contract and responsive checks')
 
 if __name__=='__main__':
     main()

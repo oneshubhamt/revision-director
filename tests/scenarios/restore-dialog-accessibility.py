@@ -61,6 +61,6 @@ def main():
             check(not errors,f'Browser errors at {width}x{height}: {errors}')
             page.close()
         browser.close()
-    print(f'PASS {checks} Stage D restore UI responsive/accessibility checks')
+    print(f'PASS {checks} restore accessibility restore UI responsive/accessibility checks')
 
 if __name__=='__main__':main()

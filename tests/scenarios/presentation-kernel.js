@@ -43,4 +43,4 @@ check(kernel.readStoredPresentation() === 'future-pack', 'Stored presentation wa
 check(kernel.validatePublicTokens() === true, 'Headless token validation should remain test-safe');
 check(!Object.keys(context).includes('RevisionDirectorPresentation'), 'Presentation kernel leaked a named public global');
 
-console.log(`PASS ${checks} Pass C1 presentation-kernel checks`);
+console.log(`PASS ${checks} presentation presentation-kernel checks`);

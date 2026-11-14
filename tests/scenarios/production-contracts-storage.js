@@ -88,5 +88,5 @@ check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound')
     settings:{...emptyBackup.settings,activeProfileId:'p'},
   };
   mustFail(() => api.validateBackupPayload(hierarchyBackup), 'Duplicate semantic root hierarchy paths were accepted');
-  console.log(`PASS ${checks} Pass A2 production-contract and storage-facade checks`);
+  console.log(`PASS ${checks} storage contracts production-contract and storage-facade checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -51,6 +51,6 @@ def main():
    check(token in css,f'Safe-area contract missing: {token}')
   check(not errors,f'Browser errors: {errors}')
   page.close(); browser.close()
- print(f'PASS {CHECKS} Stage C responsive checks across {len(viewports)} viewport classes and {len(panes)} panes')
+ print(f'PASS {CHECKS} responsive layout responsive checks across {len(viewports)} viewport classes and {len(panes)} panes')
 
 if __name__=='__main__':main()

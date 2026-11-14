@@ -75,5 +75,5 @@ class FakeOwnership{constructor(){this.mutable=true}canMutate(){return this.muta
    api.version===T.APP_VERSION && api.data.contract.applicationVersion===api.version,
    'Public API and data contract application versions drifted');
  check(api.runtime.ownership().canMutate===true&&api.runtime.storageHealth().level==='healthy','Runtime summaries wrong');
- console.log(`PASS ${checks} Pass E1 public-capability and plugin-runtime checks`);
+ console.log(`PASS ${checks} public API public-capability and plugin-runtime checks`);
 })().catch(e=>{console.error(e);process.exitCode=1});
