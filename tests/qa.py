@@ -197,6 +197,7 @@ def performance() -> None:
 
 def deep() -> None:
     assert_test_topology()
+    run(sys.executable, "tools/qa-mutation-probes.py")  # Pass E diagnostic; remove after independent verification.
     for path in DEEP_NODE_PLAN:
         run("node", path)
     run(sys.executable, "tests/fsrs-browser-optimizer.spec.py", "full")
