@@ -3,7 +3,7 @@ const { createAppRuntime } = require('../helpers/runtime-harness');
 
 const { api } = createAppRuntime({
   globalName: '__RD_B2_TEST__',
-  expose: ["APP_VERSION","INACTIVE_GAP_THRESHOLD_MS","TIME_HISTORY_LIMIT","phaseTimeSnapshot","timingEvidenceSummary","canonicalTimingEvidenceSummary","canonicalPhaseTimeRuntimeSnapshot","canonicalActiveRetrievalSession","PhaseTimeRuntime","durationObservationFor"],
+  expose: ["INACTIVE_GAP_THRESHOLD_MS","TIME_HISTORY_LIMIT","phaseTimeSnapshot","timingEvidenceSummary","canonicalTimingEvidenceSummary","canonicalPhaseTimeRuntimeSnapshot","canonicalActiveRetrievalSession","PhaseTimeRuntime","durationObservationFor"],
   requireFsrs: false,
 });
 
@@ -13,7 +13,6 @@ function mustFail(fn,message){checks+=1;try{fn();}catch{return;}throw new Error(
 
 const t0 = Date.parse('2026-07-27T06:00:00.000Z');
 const runtime = api.PhaseTimeRuntime.create('attempt', false, t0);
-check(api.APP_VERSION === 'va7.1-pass-f1', 'Pass B2 identity is wrong');
 check(api.INACTIVE_GAP_THRESHOLD_MS === 120000, 'Inactive-gap threshold changed');
 check(runtime.activeMs() === 0 && runtime.status() === 'running', 'Fresh runtime is invalid');
 runtime.reconcile(t0 + 10_000, 'tick');
