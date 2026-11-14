@@ -22,6 +22,29 @@ const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-
  const decoded=await api.BackupCodec.decode(uncompressed.bytes,x=>api.validateBackupPayload(x));
  check(decoded.payload.settings.dailyCapacityMinutes===60,'Round trip failed');
  check(decoded.inspection.expandedBytes===uncompressed.bytes.byteLength,'Expanded byte metadata wrong');
+ // Metamorphic archive tests: changing valid settings must survive exactly;
+ // changing any encoded chunk without updating the proof must fail closed.
+ for (const capacity of [5, 15, 30, 45, 60, 120, 240, 600]) {
+   const sample=structuredClone(empty);
+   sample.settings.dailyCapacityMinutes=capacity;
+   sample.settings.studyDayBoundaryHour=capacity%13;
+   const canonical=api.validateBackupPayload(sample);
+   for (const preferCompression of [false, true]) {
+     const archive=await api.BackupCodec.create(canonical,preferCompression);
+     const restored=await api.BackupCodec.decode(archive.bytes,x=>api.validateBackupPayload(x));
+     check(JSON.stringify(restored.payload)===JSON.stringify(canonical),
+       'Archive round-trip lost canonical fields at capacity '+capacity);
+     check(restored.inspection.verified,'Archive proof not verified at capacity '+capacity);
+   }
+   const archive=await api.BackupCodec.create(canonical,false);
+   const rows=new TextDecoder().decode(archive.bytes).trimEnd().split('\n').map(JSON.parse);
+   const settingsChunk=rows.find(row=>row.kind==='chunk'&&row.entityType==='settings');
+   check(Boolean(settingsChunk)&&settingsChunk.count===1,'Canonical settings chunk is missing');
+   settingsChunk.items[0].dailyCapacityMinutes=capacity===600?599:capacity+1;
+   const bytes=new TextEncoder().encode(rows.map(JSON.stringify).join('\n')+'\n');
+   await mustFail(()=>api.BackupCodec.decode(bytes,x=>api.validateBackupPayload(x)),
+     'Tampered settings chunk was accepted at capacity '+capacity);
+ }
  const priorRelease={...structuredClone(empty),appVersion:'va7.0-compatible-release'};
  const priorArchive=await api.BackupCodec.create(api.validateBackupPayload(priorRelease),false);
  const priorDecoded=await api.BackupCodec.decode(priorArchive.bytes,x=>api.validateBackupPayload(x));
