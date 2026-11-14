@@ -125,7 +125,7 @@ SIMULATED_STORAGE_SHIM = r"""
   class ObjStore {
     constructor(tx,data){ this.tx=tx; this.data=data; }
     createIndex(name,keyPath,opts={}){ this.data.indices.set(name,{keyPath:clone(keyPath),unique:!!opts.unique}); return {}; }
-    index(name){ const cfg=this.data.indices.get(name); if(!cfg) throw new Error('Missing index: '+name); return new Index(this.tx,this.data,cfg); }
+    index(name){ const cfg=this.data.indices.get(name)||this.tx.db._stores.get(this.data.name)?.indices.get(name); if(!cfg) throw new Error('Missing index: '+name); return new Index(this.tx,this.data,cfg); }
     get(key){ return asyncReq(this.tx,()=>{ const value=this.data.records.get(JSON.stringify(key)); return clone(value); }); }
     getAll(){ return asyncReq(this.tx,()=>[...this.data.records.values()].map(clone)); }
     count(){ return asyncReq(this.tx,()=>this.data.records.size); }
@@ -205,8 +205,7 @@ SIMULATED_STORAGE_SHIM = r"""
             if(request.onupgradeneeded) request.onupgradeneeded({target:request,oldVersion,newVersion:targetVersion});
             db._persist();
           }
-          const finish=()=>db._running||db._queue.length
-            ?setTimeout(finish,0):request.onsuccess&&request.onsuccess({target:request});
+          const finish=()=>db._running||db._queue.length?setTimeout(finish,0):request.onsuccess?.({target:request});
           setTimeout(finish,0);
         } catch(error){ request.error=error; if(request.onerror) request.onerror({target:request}); }
       },0);
