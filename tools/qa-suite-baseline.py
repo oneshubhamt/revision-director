@@ -73,7 +73,12 @@ def main() -> None:
         nonlocal failed
         start = time.perf_counter()
         try:
-            proc = subprocess.run(command, cwd=ROOT, env=env,
+            # shared_chromium sets this only while the browser group is running.
+            child_env = env.copy()
+            endpoint = os.environ.get("REVISION_DIRECTOR_CDP_ENDPOINT")
+            if endpoint:
+                child_env["REVISION_DIRECTOR_CDP_ENDPOINT"] = endpoint
+            proc = subprocess.run(command, cwd=ROOT, env=child_env,
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                   text=True, errors="replace", check=False)
             code, log = proc.returncode, proc.stdout
