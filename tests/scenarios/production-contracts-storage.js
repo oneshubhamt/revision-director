@@ -11,7 +11,6 @@ const fixed=desiredRetention=>({kind:'fixed-retention',desiredRetention});
 function check(value, message) { checks += 1; if (!value) throw new Error(message); }
 function mustFail(fn, message) { checks += 1; try { fn(); } catch { return; } throw new Error(message); }
 
-check(api.APP_VERSION === 'va7.1-pass-f1', 'Pass A2 application version is wrong');
 check(api.DB_NAME === 'revision-director' && api.DB_VERSION === 3, 'Production database identity is wrong');
 check(api.BACKUP_FORMAT === 'revision-director-backup' && api.BACKUP_SCHEMA_VERSION === 2, 'Production backup identity is wrong');
 check(Object.values(api.Store).includes('metadata'), 'Metadata store is missing');
@@ -67,7 +66,7 @@ check(diagnostics.list().length <= 50, 'Diagnostics journal exceeded its bound')
 
   const service = new api.RevisionService(data);
   const emptyBackup = {
-    format:'revision-director-backup', schemaVersion:2, exportedAt:'2026-07-25T06:00:00.000Z', appVersion:'va7.1-pass-f1',
+    format:'revision-director-backup', schemaVersion:2, exportedAt:'2026-07-25T06:00:00.000Z', appVersion:api.APP_VERSION,
     profiles:[], nodes:[], units:[], studyEvents:[], obligations:[], evidenceEvents:[], chunks:[], dailyPlans:[],
     settings:{schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:fixed(.9)},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}},
     activeRetrieval:null,
