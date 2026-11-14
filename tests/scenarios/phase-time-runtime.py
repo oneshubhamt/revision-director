@@ -169,7 +169,7 @@ def seed_baseline_state(page) -> None:
         stores[name] = {"keyPath": key_path, "indices": indices, "records": records}
     raw_db = {"version": 3, "stores": stores}
     page.evaluate(
-        "(raw)=>{ window.__RD_B1_QA_STATE__={local:{},databases:{'revision-director':raw}}; }",
+        "(raw)=>{ window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{'revision-director':raw}}; }",
         raw_db,
     )
 
@@ -181,7 +181,7 @@ def main() -> None:
         page = context.new_page()
         errors = capture_browser_errors(page)
         accept_dialogs(page)
-        page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body><script>window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}</script></body>")
         seed_baseline_state(page)
         frame = boot_frame(page)
 
