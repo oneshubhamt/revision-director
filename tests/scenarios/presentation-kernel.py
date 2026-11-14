@@ -7,9 +7,10 @@ import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, launch_chromium, open_html_page, wait_for_app_ready, wait_for_layout
-from helpers.browser_fixture import INDEXEDDB_SHIM, restore_selected_backup
+from helpers.browser_fixture import restore_selected_backup
+from helpers.persistent_browser import simulated_storage_html
 TIME_SHIM = r'''<script>(()=>{const RealDate=Date;const fixed=RealDate.parse('2026-07-27T06:30:00.000Z');class FixedDate extends RealDate{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed}}Object.defineProperty(window,'Date',{configurable:true,value:FixedDate});})();</script>'''
-HTML = (ROOT/'index.html').read_text().replace('<head>', '<head>'+TIME_SHIM+INDEXEDDB_SHIM, 1)
+HTML = simulated_storage_html(TIME_SHIM)
 CHECKS = 0
 
 def check(value: bool, message: str) -> None:
@@ -74,7 +75,10 @@ def verify_kernel(page) -> None:
 
 
 def verify_corrupt_preference_fallback(browser) -> None:
-    corrupt = HTML.replace(INDEXEDDB_SHIM, INDEXEDDB_SHIM.replace('})();\n</script>', "localStorage.setItem('revisionDirector.presentation.v1','../../bad');})();\n</script>"), 1)
+    corrupt = simulated_storage_html(
+        TIME_SHIM,
+        "<script>localStorage.setItem('revisionDirector.presentation.v1','../../bad');</script>",
+    )
     page=browser.new_page(viewport={'width':900,'height':700})
     page.set_content(corrupt, wait_until='load'); wait_for_app_ready(page)
     check(page.locator('html').get_attribute('data-presentation')=='revision-current', 'Corrupt stored presentation bypassed fallback')

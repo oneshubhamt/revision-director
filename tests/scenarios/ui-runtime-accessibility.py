@@ -7,7 +7,8 @@ import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, launch_chromium, open_html_page, open_rendered_pane, wait_for_layout, wait_until
-from helpers.browser_fixture import INDEXEDDB_SHIM, open_page as open_fixture_page, restore_selected_backup, stored_all
+from helpers.browser_fixture import open_page as open_fixture_page, restore_selected_backup, stored_all
+from helpers.persistent_browser import simulated_storage_html
 BASELINE_BACKUP = baseline_backup_path()
 CLOCK_SHIM = r"""
 <script>
@@ -18,7 +19,7 @@ CLOCK_SHIM = r"""
 })();
 </script>
 """
-HTML = (ROOT / "index.html").read_text().replace("<head>", "<head>" + INDEXEDDB_SHIM + CLOCK_SHIM, 1)
+HTML = simulated_storage_html(CLOCK_SHIM)
 checks = 0
 
 def check(condition: bool, message: str) -> None:

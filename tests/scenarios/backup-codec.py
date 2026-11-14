@@ -9,8 +9,7 @@ import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
-from helpers.browser_fixture import INDEXEDDB_SHIM
-HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+INDEXEDDB_SHIM,1)
+from helpers.browser_fixture import HTML
 FIXTURE = baseline_backup_path()
 RAW=ROOT/'tests/fixtures/browser-baseline.json'
 checks=0
