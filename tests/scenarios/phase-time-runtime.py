@@ -15,12 +15,13 @@ from helpers.browser_harness import (
     launch_chromium,
     wait_until as shared_wait_until,
 )
-from helpers.persistent_browser import (
+from helpers.simulated_storage import (
     BASE_HTML,
-    PERSISTENT_BROWSER_SHIM,
-    create_persistent_frame,
-    host_state_all as state_all,
-    host_state_get as state_get,
+    create_simulated_frame,
+    reset_simulated_storage,
+    simulated_state_all as state_all,
+    simulated_state_get as state_get,
+    simulated_storage_html,
 )
 BASELINE_BACKUP = baseline_backup_path()
 CLOCK_SHIM = r"""
@@ -36,15 +37,15 @@ CLOCK_SHIM = r"""
 })();
 </script>
 """
-# Pass B2 advances Date.now() by minutes in milliseconds to exercise phase timing.
-# Keep cross-tab ownership out of this synthetic clock domain; Pass B1 separately
+# phase-time runtime advances Date.now() by minutes in milliseconds to exercise phase timing.
+# Keep cross-tab ownership out of this synthetic clock domain; active retrieval persistence separately
 # exercises the production 15-second ownership lease.
 TIMING_TEST_HTML = BASE_HTML.replace(
     "const REVIEW_OWNER_STALE_MS = 15_000;",
     "const REVIEW_OWNER_STALE_MS = 315_360_000_000;",
     1,
 )
-HTML = TIMING_TEST_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM + CLOCK_SHIM, 1)
+HTML = simulated_storage_html(CLOCK_SHIM, base_html=TIMING_TEST_HTML)
 checks = 0
 
 
@@ -53,6 +54,11 @@ def check(condition: bool, message: str) -> None:
     checks += 1
     if not condition:
         raise AssertionError(message)
+
+
+def displayed_timer_seconds(frame) -> int:
+    minutes, seconds = frame.locator("#review-timer").inner_text().strip().split(":", 1)
+    return int(minutes) * 60 + int(seconds)
 
 
 def wait_until(frame, predicate, timeout=6000):
@@ -66,7 +72,7 @@ def wait_until(frame, predicate, timeout=6000):
 
 
 def boot_frame(page):
-    frame = create_persistent_frame(
+    frame = create_simulated_frame(
         page,
         HTML,
         name="revision-app",
@@ -163,9 +169,9 @@ def seed_baseline_state(page) -> None:
         ]
         stores[name] = {"keyPath": key_path, "indices": indices, "records": records}
     raw_db = {"version": 3, "stores": stores}
-    page.evaluate(
-        "(raw)=>{ window.__RD_B1_QA_STATE__={local:{},databases:{'revision-director':raw}}; }",
-        raw_db,
+    reset_simulated_storage(
+        page,
+        {"local": {}, "databases": {"revision-director": raw_db}},
     )
 
 def main() -> None:
@@ -176,7 +182,7 @@ def main() -> None:
         page = context.new_page()
         errors = capture_browser_errors(page)
         accept_dialogs(page)
-        page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body></body>")
         seed_baseline_state(page)
         frame = boot_frame(page)
 
@@ -185,24 +191,22 @@ def main() -> None:
         frame.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click()
         frame.locator('[data-action="toggle-pause"]').wait_for(state="visible")
         check(frame.locator('[data-action="toggle-pause"]').count() == 1, "Pause control is missing")
-        initial = frame.locator("#review-timer").inner_text()
-        check(initial in ("0:00", "0:01"), f"Unexpected initial timer: {initial}")
+        initial = displayed_timer_seconds(frame)
+        check(0 <= initial <= 1, f"Unexpected initial timer value: {initial}s")
 
         frame.evaluate("__RD_TEST_CLOCK__.advance(10000)")
-        wait_until(frame, lambda: frame.locator("#review-timer").inner_text().startswith("0:1"))
-        check(frame.locator("#review-timer").inner_text().startswith("0:1"), "Active time did not accumulate")
+        wait_until(frame, lambda: displayed_timer_seconds(frame) >= 10)
 
         frame.locator('[data-action="toggle-pause"]').click()
-        wait_until(frame, lambda: "PAUSED" in frame.locator("#review-time-state").inner_text().upper())
-        check("PAUSED" in frame.locator("#review-time-state").inner_text().upper(), "Pause state is not visible")
-        paused_timer = frame.locator("#review-timer").inner_text()
+        wait_until(frame, lambda: frame.locator("#review-time-state").evaluate("e=>e.classList.contains('paused')"))
+        paused_timer = displayed_timer_seconds(frame)
 
         frame.evaluate("__RD_TEST_CLOCK__.advance(30000); window.dispatchEvent(new Event('focus'))")
         wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "paused")
-        check(frame.locator("#review-timer").inner_text() == paused_timer, "Paused interval was counted")
+        check(displayed_timer_seconds(frame) == paused_timer, "Paused interval was counted")
 
         frame.locator('[data-action="toggle-pause"]').click()
-        wait_until(frame, lambda: "PAUSED" not in frame.locator("#review-time-state").inner_text().upper())
+        wait_until(frame, lambda: not frame.locator("#review-time-state").evaluate("e=>e.classList.contains('paused')"))
         frame.evaluate("__RD_TEST_CLOCK__.advance(5000); window.dispatchEvent(new Event('focus'))")
         wait_until(frame, lambda: len(active_session(page)["timeRuntime"]["pauseHistory"]) == 1)
         session = active_session(page)
@@ -224,7 +228,6 @@ def main() -> None:
         frame.evaluate("__RD_TEST_CLOCK__.advance(130001); window.dispatchEvent(new Event('focus'))")
         frame.locator("#gap-overlay").wait_for(state="visible")
         wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "gap-pending")
-        check(frame.locator("#gap-overlay").is_visible(), "120-second inactive gap was not detected")
         pending = active_session(page)["timeRuntime"]
         check(pending["pendingGap"]["gapMs"] > 120000, "Pending gap was not durably saved")
         frame.locator('[data-gap-action="focus"]').click()
@@ -274,7 +277,6 @@ def main() -> None:
             frame.locator("#attempt-completed").check()
         frame.locator('[data-action="reveal"]').click()
         frame.locator('[data-review-phase="compare"]').wait_for(state="visible")
-        check(frame.locator('[data-review-phase="compare"]').is_visible(), "Source reveal did not enter compare phase")
         frame.locator("#questions-attempted").fill("10")
         frame.locator("#questions-correct").fill("8")
         frame.locator("#questions-partial").fill("1")
@@ -303,7 +305,7 @@ def main() -> None:
         check(event["timing"]["activeByPhase"]["attempt"] > 0 and event["timing"]["activeByPhase"]["compare"] >= 0, "Phase-specific active time is missing")
         check(not errors, f"Browser errors: {errors}")
         context.close(); browser.close()
-    print(f"PASS {checks} Pass B2 browser timing checks")
+    print(f"PASS {checks} phase-time runtime browser timing checks")
 
 
 if __name__ == "__main__":

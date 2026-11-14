@@ -5,14 +5,13 @@ const storage = memoryLocalStorage();
 const memory = storage.values;
 const { api, context } = createAppRuntime({
   globalName: '__RD_C1_TEST__',
-  expose: ["APP_VERSION","PRESENTATION_KERNEL"],
+  expose: ["PRESENTATION_KERNEL"],
   context: { localStorage: storage.api },
 });
 
 let checks = 0;
 function check(value, message) { checks += 1; if (!value) throw new Error(message); }
 
-check(api.APP_VERSION === 'va7.1-pass-f1', 'Pass C1 identity is wrong');
 const kernel = api.PRESENTATION_KERNEL;
 check(kernel.format === 'revision-director.presentation-kernel' && kernel.version === 1, 'Kernel identity is wrong');
 check(Object.isFrozen(kernel) && Object.isFrozen(kernel.manifest), 'Kernel or manifest is mutable');
@@ -21,7 +20,22 @@ check(kernel.manifest.defaults.presentation === 'revision-current', 'Default pre
 check(kernel.manifest.profiles['revision-current'].immutable === true, 'Default presentation is not immutable');
 check(kernel.manifest.invariants.exactPixelReference === 'revision-current', 'Pixel reference changed');
 check(kernel.manifest.tokens.namespace === '--rd-' && kernel.manifest.tokens.contractVersion === 1, 'Token contract is wrong');
-check(Object.values(kernel.manifest.tokens.public).flat().length >= 35, 'Semantic token contract is unexpectedly small');
+const publicTokens = kernel.manifest.tokens.public;
+const requiredTokens = {
+  foundation: ['--rd-color-canvas', '--rd-color-text-primary', '--rd-color-border-soft'],
+  typography: ['--rd-font-body', '--rd-font-display'],
+  surfaces: ['--rd-surface-neutral', '--rd-shadow-floating'],
+  geometry: ['--rd-radius-default', '--rd-touch-target-minimum', '--rd-safe-area-bottom'],
+  motion: ['--rd-motion-standard'],
+  charts: ['--rd-chart-primary', '--rd-chart-success'],
+};
+check(Object.entries(requiredTokens).every(([group, tokens]) =>
+  Array.isArray(publicTokens[group]) && tokens.every(token => publicTokens[group].includes(token))),
+  'Required semantic token families or their concrete roles are missing');
+const declaredTokens = Object.values(publicTokens).flat();
+check(declaredTokens.every(token => typeof token === 'string' && token.startsWith('--rd-'))
+  && new Set(declaredTokens).size === declaredTokens.length,
+  'Semantic token names are invalid or duplicated');
 check(kernel.listPresentations().length === 1 && Object.isFrozen(kernel.listPresentations()), 'Built-in presentation registry is wrong');
 check(kernel.normalizePresentationId('revision-current') === 'revision-current', 'Default presentation normalization failed');
 check(kernel.normalizePresentationId('unknown-pack') === 'revision-current', 'Unknown presentation did not fall back');
@@ -44,4 +58,4 @@ check(kernel.readStoredPresentation() === 'future-pack', 'Stored presentation wa
 check(kernel.validatePublicTokens() === true, 'Headless token validation should remain test-safe');
 check(!Object.keys(context).includes('RevisionDirectorPresentation'), 'Presentation kernel leaked a named public global');
 
-console.log(`PASS ${checks} Pass C1 presentation-kernel checks`);
+console.log(`PASS ${checks} presentation presentation-kernel checks`);

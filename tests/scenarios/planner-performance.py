@@ -5,6 +5,7 @@ import json
 import time
 from backup_fixture_codec import decode_file, encode_payload
 from playwright.sync_api import sync_playwright
+from scenario_timing import timed
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
@@ -12,7 +13,6 @@ sys.path.insert(0, str(TESTS))
 from helpers.browser_harness import (
     ROOT,
     launch_chromium,
-    load_browser_qa,
     open_html_page,
     open_rendered_pane,
     wait_for_app_ready,
@@ -20,9 +20,7 @@ from helpers.browser_harness import (
     wait_for_layout,
     wait_until as shared_wait_until,
 )
-# Reuse the exact deterministic IndexedDB-compatible HTML fixture from the main browser suite.
-main_qa = load_browser_qa("revision_director_planning_large_dataset")
-HTML = main_qa.HTML
+from helpers.browser_fixture import BASELINE_BACKUP, HTML, restore_selected_backup, stored_record
 PERFORMANCE_HTML = HTML.replace(
     "void boot();",
     "window.__RD_PERF_QA__={RevisionData,Store,boot};",
@@ -51,16 +49,14 @@ def open_page(browser, viewport=None, *, baseline=True):
         message='Performance restore surface did not become mutable',
     )
     if baseline:
-        main_qa.restore_selected_backup(page, main_qa.BASELINE_BACKUP)
-        check('restored' in page.locator('#toast').inner_text().lower(), 'Baseline fixture restore failed')
+        restore_selected_backup(page, BASELINE_BACKUP)
     return page, errors
 
 
 def ensure_pane(page, pane: str) -> None:
-    tab=page.locator(f'[data-pane="{pane}"]')
-    if tab.get_attribute('aria-selected') != 'true':
-        tab.click()
-    page.locator(f'#pane-{pane}').wait_for(state='visible')
+    # Settings can already be the active tab while a queued invalidation is
+    # replacing its form. Await an actual fresh render before editing it.
+    open_rendered_pane(page, pane, force_render=True)
 
 def set_capacity(page, value: int) -> None:
     ensure_pane(page, 'settings')
@@ -70,13 +66,13 @@ def set_capacity(page, value: int) -> None:
     form.locator('button[type="submit"]').click()
     shared_wait_until(
         page,
-        lambda: 'settings saved' in page.locator('#toast').inner_text().lower()
+        lambda: (stored_record(page, 'settings', 'app') or {}).get('dailyCapacityMinutes') == value
         and page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value),
         timeout=8000,
         interval=80,
         message='Timed out waiting for capacity setting persistence',
     )
-    check('settings saved' in page.locator('#toast').inner_text().lower(), 'Capacity setting did not persist')
+    check((stored_record(page, 'settings', 'app') or {}).get('dailyCapacityMinutes') == value, 'Capacity setting did not persist canonically')
     check(page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value), 'Capacity setting rerendered with a stale value')
 
 def add_oversized(page) -> None:
@@ -140,6 +136,14 @@ def scenario_capacity_reflow(browser):
             message='Timed out waiting for split-cycle dissolution',
         )
         row=page.locator('.planner-row').filter(has_text='Capacity reflow obligation').first
+        shared_wait_until(
+            page,
+            lambda: row.locator('[data-action="review-one"]').count() == 1
+            and row.locator('[data-action="review-chunk"]').count() == 0,
+            timeout=8000,
+            interval=40,
+            message='Planner projection did not reflect split-cycle dissolution',
+        )
         check(row.locator('[data-action="review-one"]').count()==1 and row.locator('[data-action="review-chunk"]').count()==0,'Split cycle did not dissolve when parent fit capacity')
         p120=export_payload(page,tmp,'120.rdbackup')
         ob120=next(item for item in p120['obligations'] if item['id']==ob['id'])
@@ -228,16 +232,16 @@ def scenario_large_dataset(browser):
     check(page.locator('#library-content .unit-row').count()==1000,'Large library lost records')
     page.set_viewport_size({'width':390,'height':844}); wait_for_layout(page)
     check(not page.evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth'),'Large dataset caused mobile horizontal overflow')
-    check(not errors,f'Large-dataset errors: {errors}')
+    check(not errors,f'planner-performance errors: {errors}')
     page.close()
 
 def main():
     with sync_playwright() as playwright:
         browser=launch_chromium(playwright)
-        scenario_capacity_reflow(browser)
-        scenario_hostile_planning_import(browser)
-        scenario_large_dataset(browser)
+        timed('planner.capacity-reflow', scenario_capacity_reflow, browser)
+        timed('planner.hostile-import', scenario_hostile_planning_import, browser)
+        timed('planner.large-dataset', scenario_large_dataset, browser)
         browser.close()
-    print('PASS 3 Pass D de novo Chromium scenarios')
+    print('PASS 3 planner performance de novo Chromium scenarios')
 
 if __name__=='__main__': main()

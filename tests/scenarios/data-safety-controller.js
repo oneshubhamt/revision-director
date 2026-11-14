@@ -4,15 +4,15 @@ const { createAppRuntime, memoryLocalStorage } = require('../helpers/runtime-har
 const memory = memoryLocalStorage();
 const storage = memory.values;
 const { api } = createAppRuntime({
-  globalName: '__RD_STAGE_D_TEST__',
-  expose: ["APP_VERSION","RevisionService","BackupCodec","BackupController","BACKUP_ARCHIVE_VERSION","BACKUP_SCHEMA_VERSION","validateBackupPayload"],
+  globalName: '__RD_DATA_SAFETY_CONTROLLER__',
+  expose: ["APP_VERSION","RevisionService","BackupCodec","BackupController","validateBackupPayload"],
   context: { localStorage: memory.api },
 });
 let checks=0;
 function check(v,m){checks++;if(!v)throw new Error(m)}
 async function mustFail(fn,text){checks++;try{await fn()}catch(e){if(text&&!String(e.message).toLowerCase().includes(text.toLowerCase()))throw e;return}throw new Error('Expected failure: '+text)}
 const settings={schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}};
-const empty=()=>({format:'revision-director-backup',schemaVersion:2,exportedAt:new Date().toISOString(),appVersion:'va7.1-pass-f1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:structuredClone(settings),activeRetrieval:null});
+const empty=()=>({format:'revision-director-backup',schemaVersion:2,exportedAt:new Date().toISOString(),appVersion:api.APP_VERSION,profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:structuredClone(settings),activeRetrieval:null});
 class FakeService{
   constructor(){this.payload=empty();this.raw={profiles:[]};this.restores=0;this.failCreate=false;this.diags=[];this.decodeMode='normal'}
   async currentActiveRetrieval(){return this.payload.activeRetrieval}
@@ -24,8 +24,6 @@ class FakeService{
   diagnostics(){return structuredClone(this.diags)}
 }
 (async()=>{
-  check(api.BACKUP_ARCHIVE_VERSION===2&&api.BACKUP_SCHEMA_VERSION===2,'Stage D versions are not closed at v2');
-
   const sourceBytes=(await api.BackupCodec.create(api.validateBackupPayload(empty()),false)).bytes;
   const service=new FakeService();
   const controller=new api.BackupController(service);
@@ -111,5 +109,5 @@ class FakeService{
   const auditService=new FakeService();auditService.decodeMode='mismatch';
   await mustFail(()=>new api.BackupController(auditService).createVerified(false),'document count');
 
-  console.log(`PASS ${checks} Stage D data-safety controller checks`);
+  console.log(`PASS ${checks} data safety data-safety controller checks`);
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright
+from scenario_timing import timed
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
@@ -10,10 +11,13 @@ from helpers.browser_harness import (
     ROOT,
     capture_browser_errors,
     launch_chromium,
+    open_rendered_pane,
+    wait_for_toast_outcome,
     wait_until as shared_wait_until,
 )
-from helpers.persistent_browser import create_persistent_frame, persistent_html
-HTML = persistent_html()
+from helpers.simulated_storage import create_simulated_frame, reset_simulated_storage, simulated_storage_html
+from helpers.browser_fixture import open_page as open_fixture_page
+HTML = simulated_storage_html()
 checks = 0
 
 def check(condition: bool, message: str) -> None:
@@ -36,11 +40,86 @@ def wait_local_file_settled(frame, name: str, state: str) -> None:
     wait_until(frame, lambda: name in frame.locator("#settings-content").inner_text())
 
 def boot_frame(page):
-    frame = create_persistent_frame(page, HTML, name="app", width=1440, height=1000)
+    frame = create_simulated_frame(page, HTML, name="app", width=1440, height=1000)
     wait_until(frame, lambda: frame.locator("#fatal-error").count() == 1 and frame.evaluate("typeof window.RevisionDirector === 'object'"))
     wait_until(frame, lambda: frame.evaluate("document.documentElement.dataset.reviewOwnership") in ["primary","secondary","faulted"])
     check(not frame.locator("#fatal-error").is_visible(), "Fatal startup error")
     return frame
+
+def exercise_intake_and_profile_summary(browser) -> None:
+    page, errors = open_fixture_page(browser, baseline=True)
+    check(page.evaluate("RevisionDirector.version === RevisionDirector.data.contract.applicationVersion && Boolean(RevisionDirector.version)"),
+          "Public API and data-contract versions diverged in the browser")
+    invalid = [
+        {"area":"A","task":"T","measure":"M","durationMinutes":10,"activityMode":"evil"},
+        {"area":"A","task":"T","measure":"M","durationMinutes":10,"understanding":99},
+        {"area":"A","task":"T","measure":"M","durationMinutes":10,"occurredAt":"not-a-date"},
+    ]
+    for payload in invalid:
+        result = page.evaluate('async p=>{try{await RevisionDirector.intake.importStudyEvent(p);return "accepted"}catch(e){return String(e.message||e)}}', payload)
+        check(result != "accepted", f"Invalid bridge payload accepted: {payload}")
+    result = page.evaluate('async()=>RevisionDirector.intake.importStudyEvent({area:"Geology",task:"Bridge event",measure:"1 topic",durationMinutes:25,activityMode:"review",understanding:3})')
+    check(bool(result.get("id")), "Valid bridge Study Event failed")
+    open_rendered_pane(page, "settings")
+    profile_ids = page.locator("[data-profile-editor]").evaluate_all(
+        "rows => rows.map(row => row.getAttribute('data-profile-editor')).filter(Boolean)"
+    )
+    check(len(profile_ids) == 2, f"Unexpected bridge profile set: {profile_ids}")
+    for profile_id in profile_ids:
+        row = page.locator(f'[data-profile-editor="{profile_id}"]')
+        check(row.count() == 1, f"Profile editor is missing durable identity: {profile_id}")
+        row.locator("[data-profile-status]").select_option("suspended")
+        shared_wait_until(
+            page,
+            lambda: row.locator("[data-profile-status]").input_value() == "suspended"
+            and row.locator('[data-action="save-profile"]').is_enabled()
+            and page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary",
+            timeout=5_000,
+            interval=40,
+            message=f"Profile editor was not ready to suspend {profile_id}",
+        )
+        page.evaluate("document.querySelector('#toast').textContent=''")
+        row.locator('[data-action="save-profile"]').click()
+        try:
+            shared_wait_until(
+                page,
+                lambda: next(
+                    (profile["status"] for profile in page.evaluate(
+                        "async()=>await RevisionDirector.records.listProfiles()"
+                    ) if profile["id"] == profile_id), None
+                ) == "suspended",
+                timeout=8_000,
+                interval=40,
+                message=f"Profile suspension did not reach durable state: {profile_id}",
+            )
+        except AssertionError as error:
+            diagnostic = page.evaluate("""async (profileId) => ({
+                profiles:await RevisionDirector.records.listProfiles(),
+                ownership:document.documentElement.dataset.reviewOwnership,
+                selected:document.querySelector('[data-profile-editor="' + profileId + '"] [data-profile-status]')?.value,
+                toast:document.querySelector('#toast')?.textContent
+            })""", profile_id)
+            raise AssertionError(f"Suspension failed for {profile_id}: {diagnostic}, errors={errors}") from error
+        wait_for_toast_outcome(
+            page,
+            expect_error=False,
+            timeout=8_000,
+            message=f"Profile suspension did not report successful completion: {profile_id}",
+        )
+        check(
+            next((profile["status"] for profile in page.evaluate(
+                "async()=>await RevisionDirector.records.listProfiles()"
+            ) if profile["id"] == profile_id), None) == "suspended",
+            f"Profile suspension did not remain durable: {profile_id}",
+        )
+    profiles = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
+    check(all(profile["status"] == "suspended" for profile in profiles), f"Public profile summary did not preserve both suspensions: {profiles}")
+    shared_wait_until(page, lambda: page.evaluate("async()=> (await RevisionDirector.records.getDueSummary()).dueCount") == 0, timeout=5000, interval=40, message="Paused profiles remained due")
+    summary = page.evaluate("RevisionDirector.records.getDueSummary()")
+    check(summary["dueCount"] == 0, f"Paused profiles remained in bridge due summary: {summary}")
+    check(not errors, f"Browser errors: {errors}")
+    page.close()
+
 
 def main() -> None:
     with sync_playwright() as pw:
@@ -48,21 +127,23 @@ def main() -> None:
         context = browser.new_context(viewport={"width": 1600, "height": 1100})
         page = context.new_page()
         errors = capture_browser_errors(page)
-        page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body></body>")
+        reset_simulated_storage(page)
         frame=boot_frame(page)
 
-        check(frame.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version wrong")
+        check(frame.evaluate("RevisionDirector.version === RevisionDirector.data.contract.applicationVersion && Boolean(RevisionDirector.version)"),
+              "Browser runtime and public data contract versions diverged")
         check(frame.evaluate("RevisionDirector.apiVersion") == 1, "Public API contract version wrong")
         check(frame.evaluate("typeof RevisionDirectorBridge") == "undefined", "Legacy bridge remains public")
-        check(frame.evaluate("Object.isFrozen(RevisionDirector) && Object.isFrozen(RevisionDirector.records) && Object.isFrozen(RevisionDirector.intake) && Object.isFrozen(RevisionDirector.plugins)"), "Public API is not frozen")
-        check(frame.evaluate("JSON.stringify(Object.keys(RevisionDirector).sort())") == '["apiVersion","capabilities","data","intake","plugins","records","registerPlugin","runtime","version"]', "Public API exposes unexpected operations")
-        check(frame.evaluate("!('repository' in RevisionDirector) && !('scheduler' in RevisionDirector) && !('evidence' in RevisionDirector) && !('backup' in RevisionDirector) && !('ui' in RevisionDirector)"), "Sensitive internals are public")
-        check(frame.evaluate("RevisionDirector.capabilities.pluginApi===1 && RevisionDirector.capabilities.localPluginFiles===1"), "Plugin capabilities unavailable")
+        # Structural API shape and deep immutability are owned by the Node
+        # public-contract suite; this checks that the real window exposes no
+        # private services, then exercises host registration and file isolation.
+        check(frame.evaluate("!('repository' in RevisionDirector) && !('scheduler' in RevisionDirector) && !('evidence' in RevisionDirector) && !('backup' in RevisionDirector) && !('ui' in RevisionDirector)"), "Browser host exposed private services")
 
         good = frame.evaluate("""async () => {
           return await RevisionDirector.registerPlugin({name:'Browser Good',version:'1.0',requires:{pluginApi:1},setup(api){window.__RD_GOOD_API__=api.version;return true;}});
         }""")
-        check(good is True and frame.evaluate("window.__RD_GOOD_API__") == "va7.1-pass-f1", "Compatible browser plugin failed")
+        check(good is True and frame.evaluate("window.__RD_GOOD_API__ === RevisionDirector.version"), "Browser plugin did not receive the current public API version")
         incompatible = frame.evaluate("""async () => await RevisionDirector.registerPlugin({name:'Browser Future',requires:{pluginApi:2},setup(){return true;}})""")
         check(incompatible is False, "Incompatible browser plugin registered")
         failed = frame.evaluate("""async () => await RevisionDirector.registerPlugin({name:'Browser Failed',setup(){throw new Error('browser isolated failure')}})""")
@@ -83,7 +164,7 @@ def main() -> None:
             wait_until(frame, lambda: frame.evaluate("RevisionDirector.plugins.status().registered.some(x=>x.name==='Local Good'&&x.state==='registered')"))
             wait_local_file_settled(frame, "rd-local-good.js", "loaded")
             check(frame.evaluate("window.__RD_LOCAL_SUMMARY__.dueCount") == 0, "Local plugin did not receive canonical API")
-            wait_until(frame, lambda: "Local Good" in frame.locator("#settings-content").inner_text()); check(True, "Local plugin status rendered")
+            wait_until(frame, lambda: "Local Good" in frame.locator("#settings-content").inner_text())
 
             inactive_file=tmp/"rd-local-inactive.js"
             inactive_file.write_text("window.__RD_INACTIVE_FILE__=true;")
@@ -115,8 +196,8 @@ def main() -> None:
         check(frame.locator('[data-pane="library"]').is_enabled(), "Application navigation broke after plugin failures")
         # Plugin execution errors are consumed by the loader and recorded as plugin status/diagnostics.
         check(not errors, f"Uncontained browser errors: {errors}")
-        context.close(); browser.close()
-    print(f"PASS {checks} Pass E1 browser plugin-runtime checks")
+        context.close(); timed('public-api.intake-profile', exercise_intake_and_profile_summary, browser); browser.close()
+    print(f"PASS {checks} public API and plugin browser checks")
 
 if __name__ == "__main__":
     main()

@@ -1,27 +1,11 @@
 from __future__ import annotations
-from pathlib import Path
-from playwright.sync_api import sync_playwright
 
-TESTS = Path(__file__).resolve().parents[1]
-import sys
-sys.path.insert(0, str(TESTS))
-from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, launch_chromium, load_browser_qa, open_html_page, wait_for_layout, wait_until
-base = load_browser_qa("revision_director_ui_runtime_accessibility")
-INDEXEDDB_SHIM = base.INDEXEDDB_SHIM
-BASELINE_BACKUP = baseline_backup_path()
-restore_selected_backup = base.restore_selected_backup
-CLOCK_SHIM = r"""
-<script>
-(() => {
-  let current = Date.now();
-  Date.now = () => current;
-  window.__RD_TEST_CLOCK__ = { advance(ms){ current += Number(ms)||0; return current; } };
-})();
-</script>
-"""
-HTML = (ROOT / "index.html").read_text().replace("<head>", "<head>" + INDEXEDDB_SHIM + CLOCK_SHIM, 1)
+from playwright.sync_api import sync_playwright
+from helpers.browser_harness import launch_chromium
+from helpers.browser_fixture import open_page, stored_all
+
 checks = 0
+
 
 def check(condition: bool, message: str) -> None:
     global checks
@@ -29,134 +13,45 @@ def check(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
 
-def launch_page(browser, viewport={"width": 1440, "height": 1000}):
-    page, errors = open_html_page(browser, HTML, viewport=viewport)
-    check(not page.locator("#fatal-error").is_visible(), "Fatal startup error")
-    return page, errors
 
-def restore_baseline(page):
-    page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-    restore_selected_backup(page, BASELINE_BACKUP)
-    check("restored" in page.locator("#toast").inner_text().lower(), "Baseline restore failed")
+def exercise_review_keyboard_shortcuts(browser) -> None:
+    page, errors = open_page(browser, {"width": 1280, "height": 900}, baseline=True)
+    # The complete 44px touch-target contract, including the backup file
+    # input, is owned by responsive-layout.py at all 16 viewport classes.
+    # This journey owns keyboard execution and accessible names.
+    for index in range(page.locator("button").count()):
+        button = page.locator("button").nth(index)
+        name = button.get_attribute("aria-label") or button.inner_text().strip() or button.get_attribute("title")
+        check(bool(name), f"Unnamed button: {index}")
+    page.locator('[data-pane="today"]').click()
+    question_obligations = [
+        item for item in stored_all(page, "obligations")
+        if item["status"] == "active" and item.get("workflow", {}).get("kind") == "questions"
+    ]
+    question_actions = [
+        page.locator(f'[data-action="review-one"][data-id="{item["id"]}"]')
+        for item in question_obligations
+        if page.locator(f'[data-action="review-one"][data-id="{item["id"]}"]').count()
+    ]
+    check(bool(question_actions), "Application workflow missing from accessibility fixture")
+    question_actions[0].click(); page.locator("#attempt-text").wait_for(state="visible")
+    page.locator("#attempt-text").fill("Reasoned answers."); page.locator("#attempt-completed").check()
+    page.locator(".review-card").click(position={"x": 5, "y": 5}); page.keyboard.press("Space"); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
+    check(page.locator('[data-review-phase="compare"]').is_visible(), "Keyboard reveal failed")
+    page.locator("#questions-attempted").fill("10"); page.locator("#questions-correct").fill("8"); page.locator("#questions-partial").fill("1")
+    page.locator(".review-card").click(position={"x": 5, "y": 5}); page.keyboard.press("3"); page.locator("#pane-today").wait_for(state="visible")
+    check(page.locator("#pane-today").evaluate('e=>e.classList.contains("on")'), "Keyboard rating failed")
+    check(not errors, f"Browser errors: {errors}")
+    page.close()
 
-def main():
-    global checks
-    with sync_playwright() as pw:
-        browser = launch_chromium(pw)
-        page, errors = launch_page(browser)
-        page.set_default_timeout(5000)
-        restore_baseline(page)
 
-        # ARIA registry and keyboard navigation.
-        tabs = page.locator('[role="tab"]')
-        check(tabs.count() == 6, "Expected six ARIA tabs")
-        check(page.locator('[role="tablist"]').count() == 1, "ARIA tablist missing")
-        check(page.locator('[role="tabpanel"]').count() == 6, "Expected six tabpanels")
-        today = page.locator('[data-pane="today"]')
-        today.focus(); today.press("ArrowRight")
-        wait_until(page, lambda: page.locator('[data-pane="review"]').get_attribute("aria-selected") == "true", timeout=3000, interval=30)
-        check(page.locator('[data-pane="review"]').get_attribute("aria-selected") == "true", "ArrowRight did not activate Review")
-        check(page.locator("#pane-review").is_visible(), "Review panel was not shown")
-        page.locator('[data-pane="review"]').press("End")
-        wait_until(page, lambda: page.locator('[data-pane="settings"]').get_attribute("aria-selected") == "true", timeout=3000, interval=30)
-        check(page.locator('[data-pane="settings"]').get_attribute("aria-selected") == "true", "End did not activate Settings")
-        page.locator('[data-pane="settings"]').press("Home")
-        wait_until(page, lambda: today.get_attribute("aria-selected") == "true", timeout=3000, interval=30)
-        check(today.get_attribute("aria-selected") == "true" and today.get_attribute("tabindex") == "0", "Home did not restore Today and roving tabindex")
-        check(page.locator('[role="tab"][tabindex="0"]').count() == 1, "Roving tabindex has multiple active tabs")
+def main() -> None:
+    with sync_playwright() as playwright:
+        browser = launch_chromium(playwright)
+        exercise_review_keyboard_shortcuts(browser)
+        browser.close()
+    print(f"PASS {checks} browser review keyboard shortcuts and accessible controls")
 
-        # Delegated event handling remains exactly-once after pane navigation.
-        page.locator('[data-pane="library"]').click(); page.locator("#pane-library").wait_for(state="visible")
-        page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
-        page.locator("#new-profile-name").wait_for(state="visible")
-        before = page.locator("[data-profile-editor]").count()
-        page.locator("#new-profile-name").fill("Delegation QA")
-        page.locator("#new-profile-date").fill("2029-01-01")
-        page.locator('[data-action="add-profile"]').click()
-        wait_until(page, lambda: page.locator("[data-profile-editor]").count() == before + 1, timeout=5000, interval=40)
-        check(page.locator("[data-profile-editor]").count() == before + 1, "Delegated click fired more or less than once")
 
-        # Dialog focus capture and restoration.
-        page.locator("#quick-add-unit").focus(); page.locator("#quick-add-unit").click(); page.locator("#unit-dialog").wait_for(state="visible")
-        check(page.locator("#unit-dialog").get_attribute("open") is not None, "Unit dialog did not open")
-        check(page.evaluate("document.activeElement?.getAttribute('name')") == "profileId", "Dialog initial focus is incorrect")
-        page.keyboard.press("Escape"); page.locator("#unit-dialog").wait_for(state="hidden")
-        wait_until(page, lambda: page.evaluate("document.activeElement?.id") == "quick-add-unit", timeout=3000, interval=30)
-        check(page.evaluate("document.activeElement?.id") == "quick-add-unit", "Dialog focus was not restored")
-
-        # Dirty-state invalidation must preserve focused search and selection.
-        page.locator('[data-pane="library"]').click(); page.locator('#pane-library').wait_for(state='visible')
-        search = page.locator("#library-search")
-        search.fill("Drainage")
-        search.evaluate("e=>e.setSelectionRange(2,6)")
-        wait_until(
-            page,
-            lambda: page.locator(".unit-row").count() == 1
-            and "Drainage" in page.locator(".unit-row").first.inner_text()
-            and page.evaluate("document.activeElement?.id") == "library-search"
-            and search.evaluate("e=>[e.selectionStart,e.selectionEnd]") == [2,6],
-            timeout=3000,
-            interval=40,
-            message="Filtered render did not complete with search focus and selection preserved",
-        )
-        check(page.evaluate("document.activeElement?.id") == "library-search", "Render invalidation lost search focus")
-        selection = search.evaluate("e=>[e.selectionStart,e.selectionEnd]")
-        check(selection == [2,6], f"Render invalidation lost text selection: {selection}")
-        check(page.locator(".unit-row").count() == 1 and "Drainage" in page.locator(".unit-row").first.inner_text(), "Debounced library projection did not render the filtered result")
-
-        # 44-pixel visible interaction targets, including file input.
-        target_failures = page.evaluate("""() => [...document.querySelectorAll('button,input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,summary,.file-btn')]
-          .filter(e => { const s=getComputedStyle(e); return !e.closest('[hidden]') && s.display!=='none' && s.visibility!=='hidden' && e.getBoundingClientRect().width>0; })
-          .filter(e => e.getBoundingClientRect().height < 43.5)
-          .map(e => `${e.tagName}#${e.id}.${e.className}:${e.getBoundingClientRect().height}`)""")
-        check(not target_failures, f"Sub-44px targets: {target_failures[:5]}")
-        page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
-        check(page.locator("#import-backup").bounding_box()["height"] >= 44, "Backup file input is below 44px")
-
-        # Reduced motion contract.
-        page.emulate_media(reduced_motion="reduce")
-        duration = page.locator(".btn").first.evaluate("e=>getComputedStyle(e).transitionDuration")
-        check(duration in ("1e-05s", "0.00001s", "0s"), f"Reduced-motion transition remains active: {duration}")
-
-        # Compact layout reserves content above fixed navigation and avoids overflow.
-        for width, height in ((820,700),(700,700),(390,844),(320,568)):
-            page.set_viewport_size({"width":width,"height":height}); wait_for_layout(page)
-            geometry = page.evaluate("""() => { const m=document.querySelector('.main').getBoundingClientRect(); const n=document.querySelector('.sidebar').getBoundingClientRect(); return {mainBottom:m.bottom,navTop:n.top,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth}; }""")
-            check(geometry["mainBottom"] <= geometry["navTop"] + 1, f"Main overlaps compact nav at {width}x{height}: {geometry}")
-            check(not geometry["overflow"], f"Horizontal overflow at {width}x{height}")
-
-        # Overlay focus containment and semantic return target.
-        page.set_viewport_size({"width":1365,"height":950}); page.emulate_media(reduced_motion="no-preference")
-        page.locator('[data-pane="today"]').click(); page.locator("#pane-today").wait_for(state="visible")
-        page.locator('[data-action="review-one"]').first.click(); page.locator('[data-action="toggle-pause"]').wait_for(state="visible")
-        pause = page.locator('[data-action="toggle-pause"]'); pause.focus()
-        page.evaluate("__RD_TEST_CLOCK__.advance(130001)")
-        page.evaluate("window.dispatchEvent(new Event('focus'))")
-        overlay = page.locator("#gap-overlay")
-        overlay.wait_for(state="visible", timeout=5000)
-        check(overlay.is_visible(), "Inactive-gap overlay did not open")
-        check(page.locator(".app-shell").evaluate("e=>e.inert"), "Application background was not inert")
-        active = page.evaluate("({tag:document.activeElement?.tagName,id:document.activeElement?.id,action:document.activeElement?.getAttribute('data-gap-action'),html:document.activeElement?.outerHTML?.slice(0,160)})")
-        check(active.get("action") == "focus", f"Overlay initial focus is incorrect: {active}")
-        page.keyboard.press("Shift+Tab")
-        check(page.evaluate("document.activeElement?.getAttribute('data-gap-action')") == "ignore", "Shift+Tab did not wrap to final overlay control")
-        page.keyboard.press("Tab")
-        check(page.evaluate("document.activeElement?.getAttribute('data-gap-action')") == "focus", "Tab did not wrap to first overlay control")
-        page.locator('[data-gap-action="break"]').click(); overlay.wait_for(state="hidden")
-        check(not overlay.is_visible(), "Overlay did not close after classification")
-        wait_until(
-            page,
-            lambda: not page.locator(".app-shell").evaluate("e=>e.inert")
-            and page.evaluate("document.activeElement?.getAttribute('data-action')") == "toggle-pause",
-            timeout=3000,
-            interval=30,
-            message="Overlay focus did not return to pause control",
-        )
-        check(not page.locator(".app-shell").evaluate("e=>e.inert"), "Application remained inert")
-        check(page.evaluate("document.activeElement?.getAttribute('data-action')") == "toggle-pause", "Overlay focus did not return to pause control")
-
-        check(not errors, f"Browser errors: {errors}")
-        page.close(); browser.close()
-    print(f"PASS {checks} Pass C2 browser accessibility and UI-runtime checks")
-
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()

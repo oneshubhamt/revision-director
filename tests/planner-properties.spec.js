@@ -140,4 +140,122 @@ for (let caseIndex = 0; caseIndex < CASES; caseIndex += 1) {
   check(expandedCriticalValue >= actualCritical.value, label + ': increasing capacity reduced the attainable critical objective');
 }
 
-console.log('PASS ' + checks + ' seeded planner/oracle property checks across ' + CASES + ' cases');
+// Independent mixed-size oracle: cover oversized critical work, must-split
+// classifications and no-fit fallback without copying the production DP.
+const mixedRandom = mulberry32(0xA11CE);
+const MIXED_CASES = 180;
+for (let caseIndex = 0; caseIndex < MIXED_CASES; caseIndex += 1) {
+  const capacity = integer(mixedRandom, 10, 85);
+  const count = integer(mixedRandom, 1, 9);
+  const candidates = Array.from({length: count}, (_, index) => {
+    const mode = integer(mixedRandom, 0, 4);
+    return item('mixed-' + caseIndex + '-' + index, integer(mixedRandom, 1, 900) / 10,
+      integer(mixedRandom, 1, 140), {
+        type: mode === 0 ? 'relearn' : 'concept-reconstruction',
+        dueState: mode === 1 ? 'overdue' : 'due',
+        dueRisk: mode === 1 ? integer(mixedRandom, 85, 100) / 100
+          : integer(mixedRandom, 0, 84) / 100,
+        dueAt: new Date(BASE_DUE + integer(mixedRandom, -48, 48) * 3600000).toISOString(),
+      });
+  });
+  const before = JSON.stringify(candidates);
+  const actual = api.choosePlanItems(candidates, capacity);
+  const label = 'mixed case ' + caseIndex;
+  assertPartition(candidates, actual, label);
+  check(JSON.stringify(candidates) === before, label + ': planning mutated input records');
+  const ranked = [...candidates].sort((a, b) => b.score - a.score
+    || a.joined.obligation.dueAt.localeCompare(b.joined.obligation.dueAt)
+    || a.joined.obligation.expectedMinutes - b.joined.obligation.expectedMinutes
+    || key(a).localeCompare(key(b)));
+  const criticalItems = ranked.filter(critical);
+  const oversizedCritical = criticalItems.filter(value => duration(value) > capacity);
+  const highestCritical = criticalItems[0];
+  if (highestCritical && duration(highestCritical) > capacity) {
+    check(actual.selected.length === 1 && key(actual.selected[0]) === key(highestCritical),
+      label + ': highest-ranked oversized critical work not selected');
+    check(actual.requiredOverrun.length === 1 && key(actual.requiredOverrun[0]) === key(highestCritical),
+      label + ': required critical overrun not represented');
+    check(JSON.stringify(actual.mustSplit.map(key)) ===
+      JSON.stringify(oversizedCritical.slice(1).map(key)),
+      label + ': other oversized critical items not marked must-split');
+  } else {
+    check(JSON.stringify(actual.mustSplit.map(key)) === JSON.stringify(oversizedCritical.map(key)),
+      label + ': oversized critical classification diverged');
+    const chosenCritical = actual.selected.filter(critical);
+    const expectedCritical = bruteForce(criticalItems, capacity);
+    const foundCritical = selectedObjective(chosenCritical);
+    check(foundCritical.value === expectedCritical.value && foundCritical.used === expectedCritical.used,
+      label + ': critical selection diverged from exhaustive oracle');
+    const remaining = capacity - foundCritical.used;
+    const chosenNormal = actual.selected.filter(value => !critical(value));
+    const expectedNormal = bruteForce(candidates.filter(value => !critical(value)), remaining);
+    const foundNormal = selectedObjective(chosenNormal);
+    if (actual.requiredOverrun.length === 0) {
+      check(foundNormal.value === expectedNormal.value && foundNormal.used === expectedNormal.used,
+        label + ': normal selection diverged from exhaustive oracle');
+      check(actual.selected.reduce((total, value) => total + duration(value), 0) <= capacity,
+        label + ': selected work silently exceeded capacity');
+    } else {
+      check(actual.selected.length === 1 && actual.requiredOverrun.length === 1
+        && key(actual.selected[0]) === key(ranked[0]), label + ': no-fit fallback changed priority');
+      check(ranked.every(value => duration(value) > capacity),
+        label + ': fallback overran even though a fitting item existed');
+    }
+  }
+  const permuted = api.choosePlanItems(shuffle(mixedRandom, candidates), capacity);
+  check(JSON.stringify(canonicalResult(actual)) === JSON.stringify(canonicalResult(permuted)),
+    label + ': disposition depends on input permutation');
+}
+
+
+/**
+ * Metamorphic frontier: changing the absolute calendar origin or uniformly
+ * scaling integer benefit values cannot alter the optimal chosen identities.
+ * Exhaustive subsets remain the independent oracle at several capacities.
+ */
+const metamorphicRandom = mulberry32(0xA11F01);
+const METAMORPHIC_CASES = 64;
+for (let caseIndex = 0; caseIndex < METAMORPHIC_CASES; caseIndex += 1) {
+  const capacity = integer(metamorphicRandom, 20, 75);
+  const candidates = Array.from({length:integer(metamorphicRandom,3,8)},(_,index) => {
+    const isCritical = integer(metamorphicRandom,0,4) === 0;
+    const dueAt = new Date(BASE_DUE + integer(metamorphicRandom,-30,30)*3600000).toISOString();
+    return item('metamorphic-' + caseIndex + '-' + index,
+      integer(metamorphicRandom,5,110), integer(metamorphicRandom,1,14), {
+        type:isCritical ? 'relearn' : 'concept-reconstruction',
+        dueState:isCritical ? 'overdue' : 'due', dueRisk:isCritical ? .95 : .4,
+        dueAt,
+      });
+  });
+  const unchanged = JSON.stringify(candidates);
+  for (const currentCapacity of [capacity,capacity + 10,capacity + 25]) {
+    const actual = api.choosePlanItems(candidates,currentCapacity);
+    assertPartition(candidates,actual,'metamorphic case ' + caseIndex);
+    const scaled = candidates.map(candidate => ({...candidate,score:candidate.score * 3}));
+    const shifted = candidates.map(candidate => ({
+      ...candidate, joined:{...candidate.joined,obligation:{
+        ...candidate.joined.obligation,
+        dueAt:new Date(Date.parse(candidate.joined.obligation.dueAt) + 7*86400000).toISOString(),
+      }},
+    }));
+    for (const [property,variant] of [['positive score scaling',scaled],['calendar translation',shifted]]) {
+      check(JSON.stringify(canonicalResult(actual)) === JSON.stringify(
+        canonicalResult(api.choosePlanItems(variant,currentCapacity))),
+        property + ' changed the selected work in case ' + caseIndex);
+    }
+    const foundCritical = selectedObjective(actual.selected.filter(critical));
+    const oracleCritical = bruteForce(candidates.filter(critical),currentCapacity);
+    check(foundCritical.value === oracleCritical.value && foundCritical.used === oracleCritical.used,
+      'Critical capacity frontier diverged from exhaustive oracle');
+    const remaining = currentCapacity - foundCritical.used;
+    const foundNormal = selectedObjective(actual.selected.filter(value => !critical(value)));
+    const oracleNormal = bruteForce(candidates.filter(value => !critical(value)),remaining);
+    check(foundNormal.value === oracleNormal.value && foundNormal.used === oracleNormal.used,
+      'Normal capacity frontier diverged from exhaustive oracle');
+  }
+  check(JSON.stringify(candidates) === unchanged,
+    'Metamorphic planning mutated caller-owned candidates');
+}
+
+console.log('PASS ' + checks + ' seeded planner/oracle property checks across '
+  + (CASES + MIXED_CASES + METAMORPHIC_CASES) + ' cases');

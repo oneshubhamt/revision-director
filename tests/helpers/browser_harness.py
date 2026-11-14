@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-import importlib.util
 import os
 import shutil
 import time
 from typing import Callable
 
 from playwright.sync_api import Browser, Page, Playwright
-from backup_fixture_codec import baseline_backup_path
 
 ROOT = Path(__file__).resolve().parents[2]
-TESTS = ROOT / "tests"
-BASELINE_BACKUP = baseline_backup_path()
 DEFAULT_CHROMIUM_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"]
 
 
@@ -140,6 +136,28 @@ def wait_until(
     raise AssertionError(message)
 
 
+def wait_for_toast_outcome(
+    target,
+    *,
+    expect_error: bool = False,
+    timeout: int = 8_000,
+    message: str = "Timed out waiting for action feedback",
+) -> str:
+    wait_until(
+        target,
+        lambda: bool(target.locator("#toast").inner_text().strip()),
+        timeout=timeout,
+        interval=40,
+        message=message,
+    )
+    text = target.locator("#toast").inner_text().strip()
+    is_error = target.locator("#toast").evaluate("e=>e.classList.contains('error')")
+    if is_error != expect_error:
+        expected = "error" if expect_error else "success"
+        actual = "error" if is_error else "success"
+        raise AssertionError(f"{message}: expected {expected}, got {actual}: {text}")
+    return text
+
 
 def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) -> dict[str, object]:
     page.wait_for_function(
@@ -181,20 +199,6 @@ def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[s
         "inspectionComplete": page.locator("#import-backup").evaluate("e=>e instanceof HTMLInputElement && e.files?.length === 0"),
     }
 
-def load_test_module(path: str | Path, name: str):
-    resolved = Path(path)
-    spec = importlib.util.spec_from_file_location(name, resolved)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load browser test support: {resolved}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def load_browser_qa(name: str = "revision_director_browser_qa"):
-    return load_test_module(TESTS / "browser-qa.spec.py", name)
-
-
 
 def wait_for_app_ready(page: Page, *, timeout: int = 10_000) -> None:
     page.wait_for_function(
@@ -211,10 +215,10 @@ def wait_for_app_ready(page: Page, *, timeout: int = 10_000) -> None:
         assert not page.locator("#fatal-error").is_visible(), "Fatal startup error"
 
 
-def open_rendered_pane(page: Page, pane: str, *, timeout: int = 10_000) -> None:
+def open_rendered_pane(page: Page, pane: str, *, timeout: int = 10_000, force_render: bool = False) -> None:
     tab = page.locator(f'[data-pane="{pane}"]')
     panel = page.locator(f'#pane-{pane}')
-    if tab.get_attribute("aria-selected") == "true":
+    if tab.get_attribute("aria-selected") == "true" and not force_render:
         panel.wait_for(state="visible", timeout=timeout)
         return
     content = page.locator(f'#{pane}-content')

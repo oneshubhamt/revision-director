@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager, nullcontext
+import ast
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import os
@@ -13,86 +15,143 @@ from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
+OPTIMIZER_WASM = ROOT / "tools/fsrs-optimizer/node_modules/@open-spaced-repetition/binding-wasm32-wasip1/fsrs-binding.wasm32-wasip1.wasm"
+_HOSTED_PREPARED = False
 
 STATIC_PYTHON = (
     "tests/build-integrity.spec.py",
     "tests/html-sanity.spec.py",
+    "tests/qa-runner.spec.py",
 )
 
-CORE_NODE_PLAN = (
-    "tests/scenarios/public-plugin-runtime.js",
-    "tests/fsrs-contract-parity.spec.js",
-    "tests/fsrs-reference-parity.spec.js",
-    "tests/fsrs-integration.spec.js",
-    "tests/fsrs-optimizer-core.spec.js",
-    "tests/fsrs-optimizer-policy.spec.js",
-    "tests/fsrs-programme-closure.spec.js",
-    "tests/fsrs-scale-benchmark.spec.js",
-    "tests/kernel-policy.spec.js",
-    "tests/scenarios/adaptive-planning.js",
-    "tests/scenarios/planning-persistence-validation.js",
-    "tests/scenarios/backup-codec.js",
-    "tests/scenarios/backup-controller.js",
-    "tests/scenarios/data-safety-controller.js",
-    "tests/planning.spec.js",
-    "tests/planner-properties.spec.js",
-    "tests/runtime-harness-ownership.spec.js",
-    "tests/scenarios/production-contracts-storage.js",
-    "tests/scenarios/active-retrieval-persistence.js",
-    "tests/scenarios/phase-time-runtime.js",
-    "tests/scenarios/ownership-storage-health.js",
-    "tests/scenarios/reliability-closure.js",
-    "tests/scenarios/presentation-kernel.js",
-)
+CORE_DOMAIN_PLAN = {
+    # Primary owners grouped by product risk; do not duplicate a test entrypoint.
+    "public-api-and-architecture": (
+        "tests/scenarios/public-plugin-runtime.js",
+        "tests/runtime-harness-ownership.spec.js",
+    ),
+    "fsrs-scheduler-and-optimizer": (
+        "tests/fsrs-optimizer-contract.spec.js",
+        "tests/fsrs-scheduler-reference.spec.js",
+        "tests/fsrs-scheduler-integration.spec.js",
+        "tests/fsrs-optimizer.spec.js",
+        "tests/fsrs-memory-lifecycle.spec.js",
+        "tests/fsrs-scale.spec.js",
+    ),
+    "planner": (
+        "tests/planner-policy.spec.js",
+        "tests/planner-properties.spec.js",
+        "tests/planner-persistence.spec.js",
+    ),
+    "backup-and-data-safety": (
+        "tests/scenarios/backup-codec.js",
+        "tests/scenarios/backup-controller.js",
+        "tests/scenarios/data-safety-controller.js",
+    ),
+    "domain-policy": (
+        "tests/kernel-policy.spec.js",
+    ),
+    "persistence-recovery-and-time": (
+        "tests/scenarios/production-contracts-storage.js",
+        "tests/scenarios/active-retrieval-persistence.js",
+        "tests/scenarios/phase-time-runtime.js",
+        "tests/scenarios/ownership-storage-health.js",
+        "tests/scenarios/reliability-closure.js",
+    ),
+    "presentation": (
+        "tests/scenarios/presentation-kernel.js",
+    ),
+}
 
-BROWSER_PLAN = (
-    "tests/scenarios/backup-codec.py",
-    "tests/scenarios/backup-restore-controller.py",
-    "tests/scenarios/data-safety.py",
-    "tests/scenarios/restore-dialog-accessibility.py",
-    "tests/scenarios/public-plugin-runtime.py",
-    "tests/browser-qa.spec.py",
+CORE_NODE_PLAN = tuple(path for group in CORE_DOMAIN_PLAN.values() for path in group)
+
+BROWSER_DOMAIN_PLAN = {
+    "backup-and-data-safety": (
+        "tests/scenarios/backup-codec.py",
+        "tests/scenarios/backup-restore-controller.py",
+        "tests/scenarios/data-safety.py",
+        "tests/scenarios/restore-dialog-accessibility.py",
+    ),
+    "public-api-and-plugins": (
+        "tests/scenarios/public-plugin-runtime.py",
+    ),
+    "planner": (
+        "tests/scenarios/planner-browser.py",
+    ),
+    "persistence-and-recovery": (
+        "tests/scenarios/persistent-active-retrieval.py",
+        "tests/scenarios/ownership-storage-health.py",
+        "tests/scenarios/hostile-recovery.py",
+        "tests/scenarios/indexeddb-durability.py",
+        "tests/scenarios/native-indexeddb-journey.py",
+        "tests/canonical-topology-browser.spec.py",
+    ),
+    "presentation-and-accessibility": (
+        "tests/scenarios/presentation-kernel.py",
+        "tests/scenarios/ui-runtime-accessibility.py",
+        "tests/scenarios/ui-behaviour.py",
+        "tests/scenarios/responsive-layout.py",
+        "tests/security-rendering-browser.spec.py",
+    ),
+    "fsrs": (
+        "tests/fsrs-browser-integration.spec.py",
+        "tests/fsrs-memory-lifecycle-browser.spec.py",
+    ),
+}
+
+BROWSER_PLAN = tuple(path for group in BROWSER_DOMAIN_PLAN.values() for path in group)
+
+# Only independent browser contexts run concurrently. Recovery, ownership,
+# native IndexedDB and UI focus stress stay serial to avoid resource races.
+BROWSER_SERIAL_PLAN = (
     "tests/scenarios/persistent-active-retrieval.py",
     "tests/scenarios/ownership-storage-health.py",
     "tests/scenarios/hostile-recovery.py",
     "tests/scenarios/indexeddb-durability.py",
     "tests/scenarios/native-indexeddb-journey.py",
-    "tests/scenarios/presentation-kernel.py",
-    "tests/scenarios/ui-runtime-accessibility.py",
     "tests/scenarios/ui-behaviour.py",
-    "tests/scenarios/responsive-layout.py",
-    "tests/canonical-topology-browser.spec.py",
-    "tests/fsrs-browser-optimizer.spec.py",
-    "tests/fsrs-programme-closure-browser.spec.py",
-    "tests/full-qa-supplement.spec.py",
+)
+BROWSER_PARALLEL_PLAN = tuple(path for path in BROWSER_PLAN if path not in BROWSER_SERIAL_PLAN)
+BROWSER_SAFE_WORKERS = 2
+
+NATIVE_INDEXEDDB_BROWSER_PLAN = (
+    "tests/scenarios/indexeddb-durability.py",
+    "tests/scenarios/native-indexeddb-journey.py",
+)
+
+DURABILITY_BROWSER_PLAN = (
+    "tests/scenarios/phase-time-runtime.py",
 )
 
 DEEP_NODE_PLAN = (
-    "tests/fsrs-scheduling-experiments.spec.js",
+    "tests/fsrs-scheduling-policy-deep.spec.js",
+    "tests/qa-mutation-adequacy.spec.js",
 )
 
 PERFORMANCE_BROWSER_PLAN = (
-    "tests/scenarios/planning-large-dataset.py",
+    "tests/scenarios/planner-performance.py",
 )
 
-REMOVED_WRAPPERS = (
-    "browser-data-safety.spec.py",
-    "browser-extensions.spec.py",
-    "browser-recovery.spec.py",
-    "browser-ui.spec.py",
-    "extensions-and-public-api.spec.js",
-    "planning-and-data-safety.spec.js",
-    "storage-and-recovery.spec.js",
-    "ui-and-presentation.spec.js",
+SIMULATED_STORAGE_BROWSER_PLAN = (
+    tuple(path for path in BROWSER_PLAN if path not in NATIVE_INDEXEDDB_BROWSER_PLAN)
+    + DURABILITY_BROWSER_PLAN
+    + PERFORMANCE_BROWSER_PLAN
 )
 
-
-def run(*command: str) -> None:
+def run(*command: str, isolated_browser: bool = False) -> None:
     print("==>", " ".join(command), flush=True)
     env = os.environ.copy()
+    if isolated_browser:
+        # CDP dialogs are browser-global across independent Playwright
+        # connections; two workers must not share the same Chromium process.
+        env.pop("REVISION_DIRECTOR_CDP_ENDPOINT", None)
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(TESTS) + (os.pathsep + existing if existing else "")
-    subprocess.run(command, cwd=ROOT, env=env, check=True)
+    started = time.perf_counter()
+    try:
+        subprocess.run(command, cwd=ROOT, env=env, check=True)
+    finally:
+        print(f"QA_PROCESS_TIME {' '.join(command)} {time.perf_counter() - started:.3f}s", flush=True)
 
 
 
@@ -154,17 +213,67 @@ def shared_chromium():
                     process.kill()
                     process.wait(timeout=5)
 
-def assert_test_topology() -> None:
-    historical = [*TESTS.glob("pass-*"), *TESTS.glob("stage-*")]
-    stale_wrappers = [TESTS / name for name in REMOVED_WRAPPERS if (TESTS / name).exists()]
-    stale_helper = TESTS / "helpers/suite-runner.js"
-    stale = sorted([*historical, *stale_wrappers, *([stale_helper] if stale_helper.exists() else [])], key=lambda path: path.name)
-    if stale:
-        raise AssertionError("Obsolete QA entrypoints remain: " + ", ".join(path.name for path in stale))
+def assert_python_test_syntax() -> None:
+    for path in sorted(TESTS.rglob("*.py")):
+        compile(path.read_text(), str(path.relative_to(ROOT)), "exec")
 
+
+def assert_test_topology() -> None:
+    """Verify executable ownership and independent real/simulated storage boundaries.
+
+    Historical words, test filenames and source comments are not product contracts.
+    The canonical plans must own *all* executable test entries exactly once.
+    """
+    declared = (
+        STATIC_PYTHON + CORE_NODE_PLAN + BROWSER_PLAN
+        + DURABILITY_BROWSER_PLAN + PERFORMANCE_BROWSER_PLAN + DEEP_NODE_PLAN
+    )
+    if len(declared) != len(set(declared)):
+        raise AssertionError("The QA execution plan runs one or more entrypoints twice")
+    if (set(BROWSER_PARALLEL_PLAN) | set(BROWSER_SERIAL_PLAN) != set(BROWSER_PLAN)
+            or set(BROWSER_PARALLEL_PLAN) & set(BROWSER_SERIAL_PLAN)
+            or BROWSER_SAFE_WORKERS != 2):
+        raise AssertionError("Independent and serial browser ownership is not a complete disjoint partition")
+    actual = {
+        path.relative_to(ROOT).as_posix()
+        for path in TESTS.rglob("*")
+        if path.is_file()
+        and (
+            path.name.endswith((".spec.py", ".spec.js"))
+            or (path.parent == TESTS / "scenarios" and path.suffix in (".py", ".js"))
+        )
+    }
+    if set(declared) != actual:
+        raise AssertionError(
+            "QA execution ownership mismatch: "
+            + f"unlisted={sorted(actual - set(declared))}, "
+            + f"missing={sorted(set(declared) - actual)}"
+        )
+    if set(NATIVE_INDEXEDDB_BROWSER_PLAN) - set(BROWSER_PLAN):
+        raise AssertionError("Native IndexedDB tests must be owned by the browser suite")
+    if set(SIMULATED_STORAGE_BROWSER_PLAN) & set(NATIVE_INDEXEDDB_BROWSER_PLAN):
+        raise AssertionError("Native and simulated IndexedDB suites must remain disjoint")
+
+    for relative in BROWSER_PLAN + DURABILITY_BROWSER_PLAN + PERFORMANCE_BROWSER_PLAN:
+        source = ast.parse((ROOT / relative).read_text(), filename=relative)
+        imports: set[str] = set()
+        for node in ast.walk(source):
+            if isinstance(node, ast.Import):
+                imports.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    imports.add(node.module)
+                if node.module == "helpers":
+                    imports.update(f"helpers.{alias.name}" for alias in node.names)
+        simulated = bool(imports & {"helpers.browser_fixture", "helpers.simulated_storage"})
+        if relative in NATIVE_INDEXEDDB_BROWSER_PLAN and simulated:
+            raise AssertionError(f"Native IndexedDB witness imports simulator: {relative}")
+        if relative in SIMULATED_STORAGE_BROWSER_PLAN and not simulated:
+            raise AssertionError(f"Simulated browser witness skips canonical fixture: {relative}")
 
 def core() -> None:
     assert_test_topology()
+    assert_python_test_syntax()
     run(sys.executable, "build/build.py")
     run(sys.executable, "build/checksums.py", "--check")
     run("node", "--check", "dist/app.js")
@@ -174,18 +283,49 @@ def core() -> None:
         run("node", path)
 
 
+def require_optimizer_dependencies() -> None:
+    """QA validates the prepared toolchain; dependency installation belongs to setup."""
+    if not OPTIMIZER_WASM.is_file():
+        raise AssertionError(
+            "FSRS optimizer dependencies are missing. "
+            "Run `npm ci --prefix tools/fsrs-optimizer --no-audit --no-fund` before optimizer/browser/deep QA."
+        )
+
+
+def prepare_hosted_optimizer() -> None:
+    """Build hosted optimizer assets once from an explicitly prepared toolchain."""
+    global _HOSTED_PREPARED
+    if _HOSTED_PREPARED:
+        return
+    require_optimizer_dependencies()
+    # The root application is a committed/generated prerequisite; do not rebuild it here.
+    run("node", "build/build-hosted.mjs")
+    _HOSTED_PREPARED = True
+
+
 def optimizer() -> None:
+    require_optimizer_dependencies()
     run("npm", "run", "--prefix", "tools/fsrs-optimizer", "smoke")
 
 
 def durability() -> None:
-    run(sys.executable, "tests/scenarios/phase-time-runtime.py")
+    assert_test_topology()
+    for path in DURABILITY_BROWSER_PLAN:
+        run(sys.executable, path)
 
 
 def browser() -> None:
     assert_test_topology()
-    with shared_chromium():
-        for path in BROWSER_PLAN:
+    prepare_hosted_optimizer()
+    # A full run already owns Chromium. Preserve independent subprocesses and
+    # browser contexts: each scenario still has isolated storage and JS state.
+    context = nullcontext() if os.environ.get("REVISION_DIRECTOR_CDP_ENDPOINT") else shared_chromium()
+    with context:
+        # Each subprocess creates its own browser context and storage. The
+        # privileged/recovery/UI stress scenarios run in an isolated serial tail.
+        with ThreadPoolExecutor(max_workers=BROWSER_SAFE_WORKERS) as pool:
+            list(pool.map(lambda path: run(sys.executable, path, isolated_browser=True), BROWSER_PARALLEL_PLAN))
+        for path in BROWSER_SERIAL_PLAN:
             run(sys.executable, path)
 
 
@@ -197,17 +337,23 @@ def performance() -> None:
 
 def deep() -> None:
     assert_test_topology()
+    require_optimizer_dependencies()
     for path in DEEP_NODE_PLAN:
         run("node", path)
-    run(sys.executable, "tests/fsrs-browser-optimizer.spec.py", "full")
+    # Keep full-scale timing envelopes as deep diagnostics, not routine core gates.
+    run("node", "tests/fsrs-scale.spec.js", "--performance")
+    prepare_hosted_optimizer()
+    run(sys.executable, "tests/fsrs-browser-integration.spec.py", "full")
 
 
 def full() -> None:
     core()
     optimizer()
-    durability()
-    browser()
-    performance()
+    prepare_hosted_optimizer()
+    with shared_chromium():
+        durability()
+        browser()
+        performance()
     deep()
 
 

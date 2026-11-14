@@ -10,10 +10,9 @@ const { api } = createAppRuntime({
 let checks=0;
 function check(v,m){checks++; if(!v) throw new Error(m)}
 async function mustFail(fn,m){checks++; try{await fn()}catch{return} throw new Error(m)}
-const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-07-28T00:00:00.000Z',appVersion:'va7.1-pass-f1',profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}},activeRetrieval:null};
+const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-07-28T00:00:00.000Z',appVersion:api.APP_VERSION,profiles:[],nodes:[],units:[],studyEvents:[],obligations:[],evidenceEvents:[],chunks:[],dailyPlans:[],settings:{schemaVersion:1,key:'app',activeProfileId:'',fsrsScheduling:{policy:{kind:'fixed-retention',desiredRetention:.9}},memoryDifficultyPolicy:{remediationLapses:2,persistentDifficultyLapses:4,automaticHold:{enabled:false,lapseThreshold:8}},dailyCapacityMinutes:60,studyDayBoundaryHour:4,fsrsPersonalization:{profile:null,active:false,replayProfiles:[]}},activeRetrieval:null};
 (async()=>{
- check(api.APP_VERSION==='va7.1-pass-f1','D1 version wrong');
- check(api.BACKUP_ARCHIVE_FORMAT==='revision-director-backup-archive'&&api.BACKUP_ARCHIVE_VERSION===2,'Archive identity wrong');
+  check(api.BACKUP_ARCHIVE_FORMAT==='revision-director-backup-archive'&&api.BACKUP_ARCHIVE_VERSION===2,'Archive identity wrong');
  check(api.sha256FallbackHex(new TextEncoder().encode('abc'))==='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','Pure SHA-256 fallback is incorrect');
  const uncompressed=await api.BackupCodec.create(api.validateBackupPayload(empty),false);
  check(uncompressed.inspection.verified&&uncompressed.inspection.compression==='none','Uncompressed create failed');
@@ -23,6 +22,29 @@ const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-
  const decoded=await api.BackupCodec.decode(uncompressed.bytes,x=>api.validateBackupPayload(x));
  check(decoded.payload.settings.dailyCapacityMinutes===60,'Round trip failed');
  check(decoded.inspection.expandedBytes===uncompressed.bytes.byteLength,'Expanded byte metadata wrong');
+ // Metamorphic archive tests: changing valid settings must survive exactly;
+ // changing any encoded chunk without updating the proof must fail closed.
+ for (const capacity of [5, 15, 30, 45, 60, 120, 240, 600]) {
+   const sample=structuredClone(empty);
+   sample.settings.dailyCapacityMinutes=capacity;
+   sample.settings.studyDayBoundaryHour=capacity%13;
+   const canonical=api.validateBackupPayload(sample);
+   for (const preferCompression of [false, true]) {
+     const archive=await api.BackupCodec.create(canonical,preferCompression);
+     const restored=await api.BackupCodec.decode(archive.bytes,x=>api.validateBackupPayload(x));
+     check(JSON.stringify(restored.payload)===JSON.stringify(canonical),
+       'Archive round-trip lost canonical fields at capacity '+capacity);
+     check(restored.inspection.verified,'Archive proof not verified at capacity '+capacity);
+   }
+   const archive=await api.BackupCodec.create(canonical,false);
+   const rows=new TextDecoder().decode(archive.bytes).trimEnd().split('\n').map(JSON.parse);
+   const settingsChunk=rows.find(row=>row.kind==='chunk'&&row.entityType==='settings');
+   check(Boolean(settingsChunk)&&settingsChunk.count===1,'Canonical settings chunk is missing');
+   settingsChunk.items[0].dailyCapacityMinutes=capacity===600?599:capacity+1;
+   const bytes=new TextEncoder().encode(rows.map(JSON.stringify).join('\n')+'\n');
+   await mustFail(()=>api.BackupCodec.decode(bytes,x=>api.validateBackupPayload(x)),
+     'Tampered settings chunk was accepted at capacity '+capacity);
+ }
  const priorRelease={...structuredClone(empty),appVersion:'va7.0-compatible-release'};
  const priorArchive=await api.BackupCodec.create(api.validateBackupPayload(priorRelease),false);
  const priorDecoded=await api.BackupCodec.decode(priorArchive.bytes,x=>api.validateBackupPayload(x));
@@ -70,5 +92,5 @@ const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-
  check(chunked.inspection.chunkCount>=4,'Bounded chunking did not split records');
  const chunkLines=new TextDecoder().decode(chunked.bytes).trimEnd().split('\n').map(JSON.parse).filter(x=>x.kind==='chunk'&&x.entityType==='profiles');
  check(chunkLines.every(x=>x.count<=api.BACKUP_ARCHIVE_CHUNK_MAX_ITEMS),'Chunk item limit exceeded');
- console.log(`PASS ${checks} Pass D1 backup-codec checks`);
+ console.log(`PASS ${checks} backup codec backup-codec checks`);
 })().catch(e=>{console.error(e);process.exitCode=1});

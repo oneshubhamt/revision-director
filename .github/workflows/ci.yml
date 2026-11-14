@@ -140,7 +140,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            tools/fsrs-optimizer/package-lock.json
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -150,12 +152,15 @@ jobs:
       - name: Install locked Node toolchain
         run: npm ci
 
+      - name: Install isolated optimizer binding
+        run: npm ci --prefix tools/fsrs-optimizer --no-audit --no-fund
+
       - name: Install Playwright harness
         run: |
           python3 -m pip install --disable-pip-version-check playwright
           test -x /usr/bin/chromium
 
-      - name: Scheduling experiments and full browser optimizer
+      - name: Scheduling experiments, scale envelope and full browser optimizer
         run: npm run qa:deep
 
   browser-performance:
@@ -211,7 +216,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            tools/fsrs-optimizer/package-lock.json
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -220,6 +227,9 @@ jobs:
 
       - name: Install locked Node toolchain
         run: npm ci
+
+      - name: Install isolated optimizer binding
+        run: npm ci --prefix tools/fsrs-optimizer --no-audit --no-fund
 
       - name: Build with pinned TypeScript 7
         run: npm run build

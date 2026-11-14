@@ -1,17 +1,18 @@
+"""Canonical simulated browser storage for tests that do not require native IndexedDB semantics."""
+
 from __future__ import annotations
 
-from pathlib import Path
-from tempfile import TemporaryDirectory
-
-from .browser_harness import ROOT, wait_until
+from .browser_harness import ROOT
 
 BASE_HTML = (ROOT / "index.html").read_text()
-PERSISTENT_BROWSER_SHIM = r"""
+SIMULATED_STORAGE_SHIM = r"""
 <script>
 (() => {
-  const HOST = parent.__RD_B1_QA_STATE__;
+  const HOST_SCOPE = parent;
+  const HOST = HOST_SCOPE.__RD_SIMULATED_STORAGE_STATE__ ||= {};
   if (!HOST.local) HOST.local = {};
   if (!HOST.databases) HOST.databases = {};
+  if (!HOST.faults) HOST.faults = {};
 
   class FakeStorage {
     get length(){ return Object.keys(HOST.local).length; }
@@ -31,6 +32,23 @@ PERSISTENT_BROWSER_SHIM = r"""
   const clone = (value) => value === undefined ? undefined : structuredClone(value);
   const keyFrom = (obj,path) => Array.isArray(path) ? path.map(k => obj[k]) : obj[path];
   const sameKey = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+  function scheduleAfterPutFault(db,data,key,value){
+    const fault=HOST.faults?.afterPutPatch;
+    if(!fault || fault.store!==data.name) return;
+    const match=fault.match ?? {};
+    if(!Object.entries(match).every(([name,expected])=>sameKey(value?.[name],expected))) return;
+    if(fault.once !== false) delete HOST.faults.afterPutPatch;
+    const encoded=JSON.stringify(key);
+    const patch=clone(fault.patch ?? {});
+    setTimeout(()=>{
+      const live=db._stores.get(data.name);
+      const current=live?.records.get(encoded);
+      if(current===undefined || !Object.entries(match).every(([name,expected])=>sameKey(current[name],expected))) return;
+      const next=Object.assign(clone(current),patch);
+      live.records.set(encoded,next);
+      db._persist();
+    },0);
+  }
 
   class Req {
     constructor(){ this.result=undefined; this.error=null; this.onsuccess=null; this.onerror=null; this.onupgradeneeded=null; }
@@ -42,37 +60,61 @@ PERSISTENT_BROWSER_SHIM = r"""
     constructor(db,names,mode){
       this.db=db; this.names=Array.isArray(names)?names:[names]; this.mode=mode; this.error=null;
       this._pending=0; this._complete=false; this._aborted=false; this._oncomplete=null; this.onabort=null; this.onerror=null;
-      setTimeout(() => this._maybe(), 0);
+      this._view=new Map(this.names.map(name=>[name,new StoreData(name)]));
+      this._waiting=[]; this._started=false;
+      db._enqueue(this);
     }
+    _start(){
+      this._started=true;
+      for(const [name,data] of this._view){
+        const live=this.db._stores.get(name);
+        if(!live) continue;
+        data.keyPath=clone(live.keyPath);
+        data.records=new Map([...live.records].map(([key,value])=>[key,clone(value)]));
+        const indices=new Map([...live.indices].map(([key,value])=>[key,clone(value)]));
+        if(this.mode==='versionchange') for(const [key,value] of data.indices) indices.set(key,value);
+        data.indices=indices;
+      }
+      for(const task of this._waiting) task();
+      this._waiting.length=0;
+      setTimeout(()=>this._maybe(),0);
+    }
+    _schedule(task){if(this._started) task();else this._waiting.push(task);}
     set oncomplete(fn){ this._oncomplete=fn; if(this._complete && !this._aborted && fn) setTimeout(()=>fn({target:this}),0); }
     get oncomplete(){ return this._oncomplete; }
     _inc(){ if(this._aborted) throw new Error('TransactionInactiveError'); this._pending++; }
     _dec(){ if(this._pending>0) this._pending--; this._maybe(); }
     _maybe(){
-      if(this._pending===0 && !this._complete && !this._aborted){
-        this._complete=true; this.db._persist();
+      if(this._started && this._pending===0 && !this._complete && !this._aborted){
+        this._complete=true;
+        if(this.mode!=='readonly'){
+          for(const [name,data] of this._view) this.db._stores.set(name,data);
+          this.db._persist();
+        }
+        this.db._release(this);
         if(this._oncomplete) setTimeout(()=>this._oncomplete({target:this}),0);
       }
     }
     abort(){
       if(this._complete || this._aborted) return;
       this._aborted=true; this._complete=true; this.error=new DOMException('Transaction aborted','AbortError');
+      this.db._release(this);
       if(this.onabort) setTimeout(()=>this.onabort({target:this}),0);
     }
     objectStore(name){
       if(!this.names.includes(name)) throw new Error('Store not in transaction: '+name);
-      const data=this.db._stores.get(name); if(!data) throw new Error('Missing object store: '+name);
+      const data=this._view.get(name); if(!data) throw new Error('Missing object store: '+name);
       return new ObjStore(this,data);
     }
   }
   function asyncReq(tx, fn){
     const request=new Req(); tx._inc();
-    setTimeout(()=>{
+    tx._schedule(()=>setTimeout(()=>{
       if(tx._aborted){ tx._dec(); return; }
       try { request.result=fn(); if(request.onsuccess) request.onsuccess({target:request}); }
       catch(error){ request.error=error; tx.error=error; if(request.onerror) request.onerror({target:request}); if(tx.onerror) tx.onerror({target:tx}); }
       finally { tx._dec(); }
-    },0);
+    },0));
     return request;
   }
   class Index {
@@ -82,12 +124,12 @@ PERSISTENT_BROWSER_SHIM = r"""
   }
   class ObjStore {
     constructor(tx,data){ this.tx=tx; this.data=data; }
-    createIndex(name,keyPath,opts={}){ this.data.indices.set(name,{keyPath:clone(keyPath),unique:!!opts.unique}); this.tx.db._persist(); return {}; }
-    index(name){ const cfg=this.data.indices.get(name); if(!cfg) throw new Error('Missing index: '+name); return new Index(this.tx,this.data,cfg); }
+    createIndex(name,keyPath,opts={}){ this.data.indices.set(name,{keyPath:clone(keyPath),unique:!!opts.unique}); return {}; }
+    index(name){ const cfg=this.data.indices.get(name)||this.tx.db._stores.get(this.data.name)?.indices.get(name); if(!cfg) throw new Error('Missing index: '+name); return new Index(this.tx,this.data,cfg); }
     get(key){ return asyncReq(this.tx,()=>{ const value=this.data.records.get(JSON.stringify(key)); return clone(value); }); }
     getAll(){ return asyncReq(this.tx,()=>[...this.data.records.values()].map(clone)); }
     count(){ return asyncReq(this.tx,()=>this.data.records.size); }
-    put(value){ return asyncReq(this.tx,()=>{ const key=keyFrom(value,this.data.keyPath); if(key===undefined) throw new Error('Missing key'); this.data.records.set(JSON.stringify(key),clone(value)); return clone(key); }); }
+    put(value){ return asyncReq(this.tx,()=>{ const key=keyFrom(value,this.data.keyPath); if(key===undefined) throw new Error('Missing key'); this.data.records.set(JSON.stringify(key),clone(value)); scheduleAfterPutFault(this.tx.db,this.data,key,value); return clone(key); }); }
     add(value){ return asyncReq(this.tx,()=>{
       const key=keyFrom(value,this.data.keyPath); const encoded=JSON.stringify(key);
       if(this.data.records.has(encoded)) throw new DOMException('Duplicate key','ConstraintError');
@@ -101,7 +143,13 @@ PERSISTENT_BROWSER_SHIM = r"""
     clear(){ return asyncReq(this.tx,()=>{ this.data.records.clear(); }); }
   }
   class DB {
-    constructor(name,version){ this.name=name; this.version=version; this._stores=new Map(); this.onversionchange=null; }
+    constructor(name,version){ this.name=name; this.version=version; this._stores=new Map(); this.onversionchange=null; this._queue=[]; this._running=null; }
+    _enqueue(tx){this._queue.push(tx);this._pump();}
+    _pump(){if(this._running)return;const tx=this._queue.shift();if(tx){this._running=tx;tx._start();}}
+    _release(tx){
+      if(this._running===tx){this._running=null;this._pump();}
+      else this._queue=this._queue.filter(item=>item!==tx);
+    }
     static restore(name,raw){
       const db=new DB(name,raw.version);
       for(const [storeName,stored] of Object.entries(raw.stores ?? {})){
@@ -130,45 +178,59 @@ PERSISTENT_BROWSER_SHIM = r"""
     createObjectStore(name,opts={}){
       if(this._stores.has(name)) throw new DOMException('Store exists','ConstraintError');
       const data=new StoreData(name,opts); this._stores.set(name,data); this._persist();
-      return new ObjStore(new Tx(this,[name],'versionchange'),data);
+      return new Tx(this,[name],'versionchange').objectStore(name);
     }
     transaction(names,mode='readonly'){ return new Tx(this,names,mode); }
     close(){}
   }
 
+  const connections=new Map();
   Object.defineProperty(window,'indexedDB',{configurable:true,value:{
     open(name,version){
       const request=new Req();
       setTimeout(()=>{
         try{
           const raw=HOST.databases[name];
-          const oldVersion=raw?.version ?? 0;
+          let db=connections.get(name);
+          const oldVersion=db?.version ?? raw?.version ?? 0;
           const targetVersion=version ?? (oldVersion || 1);
           if(oldVersion && targetVersion < oldVersion) throw new DOMException('Lower version','VersionError');
-          const db=raw ? DB.restore(name,raw) : new DB(name,targetVersion);
+          if(!db){
+            db=raw ? DB.restore(name,raw) : new DB(name,targetVersion);
+            connections.set(name,db);
+          }
           request.result=db;
           if(targetVersion > oldVersion){
             db.version=targetVersion;
             if(request.onupgradeneeded) request.onupgradeneeded({target:request,oldVersion,newVersion:targetVersion});
             db._persist();
           }
-          setTimeout(()=>request.onsuccess && request.onsuccess({target:request}),0);
+          const finish=()=>db._running||db._queue.length?setTimeout(finish,0):request.onsuccess?.({target:request});
+          setTimeout(finish,0);
         } catch(error){ request.error=error; if(request.onerror) request.onerror({target:request}); }
       },0);
       return request;
     },
-    deleteDatabase(name){ const request=new Req(); setTimeout(()=>{ delete HOST.databases[name]; if(request.onsuccess) request.onsuccess({target:request}); },0); return request; }
+    deleteDatabase(name){
+      const request=new Req();
+      setTimeout(()=>{
+        connections.delete(name);
+        delete HOST.databases[name];
+        if(request.onsuccess) request.onsuccess({target:request});
+      },0);
+      return request;
+    }
   }});
 })();
 </script>
 """
 
 
-def persistent_html(*extra_shims: str, base_html: str = BASE_HTML) -> str:
-    return base_html.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM + "".join(extra_shims), 1)
+def simulated_storage_html(*extra_shims: str, base_html: str = BASE_HTML) -> str:
+    return base_html.replace("<head>", "<head>" + SIMULATED_STORAGE_SHIM + "".join(extra_shims), 1)
 
 
-def create_persistent_frame(
+def create_simulated_frame(
     page,
     html: str,
     *,
@@ -194,63 +256,61 @@ def create_persistent_frame(
     return frame
 
 
-def host_state_all(page, store: str):
+def simulated_state_all(page, store: str):
     return page.evaluate("""store => {
-      const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
+      const raw=window.__RD_SIMULATED_STORAGE_STATE__.databases['revision-director'];
       const records=raw?.stores?.[store]?.records ?? [];
       return records.map(([,value]) => structuredClone(value));
     }""", store)
 
 
-def host_state_get(page, store: str, key: str):
+def simulated_state_get(page, store: str, key: str):
     return page.evaluate("""([store,key]) => {
-      const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
+      const raw=window.__RD_SIMULATED_STORAGE_STATE__.databases['revision-director'];
       const records=raw?.stores?.[store]?.records ?? [];
       const found=records.find(([encoded]) => encoded === JSON.stringify(key));
       return found ? structuredClone(found[1]) : null;
     }""", [store, key])
 
+def reset_simulated_storage(page, state: dict | None = None) -> None:
+    page.evaluate(
+        "state => { window.__RD_SIMULATED_STORAGE_STATE__ = state; }",
+        state if state is not None else {"local": {}, "databases": {}},
+    )
 
-def restore_backup_with_safety_copy(
+
+def simulated_local_get(page, key: str):
+    return page.evaluate(
+        "key => window.__RD_SIMULATED_STORAGE_STATE__?.local?.[key] ?? null",
+        key,
+    )
+
+
+def simulated_local_set(page, key: str, value) -> None:
+    page.evaluate(
+        """([key,value]) => {
+          const state=window.__RD_SIMULATED_STORAGE_STATE__ ||= {local:{},databases:{},faults:{}};
+          state.local ||= {};
+          if(value === null) delete state.local[key];
+          else state.local[key]=String(value);
+        }""",
+        [key, value],
+    )
+
+
+def configure_after_put_patch(
     page,
-    frame,
-    fixture: str | Path,
     *,
-    treatment: str = "discard",
+    store: str,
+    match: dict,
+    patch: dict,
+    once: bool = True,
 ) -> None:
-    frame.locator("#import-backup").set_input_files([])
-    frame.locator("#import-backup").set_input_files(str(fixture))
-    try:
-        frame.locator("#restore-dialog").wait_for(state="visible", timeout=6000)
-    except Exception as error:
-        toast = frame.locator("#toast").inner_text() if frame.locator("#toast").count() else ""
-        fatal = (
-            frame.locator("#fatal-error").inner_text()
-            if frame.locator("#fatal-error").count() and frame.locator("#fatal-error").is_visible()
-            else ""
-        )
-        raise AssertionError(
-            f"Restore preview did not open · toast={toast!r} · fatal={fatal!r}"
-        ) from error
-    with TemporaryDirectory() as tmpdir:
-        with page.expect_download() as info:
-            frame.locator('[data-action="create-restore-safety"]').click()
-        path = Path(tmpdir) / info.value.suggested_filename
-        info.value.save_as(str(path))
-        if not path.exists() or path.stat().st_size <= 0:
-            raise AssertionError("Safety copy was not downloaded")
-    if frame.locator('input[name="restore-active-treatment"]').count():
-        frame.locator(
-            f'input[name="restore-active-treatment"][value="{treatment}"]'
-        ).check()
-    frame.locator("#restore-safety-saved").check()
-    frame.locator("#restore-replace-confirm").check()
-    frame.locator("#restore-final-button").click()
-    wait_until(
-        frame,
-        lambda: not frame.locator("#restore-dialog").is_visible()
-        and "restored" in frame.locator("#toast").inner_text().lower(),
-        timeout=8_000,
-        interval=40,
-        message="Restore did not complete",
+    page.evaluate(
+        """fault => {
+          const state=window.__RD_SIMULATED_STORAGE_STATE__ ||= {local:{},databases:{},faults:{}};
+          state.faults ||= {};
+          state.faults.afterPutPatch=fault;
+        }""",
+        {"store": store, "match": match, "patch": patch, "once": once},
     )

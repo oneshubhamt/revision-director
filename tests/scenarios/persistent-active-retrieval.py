@@ -14,19 +14,20 @@ from helpers.browser_harness import (
     launch_chromium,
     wait_until as shared_wait_until,
 )
-from helpers.persistent_browser import (
+from helpers.simulated_storage import (
     BASE_HTML,
-    PERSISTENT_BROWSER_SHIM,
-    create_persistent_frame,
-    host_state_all as state_all,
-    host_state_get as state_get,
-    restore_backup_with_safety_copy,
+    create_simulated_frame,
+    reset_simulated_storage,
+    simulated_state_all as state_all,
+    simulated_state_get as state_get,
+    simulated_storage_html,
 )
+from helpers.browser_fixture import restore_backup_with_safety_copy
 FIXTURE = baseline_backup_path()
 checks = 0
 
-INTEGRITY_HOOK = "window.__RD_B1_INTEGRITY__={RevisionData,RevisionService,Store}; void boot();"
-HTML = BASE_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM, 1).replace("void boot();", INTEGRITY_HOOK, 1)
+INTEGRITY_HOOK = "window.__RD_ACTIVE_RETRIEVAL_INTEGRITY__={RevisionData,RevisionService,Store}; void boot();"
+HTML = simulated_storage_html(base_html=BASE_HTML.replace("void boot();", INTEGRITY_HOOK, 1))
 
 
 def check(condition: bool, message: str) -> None:
@@ -46,35 +47,9 @@ def wait_until(frame, predicate, timeout=8000):
     )
 
 
-def idb_get(frame, store: str, key: str):
-    return frame.evaluate("""async ([store,key]) => await new Promise((resolve,reject) => {
-      const open=indexedDB.open('revision-director',2);
-      open.onerror=()=>reject(open.error);
-      open.onsuccess=()=>{
-        const tx=open.result.transaction(store,'readonly');
-        const request=tx.objectStore(store).get(key);
-        request.onerror=()=>reject(request.error);
-        request.onsuccess=()=>resolve(request.result || null);
-      };
-    })""", [store,key])
-
-
-def idb_all(frame, store: str):
-    return frame.evaluate("""async (store) => await new Promise((resolve,reject) => {
-      const open=indexedDB.open('revision-director',2);
-      open.onerror=()=>reject(open.error);
-      open.onsuccess=()=>{
-        const tx=open.result.transaction(store,'readonly');
-        const request=tx.objectStore(store).getAll();
-        request.onerror=()=>reject(request.error);
-        request.onsuccess=()=>resolve(request.result || []);
-      };
-    })""", store)
-
-
 
 def boot_frame(page):
-    frame = create_persistent_frame(
+    frame = create_simulated_frame(
         page,
         HTML,
         name="revision-app",
@@ -95,14 +70,15 @@ def main() -> None:
         page = context.new_page()
         browser_errors = capture_browser_errors(page)
         accept_dialogs(page)
-        page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body></body>")
+        reset_simulated_storage(page)
 
         frame = boot_frame(page)
 
         # Concurrent hierarchy creation must converge on one root primary key and
         # one child pathLookup entry rather than creating duplicate nodes.
         concurrency = frame.evaluate("""async () => {
-          const api=window.__RD_B1_INTEGRITY__;
+          const api=window.__RD_ACTIVE_RETRIEVAL_INTEGRITY__;
           const data=await api.RevisionData.open();
           const service=new api.RevisionService(data);
           await service.initialize();
@@ -123,18 +99,16 @@ def main() -> None:
         check(len(concurrency["sectionIds"]) == 1 and concurrency["sectionCount"] == 1, "Concurrent child creation bypassed the unique pathLookup index")
 
         page.evaluate("document.querySelector('#app').remove()")
-        page.evaluate("window.__RD_B1_QA_STATE__={local:{},databases:{}}")
+        reset_simulated_storage(page)
         frame = boot_frame(page)
         frame.locator('[data-pane="settings"]').click()
         restore_backup_with_safety_copy(page, frame, FIXTURE)
-        check("restored" in frame.locator("#toast").inner_text().lower(), "Fixture import failed")
 
         frame.locator('[data-pane="library"]').click()
         row = frame.locator(".unit-row").filter(has_text="Staphylococcus aureus — recognition and clinical reasoning")
         check(row.count() == 1, "Target unit missing")
         row.locator('[data-action="review-unit"]').click()
         wait_until(frame, lambda: frame.locator("#attempt-text").count() == 1)
-        check(frame.locator("#attempt-text").count() == 1, "Recall workflow did not start")
         frame.locator("#attempt-text").fill("Recovered closed-book answer")
         wait_until(
             frame,
@@ -158,7 +132,7 @@ def main() -> None:
         page.evaluate("document.querySelector('#app').remove()")
         page.evaluate("""() => {
           const key='revision-director:active-retrieval:v1';
-          const host=window.__RD_B1_QA_STATE__;
+          const host=window.__RD_SIMULATED_STORAGE_STATE__;
           const envelope=JSON.parse(host.local[key]);
           envelope.session.revision += 7;
           envelope.session.updatedAt = new Date(Date.now()+60000).toISOString();
@@ -205,7 +179,12 @@ def main() -> None:
           button.click(); button.click();
         }""")
         try:
-            wait_until(frame, lambda: len(state_all(page, "evidenceEvents")) == before + 1)
+            wait_until(
+                frame,
+                lambda: len(state_all(page, "evidenceEvents")) >= before + 1
+                and (state_get(page, "activeRetrieval", "current") or {}).get("activeIndex") == 1,
+                timeout=10000,
+            )
         except Exception:
             print("toast", frame.locator("#toast").inner_text(), flush=True)
             print("active", state_get(page, "activeRetrieval", "current"), flush=True)
@@ -221,7 +200,18 @@ def main() -> None:
 
         frame = boot_frame(page)
         wait_until(frame, lambda: frame.locator(".review-card").count() == 1)
-        check("2 / 2" in frame.locator("#review-content").inner_text(), "Next queue target did not recover after committed transition")
+        recovered_next = state_get(page, "activeRetrieval", "current")
+        check(
+            state_all(page, "evidenceEvents") == after,
+            "Browser restart revealed delayed or duplicated evidence publication",
+        )
+        check(
+            recovered_next
+            and recovered_next["status"] == "active"
+            and recovered_next["activeIndex"] == 1
+            and len(recovered_next["queueTargetIds"]) == 2,
+            "Next queue target did not recover after committed transition",
+        )
         frame.locator('[data-action="end-session"]').click()
         wait_until(
             frame,
@@ -229,13 +219,16 @@ def main() -> None:
             and state_get(page, "activeRetrieval", "current") is None,
             timeout=5000,
         )
-        check(frame.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") is None, "Manual end did not clear emergency recovery")
-        check(state_get(page, "activeRetrieval", "current") is None, "Manual end did not clear IndexedDB active session")
+        # A finished session navigates to Today; the Review pane is allowed
+        # to retain an idle placeholder, but must not remain the active view.
+        wait_until(frame, lambda: frame.locator("#pane-today").is_visible())
+        check(frame.locator("#pane-review").is_hidden(),
+              "Manual end cleared storage but did not leave the active Review pane")
         check(not browser_errors, f"Browser errors: {browser_errors}")
 
         context.close()
         browser.close()
-    print(f"PASS {checks} Pass B1 persistent-browser recovery checks")
+    print(f"PASS {checks} active retrieval persistence persistent-browser recovery checks")
 
 
 if __name__ == "__main__":

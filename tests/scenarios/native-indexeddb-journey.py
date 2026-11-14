@@ -171,6 +171,48 @@ def complete_review(page) -> None:
     )
 
 
+
+def verify_atomic_duplicate_evidence(page, unit: dict, obligation: dict, event: dict) -> None:
+    """A duplicate immutable evidence ID must abort *all* associated native writes.
+
+    This tests the actual IndexedDB ConstraintError/transaction boundary, not
+    the test simulator or an application-side mathematical oracle.
+    """
+    outcome = page.evaluate("""async ({unit,obligation,event}) => {
+      const db=await new Promise((resolve,reject)=>{
+        const request=indexedDB.open('revision-director');
+        request.onsuccess=()=>resolve(request.result);
+        request.onerror=()=>reject(request.error);
+      });
+      const tx=db.transaction(['units','obligations','evidenceEvents'],'readwrite',{durability:'strict'});
+      const terminal=new Promise(resolve=>{
+        tx.onabort=()=>resolve({state:'aborted',reason:tx.error?.name || ''});
+        tx.oncomplete=()=>resolve({state:'committed'});
+      });
+      tx.objectStore('units').put({...unit,evidenceCount:(unit.evidenceCount||0)+7});
+      tx.objectStore('obligations').put({...obligation,dueAt:'2099-01-01T00:00:00.000Z'});
+      const duplicate=tx.objectStore('evidenceEvents').add({...event});
+      // An expected ConstraintError must still abort the transaction;
+      // do not preventDefault(), which would make the error recoverable.
+      duplicate.onerror=error=>error.stopPropagation();
+      const result=await terminal;
+      db.close();
+      return result;
+    }""", {"unit":unit,"obligation":obligation,"event":event})
+    check(outcome["state"] == "aborted",
+          f"Duplicate evidence was not rejected by native IndexedDB: {outcome}")
+    after = native_state(page)
+    check(len(after["evidenceEvents"]) == 1 and after["evidenceEvents"][0] == event,
+          "Duplicate evidence abort changed the immutable event collection")
+    check(select_by_id(after["units"], unit["id"]) == unit,
+          "Failed evidence transaction partially advanced unit statistics")
+    check(select_by_id(after["obligations"], obligation["id"]) == obligation,
+          "Failed evidence transaction partially advanced due date or policy")
+    check(after["activeRetrieval"] == [],
+          "Failed duplicate publication reopened a committed active retrieval")
+
+
+
 def main() -> None:
     global checks
     with TemporaryDirectory(prefix="revision-director-native-idb-") as profile_dir:
@@ -225,6 +267,7 @@ def main() -> None:
                 evidence = committed["evidenceEvents"][0]
                 check(evidence["obligationId"] == obligation["id"] and evidence["confirmedRating"] == 3, "Committed evidence identity/rating is wrong")
                 check(committed_obligation["dueAt"] == evidence["afterDueAt"], "Committed obligation due date diverged from evidence")
+                verify_atomic_duplicate_evidence(page, committed_unit, committed_obligation, evidence)
                 check(not errors and not second_errors, f"Native IndexedDB browser errors: {errors + second_errors}")
 
                 page.evaluate("localStorage.removeItem('revision-director:review-owner:v1')")
@@ -243,6 +286,7 @@ def main() -> None:
                 check(select_by_id(restored["units"], unit["id"]) == committed_unit, "Committed unit changed across Chromium restart")
                 check(select_by_id(restored["obligations"], obligation["id"]) == committed_obligation, "Reviewed obligation changed across Chromium restart")
                 check(select_by_id(restored["evidenceEvents"], evidence["id"]) == evidence, "Evidence Event changed across Chromium restart")
+                check(len(restored["evidenceEvents"]) == 1, "Completed or rejected duplicate publication appeared twice after browser restart")
                 check(restored["activeRetrieval"] == [], "Completed review left an active retrieval record after restart")
 
                 page.locator('[data-pane="history"]').click()

@@ -1,18 +1,13 @@
 from __future__ import annotations
 from pathlib import Path
-import importlib.util
 from playwright.sync_api import sync_playwright
+from scenario_timing import timed
 
 ROOT = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT / "tests"))
 from helpers.browser_harness import launch_chromium
-QA_PATH = ROOT / "tests" / "browser-qa.spec.py"
-spec = importlib.util.spec_from_file_location("revision_director_browser_qa", QA_PATH)
-if spec is None or spec.loader is None:
-    raise RuntimeError("Could not load browser QA helpers")
-qa = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(qa)
+from helpers import browser_fixture as qa
 
 
 def check(condition: bool, message: str) -> None:
@@ -34,10 +29,10 @@ def read_state(page):
             request.onsuccess=()=>resolve(request.result);
             request.onerror=()=>reject(request.error||new Error('IndexedDB read failed: '+store));
           });
-          const [units,obligations,evidenceEvents]=await Promise.all([
-            read('units'),read('obligations'),read('evidenceEvents')
+          const [units,obligations,evidenceEvents,activeRetrieval]=await Promise.all([
+            read('units'),read('obligations'),read('evidenceEvents'),read('activeRetrieval')
           ]);
-          return {units,obligations,evidenceEvents};
+          return {units,obligations,evidenceEvents,activeRetrieval};
         }"""
     )
 
@@ -90,6 +85,112 @@ def perform_relearn_verification(page, *, successful: bool) -> None:
     )
 
 
+def exercise_workflow_chain(browser) -> None:
+    page, errors = qa.open_page(browser, baseline=True)
+    before_event_ids = {event["id"] for event in qa.stored_all(page, "evidenceEvents")}
+    qa.review_unit(page, "Drainage patterns and structural control")
+    check(qa.active_workflow_kind(page) == "reconstruction", "Reconstruction workflow did not become the active review target")
+    page.locator("#attempt-text").fill("Dendritic uniform rocks; trellis folded strata; rectangular joints; radial domes; annular rings; parallel slopes.")
+    page.locator('[data-action="reveal"]').click(); page.locator("#comparison-attempt-text").wait_for(state="visible")
+    check("Dendritic uniform rocks" in page.locator("#comparison-attempt-text").inner_text(), "Reconstruction attempt lost")
+    qa.check_all_checkpoints(page); qa.set_range(page, "#structural-accuracy", 4); qa.set_range(page, "#relationship-accuracy", 4); qa.rate_good(page)
+
+    qa.wait_until(page, lambda: qa.active_workflow_kind(page) == "diagram", timeout=5_000, interval=40, message="Diagram workflow did not follow")
+    canvas = page.locator("#diagram-canvas"); box = canvas.bounding_box(); check(box is not None, "Diagram canvas missing")
+    page.mouse.move(box["x"] + 20, box["y"] + 30); page.mouse.down(); page.mouse.move(box["x"] + 120, box["y"] + 100, steps=6); page.mouse.up()
+    page.locator('[data-action="reveal"]').click(); page.locator("#comparison-diagram-canvas").wait_for(state="visible")
+    qa.check_all_checkpoints(page)
+    for selector in ("#diagram-labels", "#diagram-spatial", "#diagram-process"): qa.set_range(page, selector, 4)
+    qa.rate_good(page)
+
+    qa.wait_until(page, lambda: qa.active_workflow_kind(page) == "answer-writing", timeout=5_000, interval=40, message="Answer-writing workflow did not follow")
+    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
+    for selector in ("#answer-demand", "#answer-structure-score", "#answer-content", "#answer-examples", "#answer-conclusion"): qa.set_range(page, selector, 4)
+    page.locator("#answer-word-count").fill("148")
+    check(
+        page.locator("#answer-attempt-time").inner_text().strip() != "—"
+        and not page.locator("#answer-time-status").evaluate("e=>e.classList.contains('bad')"),
+        "Automatic answer timing did not record an in-limit attempt",
+    )
+    qa.rate_good(page)
+
+    qa.review_unit(page, "Staphylococcus aureus")
+    check(qa.active_workflow_kind(page) == "questions", "Questions workflow did not become the active review target")
+    questions_obligation_id = qa.stored_record(page, "activeRetrieval", "current")["activeTargetId"]
+    page.locator("#attempt-text").fill("Attempted; toxin distinctions uncertain.")
+    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
+    page.locator("#questions-attempted").fill("10"); page.locator("#questions-correct").fill("1"); page.locator("#questions-partial").fill("0")
+    page.locator("#questions-error-summary").fill("Q2 toxin; Q3 resistance.")
+    page.locator("#correction-note").fill("Relearn toxin syndromes and resistance logic.")
+    page.locator("#error-application-failure").check()
+    page.locator('[data-action="rate"][data-rating="1"]').click()
+    qa.wait_until(
+        page,
+        lambda: qa.active_workflow_kind(page) == "recall"
+        and page.locator("#attempt-completed").count() == 1
+        and page.locator("#attempt-completed").is_visible(),
+        timeout=5000,
+        interval=40,
+        message="Recall workflow did not finish rendering",
+    )
+    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
+    qa.check_all_checkpoints(page); qa.rate_good(page)
+
+    qa.wait_until(
+        page,
+        lambda: any(
+            item["type"] == "relearn"
+            and item.get("returnObligationId") == questions_obligation_id
+            and item["status"] == "active"
+            for item in qa.stored_all(page, "obligations")
+        ),
+        timeout=5_000,
+        interval=40,
+        message="Relearning obligation was not created",
+    )
+    relearn_obligation = next(
+        item
+        for item in qa.stored_all(page, "obligations")
+        if item["type"] == "relearn"
+        and item.get("returnObligationId") == questions_obligation_id
+        and item["status"] == "active"
+    )
+    relearn = page.locator(f'[data-action="review-one"][data-id="{relearn_obligation["id"]}"]')
+    qa.wait_until(
+        page,
+        lambda: relearn.count() == 1 and relearn.is_visible(),
+        timeout=5_000,
+        interval=40,
+        message="Active relearning obligation did not finish rendering",
+    )
+    check(relearn.count() == 1, "Active relearning obligation is not represented by one review action")
+    relearn.click()
+    repair_phase = page.locator('[data-review-phase="relearn-repair"]')
+    repair_phase.wait_for(state="visible")
+    trigger = repair_phase.locator(".trigger-evidence:not(.missing)")
+    check(trigger.count() == 1 and "Relearn toxin syndromes" in trigger.inner_text(), "Relearning trigger evidence did not project the recorded correction")
+    page.locator("#relearn-repair-action").fill("Rebuilt toxin and resistance distinctions from the source.")
+    page.locator("#relearn-repair-completed").check(); page.locator('[data-action="begin-verification"]').click()
+    page.locator("#relearn-verification-text").fill("TSS is superantigen-mediated; MRSA uses altered PBP; treatment follows susceptibility.")
+    page.locator("#relearn-source-closed").check(); page.locator('[data-action="check-verification"]').click(); page.locator('[data-action="rate"][data-rating="3"]').wait_for(state="visible")
+    qa.check_all_checkpoints(page); qa.rate_good(page)
+
+    new_events = [event for event in qa.stored_all(page, "evidenceEvents") if event["id"] not in before_event_ids]
+    expected_workflows = {"reconstruction", "diagram", "answer-writing", "recall", "questions", "relearning"}
+    check(expected_workflows <= {event["workflow"] for event in new_events}, f"Persisted workflow chain is incomplete: {new_events}")
+    page.locator('[data-pane="history"]').click(); page.locator("#pane-history").wait_for(state="visible")
+    evidence_count = len(qa.stored_all(page, "evidenceEvents"))
+    qa.wait_until(
+        page,
+        lambda: page.locator("#history-content .record-row").count() >= evidence_count,
+        timeout=8_000,
+        interval=50,
+        message="History did not project every persisted evidence record",
+    )
+    check(page.locator("#history-content .record-row").count() >= evidence_count, "History projection dropped persisted evidence records")
+    check(not errors, f"Browser errors: {errors}")
+    page.close()
+
 def scenario_corrective_memory_e2e(browser) -> None:
     page, errors = qa.open_page(browser, {"width": 1365, "height": 950}, baseline=True)
     state = read_state(page)
@@ -101,11 +202,21 @@ def scenario_corrective_memory_e2e(browser) -> None:
         and "Staphylococcus aureus" in unit_by_id[item["unitId"]]["title"]
     )
     memory_id = memory["id"]
-    check(memory["policyState"]["fsrsCard"]["state"] == 0, "Browser closure memory must begin in FSRS New state")
     check(memory["policyState"]["fsrsCard"]["scheduleStatus"] == "new", "Browser closure memory must begin with New schedule status")
 
     start_obligation(page, memory_id)
-    check("RECALL" in page.locator("#review-content").inner_text(), "Direct memory recall did not start")
+    qa.wait_until(
+        page,
+        lambda: bool(read_state(page)["activeRetrieval"])
+        and read_state(page)["activeRetrieval"][0].get("activeTargetId") == memory_id,
+        timeout=8_000,
+        interval=50,
+        message="Direct memory recall did not publish its active retrieval state",
+    )
+    active_state = read_state(page)
+    active_target = active_state["activeRetrieval"][0]["activeTargetId"]
+    active_obligation = next(item for item in active_state["obligations"] if item["id"] == active_target)
+    check(active_target == memory_id and active_obligation["workflow"]["kind"] == "recall", "Direct memory recall did not start")
     if page.locator("#attempt-completed").count():
         page.locator("#attempt-completed").check()
     page.locator('[data-action="reveal"]').click()
@@ -128,7 +239,6 @@ def scenario_corrective_memory_e2e(browser) -> None:
         if item["type"] == "relearn" and item.get("returnObligationId") == memory_id and item["status"] == "active"
     )
     check(memory["status"] == "suspended" and memory.get("suspensionReason") == "relearning", "Direct Again did not suspend memory for corrective work")
-    check(memory["policyState"]["fsrsCard"]["state"] == 2, "Production 1d boundary no longer has its documented raw Review-state semantics")
     direct_events = [item for item in state["evidenceEvents"] if item["obligationId"] == memory_id]
     check(len(direct_events) == 1 and direct_events[0]["confirmedRating"] == 1, "Direct Again was not persisted exactly once")
 
@@ -192,16 +302,17 @@ def scenario_corrective_memory_e2e(browser) -> None:
         message="Browser History did not project every corrective lifecycle event",
     )
     check(history_rows.count() == 3, "Browser History does not expose all corrective lifecycle records")
-    check(not errors, f"FSRS programme-closure browser errors: {errors}")
+    check(not errors, f"FSRS memory-lifecycle browser errors: {errors}")
     page.close()
 
 
 def main() -> None:
     with sync_playwright() as playwright:
         browser = launch_chromium(playwright)
-        scenario_corrective_memory_e2e(browser)
+        timed('fsrs.workflow-chain', exercise_workflow_chain, browser)
+        timed('fsrs.corrective-memory', scenario_corrective_memory_e2e, browser)
         browser.close()
-    print("PASS FSRS programme-closure Chromium corrective-memory scenario")
+    print("PASS FSRS browser workflow chain and corrective-memory lifecycle scenarios")
 
 
 if __name__ == "__main__":

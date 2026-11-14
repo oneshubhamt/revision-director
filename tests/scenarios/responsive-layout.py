@@ -6,10 +6,8 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_layout
-base=load_browser_qa("revision_director_responsive_layout")
-HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base.INDEXEDDB_SHIM,1)
-restore_selected_backup=base.restore_selected_backup
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_for_layout
+from helpers.browser_fixture import HTML, restore_selected_backup
 BASELINE = baseline_backup_path()
 CHECKS=0
 
@@ -18,7 +16,7 @@ def check(v,msg):
  if not v: raise AssertionError(msg)
 
 def main():
- viewports=[(320,568),(360,640),(375,667),(390,844),(412,915),(460,800),(560,800),(700,700),(820,900),(821,900),(1024,768),(1280,800),(1440,1000),(1920,1080)]
+ viewports=[(320,568),(360,640),(375,667),(390,844),(412,915),(460,800),(560,800),(700,700),(700,900),(820,900),(821,900),(1024,768),(1024,900),(1280,800),(1440,1000),(1920,1080)]
  panes=('today','review','library','study','history','settings')
  with sync_playwright() as pw:
   browser=launch_chromium(pw)
@@ -28,7 +26,6 @@ def main():
   page.set_content(HTML,wait_until='load'); wait_for_app_ready(page)
   page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
   restore_selected_backup(page, BASELINE)
-  check('restored' in page.locator('#toast').inner_text().lower(),'Fixture restore failed')
   for width,height in viewports:
    page.set_viewport_size({'width':width,'height':height}); wait_for_layout(page)
    compact=width<=820
@@ -53,6 +50,6 @@ def main():
    check(token in css,f'Safe-area contract missing: {token}')
   check(not errors,f'Browser errors: {errors}')
   page.close(); browser.close()
- print(f'PASS {CHECKS} Stage C responsive checks across {len(viewports)} viewport classes and {len(panes)} panes')
+ print(f'PASS {CHECKS} responsive layout responsive checks across {len(viewports)} viewport classes and {len(panes)} panes')
 
 if __name__=='__main__':main()
