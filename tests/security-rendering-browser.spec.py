@@ -4,7 +4,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, Page, sync_playwright
 from helpers.browser_harness import launch_chromium, wait_for_app_ready, wait_for_layout
-from helpers.browser_fixture import HTML
+from helpers.browser_fixture import BASELINE_BACKUP, HTML, restore_selected_backup
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,7 +39,7 @@ def open_page(browser: Browser) -> tuple[Page, list[str]]:
 def restore_fixture(page: Page) -> None:
     page.locator('[data-pane="settings"]').click()
     page.locator("#pane-settings").wait_for(state="visible")
-    MAIN_QA.restore_selected_backup(page, MAIN_QA.BASELINE_BACKUP)
+    restore_selected_backup(page, BASELINE_BACKUP)
 
 
 def verify_responsive_surfaces(page: Page) -> None:
