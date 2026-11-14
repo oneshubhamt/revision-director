@@ -6,12 +6,10 @@ import sys
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
-import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
 from helpers.browser_fixture import HTML, complete_open_restore
-sys.path.insert(0,str(ROOT/'tests'))
 FIXTURE = baseline_backup_path()
 checks=0
 

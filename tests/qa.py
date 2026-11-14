@@ -237,32 +237,22 @@ def assert_test_topology() -> None:
 
     for relative in BROWSER_PLAN + DURABILITY_BROWSER_PLAN + PERFORMANCE_BROWSER_PLAN:
         source = ast.parse((ROOT / relative).read_text(), filename=relative)
-        modules = {
-            imported
-            for node in ast.walk(source)
-            for imported in (
-                [node.module] if isinstance(node, ast.ImportFrom)
-                else [alias.name for alias in node.names] if isinstance(node, ast.Import)
-                else []
-            )
-            if imported
-        }
-        simulated = any(
-            module == "helpers.browser_fixture" or module == "helpers.simulated_storage"
-            or module == "helpers" and any(
-                isinstance(node, ast.ImportFrom) and node.module == "helpers"
-                and any(alias.name in {"browser_fixture", "simulated_storage"} for alias in node.names)
-                for node in ast.walk(source)
-            )
-            for module in modules
-        )
+        imports: set[str] = set()
+        for node in ast.walk(source):
+            if isinstance(node, ast.Import):
+                imports.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    imports.add(node.module)
+                if node.module == "helpers":
+                    imports.update(f"helpers.{alias.name}" for alias in node.names)
+        simulated = bool(imports & {"helpers.browser_fixture", "helpers.simulated_storage"})
         if relative in NATIVE_INDEXEDDB_BROWSER_PLAN and simulated:
             raise AssertionError(f"Native IndexedDB witness imports simulator: {relative}")
         if relative in SIMULATED_STORAGE_BROWSER_PLAN and not simulated:
             raise AssertionError(f"Simulated browser witness skips canonical fixture: {relative}")
 
-    # Footprint is observability for maintainers, not a failure of application
-    # correctness. Review any growth before adding new test framework layers.
+    # Footprint is documented as a maintenance metric, not a product gate.
 
 def core() -> None:
     assert_test_topology()
