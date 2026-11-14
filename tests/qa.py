@@ -256,6 +256,8 @@ def assert_test_topology() -> None:
     legacy_storage_sources = []
     indexeddb_definition = re.compile(r"Object\.defineProperty\(window,\s*['\"]indexedDB['\"]")
     for path in sorted(TESTS.rglob("*.py")):
+        if path.resolve() == Path(__file__).resolve():
+            continue
         source = path.read_text()
         if path.resolve() != canonical_storage and indexeddb_definition.search(source):
             duplicate_simulators.append(str(path.relative_to(ROOT)))
