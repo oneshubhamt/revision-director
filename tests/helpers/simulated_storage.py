@@ -60,36 +60,45 @@ SIMULATED_STORAGE_SHIM = r"""
     constructor(db,names,mode){
       this.db=db; this.names=Array.isArray(names)?names:[names]; this.mode=mode; this.error=null;
       this._pending=0; this._complete=false; this._aborted=false; this._oncomplete=null; this.onabort=null; this.onerror=null;
-      // Provisional writes are visible within this transaction only.
-      // Aborted work must never leak into canonical persisted state.
-      this._view=new Map();
-      for(const name of this.names){
-        const live=db._stores.get(name);
-        if(!live) continue;
-        const data=new StoreData(name,{keyPath:clone(live.keyPath)});
-        data.indices=new Map([...live.indices].map(([key,value])=>[key,clone(value)]));
-        data.records=new Map([...live.records].map(([key,value])=>[key,clone(value)]));
-        this._view.set(name,data);
-      }
-      setTimeout(() => this._maybe(), 0);
+      this._view=new Map(this.names.map(name=>[name,new StoreData(name)]));
+      this._waiting=[]; this._started=false;
+      db._enqueue(this);
     }
+    _start(){
+      this._started=true;
+      for(const [name,data] of this._view){
+        const live=this.db._stores.get(name);
+        if(!live) continue;
+        data.keyPath=clone(live.keyPath);
+        data.records=new Map([...live.records].map(([key,value])=>[key,clone(value)]));
+        const indices=new Map([...live.indices].map(([key,value])=>[key,clone(value)]));
+        if(this.mode==='versionchange') for(const [key,value] of data.indices) indices.set(key,value);
+        data.indices=indices;
+      }
+      for(const task of this._waiting) task();
+      this._waiting.length=0;
+      setTimeout(()=>this._maybe(),0);
+    }
+    _schedule(task){if(this._started) task();else this._waiting.push(task);}
     set oncomplete(fn){ this._oncomplete=fn; if(this._complete && !this._aborted && fn) setTimeout(()=>fn({target:this}),0); }
     get oncomplete(){ return this._oncomplete; }
     _inc(){ if(this._aborted) throw new Error('TransactionInactiveError'); this._pending++; }
     _dec(){ if(this._pending>0) this._pending--; this._maybe(); }
     _maybe(){
-      if(this._pending===0 && !this._complete && !this._aborted){
+      if(this._started && this._pending===0 && !this._complete && !this._aborted){
         this._complete=true;
         if(this.mode!=='readonly'){
           for(const [name,data] of this._view) this.db._stores.set(name,data);
           this.db._persist();
         }
+        this.db._release(this);
         if(this._oncomplete) setTimeout(()=>this._oncomplete({target:this}),0);
       }
     }
     abort(){
       if(this._complete || this._aborted) return;
       this._aborted=true; this._complete=true; this.error=new DOMException('Transaction aborted','AbortError');
+      this.db._release(this);
       if(this.onabort) setTimeout(()=>this.onabort({target:this}),0);
     }
     objectStore(name){
@@ -100,12 +109,12 @@ SIMULATED_STORAGE_SHIM = r"""
   }
   function asyncReq(tx, fn){
     const request=new Req(); tx._inc();
-    setTimeout(()=>{
+    tx._schedule(()=>setTimeout(()=>{
       if(tx._aborted){ tx._dec(); return; }
       try { request.result=fn(); if(request.onsuccess) request.onsuccess({target:request}); }
       catch(error){ request.error=error; tx.error=error; if(request.onerror) request.onerror({target:request}); if(tx.onerror) tx.onerror({target:tx}); }
       finally { tx._dec(); }
-    },0);
+    },0));
     return request;
   }
   class Index {
@@ -134,7 +143,13 @@ SIMULATED_STORAGE_SHIM = r"""
     clear(){ return asyncReq(this.tx,()=>{ this.data.records.clear(); }); }
   }
   class DB {
-    constructor(name,version){ this.name=name; this.version=version; this._stores=new Map(); this.onversionchange=null; }
+    constructor(name,version){ this.name=name; this.version=version; this._stores=new Map(); this.onversionchange=null; this._queue=[]; this._running=null; }
+    _enqueue(tx){this._queue.push(tx);this._pump();}
+    _pump(){if(this._running)return;const tx=this._queue.shift();if(tx){this._running=tx;tx._start();}}
+    _release(tx){
+      if(this._running===tx){this._running=null;this._pump();}
+      else this._queue=this._queue.filter(item=>item!==tx);
+    }
     static restore(name,raw){
       const db=new DB(name,raw.version);
       for(const [storeName,stored] of Object.entries(raw.stores ?? {})){
@@ -190,7 +205,9 @@ SIMULATED_STORAGE_SHIM = r"""
             if(request.onupgradeneeded) request.onupgradeneeded({target:request,oldVersion,newVersion:targetVersion});
             db._persist();
           }
-          setTimeout(()=>request.onsuccess && request.onsuccess({target:request}),0);
+          const finish=()=>db._running||db._queue.length
+            ?setTimeout(finish,0):request.onsuccess&&request.onsuccess({target:request});
+          setTimeout(finish,0);
         } catch(error){ request.error=error; if(request.onerror) request.onerror({target:request}); }
       },0);
       return request;
