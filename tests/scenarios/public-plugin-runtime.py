@@ -48,7 +48,8 @@ def boot_frame(page):
 
 def exercise_intake_and_profile_summary(browser) -> None:
     page, errors = open_fixture_page(browser, baseline=True)
-    check(page.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version mismatch")
+    check(page.evaluate("RevisionDirector.version === RevisionDirector.data.contract.applicationVersion && Boolean(RevisionDirector.version)"),
+          "Public API and data-contract versions diverged in the browser")
     invalid = [
         {"area":"A","task":"T","measure":"M","durationMinutes":10,"activityMode":"evil"},
         {"area":"A","task":"T","measure":"M","durationMinutes":10,"understanding":99},
@@ -130,18 +131,19 @@ def main() -> None:
         reset_simulated_storage(page)
         frame=boot_frame(page)
 
-        check(frame.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version wrong")
+        check(frame.evaluate("RevisionDirector.version === RevisionDirector.data.contract.applicationVersion && Boolean(RevisionDirector.version)"),
+              "Browser runtime and public data contract versions diverged")
         check(frame.evaluate("RevisionDirector.apiVersion") == 1, "Public API contract version wrong")
         check(frame.evaluate("typeof RevisionDirectorBridge") == "undefined", "Legacy bridge remains public")
-        check(frame.evaluate("Object.isFrozen(RevisionDirector) && Object.isFrozen(RevisionDirector.records) && Object.isFrozen(RevisionDirector.intake) && Object.isFrozen(RevisionDirector.plugins)"), "Public API is not frozen")
-        check(frame.evaluate("JSON.stringify(Object.keys(RevisionDirector).sort())") == '["apiVersion","capabilities","data","intake","plugins","records","registerPlugin","runtime","version"]', "Public API exposes unexpected operations")
-        check(frame.evaluate("!('repository' in RevisionDirector) && !('scheduler' in RevisionDirector) && !('evidence' in RevisionDirector) && !('backup' in RevisionDirector) && !('ui' in RevisionDirector)"), "Sensitive internals are public")
-        check(frame.evaluate("RevisionDirector.capabilities.pluginApi===1 && RevisionDirector.capabilities.localPluginFiles===1"), "Plugin capabilities unavailable")
+        # Structural API shape and deep immutability are owned by the Node
+        # public-contract suite; this checks that the real window exposes no
+        # private services, then exercises host registration and file isolation.
+        check(frame.evaluate("!('repository' in RevisionDirector) && !('scheduler' in RevisionDirector) && !('evidence' in RevisionDirector) && !('backup' in RevisionDirector) && !('ui' in RevisionDirector)"), "Browser host exposed private services")
 
         good = frame.evaluate("""async () => {
           return await RevisionDirector.registerPlugin({name:'Browser Good',version:'1.0',requires:{pluginApi:1},setup(api){window.__RD_GOOD_API__=api.version;return true;}});
         }""")
-        check(good is True and frame.evaluate("window.__RD_GOOD_API__") == "va7.1-pass-f1", "Compatible browser plugin failed")
+        check(good is True and frame.evaluate("window.__RD_GOOD_API__ === RevisionDirector.version"), "Browser plugin did not receive the current public API version")
         incompatible = frame.evaluate("""async () => await RevisionDirector.registerPlugin({name:'Browser Future',requires:{pluginApi:2},setup(){return true;}})""")
         check(incompatible is False, "Incompatible browser plugin registered")
         failed = frame.evaluate("""async () => await RevisionDirector.registerPlugin({name:'Browser Failed',setup(){throw new Error('browser isolated failure')}})""")
@@ -162,7 +164,7 @@ def main() -> None:
             wait_until(frame, lambda: frame.evaluate("RevisionDirector.plugins.status().registered.some(x=>x.name==='Local Good'&&x.state==='registered')"))
             wait_local_file_settled(frame, "rd-local-good.js", "loaded")
             check(frame.evaluate("window.__RD_LOCAL_SUMMARY__.dueCount") == 0, "Local plugin did not receive canonical API")
-            wait_until(frame, lambda: "Local Good" in frame.locator("#settings-content").inner_text()); check(True, "Local plugin status rendered")
+            wait_until(frame, lambda: "Local Good" in frame.locator("#settings-content").inner_text())
 
             inactive_file=tmp/"rd-local-inactive.js"
             inactive_file.write_text("window.__RD_INACTIVE_FILE__=true;")

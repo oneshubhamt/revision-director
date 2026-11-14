@@ -133,7 +133,21 @@ def main():
         open_restore_preview(page, FIXTURE)
         check(page.locator('#restore-dialog').is_visible(),'Import selection did not open preview')
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated local records')
-        check(page.locator('#restore-preview .restore-summary .restore-stat').count() >= 6,'Inspection metadata is incomplete')
+        # Assert meaningful inspected values rather than an arbitrary number
+        # of preview cards (P0-4). These are separate from the archive proof.
+        summary=page.locator('#restore-preview .restore-summary .restore-stat').evaluate_all(
+            "items => Object.fromEntries(items.map(item => [item.querySelector('span')?.textContent.trim(), item.querySelector('strong')?.textContent.trim()]))"
+        )
+        expected=decode_file(FIXTURE)
+        check(
+            summary.get('Knowledge units') == str(len(expected['units']))
+            and summary.get('Evidence events') == str(len(expected['evidenceEvents']))
+            and summary.get('Verification') == 'SHA256'
+            and bool(summary.get('Created'))
+            and str(summary.get('Archive', '')).startswith(('NONE', 'GZIP'))
+            and int(summary.get('Total documents', '-1')) >= 1 + len(expected['units']) + len(expected['evidenceEvents']),
+            f"Restore preview does not describe the validated candidate: {summary}",
+        )
         proof=page.locator('#restore-preview .restore-proof').first.inner_text()
         check(bool(re.search(r'\b[0-9a-f]{64}\b', proof, re.IGNORECASE)),'Inspection metadata omitted the archive checksum')
         check(page.locator('#restore-final-button').is_disabled(),'Restore enabled before safety steps')

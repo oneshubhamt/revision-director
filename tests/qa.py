@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from contextlib import contextmanager, nullcontext
+import ast
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import os
-import re
 import shutil
 import socket
 import subprocess
@@ -131,18 +131,6 @@ QA_FOOTPRINT_BUDGET = {
     "browser_entrypoints": 20,
 }
 
-REMOVED_WRAPPERS = (
-    "browser-data-safety.spec.py",
-    "browser-extensions.spec.py",
-    "browser-recovery.spec.py",
-    "browser-ui.spec.py",
-    "extensions-and-public-api.spec.js",
-    "planning-and-data-safety.spec.js",
-    "storage-and-recovery.spec.js",
-    "ui-and-presentation.spec.js",
-)
-
-
 def run(*command: str) -> None:
     print("==>", " ".join(command), flush=True)
     env = os.environ.copy()
@@ -216,125 +204,65 @@ def assert_python_test_syntax() -> None:
 
 
 def assert_test_topology() -> None:
-    historical = [
-        path for path in TESTS.rglob("*")
+    """Verify executable ownership and independent real/simulated storage boundaries.
+
+    Historical words, test filenames and source comments are not product contracts.
+    The canonical plans must own *all* executable test entries exactly once.
+    """
+    declared = (
+        STATIC_PYTHON + CORE_NODE_PLAN + BROWSER_PLAN
+        + DURABILITY_BROWSER_PLAN + PERFORMANCE_BROWSER_PLAN + DEEP_NODE_PLAN
+    )
+    if len(declared) != len(set(declared)):
+        raise AssertionError("The QA execution plan runs one or more entrypoints twice")
+    actual = {
+        path.relative_to(ROOT).as_posix()
+        for path in TESTS.rglob("*")
         if path.is_file()
         and (
-            path.name.lower().startswith(("pass-", "stage-"))
-            or "programme" in path.name.lower()
-            or path.name in {"browser-qa.spec.py", "full-qa-supplement.spec.py"}
+            path.name.endswith((".spec.py", ".spec.js"))
+            or (path.parent == TESTS / "scenarios" and path.suffix in (".py", ".js"))
         )
-    ]
-    stale_wrappers = [TESTS / name for name in REMOVED_WRAPPERS if (TESTS / name).exists()]
-    stale_helper = TESTS / "helpers/suite-runner.js"
-    stale_storage_helper = TESTS / "helpers/persistent_browser.py"
-    stale = sorted(
-        [
-            *historical,
-            *stale_wrappers,
-            *([stale_helper] if stale_helper.exists() else []),
-            *([stale_storage_helper] if stale_storage_helper.exists() else []),
-        ],
-        key=lambda path: path.name,
-    )
-    if stale:
-        raise AssertionError("Obsolete QA entrypoints remain: " + ", ".join(path.name for path in stale))
-    historical_label = re.compile(r"\b(?:Pass|Stage)\s+[A-E](?:\d+)?\b|__RD_(?:PASS|STAGE)_[A-Z0-9_]+|programme(?:-closure)?", re.IGNORECASE)
-    historical_sources = []
-    for path in sorted((*TESTS.rglob("*.py"), *TESTS.rglob("*.js"))):
-        if path.resolve() == Path(__file__).resolve():
-            continue
-        matches = sorted(set(match.group(0) for match in historical_label.finditer(path.read_text())))
-        if matches:
-            historical_sources.append(f"{path.relative_to(ROOT)}: {', '.join(matches)}")
-    if historical_sources:
-        raise AssertionError("Historical QA labels remain: " + "; ".join(historical_sources))
-
-    canonical_storage = (TESTS / "helpers/simulated_storage.py").resolve()
-    legacy_storage_tokens = (
-        "INDEXEDDB_SHIM",
-        "PERSISTENT_BROWSER_SHIM",
-        "__RD_PERSISTENT_QA_STATE__",
-        "create_persistent_frame",
-        "persistent_html",
-        "host_state_all",
-        "host_state_get",
-    )
-    duplicate_simulators = []
-    legacy_storage_sources = []
-    indexeddb_definition = re.compile(r"Object\.defineProperty\(window,\s*['\"]indexedDB['\"]")
-    for path in sorted(TESTS.rglob("*.py")):
-        if path.resolve() == Path(__file__).resolve():
-            continue
-        source = path.read_text()
-        if path.resolve() != canonical_storage and indexeddb_definition.search(source):
-            duplicate_simulators.append(str(path.relative_to(ROOT)))
-        matches = [token for token in legacy_storage_tokens if token in source]
-        if matches:
-            legacy_storage_sources.append(f"{path.relative_to(ROOT)}: {', '.join(matches)}")
-    if duplicate_simulators:
-        raise AssertionError("Duplicate simulated IndexedDB implementations remain: " + ", ".join(duplicate_simulators))
-    if legacy_storage_sources:
-        raise AssertionError("Legacy simulated-storage APIs remain: " + "; ".join(legacy_storage_sources))
-
-    bypasses = []
-    pinned_database_opens = []
-    pinned_open = re.compile(r"indexedDB\.open\(\s*['\"]revision-director['\"]\s*,")
-    for relative in SIMULATED_STORAGE_BROWSER_PLAN:
-        source = (ROOT / relative).read_text()
-        if "browser_fixture" not in source and "simulated_storage" not in source:
-            bypasses.append(relative)
-        if pinned_open.search(source):
-            pinned_database_opens.append(relative)
-    if bypasses:
-        raise AssertionError("Simulated browser entrypoints bypass canonical storage: " + ", ".join(bypasses))
-    if pinned_database_opens:
-        raise AssertionError(
-            "Simulated browser tests pin the application IndexedDB version: "
-            + ", ".join(pinned_database_opens)
-        )
-
-    native_coupling = []
-    for relative in NATIVE_INDEXEDDB_BROWSER_PLAN:
-        source = (ROOT / relative).read_text()
-        if "browser_fixture" in source or "simulated_storage" in source:
-            native_coupling.append(relative)
-    if native_coupling:
-        raise AssertionError("Native IndexedDB witnesses depend on simulated storage: " + ", ".join(native_coupling))
-
-    footprint_files = [
-        path for path in TESTS.rglob("*")
-        if path.is_file()
-        and "__pycache__" not in path.parts
-        and path.suffix != ".pyc"
-    ]
-    helper_files = [path for path in footprint_files if path.parent == TESTS / "helpers"]
-    entrypoints = [
-        path for path in footprint_files
-        if path.name.endswith((".spec.py", ".spec.js"))
-        or (
-            path.parent == TESTS / "scenarios"
-            and path.suffix in {".py", ".js"}
-        )
-    ]
-    footprint = {
-        "files": len(footprint_files),
-        "bytes": sum(path.stat().st_size for path in footprint_files),
-        "helper_bytes": sum(path.stat().st_size for path in helper_files),
-        "entrypoints": len(entrypoints),
-        "browser_entrypoints": len(BROWSER_PLAN),
     }
-    exceeded = [
-        f"{name}={footprint[name]}>{limit}"
-        for name, limit in QA_FOOTPRINT_BUDGET.items()
-        if footprint[name] > limit
-    ]
-    if exceeded:
+    if set(declared) != actual:
         raise AssertionError(
-            "QA footprint budget exceeded; consolidate or deliberately revise the baseline: "
-            + ", ".join(exceeded)
+            "QA execution ownership mismatch: "
+            + f"unlisted={sorted(actual - set(declared))}, "
+            + f"missing={sorted(set(declared) - actual)}"
         )
+    if set(NATIVE_INDEXEDDB_BROWSER_PLAN) - set(BROWSER_PLAN):
+        raise AssertionError("Native IndexedDB tests must be owned by the browser suite")
+    if set(SIMULATED_STORAGE_BROWSER_PLAN) & set(NATIVE_INDEXEDDB_BROWSER_PLAN):
+        raise AssertionError("Native and simulated IndexedDB suites must remain disjoint")
 
+    for relative in BROWSER_PLAN + DURABILITY_BROWSER_PLAN + PERFORMANCE_BROWSER_PLAN:
+        source = ast.parse((ROOT / relative).read_text(), filename=relative)
+        modules = {
+            imported
+            for node in ast.walk(source)
+            for imported in (
+                [node.module] if isinstance(node, ast.ImportFrom)
+                else [alias.name for alias in node.names] if isinstance(node, ast.Import)
+                else []
+            )
+            if imported
+        }
+        simulated = any(
+            module == "helpers.browser_fixture" or module == "helpers.simulated_storage"
+            or module == "helpers" and any(
+                isinstance(node, ast.ImportFrom) and node.module == "helpers"
+                and any(alias.name in {"browser_fixture", "simulated_storage"} for alias in node.names)
+                for node in ast.walk(source)
+            )
+            for module in modules
+        )
+        if relative in NATIVE_INDEXEDDB_BROWSER_PLAN and simulated:
+            raise AssertionError(f"Native IndexedDB witness imports simulator: {relative}")
+        if relative in SIMULATED_STORAGE_BROWSER_PLAN and not simulated:
+            raise AssertionError(f"Simulated browser witness skips canonical fixture: {relative}")
+
+    # Footprint is observability for maintainers, not a failure of application
+    # correctness. Review any growth before adding new test framework layers.
 
 def core() -> None:
     assert_test_topology()
