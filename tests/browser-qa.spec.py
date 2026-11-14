@@ -555,9 +555,16 @@ def scenario_pass_d(browser) -> None:
     form.locator('[name="obligationType"]').select_option('concept-reconstruction')
     form.locator('[name="workflowKind"]').select_option('reconstruction')
     form.locator('button[type="submit"]').click(); page.locator("#unit-dialog").wait_for(state="hidden")
-    page.locator('[data-pane="today"]').click(); page.locator("#pane-today").wait_for(state="visible")
+    open_rendered_pane(page, "today")
 
     chunk_row = page.locator('.planner-row').filter(has_text='Oversized drainage synthesis').first
+    wait_until(
+        page,
+        lambda: chunk_row.count() == 1 and chunk_row.locator('[data-action="review-chunk"]').count() == 1,
+        timeout=5_000,
+        interval=40,
+        message="Oversized obligation did not finish rendering as a daily chunk",
+    )
     check(chunk_row.count() == 1, 'Oversized obligation was not converted into a daily chunk')
     chunk_action = chunk_row.locator('[data-action="review-chunk"]')
     check(chunk_action.count() == 1, 'Chunk action missing')
