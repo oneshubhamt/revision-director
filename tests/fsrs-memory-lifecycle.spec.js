@@ -187,7 +187,121 @@ async function testMemoryLifecycleAndRebases(){
   api.revisionSchedulerPort(fixed(.9),replacement).verifyProjection(memory.policyState.fsrsCard,history); checks++;
 }
 
+
+/**
+ * Service/publication boundary state machine. The staged repository models an
+ * all-or-nothing transaction, while the real IndexedDB abort and UI guard
+ * paths remain independently owned by browser durability/hostile-recovery QA.
+ * A rejected or concurrently repeated guarded commit may not publish any
+ * unit, obligation, evidence or active-session side effect.
+ */
+class GuardedPublicationRepo extends MemoryRepo {
+  constructor(payload) {
+    super(payload);
+    this.serial = Promise.resolve();
+    this.failNextCommit = false;
+  }
+
+  recordReview(...args) {
+    const work = this.serial.then(async () => {
+      const [, , , , , , , guard, post] = args;
+      const active = this.activeRetrieval;
+      if (!guard || !post || !active || active.status !== 'committing'
+        || guard.sessionId !== 'current' || guard.expectedRevision !== active.revision
+        || guard.targetId !== active.activeTargetId || guard.commitToken !== active.commitToken) {
+        throw new Error('Commit guard does not match durable active session');
+      }
+      if (this.failNextCommit) {
+        this.failNextCommit = false;
+        throw new Error('Injected atomic publication failure');
+      }
+      // Never publish intermediate writes from the repository model.
+      const staged = new MemoryRepo(await this.backupState());
+      await staged.recordReview(...args);
+      this.load(await staged.backupState());
+    });
+    this.serial = work.catch(() => undefined);
+    return work;
+  }
+}
+
+async function testExactlyOncePublication() {
+  const payload = JSON.parse(fs.readFileSync(path.join(root,'tests','fixtures','browser-baseline.json'),'utf8'));
+  payload.dailyPlans = [];
+  payload.chunks = [];
+  payload.evidenceEvents = [];
+  payload.activeRetrieval = null;
+  for (let seed = 0; seed < 8; seed += 1) {
+    const repo = new GuardedPublicationRepo(payload);
+    const service = new api.RevisionService(repo);
+    await service.initialize();
+    const memory = findMemory(repo);
+    const token = 'guarded-sequence-' + seed;
+    const revision = 3 + seed;
+    const guard = {
+      sessionId:'current',expectedRevision:revision,targetId:memory.id,commitToken:token,
+    };
+    const post = {
+      status:'completed',revision:revision+1,activeTargetId:'',commitToken:token,
+    };
+    repo.activeRetrieval = {
+      status:'committing',revision,activeTargetId:memory.id,commitToken:token,
+    };
+    const draft = recallDraft(seed % 2 === 0 ? api.Rating.Good : api.Rating.Easy,
+      memory.workflow.checkpoints.length);
+    const reviewedAt = new Date(memory.dueAt);
+    const baseline = JSON.stringify(await repo.backupState());
+    const invalidGuards = [
+      {...guard,expectedRevision:revision-1},
+      {...guard,targetId:'wrong-obligation'},
+      {...guard,commitToken:'wrong-token'},
+      {...guard,sessionId:'wrong-session'},
+    ];
+    for (const invalid of invalidGuards) {
+      let rejected = false;
+      try { await service.recordEvidence(memory.id,draft,reviewedAt,invalid,post); }
+      catch { rejected = true; }
+      check(rejected && JSON.stringify(await repo.backupState()) === baseline,
+        'Invalid guard published a partial state at case ' + seed);
+    }
+    repo.failNextCommit = true;
+    let failed = false;
+    try { await service.recordEvidence(memory.id,draft,reviewedAt,guard,post); }
+    catch { failed = true; }
+    check(failed && JSON.stringify(await repo.backupState()) === baseline,
+      'Injected precommit failure mutated durable publication state');
+
+    const outcomes = await Promise.allSettled([
+      service.recordEvidence(memory.id,draft,reviewedAt,guard,post),
+      service.recordEvidence(memory.id,draft,reviewedAt,guard,post),
+    ]);
+    check(outcomes.filter(x=>x.status==='fulfilled').length === 1
+      && outcomes.filter(x=>x.status==='rejected').length === 1,
+      'Concurrent duplicate publication did not resolve to precisely one success');
+    check(repo.evidenceEvents.length === 1
+      && repo.evidenceEvents[0].id === 'evidence_' + token,
+      'Exactly-once deterministic evidence identity was not committed');
+    check(repo.activeRetrieval.status === 'completed'
+      && repo.activeRetrieval.revision === revision+1
+      && repo.activeRetrieval.commitToken === token,
+      'Postcommit session was not part of the atomic publication');
+    const published = findMemory(repo);
+    check(published.dueAt === repo.evidenceEvents[0].afterDueAt
+      && repo.units.find(item=>item.id===memory.unitId).evidenceCount
+        === payload.units.find(item=>item.id===memory.unitId).evidenceCount + 1,
+      'Evidence, scheduling and unit projection did not advance together');
+
+    const committed = JSON.stringify(await repo.backupState());
+    let duplicateRejected = false;
+    try { await service.recordEvidence(memory.id,draft,reviewedAt,guard,post); }
+    catch { duplicateRejected = true; }
+    check(duplicateRejected && JSON.stringify(await repo.backupState()) === committed,
+      'Replayed commit token modified an already-published transaction');
+  }
+}
+
 (async()=>{
   await testMemoryLifecycleAndRebases();
+  await testExactlyOncePublication();
   console.log('PASS '+checks+' FSRS memory-lifecycle scheduler/replay/planner/rebase checks');
 })().catch(error=>{console.error(error);process.exitCode=1;});
