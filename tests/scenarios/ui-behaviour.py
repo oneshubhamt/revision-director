@@ -156,6 +156,13 @@ def main():
 
   # Native dialog focus and return.
   page.locator('#quick-add-unit').focus();page.locator('#quick-add-unit').click(); page.locator('#unit-dialog').wait_for(state='visible')
+  wait_until(
+   page,
+   lambda: page.evaluate("document.activeElement?.getAttribute('name')")=='profileId',
+   timeout=3000,
+   interval=30,
+   message='Dialog did not establish initial focus',
+  )
   check(page.evaluate("document.activeElement?.getAttribute('name')")=='profileId','Dialog initial focus wrong')
   page.keyboard.press('Escape'); page.locator('#unit-dialog').wait_for(state='hidden')
   wait_until(page, lambda: page.evaluate('document.activeElement?.id')=='quick-add-unit', timeout=3000, interval=30, message='Dialog return focus failed')
