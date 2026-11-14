@@ -8,7 +8,7 @@ sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, launch_chromium, open_html_page, open_rendered_pane, wait_for_layout, wait_until
 from helpers.browser_fixture import open_page as open_fixture_page, restore_selected_backup, stored_all
-from helpers.persistent_browser import simulated_storage_html
+from helpers.simulated_storage import simulated_storage_html
 BASELINE_BACKUP = baseline_backup_path()
 CLOCK_SHIM = r"""
 <script>

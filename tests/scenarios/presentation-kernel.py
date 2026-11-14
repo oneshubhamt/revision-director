@@ -8,7 +8,7 @@ sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, launch_chromium, open_html_page, wait_for_app_ready, wait_for_layout
 from helpers.browser_fixture import restore_selected_backup
-from helpers.persistent_browser import simulated_storage_html
+from helpers.simulated_storage import simulated_storage_html
 TIME_SHIM = r'''<script>(()=>{const RealDate=Date;const fixed=RealDate.parse('2026-07-27T06:30:00.000Z');class FixedDate extends RealDate{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed}}Object.defineProperty(window,'Date',{configurable:true,value:FixedDate});})();</script>'''
 HTML = simulated_storage_html(TIME_SHIM)
 CHECKS = 0

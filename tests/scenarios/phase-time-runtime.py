@@ -15,7 +15,7 @@ from helpers.browser_harness import (
     launch_chromium,
     wait_until as shared_wait_until,
 )
-from helpers.persistent_browser import (
+from helpers.simulated_storage import (
     BASE_HTML,
     create_simulated_frame,
     reset_simulated_storage,

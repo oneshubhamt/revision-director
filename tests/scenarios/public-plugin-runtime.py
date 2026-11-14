@@ -13,7 +13,7 @@ from helpers.browser_harness import (
     wait_for_toast_outcome,
     wait_until as shared_wait_until,
 )
-from helpers.persistent_browser import create_simulated_frame, reset_simulated_storage, simulated_storage_html
+from helpers.simulated_storage import create_simulated_frame, reset_simulated_storage, simulated_storage_html
 from helpers.browser_fixture import open_page as open_fixture_page
 HTML = simulated_storage_html()
 checks = 0
