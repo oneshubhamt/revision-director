@@ -248,6 +248,7 @@ def performance() -> None:
 
 def deep() -> None:
     assert_test_topology()
+    require_optimizer_dependencies()
     for path in DEEP_NODE_PLAN:
         run("node", path)
     # Keep full-scale timing envelopes as deep diagnostics, not routine core gates.
