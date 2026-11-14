@@ -108,7 +108,7 @@ def main():
   check(page.locator('[role=tab][tabindex="0"]').count()==1,'Roving tabindex invalid')
 
   # Delegated action remains exactly-once after ordinary pane navigation.
-  open_rendered_pane(page, "settings")
+  open_rendered_pane(page, "settings", force_render=True)
   page.locator('#new-profile-name').wait_for(state='visible')
   before_profiles=page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
   before_ids={profile['id'] for profile in before_profiles}
@@ -146,7 +146,7 @@ def main():
   check(len(added)==1 and added[0]['name']=='Delegated action profile','Delegated action duplicated or created the wrong profile')
 
   # Dirty render preserves focus and selection.
-  page.locator('[data-pane=library]').click(); page.locator('#pane-library').wait_for(state='visible')
+  open_rendered_pane(page, "library", force_render=True)
   search=page.locator('#library-search')
   search.evaluate("e=>e.setAttribute('data-qa-before-library-render','1')")
   search.fill('Drainage');search.evaluate('e=>e.setSelectionRange(2,6)')
@@ -159,14 +159,23 @@ def main():
   )
   search=page.locator('#library-search')
   wait_until(page, lambda: page.locator('.unit-row').count()==1, timeout=3000, interval=40, message='Filtered library did not settle')
-  wait_until(
-   page,
-   lambda: page.evaluate('document.activeElement?.id')=='library-search'
-   and search.evaluate('e=>[e.selectionStart,e.selectionEnd]')==[2,6],
-   timeout=3000,
-   interval=40,
-   message='Dirty library render did not restore focus and selection',
-  )
+  try:
+   wait_until(
+    page,
+    lambda: page.evaluate('document.activeElement?.id')=='library-search'
+    and search.evaluate('e=>[e.selectionStart,e.selectionEnd]')==[2,6],
+    timeout=3000,
+    interval=40,
+    message='Dirty library render did not restore focus and selection',
+   )
+  except AssertionError as error:
+   actual=page.evaluate("""() => ({
+     focus:document.activeElement?.id,
+     selection:(() => {const e=document.querySelector('#library-search');return e ? [e.selectionStart,e.selectionEnd] : null})(),
+     filter:document.querySelector('#library-search')?.value,
+     visibleUnits:document.querySelectorAll('.unit-row').length
+   })""")
+   raise AssertionError(f"Dirty library focus/selection mismatch: {actual}") from error
 
   # Native dialog focus and return.
   page.locator('#quick-add-unit').focus();page.locator('#quick-add-unit').click(); page.locator('#unit-dialog').wait_for(state='visible')

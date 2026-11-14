@@ -215,10 +215,10 @@ def wait_for_app_ready(page: Page, *, timeout: int = 10_000) -> None:
         assert not page.locator("#fatal-error").is_visible(), "Fatal startup error"
 
 
-def open_rendered_pane(page: Page, pane: str, *, timeout: int = 10_000) -> None:
+def open_rendered_pane(page: Page, pane: str, *, timeout: int = 10_000, force_render: bool = False) -> None:
     tab = page.locator(f'[data-pane="{pane}"]')
     panel = page.locator(f'#pane-{pane}')
-    if tab.get_attribute("aria-selected") == "true":
+    if tab.get_attribute("aria-selected") == "true" and not force_render:
         panel.wait_for(state="visible", timeout=timeout)
         return
     content = page.locator(f'#{pane}-content')

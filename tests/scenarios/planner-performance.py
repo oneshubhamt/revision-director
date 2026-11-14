@@ -54,10 +54,9 @@ def open_page(browser, viewport=None, *, baseline=True):
 
 
 def ensure_pane(page, pane: str) -> None:
-    tab=page.locator(f'[data-pane="{pane}"]')
-    if tab.get_attribute('aria-selected') != 'true':
-        tab.click()
-    page.locator(f'#pane-{pane}').wait_for(state='visible')
+    # Settings can already be the active tab while a queued invalidation is
+    # replacing its form. Await an actual fresh render before editing it.
+    open_rendered_pane(page, pane, force_render=True)
 
 def set_capacity(page, value: int) -> None:
     ensure_pane(page, 'settings')
