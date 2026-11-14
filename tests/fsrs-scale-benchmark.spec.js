@@ -10,8 +10,9 @@ const { api } = createAppRuntime({
 });
 
 const DAY_MS=86_400_000;
-const CARD_COUNT=96;
-const REVIEWS_PER_CARD=48;
+const performanceMode = process.argv.includes('--performance');
+const CARD_COUNT = performanceMode ? 96 : 20;
+const REVIEWS_PER_CARD = performanceMode ? 48 : 12;
 const fixed={kind:'fixed-retention',desiredRetention:.9};
 const clone=value=>structuredClone(value);
 
@@ -146,11 +147,13 @@ const clone=value=>structuredClone(value);
     'Planner deferral order must be deterministic'
   );
 
-  assert.ok(indexMs<5000&&reversedIndexMs<5000,'Multi-year evidence indexing exceeded the regression envelope');
-  assert.ok(forcedReplayMs<20000,'Multi-year forced replay exceeded the regression envelope');
-  assert.ok(cachedRetrievabilityMs<5000,'Cached multi-year retrievability exceeded the regression envelope');
+  if (performanceMode) {
+    assert.ok(indexMs<5000&&reversedIndexMs<5000,'Multi-year evidence indexing exceeded the regression envelope');
+    assert.ok(forcedReplayMs<20000,'Multi-year forced replay exceeded the regression envelope');
+    assert.ok(cachedRetrievabilityMs<5000,'Cached multi-year retrievability exceeded the regression envelope');
+  }
 
   console.log(
-    `PASS Pass 4 scale/determinism: ${CARD_COUNT} cards × ${REVIEWS_PER_CARD} reviews = ${events.length} events, ${years.toFixed(1)}y/card | index ${indexMs.toFixed(1)}ms / reversed ${reversedIndexMs.toFixed(1)}ms | forced replay ${forcedReplayMs.toFixed(1)}ms | 3× cached retrievability ${cachedRetrievabilityMs.toFixed(1)}ms | replay calls ${replayCalls}`
+    `PASS ${performanceMode ? 'performance' : 'core'} scale/determinism: ${CARD_COUNT} cards × ${REVIEWS_PER_CARD} reviews = ${events.length} events, ${years.toFixed(1)}y/card | index ${indexMs.toFixed(1)}ms / reversed ${reversedIndexMs.toFixed(1)}ms | forced replay ${forcedReplayMs.toFixed(1)}ms | 3× cached retrievability ${cachedRetrievabilityMs.toFixed(1)}ms | replay calls ${replayCalls}`
   );
 })().catch(error=>{console.error(error);process.exitCode=1;});
