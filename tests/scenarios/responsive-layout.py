@@ -5,11 +5,12 @@ from playwright.sync_api import sync_playwright
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa
+from backup_fixture_codec import baseline_backup_path
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_layout
 base=load_browser_qa("revision_director_responsive_layout")
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base.INDEXEDDB_SHIM,1)
 restore_selected_backup=base.restore_selected_backup
-BASELINE=ROOT/'tests/fixtures/browser-baseline.rdbackup'
+BASELINE = baseline_backup_path()
 CHECKS=0
 
 def check(v,msg):
@@ -24,12 +25,12 @@ def main():
   page=browser.new_page(viewport={'width':1440,'height':1000})
   errors=capture_browser_errors(page, include_warnings=True)
   accept_dialogs(page)
-  page.set_content(HTML,wait_until='load'); page.wait_for_timeout(1300)
-  page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(150)
+  page.set_content(HTML,wait_until='load'); wait_for_app_ready(page)
+  page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
   restore_selected_backup(page, BASELINE)
   check('restored' in page.locator('#toast').inner_text().lower(),'Fixture restore failed')
   for width,height in viewports:
-   page.set_viewport_size({'width':width,'height':height}); page.wait_for_timeout(200)
+   page.set_viewport_size({'width':width,'height':height}); wait_for_layout(page)
    compact=width<=820
    shell=page.evaluate("""() => {const s=document.querySelector('.sidebar'),m=document.querySelector('.main'),a=document.querySelector('.sidebar-actions');const sr=s.getBoundingClientRect(),mr=m.getBoundingClientRect();return {sidebarPosition:getComputedStyle(s).position,actions:getComputedStyle(a).display,mainBottom:mr.bottom,navTop:sr.top,mainOverflow:getComputedStyle(m).overflowY,docOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1};}""")
    check(shell['actions']==('none' if compact else 'grid'),f'Sidebar actions wrong at {width}x{height}: {shell}')
@@ -40,7 +41,7 @@ def main():
    else:
     check(shell['sidebarPosition'] in ('fixed','absolute'),f'Desktop sidebar positioning changed at {width}x{height}: {shell}')
    for pane in panes:
-    page.evaluate("p=>document.querySelector(`[data-pane=\"${p}\"]`).click()",pane); page.wait_for_timeout(100)
+    page.evaluate("p=>document.querySelector(`[data-pane=\"${p}\"]`).click()",pane); page.locator(f'#pane-{pane}').wait_for(state='visible')
     state=page.evaluate("""pane=>{const panel=document.querySelector(`#pane-${pane}`);const selected=[...document.querySelectorAll('[role=tab][aria-selected=true]')];const visiblePanels=[...document.querySelectorAll('[role=tabpanel]')].filter(e=>!e.hidden&&getComputedStyle(e).display!=='none');const bad=[...document.querySelectorAll('button,input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,summary,.file-btn')].filter(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return !e.closest('[hidden]')&&s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0&&r.height<43.5}).map(e=>`${e.tagName}#${e.id}.${e.className}:${e.getBoundingClientRect().height}`);return {panel:!!panel&&!panel.hidden&&getComputedStyle(panel).display!=='none',selected:selected.length,visiblePanels:visiblePanels.length,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1,bad};}""",pane)
     check(state['panel'],f'Pane hidden: {pane} at {width}x{height}')
     check(state['selected']==1 and state['visiblePanels']==1,f'ARIA visibility state invalid: {pane} at {width}x{height}: {state}')

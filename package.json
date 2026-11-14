@@ -8,13 +8,15 @@
   "packageManager": "npm@11.20.0",
   "scripts": {
     "build": "python3 build/build.py",
-    "test:build": "python3 tests/build-integrity.spec.py",
+    "test:build": "npm run build && python3 tests/build-integrity.spec.py",
     "build:hosted": "npm run build && node build/build-hosted.mjs",
     "qa:core": "python3 tests/qa.py core",
     "qa:optimizer": "python3 tests/qa.py optimizer",
     "qa:browser:durability": "python3 tests/qa.py durability",
     "qa:browser": "python3 tests/qa.py browser",
-    "qa:full": "python3 tests/qa.py full"
+    "qa:full": "python3 tests/qa.py full",
+    "qa:deep": "python3 tests/qa.py deep",
+    "qa:browser:performance": "python3 tests/qa.py performance"
   },
   "devDependencies": {
     "typescript": "7.0.2",

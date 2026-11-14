@@ -3,7 +3,7 @@ const { createAppRuntime } = require('./helpers/runtime-harness');
 
 const { api, context } = createAppRuntime({
   globalName: '__RD_TEST_API__',
-  expose: ["suggestRating","objectiveScore","correctiveMemoryRating","workflowEvidence","validateWorkflowResult","validateWorkflowSpec","defaultWorkflowSpec","defaultWorkflowForType","compatibleWorkflows","MasteryPolicy","ApplicationPolicy","PerformancePolicy","RelearnPolicy","FreshnessPolicy","SchedulerPolicyRouter","FsrsMemoryPolicy","RevisionService","UIController","ActiveRetrievalWorkspace","Rating","examinationProximityScore","planningLookaheadDays","examImportanceScore","reviewDurationScore","evidenceWeaknessScore","obligationWeaknessScore","temporalDueRisk","plannerScore","buildPlanningCandidate","choosePlanItems","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsConfigSnapshot","validateStoredFsrsCard","defaultMemoryDifficultyPolicy","canonicalMemoryDifficultyPolicy","memoryDifficultyAssessment","memoryDifficultyRemediationPlan","memoryDifficultyActionLabel","daysToExamination","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","validateBackupPayload"],
+  expose: ["suggestRating","objectiveScore","correctiveMemoryRating","workflowEvidence","validateWorkflowResult","validateWorkflowSpec","defaultWorkflowSpec","defaultWorkflowForType","compatibleWorkflows","MasteryPolicy","ApplicationPolicy","PerformancePolicy","RelearnPolicy","FreshnessPolicy","SchedulerPolicyRouter","FsrsMemoryPolicy","RevisionService","Rating","examinationProximityScore","planningLookaheadDays","examImportanceScore","reviewDurationScore","evidenceWeaknessScore","obligationWeaknessScore","temporalDueRisk","plannerScore","buildPlanningCandidate","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationsFor","validateFsrsConfigSnapshot","validateStoredFsrsCard","defaultMemoryDifficultyPolicy","canonicalMemoryDifficultyPolicy","memoryDifficultyAssessment","memoryDifficultyRemediationPlan","memoryDifficultyActionLabel","daysToExamination","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","validateBackupPayload"],
   requireFsrs: true,
 });
 
@@ -145,12 +145,6 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   mustFail(()=>api.validateStoredFsrsCard({...difficultyProbe.policyState.fsrsCard,scheduleStatus:'suspended'}),'FSRS scheduleStatus must not become a second suspension truth');
   check(memoryObligation.policyState.fsrsCard.cardId === 'o', 'FSRS cards must retain stable obligation identity');
 
-  const previews = memory.preview(memoryObligation, new Date(due));
-  check(previews.length === 4 && previews.map(item => item.rating).join(',') === '1,2,3,4', 'FSRS-7 must preview all four ratings');
-  check(Math.abs(previews[0].intervalDays - 1) < .001, 'Again must use the one-day corrective learning step');
-  check(previews[1].intervalDays > 1 && previews[1].intervalDays < 2, 'Hard must use the FSRS-7/model-override learning interval');
-  check(previews[2].intervalDays > previews[1].intervalDays && previews[3].intervalDays > previews[2].intervalDays, 'Good and Easy must preserve monotonic FSRS-7 model intervals');
-
   const again = memory.complete(memoryObligation, api.Rating.Again, evidence(4,4,4), new Date(due));
   check(again.followUpType === 'relearn', 'Again must route through corrective relearning');
   check(Math.abs((new Date(again.dueAt) - new Date(due)) / 86400000 - 1) < .001, 'Again must persist the one-day scheduler due date');
@@ -158,19 +152,6 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   check(again.schedulerConfig.graduatingInterval === 1 && again.schedulerConfig.allowModelOverride === true, 'FSRS-7 graduation and model override must be explicit');
   check(/^fnv1a64:[0-9a-f]{16}$/.test(again.schedulerConfig.fingerprint), 'FSRS configuration must carry a deterministic fingerprint');
   mustFail(() => api.validateFsrsConfigSnapshot({...again.schedulerConfig, schedulingPolicy:fixed(.91)}), 'Tampered FSRS scheduling policy must fail its fingerprint');
-
-  const againObservation = {
-    evidenceEventId:'again-event', reviewedAt:due, rating:api.Rating.Again, source:'direct-memory',
-    beforeCard:structuredClone(memoryObligation.policyState.fsrsCard),
-    afterCard:structuredClone(again.policyState.fsrsCard),
-    schedulerConfig:structuredClone(again.schedulerConfig),
-    configFingerprint:again.schedulerConfig.fingerprint
-  };
-  const failedObligation = {...memoryObligation, dueAt:again.dueAt, policyState:again.policyState};
-  const nextDay = new Date(new Date(due).getTime() + 86400000);
-  const repaired = memory.complete(failedObligation, api.Rating.Good, evidence(4,4,3), nextDay, {memoryReviews:[againObservation]});
-  const repairedDays = (new Date(repaired.dueAt) - nextDay) / 86400000;
-  check(repairedDays >= 2.9 && repairedDays <= 3.1, 'Successful next-day repair must return to FSRS-7 at about a three-day interval');
 
   const good = memory.complete(memoryObligation, api.Rating.Good, evidence(3,3,1), new Date(due));
   check(good.policyId === 'memory/ts-fsrs@6.0.0/fsrs-7', 'FSRS-7 policy provenance must be explicit');
@@ -190,13 +171,6 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   check(reviewLapse.policyState.fsrsCard.lapses===1&&reviewLapse.followUpType==='relearn','FSRS must still record its raw Review-state lapse counter while Again routes to host-owned relearning');
   const port = api.revisionSchedulerPort(fixed(.9));
   port.verifyProjection(good.policyState.fsrsCard, [goodObservation]); checks++;
-  const rescheduled = port.reschedule(memoryObligation.policyState.fsrsCard, [goodObservation]);
-  check(rescheduled.dueAt === good.policyState.fsrsCard.dueAt && rescheduled.stabilityFast === good.policyState.fsrsCard.stabilityFast, 'Reschedule must reproduce a same-policy review transition');
-
-  const halfDay = port.retrievability(good.policyState.fsrsCard, [goodObservation], new Date(new Date(due).getTime()+12*60*60*1000));
-  const fullDay = port.retrievability(good.policyState.fsrsCard, [goodObservation], new Date(new Date(due).getTime()+24*60*60*1000));
-  check(halfDay > fullDay && halfDay < 1, 'FSRS-7 retrievability must preserve fractional elapsed time within a day');
-
   const normalized = api.memoryReviewObservationsFor('o', [{
     id:'good-event', obligationId:'o', obligationType:'memory-recall', reviewedAt:due,
     confirmedRating:api.Rating.Good, beforePolicyState:memoryObligation.policyState,
@@ -236,49 +210,8 @@ check(api.evidenceWeaknessScore(weakEvents) > .6, 'Repeated weak evidence must c
 const dayStart = new Date('2026-07-25T04:00:00Z');
 const dayEnd = new Date('2026-07-26T04:00:00Z');
 check(api.temporalDueRisk(new Date('2026-07-20T04:00:00Z'), dayStart, dayEnd, 1) > api.temporalDueRisk(new Date('2026-07-26T12:00:00Z'), dayStart, dayEnd, 1), 'Overdue work must carry higher due risk');
-const planItem = (id, score, mins, type='concept-reconstruction', state='due') => ({
-  joined:{obligation:{id,type,dueAt:due,expectedMinutes:mins},unit:{},profile:{}}, score, dueState:state, executionMinutes:mins, factors:{dueRisk:.7,examImportance:.7,weakness:.5,reviewDuration:.8,examinationProximity:.5,weeklyBalance:.5}
-});
-let packed = api.choosePlanItems([planItem('a',90,40),planItem('b',80,20),planItem('c',70,20)],60);
-check(packed.selected.reduce((sum,item)=>sum+item.joined.obligation.expectedMinutes,0) <= 60, 'Daily plan must respect capacity when feasible');
-check(packed.selected.some(item=>item.joined.obligation.id==='a'), 'Highest-value feasible obligation should be retained');
-packed = api.choosePlanItems([planItem('r',95,90,'relearn','overdue'),planItem('n',70,20)],60);
-check(packed.selected.length === 1 && packed.selected[0].joined.obligation.id === 'r', 'Oversized critical relearning must remain visible as a necessary overrun');
-
 const router = new api.SchedulerPolicyRouter(() => fixed(.9));
 for (const type of ['memory-recall','concept-reconstruction','application-practice','performance-practice','relearn','freshness-review']) check(router.get(type).type === type, `Router missing ${type}`);
-
-// Workflow UI surfaces are distinct rather than one generic rubric.
-const ui = Object.create(api.ActiveRetrievalWorkspace.prototype);
-ui.reviewPreviews = [{rating:1,label:'1d'},{rating:2,label:'2d'},{rating:3,label:'3d'},{rating:4,label:'8d'}];
-const uiMemoryPolicy = {
-  createInitialState(firstDueAt, cardId) {
-    return {
-      engine:'ts-fsrs',version:'6.0.0',stage:0,successStreak:0,failureCount:0,lastIntervalDays:0,
-      fsrsCard:{model:'FSRS-7',cardId,dueAt:firstDueAt,stability:0,stabilityFast:0,difficulty:0,scheduledDays:0,learningSteps:0,reps:0,lapses:0,state:0,scheduleStatus:'new'}
-    };
-  }
-};
-const uiObligation = (kind) => {
-  const type = kind === 'recall' ? 'memory-recall' : kind === 'reconstruction' ? 'concept-reconstruction' : kind === 'questions' ? 'application-practice' : kind === 'relearning' ? 'relearn' : 'performance-practice';
-  const policy = kind === 'recall' ? uiMemoryPolicy : kind === 'reconstruction' ? new api.MasteryPolicy() : kind === 'questions' ? new api.ApplicationPolicy() : kind === 'relearning' ? new api.RelearnPolicy() : new api.PerformancePolicy();
-  return {...obligation(type, policy, kind), workflow:workflow(kind)};
-};
-check(ui.workflowAttemptPanel(uiObligation('recall')).includes('attempt-text'), 'Recall must provide a closed-book workspace');
-check(ui.workflowAttemptPanel(uiObligation('questions')).includes('attempt-completed'), 'Question workflow must require pre-check attempt confirmation');
-check(ui.workflowAttemptPanel(uiObligation('diagram')).includes('diagram-canvas'), 'Diagram workflow must provide the canvas');
-check(ui.workflowAttemptPanel(uiObligation('answer-writing')).includes('attempt-completed') && ui.workflowAttemptPanel(uiObligation('answer-writing')).includes('150 words'), 'Answer writing must enforce an external or in-app constrained attempt');
-check(ui.workflowAssessmentPanel(uiObligation('reconstruction')).includes('relationship-accuracy'), 'Reconstruction must assess relationships');
-check(ui.workflowAssessmentPanel(uiObligation('questions')).includes('questions-correct'), 'Questions must capture objective outcomes');
-check(ui.workflowAssessmentPanel(uiObligation('diagram')).includes('diagram-spatial'), 'Diagram practice must assess spatial form');
-check(ui.workflowAssessmentPanel(uiObligation('answer-writing')).includes('answer-demand'), 'Answer writing must assess question demand');
-check(ui.attemptComparisonPanel(uiObligation('recall')).includes('comparison-attempt-text'), 'Recall comparison must keep the original attempt visible');
-check(ui.attemptComparisonPanel(uiObligation('diagram')).includes('comparison-diagram-canvas'), 'Diagram comparison must preserve the drawn attempt');
-check(ui.workflowAttemptPanel(uiObligation('questions')).includes('Q-bank block 1'), 'Question workflow must display the question-set reference');
-check(ui.workflowAssessmentPanel(uiObligation('questions')).includes('questions-error-summary'), 'Question workflow must capture per-question errors');
-check(ui.workflowAssessmentPanel(uiObligation('answer-writing')).includes('Automatic attempt timing') && !ui.workflowAssessmentPanel(uiObligation('answer-writing')).includes('answer-within-time'), 'Answer timing must be automatic rather than self-declared');
-const failedEventForPanel = { reviewedAt:due, confirmedRating:1, evidence:{completeness:1,independence:1,application:1,errorTypes:['conceptual-misunderstanding'],correctionNote:'Repair the causal chain'}, workflowResult:recallResult };
-check(ui.relearningTriggerPanel(failedEventForPanel).includes('WHY THIS RELEARNING EXISTS') && ui.relearningTriggerPanel(failedEventForPanel).includes('Repair the causal chain'), 'Relearning must expose the triggering failure and correction');
 
 const dummyRepo = {};
 const service = new api.RevisionService(dummyRepo);

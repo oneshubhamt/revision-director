@@ -1,14 +1,12 @@
 'use strict';
-const fs = require('fs');
-const path = require('path');
-const { ROOT, createAppRuntime, memoryLocalStorage } = require('../helpers/runtime-harness');
-const root = ROOT;
+const { createAppRuntime, memoryLocalStorage } = require('../helpers/runtime-harness');
+const { mulberry32, integer } = require('../helpers/seeded');
 
 const memory = memoryLocalStorage();
 const memoryStorage = memory.values;
 const { api } = createAppRuntime({
   globalName: '__RD_B1_TEST__',
-  expose: ["APP_VERSION","DB_VERSION","Store","ACTIVE_RETRIEVAL_ID","ACTIVE_RETRIEVAL_RECOVERY_KEY","ACTIVE_RETRIEVAL_RECOVERY_FORMAT","ACTIVE_RETRIEVAL_DEBOUNCE_MS","ACTIVE_RETRIEVAL_RECOVERY_MAX_CHARS","ACTIVE_RETRIEVAL_RECOVERY_TEXT_CHARS","ACTIVE_RETRIEVAL_RECOVERY_POINTS","canonicalReviewDraftSnapshot","canonicalActiveRetrievalSession","canonicalActiveRetrievalEnvelope","newerActiveRetrieval","compactActiveRetrievalSession","ActiveRetrievalPersistence"],
+  expose: ["Store","ACTIVE_RETRIEVAL_RECOVERY_KEY","ACTIVE_RETRIEVAL_RECOVERY_FORMAT","ACTIVE_RETRIEVAL_RECOVERY_MAX_CHARS","ACTIVE_RETRIEVAL_RECOVERY_TEXT_CHARS","ACTIVE_RETRIEVAL_RECOVERY_POINTS","canonicalReviewDraftSnapshot","canonicalActiveRetrievalSession","canonicalActiveRetrievalEnvelope","newerActiveRetrieval","compactActiveRetrievalSession","ActiveRetrievalPersistence"],
   context: { localStorage: memory.api },
 });
 
@@ -42,10 +40,6 @@ function session(revision, overrides = {}) {
 }
 
 (async () => {
-  check(api.APP_VERSION === 'va7.1-pass-f1' && api.DB_VERSION === 3, 'Pass B1 identity is wrong');
-  check(api.Store.ActiveRetrieval === 'activeRetrieval', 'Active retrieval store is missing');
-  check(api.ACTIVE_RETRIEVAL_DEBOUNCE_MS === 350, 'Debounce contract changed');
-  check(api.ACTIVE_RETRIEVAL_RECOVERY_MAX_CHARS === 900000 && api.ACTIVE_RETRIEVAL_RECOVERY_TEXT_CHARS === 160000 && api.ACTIVE_RETRIEVAL_RECOVERY_POINTS === 12000, 'Emergency snapshot limits changed');
 
   const canonical = api.canonicalActiveRetrievalSession(session(1));
   check(canonical.id === 'current' && canonical.revision === 1, 'Active session canonicalisation failed');
@@ -55,12 +49,31 @@ function session(revision, overrides = {}) {
   mustFail(() => api.canonicalReviewDraftSnapshot({phase:'attempt',values:{},checked:{},diagramStrokes:[[{x:2,y:0}]],attemptElapsedMs:-1}), 'Invalid draft duration was accepted');
   mustFail(() => api.canonicalActiveRetrievalEnvelope({format:api.ACTIVE_RETRIEVAL_RECOVERY_FORMAT,schemaVersion:1,savedAt:'2026-07-27T05:00:00.000Z',session:null}), 'Malformed recovery envelope session was accepted');
 
+  const committing = api.canonicalActiveRetrievalSession(session(2, { status:'committing', commitToken:'commit_2' }));
+  check(committing.status === 'committing' && committing.commitToken === 'commit_2', 'Valid committing state did not survive canonicalisation');
+
+  const random = mulberry32(0xA11CE);
+  const precedenceBase = Date.parse('2026-07-27T06:00:00.000Z');
+  for (let index = 0; index < 128; index += 1) {
+    const revisionA = integer(random, 1, 40);
+    const revisionB = integer(random, 1, 40);
+    const timeA = precedenceBase + integer(random, 0, 500) * 1000;
+    const timeB = precedenceBase + integer(random, 0, 500) * 1000;
+    const a = session(revisionA, { updatedAt:new Date(timeA).toISOString() });
+    const b = session(revisionB, { updatedAt:new Date(timeB).toISOString() });
+    const expected = revisionA !== revisionB ? (revisionA > revisionB ? a : b) : (timeA >= timeB ? a : b);
+    const winner = api.newerActiveRetrieval(a, b);
+    check(winner.revision === expected.revision && winner.updatedAt === expected.updatedAt, 'Seeded recovery precedence mismatch at case ' + index);
+  }
+
   const db = new Map();
   const writes = [];
   const diagnostics = [];
+  let failNextGet = false;
+  let failNextPut = false;
   const fakeData = {
-    async get(store, key) { return db.get(`${store}:${key}`); },
-    async put(store, value) { writes.push(value.revision); await wait(12); db.set(`${store}:${value.id}`, structuredClone(value)); },
+    async get(store, key) { if (failNextGet) { failNextGet = false; throw new Error('injected read failure'); } return db.get(`${store}:${key}`); },
+    async put(store, value) { writes.push(value.revision); if (failNextPut) { failNextPut = false; throw new Error('injected write failure'); } await wait(12); db.set(`${store}:${value.id}`, structuredClone(value)); },
     async delete(store, key) { db.delete(`${store}:${key}`); },
     recordDiagnostic(code, operation, error) { diagnostics.push({code,operation,error:String(error)}); },
   };
@@ -104,20 +117,27 @@ function session(revision, overrides = {}) {
   check(!cleared.session, 'Completed tombstone was exposed as unfinished work');
   check(!memoryStorage.has(api.ACTIVE_RETRIEVAL_RECOVERY_KEY) && !db.has(`${api.Store.ActiveRetrieval}:current`), 'Completed tombstone was not cleared from both stores');
 
-  const ts = fs.readFileSync(path.join(root, 'source/app/50-ui-controller.ts'), 'utf8');
-  const workspace = fs.readFileSync(path.join(root, 'source/app/47-active-retrieval-workspace.ts'), 'utf8');
-  const repo = fs.readFileSync(path.join(root, 'source/app/30-indexeddb-repository.ts'), 'utf8');
-  const service = fs.readFileSync(path.join(root, 'source/app/40-application-services.ts'), 'utf8');
-  const evidenceTransition = fs.readFileSync(path.join(root, 'source/app/23-evidence-transition.ts'), 'utf8');
-  check(ts.includes('document.addEventListener("visibilitychange"') && ts.includes('window.addEventListener("pagehide"') && ts.includes('window.addEventListener("beforeunload"'), 'Forced lifecycle save hooks are incomplete');
-  check(workspace.includes('if (this.commitInFlight) return;') && workspace.includes('button.disabled = true') && !ts.includes('private commitInFlight'), 'Active-retrieval duplicate-commit guard is not workspace-owned');
-  check(repo.includes('private applyWithCommitGuard(')
-    && (repo.match(/this\.applyWithCommitGuard\(/g) || []).length === 2
-    && (repo.match(/current\.commitToken === commitGuard\.commitToken/g) || []).length === 1,
-  'Transactional duplicate-commit guard is not centralized in one authoritative path');
-  check(service.includes('eventId: commitGuard ? `evidence_${commitGuard.commitToken}`')
-    && evidenceTransition.includes('id: input.eventId'),
-  'Evidence idempotency token is missing from the orchestration/transition boundary');
-  check(diagnostics.length === 0, `Unexpected diagnostics: ${JSON.stringify(diagnostics)}`);
+  const faultPersistence = new api.ActiveRetrievalPersistence(fakeData);
+  failNextPut = true;
+  let rejected = false;
+  try { await faultPersistence.flush(session(6)); } catch { rejected = true; }
+  check(rejected, 'Injected IndexedDB write failure was not surfaced to the caller');
+  const emergencyAfterFailure = JSON.parse(memoryStorage.get(api.ACTIVE_RETRIEVAL_RECOVERY_KEY));
+  check(emergencyAfterFailure.session.revision === 6, 'Synchronous emergency recovery was not retained after IndexedDB failure');
+
+  await faultPersistence.flush(session(7));
+  check(db.get(api.Store.ActiveRetrieval + ':current').revision === 7, 'Serialised persistence did not recover after a prior rejected write');
+
+  faultPersistence.forceEmergency(session(8));
+  failNextGet = true;
+  const fallback = await faultPersistence.load();
+  check(fallback.session && fallback.session.revision === 8, 'Local emergency recovery did not survive an injected IndexedDB read failure');
+  check(db.get(api.Store.ActiveRetrieval + ':current').revision === 8, 'Recovered local state was not reconciled after the read fault cleared');
+
+  const diagnosticCodes = diagnostics.map((entry) => entry.code);
+  for (const expected of ['active-retrieval.indexeddb.write','active-retrieval.previous-write','active-retrieval.indexeddb.read']) {
+    check(diagnosticCodes.includes(expected), 'Expected fault diagnostic missing: ' + expected);
+  }
+  check(diagnosticCodes.every((code) => ['active-retrieval.indexeddb.write','active-retrieval.previous-write','active-retrieval.indexeddb.read'].includes(code)), 'Unexpected diagnostics escaped controlled fault injection: ' + JSON.stringify(diagnostics));
   console.log(`PASS ${checks} Pass B1 durable-active-retrieval checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

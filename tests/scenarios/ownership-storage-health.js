@@ -16,9 +16,9 @@ const { createAppRuntime, memoryLocalStorage } = require('../helpers/runtime-har
   const listeners = new Map();
   const document = { documentElement: { dataset: {} }, querySelector(){ return null; } };
   const navigator = { storage: { persisted: async () => false, persist: async () => false, estimate: async () => ({ usage: 80, quota: 100 }) } };
-  const { api, source } = createAppRuntime({
+  const { api } = createAppRuntime({
     globalName: '__RD_B3_TEST__',
-    expose: ["APP_VERSION","REVIEW_OWNER_STORAGE_KEY","REVIEW_OWNER_CHANNEL","REVIEW_OWNER_HEARTBEAT_MS","REVIEW_OWNER_STALE_MS","REVIEW_OWNER_TAKEOVER_WAIT_MS","ReviewOwnershipCoordinator","RevisionData","AppDiagnostics"],
+    expose: ["REVIEW_OWNER_STORAGE_KEY","REVIEW_OWNER_CHANNEL","ReviewOwnershipCoordinator","RevisionData","AppDiagnostics"],
     context: {
       localStorage,
       navigator,
@@ -33,16 +33,6 @@ let checks = 0;
   const check = (value, message) => { checks += 1; if (!value) throw new Error(message); };
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  check(api.APP_VERSION === 'va7.1-pass-f1', 'Pass B3 identity is wrong');
-  check(api.REVIEW_OWNER_STORAGE_KEY === 'revision-director:review-owner:v1', 'Ownership key changed');
-  check(api.REVIEW_OWNER_CHANNEL === 'revision-director-review-owner', 'Ownership channel changed');
-  check(api.REVIEW_OWNER_HEARTBEAT_MS === 4000, 'Heartbeat interval changed');
-  check(api.REVIEW_OWNER_STALE_MS === 15000, 'Lease stale threshold changed');
-  check(api.REVIEW_OWNER_TAKEOVER_WAIT_MS === 1800, 'Takeover wait changed');
-  check(source.includes('await data.refreshStorageHealth(false);'), 'Database startup does not use passive storage inspection');
-  check(source.includes('async refreshStorageHealth(requestPersistence = false)'), 'Storage-health default is not passive');
-  check(source.includes('return this.acquire("takeover", false);'), 'Takeover can still force-overwrite a newly acquired third-party lease');
-  check(source.includes('lease.tabId === message.tabId'), 'Heartbeat messages are not verified against the canonical lease');
 
   const diagnostics = [];
   const fakeData = { recordDiagnostic(code, operation, error) { diagnostics.push({ code, operation, error: String(error) }); } };

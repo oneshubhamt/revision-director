@@ -5,7 +5,8 @@ from playwright.sync_api import sync_playwright
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from helpers.browser_harness import ROOT, launch_chromium, load_browser_qa, open_html_page
+from backup_fixture_codec import baseline_backup_path
+from helpers.browser_harness import ROOT, launch_chromium, load_browser_qa, open_html_page, wait_for_app_ready, wait_for_layout
 QA = load_browser_qa("revision_director_presentation_kernel")
 TIME_SHIM = r'''<script>(()=>{const RealDate=Date;const fixed=RealDate.parse('2026-07-27T06:30:00.000Z');class FixedDate extends RealDate{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed}}Object.defineProperty(window,'Date',{configurable:true,value:FixedDate});})();</script>'''
 HTML = (ROOT/'index.html').read_text().replace('<head>', '<head>'+TIME_SHIM+QA.INDEXEDDB_SHIM, 1)
@@ -22,13 +23,12 @@ def open_page(browser, viewport):
         browser,
         HTML,
         viewport=viewport,
-        settle_ms=1_200,
         default_timeout=10_000,
         include_warnings=True,
     )
     check(not page.locator('#fatal-error').is_visible(), 'Fatal startup error')
-    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(100)
-    QA.restore_selected_backup(page, ROOT/'tests/fixtures/browser-baseline.rdbackup')
+    page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
+    QA.restore_selected_backup(page, baseline_backup_path())
     page.add_style_tag(content='*{animation:none!important;transition:none!important;caret-color:transparent!important}html{scroll-behavior:auto!important}')
     return page, errors
 
@@ -76,7 +76,7 @@ def verify_kernel(page) -> None:
 def verify_corrupt_preference_fallback(browser) -> None:
     corrupt = HTML.replace(QA.INDEXEDDB_SHIM, QA.INDEXEDDB_SHIM.replace('})();\n</script>', "localStorage.setItem('revisionDirector.presentation.v1','../../bad');})();\n</script>"), 1)
     page=browser.new_page(viewport={'width':900,'height':700})
-    page.set_content(corrupt, wait_until='load'); page.wait_for_timeout(900)
+    page.set_content(corrupt, wait_until='load'); wait_for_app_ready(page)
     check(page.locator('html').get_attribute('data-presentation')=='revision-current', 'Corrupt stored presentation bypassed fallback')
     check(not page.locator('#fatal-error').is_visible(), 'Corrupt preference caused startup failure')
     page.close()
@@ -90,7 +90,7 @@ def main() -> None:
             page,errors=open_page(browser,viewport)
             verify_kernel(page)
             for pane in ('today','review','library','study','history','settings'):
-                page.locator(f'[data-pane="{pane}"]').click(); page.wait_for_timeout(180)
+                page.locator(f'[data-pane="{pane}"]').click(); page.locator(f'#pane-{pane}').wait_for(state='visible'); wait_for_layout(page)
                 page.evaluate("""() => { const clock=document.querySelector('#clock'); if(clock) clock.textContent='12:34:56'; const toast=document.querySelector('#toast'); if(toast) toast.classList.remove('show'); document.documentElement.scrollTop=0; document.body.scrollTop=0; }""")
                 check(not page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth"), f'Horizontal overflow in {label}/{pane}')
                 check(page.locator(f'#pane-{pane}').is_visible(), f'Pane visibility failed in {label}/{pane}')

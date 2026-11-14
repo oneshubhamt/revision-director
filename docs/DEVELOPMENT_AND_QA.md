@@ -33,7 +33,7 @@ Never hand-edit `dist/app.js` or `index.html`.
 
 ## Test philosophy
 
-Tests are organized by behaviour and safety boundary. Historical pass/stage entrypoints have been consolidated into behavior-named suites; their assertion bodies remain isolated under `tests/scenarios/` so failures retain narrow diagnostics without recreating implementation-pass sprawl.
+Tests are organized by behaviour and safety boundary. `tests/qa.py` is the single suite-membership registry; substantive scenario bodies live under `tests/scenarios/`, while thin wrapper-only entrypoints are intentionally absent. Static architecture tests protect published build boundaries rather than private method names or source phrasing.
 
 The permanent suite covers:
 
@@ -59,12 +59,16 @@ npm run qa:core
 npm run qa:optimizer
 npm run qa:browser:durability
 npm run qa:browser
+npm run qa:browser:performance
+npm run qa:deep
 npm run qa:full
 ```
 
-`qa:core` rebuilds the authoritative artifacts, refreshes the tracked checksum manifest in the working tree, checks source/build ownership, and runs every non-browser JavaScript regression. `qa:optimizer` exercises the isolated native optimizer runtime. `qa:browser:durability` is the focused phase-time/durability gate. `qa:browser` runs the complete Python/Chromium matrix plus full browser/WASM optimizer training. `qa:full` runs all four surfaces in order. Browser commands require Playwright and Chromium; local hosted-optimizer runs require `npm ci --prefix tools/fsrs-optimizer` and `npm run build:hosted` if the hosted distribution is not already present.
+`qa:core` performs exactly one authoritative build, verifies `CHECKSUMS.sha256` read-only, checks the build/architecture contract and HTML structure, and runs the fast non-browser JavaScript regressions. `qa:optimizer` exercises the isolated native optimizer runtime. `qa:browser:durability` is the focused phase-time/durability gate. `qa:browser` runs the ordinary browser matrix against one parent-owned Chromium process, with isolated Playwright contexts for each scenario and only the fast browser/WASM optimizer probe. `qa:browser:performance` keeps the 1,000-unit large-data journey in its own Chromium process so process state and remote-CDP transport cannot distort the measurement. `qa:deep` owns the long FSRS-R2 scheduling experiment and full browser/WASM optimizer training. `qa:full` runs every tier. Browser commands require Playwright and Chromium; local hosted-optimizer runs require `npm ci --prefix tools/fsrs-optimizer` and `npm run build:hosted` if the hosted distribution is not already present.
 
-The Python browser suite shares stable launch, error-capture, wait, module-loading and scenario-runner primitives from `tests/helpers/browser_harness.py`. The reusable persistent IndexedDB shim, host-state access, iframe bootstrapping and safety-copy restore ceremony live in `tests/helpers/persistent_browser.py`. Clock manipulation, hostile-commit injection, broadcast-channel behavior and other scenario-specific shims remain with the scenarios that own them.
+The Python browser suite shares launch, error-capture, readiness, condition-wait, layout and module-loading primitives from `tests/helpers/browser_harness.py`; scenario ordering belongs only to `tests/qa.py`. Ordinary browser scenarios connect over CDP to one Chromium process but receive fresh incognito contexts so cookies, IndexedDB, localStorage and ownership state remain isolated. Tests whose subject is process persistence or performance deliberately opt out: the native IndexedDB journey launches a persistent profile, closes Chromium and relaunches a new process with the same profile, while the large-data performance tier uses its own local Chromium. The reusable mock IndexedDB shim, host-state access, iframe bootstrapping and safety-copy restore ceremony remain in `tests/helpers/persistent_browser.py`.
+
+Fixed wall-clock sleeps are not the normal synchronization primitive. Browser tests should wait for the state that makes the assertion meaningful: visible/hidden UI state, a specific rendered record, IndexedDB persistence, ownership state, evidence publication, or a controlled-clock transition. Real elapsed waits are retained only where elapsed browser time itself is under test, such as timer/durability behavior.
 
 ## Required QA discipline
 
@@ -81,6 +85,12 @@ For a material change:
 Generated output must be rebuilt from source before release/merge.
 
 The permanent Node regression matrix includes a multi-year FSRS scale/determinism benchmark. Its fixture spans 96 memory cards with 48 reviews each (4,608 review events, about 5.8 years per card), verifies order-independent evidence normalization, forces one independent replay per reviewed card, then proves repeated retrievability reuses replay verification by instrumenting the single reschedule primitive. It also checks deterministic materialization and planner tie resolution. Timing assertions are intentionally generous regression envelopes rather than microbenchmark claims.
+
+Mathematical and stateful regression tests use deterministic seeded cases where broad input coverage is valuable. Planner selection is checked against an independent exhaustive subset oracle on hundreds of small seeded problems; the oracle models the documented critical-first planning policy but does not reuse the production dynamic-programming implementation. It also checks capacity, disposition partitioning, permutation invariance and monotonic attainable critical value as capacity increases.
+
+FSRS scheduling mathematics are not reimplemented in application tests. `tests/fsrs-reference-parity.spec.js` creates an independent scheduler directly from the checksum-pinned upstream ts-fsrs 6.0.0 runtime and compares Revision Director card transitions, replay, previews and retrievability against that reference across deterministic review sequences. Host-owned corrective-relearning, difficulty, persistence and personalization semantics remain separate application-level tests.
+
+Active-retrieval persistence tests use controlled storage read/write failures as well as deterministic recovery-state precedence cases. They verify that emergency local recovery survives an IndexedDB write failure, subsequent serialized writes recover, a local snapshot remains usable during an IndexedDB read failure, reconciliation resumes afterward, and expected diagnostics are emitted without relying on source-expression scans.
 
 The matrix also includes the permanent FSRS-R2 scheduling experiment, which invokes the vendored ts-fsrs runtime directly rather than duplicating its mathematics. It uses deterministic retrievability-dependent outcomes across three sensitivity scenarios, 90/365/730-day horizons and the actual corrective lifecycle, including failed closed-book verification and repeated host corrective work. It sweeps long-form learning-step alternatives, fixed retention 0.84–0.92, Cost-ADR weights 64–1024 and fuzz on/off. The experiment asserts the measured production decision: `1d` learning/relearning, fixed retention 0.90 as the new-install default, and fuzz disabled. The bounded Cost-ADR 1024 path remains regression-tested as an optional scheduler implementation rather than being treated as the default.
 
@@ -126,9 +136,9 @@ The two-checker configuration was selected because it matched the fastest median
 
 The permanent GitHub Actions workflow uses an explicit Ubuntu 24.04 runner, the pinned project Node/npm/TypeScript toolchain, Python 3.13 and full-sha-pinned official GitHub actions.
 
-The core job is read-only and invokes `npm run qa:core`, covering the strict TypeScript 7 build, JavaScript parse validation, build integrity, HTML sanity, source ownership, checksum refresh in the checkout, and every non-browser JavaScript regression.
+The core job is read-only and invokes `npm run qa:core`, covering one strict TypeScript 7 build, JavaScript parse validation, authoritative build/architecture checks, HTML sanity, read-only checksum verification and every non-browser JavaScript regression.
 
-Checksum refresh is implemented once in `build/checksums.py`; CI does not duplicate hashing logic in workflow YAML. The external-optimizer job installs only the isolated native optimizer lockfile and invokes `npm run qa:optimizer`. The browser job is read-only and invokes the same `qa:browser:durability` and `qa:browser` commands used locally. A separate working-branch-only job has the sole write permission needed to regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. Main-branch and pull-request runs still fail on a generated-artifact/checksum diff, while working-branch source commits are synchronized by that dedicated writer job.
+`build/checksums.py --check` is the normal QA path. `--write` is reserved for the working-branch generated-artifact synchronization job or deliberate release-manifest maintenance; tests and prose are not checksum targets. The external-optimizer job installs only the isolated native optimizer lockfile and invokes `npm run qa:optimizer`. The browser job is read-only and invokes the same `qa:browser:durability` and `qa:browser` commands used locally. A separate working-branch-only writer can regenerate and commit `dist/app.js`, `index.html` and `CHECKSUMS.sha256` from authoritative source. It runs independently of read-only core QA and tags its synchronization commit so it does not recurse. Main-branch and pull-request QA remain read-only and require committed generated artifacts.
 
 ## Browser/device boundary
 
@@ -145,4 +155,4 @@ These are QA boundaries, not reasons to add compatibility or migration code.
 
 ## Checksums
 
-`CHECKSUMS.sha256` is the repository integrity manifest for tracked release-critical files. `python3 build/checksums.py --write` refreshes it; `--check` verifies it without mutation. Any tracked file covered by the manifest must be refreshed after modification. The manifest does not hash itself.
+`CHECKSUMS.sha256` covers release-critical source, build inputs, generated artifacts, vendored/runtime assets and optimizer tooling. QA code, workflow YAML, internal documentation, README and changelog prose are deliberately outside this release manifest; legal notices remain covered. `python3 build/checksums.py --check` is the ordinary verification command; `--write` is an explicit maintenance operation. The manifest does not hash itself.

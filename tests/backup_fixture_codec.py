@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import tempfile
 from pathlib import Path
 
 ORDER=("profiles","nodes","units","studyEvents","obligations","evidenceEvents","chunks","dailyPlans","settings","activeRetrieval")
@@ -55,6 +56,19 @@ def encode_payload(payload:dict)->bytes:
 def encode_file(source:Path,target:Path)->None:
     payload=json.loads(source.read_text())
     target.write_bytes(encode_payload(payload))
+
+BASELINE_JSON=Path(__file__).resolve().parent/'fixtures/browser-baseline.json'
+
+def baseline_backup_path()->Path:
+    source=BASELINE_JSON.read_bytes()
+    digest=sha256(source)[:16]
+    directory=Path(tempfile.gettempdir())/'revision-director-tests'
+    directory.mkdir(parents=True,exist_ok=True)
+    target=directory/f'browser-baseline-{digest}.rdbackup'
+    expected=encode_payload(json.loads(source))
+    if not target.exists() or target.read_bytes()!=expected:
+        target.write_bytes(expected)
+    return target
 
 if __name__=='__main__':
     import sys

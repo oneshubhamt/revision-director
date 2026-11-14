@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
-from backup_fixture_codec import decode_file
+from backup_fixture_codec import baseline_backup_path, decode_file
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
@@ -19,9 +19,10 @@ from helpers.persistent_browser import (
     BASE_HTML,
     PERSISTENT_BROWSER_SHIM,
     create_persistent_frame,
+    host_state_all as state_all,
     host_state_get as state_get,
 )
-BASELINE_BACKUP = ROOT / "tests/fixtures/browser-baseline.rdbackup"
+BASELINE_BACKUP = baseline_backup_path()
 CLOCK_SHIM = r"""
 <script>
 (() => {
@@ -52,10 +53,6 @@ def check(condition: bool, message: str) -> None:
     checks += 1
     if not condition:
         raise AssertionError(message)
-
-
-def wait(frame, ms=1150):
-    frame.wait_for_timeout(ms)
 
 
 def wait_until(frame, predicate, timeout=6000):
@@ -183,85 +180,114 @@ def main() -> None:
         seed_baseline_state(page)
         frame = boot_frame(page)
 
-        frame.locator('[data-pane="today"]').click(); wait(frame, 200)
-        frame.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click(); wait(frame, 300)
+        frame.locator('[data-pane="today"]').click()
+        frame.locator("#pane-today").wait_for(state="visible")
+        frame.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click()
+        frame.locator('[data-action="toggle-pause"]').wait_for(state="visible")
         check(frame.locator('[data-action="toggle-pause"]').count() == 1, "Pause control is missing")
         initial = frame.locator("#review-timer").inner_text()
         check(initial in ("0:00", "0:01"), f"Unexpected initial timer: {initial}")
 
-        frame.evaluate("__RD_TEST_CLOCK__.advance(10000)"); wait(frame)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(10000)")
+        wait_until(frame, lambda: frame.locator("#review-timer").inner_text().startswith("0:1"))
         check(frame.locator("#review-timer").inner_text().startswith("0:1"), "Active time did not accumulate")
-        frame.locator('[data-action="toggle-pause"]').click(); wait(frame, 180)
+
+        frame.locator('[data-action="toggle-pause"]').click()
+        wait_until(frame, lambda: "PAUSED" in frame.locator("#review-time-state").inner_text().upper())
         check("PAUSED" in frame.locator("#review-time-state").inner_text().upper(), "Pause state is not visible")
         paused_timer = frame.locator("#review-timer").inner_text()
-        frame.evaluate("__RD_TEST_CLOCK__.advance(30000)"); frame.evaluate("window.dispatchEvent(new Event(\'focus\'))"); wait(frame)
+
+        frame.evaluate("__RD_TEST_CLOCK__.advance(30000); window.dispatchEvent(new Event('focus'))")
+        wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "paused")
         check(frame.locator("#review-timer").inner_text() == paused_timer, "Paused interval was counted")
-        frame.locator('[data-action="toggle-pause"]').click(); wait(frame, 450)
-        frame.evaluate("__RD_TEST_CLOCK__.advance(5000)"); wait(frame)
+
+        frame.locator('[data-action="toggle-pause"]').click()
+        wait_until(frame, lambda: "PAUSED" not in frame.locator("#review-time-state").inner_text().upper())
+        frame.evaluate("__RD_TEST_CLOCK__.advance(5000); window.dispatchEvent(new Event('focus'))")
+        wait_until(frame, lambda: len(active_session(page)["timeRuntime"]["pauseHistory"]) == 1)
         session = active_session(page)
-        check(len(session["timeRuntime"]["pauseHistory"]) == 1, "Manual pause history was not persisted")
         check(session["timeRuntime"]["pauseHistory"][0]["durationMs"] == 30000, "Persisted pause duration is wrong")
 
         # Backward wall-clock movement is rebased rather than subtracted.
-        # Use the real lifecycle-return path to reconcile and persist the clock event;
-        # pause/resume is a user control, not a persistence flush mechanism.
+        # Use the lifecycle-return path to reconcile and persist clock events.
         before_back = session["elapsedMs"]
-        frame.evaluate("__RD_TEST_CLOCK__.advance(-10000); window.dispatchEvent(new Event('focus'))"); wait(frame, 220)
-        frame.evaluate("__RD_TEST_CLOCK__.advance(20000); window.dispatchEvent(new Event('focus'))"); wait(frame, 220)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(-10000); window.dispatchEvent(new Event('focus'))")
+        wait_until(frame, lambda: active_session(page)["timeRuntime"]["backwardClockCount"] >= 1)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(20000); window.dispatchEvent(new Event('focus'))")
+        wait_until(frame, lambda: active_session(page)["elapsedMs"] >= before_back)
         session = active_session(page)
         check(session["timeRuntime"]["backwardClockCount"] >= 1, "Backward-clock event was not persisted")
         check(session["elapsedMs"] >= before_back, "Backward clock reduced active time")
 
         # Focus classification counts the gap in the current phase.
         timer_before_focus = session["elapsedMs"]
-        frame.evaluate("__RD_TEST_CLOCK__.advance(130001)"); frame.evaluate("window.dispatchEvent(new Event('focus'))"); wait(frame)
-        check(frame.locator("#gap-overlay").is_visible(), "120-second inactive gap was not detected")
+        frame.evaluate("__RD_TEST_CLOCK__.advance(130001); window.dispatchEvent(new Event('focus'))")
+        frame.locator("#gap-overlay").wait_for(state="visible")
         wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "gap-pending")
+        check(frame.locator("#gap-overlay").is_visible(), "120-second inactive gap was not detected")
         pending = active_session(page)["timeRuntime"]
         check(pending["pendingGap"]["gapMs"] > 120000, "Pending gap was not durably saved")
-        frame.locator('[data-gap-action="focus"]').click(); wait(frame, 220)
+        frame.locator('[data-gap-action="focus"]').click()
+        frame.locator("#gap-overlay").wait_for(state="hidden")
+        wait_until(frame, lambda: active_session(page)["elapsedMs"] >= timer_before_focus + 130000)
         session = active_session(page)
         check(session["elapsedMs"] >= timer_before_focus + 130000, "Focus classification did not add active time")
 
         # Break classification excludes the gap and records a pause.
         before_break = session["elapsedMs"]
-        frame.evaluate("__RD_TEST_CLOCK__.advance(130001)"); frame.evaluate("window.dispatchEvent(new Event('focus'))"); wait(frame)
-        frame.locator('[data-gap-action="break"]').click(); wait(frame, 220)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(130001); window.dispatchEvent(new Event('focus'))")
+        frame.locator("#gap-overlay").wait_for(state="visible")
+        frame.locator('[data-gap-action="break"]').click()
+        frame.locator("#gap-overlay").wait_for(state="hidden")
+        wait_until(frame, lambda: any(item["reason"] == "inactive-gap-break" for item in active_session(page)["timeRuntime"]["pauseHistory"]))
         session = active_session(page)
         check(session["elapsedMs"] == before_break, "Break classification added active time")
         check(any(item["reason"] == "inactive-gap-break" for item in session["timeRuntime"]["pauseHistory"]), "Break classification is absent from pause history")
 
         # Split classification adds only the verified focus portion.
         before_split = session["elapsedMs"]
-        frame.evaluate("__RD_TEST_CLOCK__.advance(180000)"); frame.evaluate("window.dispatchEvent(new Event('focus'))"); wait(frame)
-        frame.locator('[data-gap-action="split"]').click(); wait(frame, 80)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(180000); window.dispatchEvent(new Event('focus'))")
+        frame.locator("#gap-overlay").wait_for(state="visible")
+        frame.locator('[data-gap-action="split"]').click()
+        frame.locator("#gap-focus-minutes").wait_for(state="visible")
         frame.locator("#gap-focus-minutes").fill("1")
-        frame.locator('[data-gap-action="apply-split"]').click(); wait(frame, 220)
+        frame.locator('[data-gap-action="apply-split"]').click()
+        frame.locator("#gap-overlay").wait_for(state="hidden")
+        wait_until(frame, lambda: active_session(page)["elapsedMs"] == before_split + 60000)
         session = active_session(page)
         check(session["elapsedMs"] == before_split + 60000, "Split classification did not use the verified focus portion")
 
         # Ignore excludes the interval and makes the eventual duration sample ineligible.
         before_ignore = session["elapsedMs"]
-        frame.evaluate("__RD_TEST_CLOCK__.advance(180000)"); frame.evaluate("window.dispatchEvent(new Event('focus'))"); wait(frame)
-        frame.locator('[data-gap-action="ignore"]').click(); wait(frame, 220)
+        frame.evaluate("__RD_TEST_CLOCK__.advance(180000); window.dispatchEvent(new Event('focus'))")
+        frame.locator("#gap-overlay").wait_for(state="visible")
+        frame.locator('[data-gap-action="ignore"]').click()
+        frame.locator("#gap-overlay").wait_for(state="hidden")
+        wait_until(frame, lambda: active_session(page)["timeRuntime"]["gapHistory"][-1]["classification"] == "ignore")
         session = active_session(page)
         check(session["elapsedMs"] == before_ignore, "Ignored gap was counted")
         check(session["timeRuntime"]["gapHistory"][-1]["classification"] == "ignore", "Ignore classification was not persisted")
 
         # Complete the known question/application workflow.
         frame.locator("#attempt-text").fill("Reasoned answers and uncertain options.")
-        if frame.locator("#attempt-completed").count(): frame.locator("#attempt-completed").check()
-        frame.locator('[data-action="reveal"]').click(); wait(frame, 220)
+        if frame.locator("#attempt-completed").count():
+            frame.locator("#attempt-completed").check()
+        frame.locator('[data-action="reveal"]').click()
+        frame.locator('[data-review-phase="compare"]').wait_for(state="visible")
         check(frame.locator('[data-review-phase="compare"]').is_visible(), "Source reveal did not enter compare phase")
         frame.locator("#questions-attempted").fill("10")
         frame.locator("#questions-correct").fill("8")
         frame.locator("#questions-partial").fill("1")
         for index in range(frame.locator("[data-checkpoint]").count()):
             item = frame.locator("[data-checkpoint]").nth(index)
-            if not item.is_checked(): item.check()
-        frame.locator('[data-action="rate"][data-rating="3"]').click(); wait(frame, 600)
+            if not item.is_checked():
+                item.check()
+        before_evidence = len(state_all(page, "evidenceEvents"))
+        frame.locator('[data-action="rate"][data-rating="3"]').click()
+        wait_until(frame, lambda: len(state_all(page, "evidenceEvents")) == before_evidence + 1)
 
-        frame.locator('[data-pane="settings"]').click(); wait(frame, 180)
+        frame.locator('[data-pane="settings"]').click()
+        frame.locator("#pane-settings").wait_for(state="visible")
         with TemporaryDirectory() as tmp:
             target = Path(tmp) / "b2.rdbackup"
             with page.expect_download() as download_info:

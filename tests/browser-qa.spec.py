@@ -4,14 +4,13 @@ from datetime import date, timedelta
 from tempfile import TemporaryDirectory
 import os
 import json
-from backup_fixture_codec import decode_file, encode_payload
+from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from playwright.sync_api import sync_playwright
-from helpers.browser_harness import launch_chromium
-import time
+from helpers.browser_harness import launch_chromium, select_backup_file, wait_for_app_ready, wait_for_layout, wait_until
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_HTML = (ROOT / "index.html").read_text()
-BASELINE_BACKUP = ROOT / "tests/fixtures/browser-baseline.rdbackup"
+BASELINE_BACKUP = baseline_backup_path()
 INDEXEDDB_SHIM = r"""
 <script>
 (() => {
@@ -60,14 +59,13 @@ def check(condition: bool, message: str) -> None:
 
 
 def wait_for_text(page, selector: str, expected: str, timeout_seconds: float = 5.0) -> None:
-    deadline = time.monotonic() + timeout_seconds
-    last = ""
-    while time.monotonic() < deadline:
-        last = page.locator(selector).inner_text().strip()
-        if last == expected:
-            return
-        page.wait_for_timeout(80)
-    raise AssertionError(f"Timed out waiting for {selector}={expected!r}; last={last!r}")
+    wait_until(
+        page,
+        lambda: page.locator(selector).inner_text().strip() == expected,
+        timeout=int(timeout_seconds * 1000),
+        interval=40,
+        message=f"Timed out waiting for {selector}={expected!r}",
+    )
 
 
 def set_range(page, selector: str, value: int) -> None:
@@ -84,13 +82,10 @@ def check_all_checkpoints(page) -> None:
 
 
 def restore_selected_backup(page, backup_path: str | Path, treatment: str = "discard", wait_ms: int = 900, download_page=None) -> None:
-    page.locator("#import-backup").set_input_files(str(backup_path))
-    deadline = time.monotonic() + max(5.0, wait_ms / 1000)
-    while time.monotonic() < deadline and not page.locator("#restore-dialog").is_visible():
-        page.wait_for_timeout(80)
-    if not page.locator("#restore-dialog").is_visible():
-        toast = page.locator("#toast").inner_text().strip()
-        raise AssertionError(f"Restore preview did not open; toast={toast!r}")
+    timeout = max(20_000, wait_ms)
+    result = select_backup_file(page, backup_path, timeout=timeout)
+    if not result["preview"]:
+        raise AssertionError(f"Restore preview did not open within {timeout}ms; result={result!r}")
     with TemporaryDirectory() as tmpdir:
         download_surface = download_page or page
         with download_surface.expect_download() as download_info:
@@ -103,8 +98,16 @@ def restore_selected_backup(page, backup_path: str | Path, treatment: str = "dis
     page.locator("#restore-safety-saved").check()
     page.locator("#restore-replace-confirm").check()
     check(page.locator("#restore-final-button").is_enabled(), "Final restore remained disabled")
+    page.evaluate("document.querySelector('#toast').textContent=''")
     page.locator("#restore-final-button").click()
-    page.wait_for_timeout(1100)
+    page.locator("#restore-dialog").wait_for(state="hidden")
+    wait_until(
+        page,
+        lambda: "restored" in page.locator("#toast").inner_text().lower(),
+        timeout=8000,
+        interval=40,
+        message="Restore did not complete canonical hydration",
+    )
 
 def open_page(browser, viewport=None, baseline: bool = False):
     page = browser.new_page(viewport=viewport or {"width": 1440, "height": 1000})
@@ -113,11 +116,10 @@ def open_page(browser, viewport=None, baseline: bool = False):
     page.on("pageerror", lambda error: errors.append(("pageerror", str(error))))
     page.on("dialog", lambda dialog: dialog.accept())
     page.set_content(HTML, wait_until="load")
-    page.wait_for_timeout(1400)
-    check(not page.locator("#fatal-error").is_visible(), "Fatal startup error")
+    wait_for_app_ready(page)
     if baseline:
         page.locator('[data-pane="settings"]').click()
-        page.wait_for_timeout(120)
+        page.locator("#pane-settings").wait_for(state="visible")
         payload = decode_file(BASELINE_BACKUP)
         test_exam_date = (date.today() + timedelta(days=14)).isoformat()
         for profile in payload["profiles"]:
@@ -132,16 +134,24 @@ def open_page(browser, viewport=None, baseline: bool = False):
 
 def review_unit(page, title: str) -> None:
     page.locator('[data-pane="library"]').click()
-    page.wait_for_timeout(180)
+    page.locator("#pane-library").wait_for(state="visible")
     row = page.locator(".unit-row").filter(has_text=title)
     check(row.count() == 1, f"Knowledge Unit not found: {title}")
     row.locator('[data-action="review-unit"]').click()
-    page.wait_for_timeout(300)
+    page.locator("#review-content").wait_for(state="visible")
+    wait_until(
+        page,
+        lambda: title in page.locator("#review-content").inner_text(),
+        timeout=5_000,
+        interval=30,
+        message=f"Review surface did not render selected unit: {title}",
+    )
 
 
 def rate_good(page) -> None:
-    page.locator('[data-action="rate"][data-rating="3"]').click()
-    page.wait_for_timeout(420)
+    button = page.locator('[data-action="rate"][data-rating="3"]')
+    button.click()
+    button.wait_for(state="hidden", timeout=5_000)
 
 
 def scenario_basic(browser) -> None:
@@ -150,11 +160,11 @@ def scenario_basic(browser) -> None:
     check("Indian Forest Service" not in page.locator("body").inner_text(), "Sample profile leaked into production startup")
     for pane in ("review", "library", "study", "history", "settings", "today"):
         page.locator(f'[data-pane="{pane}"]') .click()
-        page.wait_for_timeout(80)
+        page.locator(f"#pane-{pane}").wait_for(state="visible")
         check(page.locator(f"#pane-{pane}").evaluate('e=>e.classList.contains("on")'), f"Pane did not open: {pane}")
 
     page.locator('[data-pane="settings"]').click()
-    page.wait_for_timeout(120)
+    page.locator("#settings-content").wait_for(state="visible")
     settings_text = page.locator("#settings-content").inner_text()
     check("Storage health" in settings_text and "IndexedDB" in settings_text, "Storage-health contract is not visible")
     check(page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "fixed-retention", "Clean installations must default to measured fixed-retention scheduling")
@@ -162,11 +172,11 @@ def scenario_basic(browser) -> None:
     page.locator("#new-profile-name").fill("IFoS Production Test")
     page.locator("#new-profile-date").fill("2027-11-01")
     page.locator('[data-action="add-profile"]').click()
-    page.wait_for_timeout(420)
+    page.wait_for_function("() => document.querySelectorAll('[data-profile-editor]').length === 1")
     check(page.locator("[data-profile-editor]").count() == 1, "First production exam profile was not created")
 
     page.locator("#quick-add-unit").click()
-    page.wait_for_timeout(250)
+    page.locator("#unit-dialog").wait_for(state="visible")
     form = page.locator("#unit-form")
     values = {
         "subject": "Public Administration", "section": "Administrative Thinkers", "topic": "Max Weber",
@@ -189,12 +199,12 @@ def scenario_basic(browser) -> None:
     study.locator('[name="measure"]').fill("Pages 10-15")
     study.locator('[name="durationMinutes"]').fill("45")
     study.locator('button[type="submit"]').click()
-    page.wait_for_timeout(500)
+    page.locator("#study-dialog").wait_for(state="hidden")
     page.locator('[data-pane="study"]').click()
-    check("Weber" in page.locator("#study-content").inner_text(), "Study Event not displayed")
+    wait_until(page, lambda: "Weber" in page.locator("#study-content").inner_text(), timeout=5000, interval=40, message="Study Event not displayed")
 
     page.set_viewport_size({"width": 390, "height": 844})
-    page.wait_for_timeout(180)
+    wait_for_layout(page)
     check(not page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth"), "Horizontal mobile overflow")
     for pane in ("today", "review", "library", "study", "history", "settings"):
         check(page.locator(f'[data-pane="{pane}"]') .is_visible(), f"Mobile navigation hidden: {pane}")
@@ -219,18 +229,20 @@ def scenario_backups(browser) -> None:
         page.locator("#new-profile-name").fill("Temporary profile")
         page.locator("#new-profile-date").fill("2028-01-01")
         page.locator('[data-action="add-profile"]').click()
-        page.wait_for_timeout(300)
+        page.wait_for_function("() => document.querySelectorAll('[data-profile-editor]').length === 3")
         check(page.locator("[data-profile-editor]").count() == 3, "Mutation before restore failed")
 
         restore_selected_backup(page, backup_path)
         check("restored" in page.locator("#toast").inner_text().lower(), "Backup restore not reported")
-        page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(120)
+        page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
         check(page.locator("[data-profile-editor]").count() == 2, "Backup restore did not replace temporary data")
 
         Path(hostile_path).write_bytes(encode_payload({**payload, 'settings':{**payload['settings'], 'activeProfileId':'missing-profile'}}))
-        page.locator("#import-backup").set_input_files(hostile_path)
-        page.wait_for_timeout(320)
-        check(any(token in page.locator("#toast").inner_text().lower() for token in ("invalid","missing","profile")), "Hostile backup accepted")
+        result = select_backup_file(page, hostile_path, timeout=5000)
+        check(
+            bool(result["message"]) and result["error"] and not result["preview"],
+            f"Hostile backup did not fail through the rejection UI contract · result={result!r}",
+        )
     check(not errors, f"Browser errors: {errors}")
     page.close()
 
@@ -240,21 +252,21 @@ def scenario_workflows(browser) -> None:
     review_unit(page, "Drainage patterns and structural control")
     check("RECONSTRUCTION" in page.locator("#review-content").inner_text(), "Reconstruction did not start")
     page.locator("#attempt-text").fill("Dendritic uniform rocks; trellis folded strata; rectangular joints; radial domes; annular rings; parallel slopes.")
-    page.locator('[data-action="reveal"]').click(); page.wait_for_timeout(150)
+    page.locator('[data-action="reveal"]').click(); page.locator("#comparison-attempt-text").wait_for(state="visible")
     check("Dendritic uniform rocks" in page.locator("#comparison-attempt-text").inner_text(), "Reconstruction attempt lost")
     check_all_checkpoints(page); set_range(page, "#structural-accuracy", 4); set_range(page, "#relationship-accuracy", 4); rate_good(page)
 
     check("DIAGRAM PRACTICE" in page.locator("#review-content").inner_text(), "Diagram did not follow")
     canvas = page.locator("#diagram-canvas"); box = canvas.bounding_box(); check(box is not None, "Diagram canvas missing")
     page.mouse.move(box["x"] + 20, box["y"] + 30); page.mouse.down(); page.mouse.move(box["x"] + 120, box["y"] + 100, steps=6); page.mouse.up()
-    page.locator('[data-action="reveal"]').click(); page.wait_for_timeout(180)
+    page.locator('[data-action="reveal"]').click(); page.locator("#comparison-diagram-canvas").wait_for(state="visible")
     check(page.locator("#comparison-diagram-canvas").is_visible(), "Diagram comparison missing")
     check_all_checkpoints(page)
     for selector in ("#diagram-labels", "#diagram-spatial", "#diagram-process"): set_range(page, selector, 4)
     rate_good(page)
 
     check("ANSWER WRITING" in page.locator("#review-content").inner_text(), "Answer writing did not follow")
-    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.wait_for_timeout(150)
+    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
     for selector in ("#answer-demand", "#answer-structure-score", "#answer-content", "#answer-examples", "#answer-conclusion"): set_range(page, selector, 4)
     page.locator("#answer-word-count").fill("148")
     check("Within the 10-minute limit" in page.locator("#answer-time-status").inner_text(), "Automatic timing missing")
@@ -263,30 +275,46 @@ def scenario_workflows(browser) -> None:
     review_unit(page, "Staphylococcus aureus")
     check("QUESTIONS / APPLICATION" in page.locator("#review-content").inner_text(), "Questions did not start")
     page.locator("#attempt-text").fill("Attempted; toxin distinctions uncertain.")
-    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.wait_for_timeout(120)
+    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
     page.locator("#questions-attempted").fill("10"); page.locator("#questions-correct").fill("1"); page.locator("#questions-partial").fill("0")
     page.locator("#questions-error-summary").fill("Q2 toxin; Q3 resistance.")
     page.locator("#correction-note").fill("Relearn toxin syndromes and resistance logic.")
     page.locator("#error-application-failure").check()
-    page.locator('[data-action="rate"][data-rating="1"]').click(); page.wait_for_timeout(380)
-    check("RECALL" in page.locator("#review-content").inner_text(), "Recall did not follow")
-    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.wait_for_timeout(120)
+    page.locator('[data-action="rate"][data-rating="1"]').click()
+    wait_until(page, lambda: "RECALL" in page.locator("#review-content").inner_text(), timeout=5000, interval=40, message="Recall did not follow")
+    page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
     check_all_checkpoints(page); rate_good(page)
 
     relearn = page.locator(".planner-row").filter(has_text="Relearn")
+    wait_until(
+        page,
+        lambda: relearn.count() >= 1,
+        timeout=5_000,
+        interval=40,
+        message="Relearning obligation was not created",
+    )
     check(relearn.count() >= 1, "Relearning obligation was not created")
-    relearn.first.locator('[data-action="review-one"]').click(); page.wait_for_timeout(250)
+    relearn.first.locator('[data-action="review-one"]').click()
+    wait_until(page, lambda: "WHY THIS RELEARNING EXISTS" in page.locator("#review-content").inner_text(), timeout=5000, interval=40, message="Relearning review did not open")
     text = page.locator("#review-content").inner_text()
     check("WHY THIS RELEARNING EXISTS" in text and "Relearn toxin syndromes" in text, "Relearning trigger context missing")
     page.locator("#relearn-repair-action").fill("Rebuilt toxin and resistance distinctions from the source.")
     page.locator("#relearn-repair-completed").check(); page.locator('[data-action="begin-verification"]').click()
     page.locator("#relearn-verification-text").fill("TSS is superantigen-mediated; MRSA uses altered PBP; treatment follows susceptibility.")
-    page.locator("#relearn-source-closed").check(); page.locator('[data-action="check-verification"]').click(); page.wait_for_timeout(120)
+    page.locator("#relearn-source-closed").check(); page.locator('[data-action="check-verification"]').click(); page.locator('[data-action="rate"][data-rating="3"]').wait_for(state="visible")
     check_all_checkpoints(page); rate_good(page)
 
-    page.locator('[data-pane="history"]').click(); page.wait_for_timeout(180)
+    page.locator('[data-pane="history"]').click(); page.locator("#pane-history").wait_for(state="visible")
+    expected_history = ("reconstruction", "diagram practice", "answer writing", "recall", "questions / application", "relearning")
+    wait_until(
+        page,
+        lambda: all(label in page.locator("#history-content").inner_text().lower() for label in expected_history),
+        timeout=8_000,
+        interval=50,
+        message="History did not project the complete workflow chain",
+    )
     history = page.locator("#history-content").inner_text().lower()
-    for label in ("reconstruction", "diagram practice", "answer writing", "recall", "questions / application", "relearning"):
+    for label in expected_history:
         check(label in history, f"History missing workflow: {label}")
     check(not errors, f"Browser errors: {errors}")
     page.close()
@@ -301,12 +329,12 @@ def scenario_keyboard_accessibility(browser) -> None:
     page.locator('[data-pane="today"]').click()
     application_row = page.locator(".planner-row").filter(has_text="Questions / application")
     check(application_row.count() >= 1, "Application workflow missing from accessibility fixture")
-    application_row.first.locator('[data-action="review-one"]').click(); page.wait_for_timeout(180)
+    application_row.first.locator('[data-action="review-one"]').click(); page.locator("#attempt-text").wait_for(state="visible")
     page.locator("#attempt-text").fill("Reasoned answers."); page.locator("#attempt-completed").check()
-    page.locator(".review-card").click(position={"x": 5, "y": 5}); page.keyboard.press("Space"); page.wait_for_timeout(120)
+    page.locator(".review-card").click(position={"x": 5, "y": 5}); page.keyboard.press("Space"); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
     check(page.locator('[data-review-phase="compare"]').is_visible(), "Keyboard reveal failed")
     page.locator("#questions-attempted").fill("10"); page.locator("#questions-correct").fill("8"); page.locator("#questions-partial").fill("1")
-    page.locator(".review-card").click(position={"x": 5, "y": 5}); page.keyboard.press("3"); page.wait_for_timeout(360)
+    page.locator(".review-card").click(position={"x": 5, "y": 5}); page.keyboard.press("3"); page.locator("#pane-today").wait_for(state="visible")
     check(page.locator("#pane-today").evaluate('e=>e.classList.contains("on")'), "Keyboard rating failed")
     check(not errors, f"Browser errors: {errors}")
     page.close()
@@ -325,12 +353,37 @@ def scenario_bridge(browser) -> None:
         check(result != "accepted", f"Invalid bridge payload accepted: {payload}")
     result = page.evaluate('async()=>RevisionDirector.intake.importStudyEvent({area:"Geology",task:"Bridge event",measure:"1 topic",durationMinutes:25,activityMode:"review",understanding:3})')
     check(bool(result.get("id")), "Valid bridge Study Event failed")
-    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
-    rows = page.locator("[data-profile-editor]")
-    for index in range(rows.count()):
-        row = rows.nth(index)
+    page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
+    profile_ids = page.locator("[data-profile-editor]").evaluate_all(
+        "rows => rows.map(row => row.getAttribute('data-profile-editor')).filter(Boolean)"
+    )
+    check(len(profile_ids) == 2, f"Unexpected bridge profile set: {profile_ids}")
+    for profile_id in profile_ids:
+        row = page.locator(f'[data-profile-editor="{profile_id}"]')
+        check(row.count() == 1, f"Profile editor is missing durable identity: {profile_id}")
         row.locator("[data-profile-status]").select_option("suspended")
-        row.locator('[data-action="save-profile"]').click(); page.wait_for_timeout(120)
+        page.evaluate("document.querySelector('#toast').textContent=''")
+        row.locator('[data-action="save-profile"]').click()
+        wait_until(
+            page,
+            lambda: "exam horizon updated" in page.locator("#toast").inner_text().lower(),
+            timeout=8_000,
+            interval=40,
+            message=f"Profile save did not complete: {profile_id}",
+        )
+        wait_until(
+            page,
+            lambda profile_id=profile_id: next(
+                (profile["status"] for profile in page.evaluate("async()=>await RevisionDirector.records.listProfiles()") if profile["id"] == profile_id),
+                None,
+            ) == "suspended",
+            timeout=5_000,
+            interval=40,
+            message=f"Public profile summary did not reflect suspension: {profile_id}",
+        )
+    profiles = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
+    check(all(profile["status"] == "suspended" for profile in profiles), f"Public profile summary did not preserve both suspensions: {profiles}")
+    wait_until(page, lambda: page.evaluate("async()=> (await RevisionDirector.records.getDueSummary()).dueCount") == 0, timeout=5000, interval=40, message="Paused profiles remained due")
     summary = page.evaluate("RevisionDirector.records.getDueSummary()")
     check(summary["dueCount"] == 0, f"Paused profiles remained in bridge due summary: {summary}")
     check(not errors, f"Browser errors: {errors}")
@@ -340,18 +393,18 @@ def scenario_bridge(browser) -> None:
 
 def scenario_cost_adr_settings(browser) -> None:
     page, errors = open_page(browser, {"width": 1365, "height": 950}, baseline=True)
-    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
+    page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
     settings = page.locator('#settings-form')
     policy = settings.locator('[name="memorySchedulingPolicy"]')
     check(policy.count() == 1, "Memory scheduling policy selector missing")
     check(policy.input_value() == "fixed-retention", "Restored fixed-retention settings must be preserved instead of being silently migrated to the new default")
 
     policy.select_option("cost-adr")
+    page.evaluate("document.querySelector('#toast').textContent=''")
     settings.locator('button[type="submit"]').click()
-    page.wait_for_timeout(900)
+    wait_until(page, lambda: bool(page.locator("#toast").inner_text().strip()), timeout=8000, interval=40, message="Cost-ADR settings submit did not finish")
+    check(not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Cost-ADR settings submit failed: " + page.locator("#toast").inner_text())
     check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
-    settings_text = page.locator("#settings-content").inner_text()
-    check("Cost-ADR · cost weight 1024" in settings_text, "Optional Cost-ADR preset did not become active in Settings")
 
     with TemporaryDirectory() as tmp:
         backup_path = str(Path(tmp) / "cost-adr-settings.rdbackup")
@@ -364,25 +417,35 @@ def scenario_cost_adr_settings(browser) -> None:
         check(saved_policy["goalCostWeight"] == 1024, "Persisted Cost-ADR goal cost weight is not the bounded preset")
         check(len(saved_policy["costAdrPolicy"]["coefficients"]) == 15, "Persisted Cost-ADR policy lost upstream coefficient provenance")
 
-    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
     settings = page.locator('#settings-form')
     settings.locator('[name="memorySchedulingPolicy"]').select_option("fixed-retention")
     settings.locator('[name="desiredRetention"]').fill("0.90")
+    page.evaluate("document.querySelector('#toast').textContent=''")
     settings.locator('button[type="submit"]').click()
-    page.wait_for_timeout(900)
-    check("Fixed · 90%" in page.locator("#settings-content").inner_text(), "Return from Cost-ADR to fixed retention did not complete")
+    wait_until(page, lambda: bool(page.locator("#toast").inner_text().strip()), timeout=8000, interval=40, message="Fixed-retention settings submit did not finish")
+    check(not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Fixed-retention settings submit failed: " + page.locator("#toast").inner_text())
+    with TemporaryDirectory() as tmp:
+        backup_path = str(Path(tmp) / "fixed-retention-settings.rdbackup")
+        with page.expect_download() as download_info:
+            page.locator('[data-action="export-backup"]').click()
+        download_info.value.save_as(backup_path)
+        payload = decode_file(Path(backup_path))
+        saved_policy = payload["settings"]["fsrsScheduling"]["policy"]
+        check(saved_policy["kind"] == "fixed-retention", f"Fixed-retention policy did not persist: {saved_policy}")
+        check(abs(float(saved_policy["desiredRetention"]) - 0.90) < 1e-12, "Fixed-retention target did not persist at 90%")
+    check(not page.locator("#fatal-error").is_visible(), "Return from Cost-ADR caused a fatal application state")
     check(not errors, f"Cost-ADR Settings browser errors: {errors}")
     page.close()
 
 
 def scenario_pass_d(browser) -> None:
     page, errors = open_page(browser, {"width": 1365, "height": 1000}, baseline=True)
-    page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(180)
+    page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
     settings = page.locator('#settings-form')
     settings.locator('[name="dailyCapacityMinutes"]').fill('30')
-    settings.locator('button[type="submit"]').click(); page.wait_for_timeout(420)
+    settings.locator('button[type="submit"]').click()
 
-    page.locator('#quick-add-unit').click(); page.wait_for_timeout(180)
+    page.locator('#quick-add-unit').click(); page.locator("#unit-dialog").wait_for(state="visible")
     form = page.locator('#unit-form')
     due = page.evaluate("new Date(Date.now()-3600000).toISOString().slice(0,16)")
     values = {
@@ -399,24 +462,26 @@ def scenario_pass_d(browser) -> None:
         form.locator(f'[name="{name}"]').fill(value)
     form.locator('[name="obligationType"]').select_option('concept-reconstruction')
     form.locator('[name="workflowKind"]').select_option('reconstruction')
-    form.locator('button[type="submit"]').click(); page.wait_for_timeout(650)
-    page.locator('[data-pane="today"]').click(); page.wait_for_timeout(180)
+    form.locator('button[type="submit"]').click(); page.locator("#unit-dialog").wait_for(state="hidden")
+    page.locator('[data-pane="today"]').click(); page.locator("#pane-today").wait_for(state="visible")
 
     chunk_row = page.locator('.planner-row').filter(has_text='Oversized drainage synthesis').first
     check(chunk_row.count() == 1, 'Oversized obligation was not converted into a daily chunk')
     check(chunk_row.locator('[data-action="review-chunk"]').count() == 1, 'Chunk action missing')
-    chunk_row.locator('details.planner-details').evaluate('e=>e.open=true'); page.wait_for_timeout(80)
+    chunk_row.locator('details.planner-details').evaluate('e=>e.open=true')
     check('weekly balance' in chunk_row.inner_text().lower(), 'Weekly-balance factor is not exposed in the planner')
 
-    chunk_row.locator('[data-action="review-chunk"]').click(); page.wait_for_timeout(220)
+    chunk_row.locator('[data-action="review-chunk"]').click(); page.locator("#chunk-note").wait_for(state="visible")
     check('SCHEDULING SAFEGUARD' in page.locator('#review-content').inner_text().upper(), 'Chunk scheduling safeguard missing')
     page.locator('#chunk-note').fill('Completed the first bounded page range.')
-    page.locator('[data-action="complete-chunk"]').click(); page.wait_for_timeout(480)
+    page.locator('[data-action="complete-chunk"]').click()
+    wait_until(page, lambda: page.locator('.planner-row').filter(has_text='Oversized drainage synthesis').first.locator('[data-action="review-chunk"]').count() == 1, timeout=5000, interval=40, message="Next bounded chunk did not appear")
     next_chunk = page.locator('.planner-row').filter(has_text='Oversized drainage synthesis').first
     check(next_chunk.count() == 1 and next_chunk.locator('[data-action="review-chunk"]').count() == 1, 'Completing one chunk did not expose the next bounded chunk')
 
-    page.locator('[data-action="regenerate-plan"]').click(); page.wait_for_timeout(420)
-    page.locator('[data-pane="history"]').click(); page.wait_for_timeout(220)
+    page.locator('[data-action="regenerate-plan"]').click()
+    page.locator('[data-pane="history"]').click(); page.locator("#pane-history").wait_for(state="visible")
+    wait_until(page, lambda: "persisted daily plans" in page.locator("#history-content").inner_text().lower(), timeout=5000, interval=40, message="Persisted daily-plan history missing")
     history = page.locator('#history-content').inner_text()
     check('persisted daily plans' in history.lower(), 'Persisted daily-plan history missing')
     check('completed' in history.lower() and 'version' in history.lower(), 'Plan outcomes or amendments were not preserved')
@@ -427,13 +492,13 @@ def scenario_pass_d(browser) -> None:
 
 def scenario_plan_execution_states(browser) -> None:
     page, errors = open_page(browser, {"width": 1365, "height": 950}, baseline=True)
-    page.locator('[data-pane="today"]').click(); page.wait_for_timeout(180)
+    page.locator('[data-pane="today"]').click(); page.locator("#pane-today").wait_for(state="visible")
     planned_count = page.locator('#today-content .planner-row.selected, #today-content .planner-row.required-overrun').count()
     check(planned_count >= 2, 'Execution-state scenario requires at least two planned items')
-    page.locator('[data-action="start-due"]').click(); page.wait_for_timeout(260)
+    page.locator('[data-action="start-due"]').click(); page.locator("#review-content").wait_for(state="visible")
     with TemporaryDirectory() as tmp:
         backup_path = str(Path(tmp) / 'execution-state.rdbackup')
-        page.locator('[data-pane="settings"]').click(); page.wait_for_timeout(160)
+        page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
         with page.expect_download() as download_info:
             page.locator('[data-action="export-backup"]').click()
         download_info.value.save_as(backup_path)

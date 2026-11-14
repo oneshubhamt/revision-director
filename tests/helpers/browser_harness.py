@@ -4,17 +4,15 @@ from pathlib import Path
 import importlib.util
 import os
 import shutil
-import subprocess
-import sys
 import time
-from typing import Callable, Iterable
+from typing import Callable
 
 from playwright.sync_api import Browser, Page, Playwright
+from backup_fixture_codec import baseline_backup_path
 
 ROOT = Path(__file__).resolve().parents[2]
 TESTS = ROOT / "tests"
-SCENARIOS = TESTS / "scenarios"
-BASELINE_BACKUP = TESTS / "fixtures/browser-baseline.rdbackup"
+BASELINE_BACKUP = baseline_backup_path()
 DEFAULT_CHROMIUM_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"]
 
 
@@ -25,17 +23,81 @@ def chromium_executable() -> str | None:
     return shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
 
 
+class SharedChromiumSession:
+    def __init__(self, browser):
+        self._browser = browser
+        self._contexts = []
+
+    def _close_context(self, context) -> None:
+        if context not in self._contexts:
+            return
+        self._contexts.remove(context)
+        try:
+            context.close()
+        except Exception:
+            pass
+
+    def new_context(self, **kwargs):
+        context = self._browser.new_context(**kwargs)
+        self._contexts.append(context)
+        return context
+
+    def new_page(self, **kwargs):
+        context = self.new_context(**kwargs)
+        page = context.new_page()
+        closing = {"active": False}
+
+        def close_ephemeral_context() -> None:
+            if closing["active"]:
+                return
+            closing["active"] = True
+            self._close_context(context)
+
+        page.on("close", lambda: close_ephemeral_context())
+        return page
+
+    def close(self) -> None:
+        for context in list(reversed(self._contexts)):
+            self._close_context(context)
+        # The parent qa.py process owns the CDP Chromium lifetime. A child
+        # suite closing its Browser facade must never terminate that process.
+
+    def __getattr__(self, name):
+        return getattr(self._browser, name)
+
+
 def launch_chromium(
     playwright: Playwright,
     *,
     headless: bool = True,
     args: list[str] | None = None,
 ):
+    endpoint = os.environ.get("REVISION_DIRECTOR_CDP_ENDPOINT")
+    if endpoint:
+        return SharedChromiumSession(playwright.chromium.connect_over_cdp(endpoint))
     executable = chromium_executable()
     return playwright.chromium.launch(
         headless=headless,
         executable_path=executable if executable else None,
         args=args if args is not None else DEFAULT_CHROMIUM_ARGS,
+    )
+
+
+def launch_persistent_chromium(
+    playwright: Playwright,
+    user_data_dir: str | Path,
+    *,
+    headless: bool = True,
+    args: list[str] | None = None,
+    viewport: dict[str, int] | None = None,
+):
+    executable = chromium_executable()
+    return playwright.chromium.launch_persistent_context(
+        str(user_data_dir),
+        headless=headless,
+        executable_path=executable if executable else None,
+        args=args if args is not None else DEFAULT_CHROMIUM_ARGS,
+        viewport=viewport or {"width": 1440, "height": 1000},
     )
 
 
@@ -78,6 +140,47 @@ def wait_until(
     raise AssertionError(message)
 
 
+
+def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) -> dict[str, object]:
+    page.wait_for_function(
+        """() => {
+          const pane=document.querySelector('#pane-settings');
+          const input=document.querySelector('#import-backup');
+          return document.documentElement.dataset.reviewOwnership === 'primary'
+            && pane?.classList.contains('on')
+            && input instanceof HTMLInputElement
+            && !input.disabled;
+        }""",
+        timeout=timeout,
+    )
+    page.evaluate("document.querySelector('#toast').textContent=''")
+    input_element = page.locator("#import-backup")
+    input_element.set_input_files([])
+    input_element.set_input_files(str(path))
+    return wait_for_backup_import_result(page, timeout=timeout)
+
+
+def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[str, object]:
+    # Import owns the file input until inspection reaches its finally block.
+    # Synchronize on that lifecycle rather than requiring a toast and input reset
+    # to be observable in the same polling instant.
+    page.wait_for_function(
+        """() => {
+          const input=document.querySelector('#import-backup');
+          const dialog=document.querySelector('#restore-dialog');
+          return Boolean(dialog instanceof HTMLDialogElement && dialog.open)
+            || Boolean(input instanceof HTMLInputElement && input.files?.length === 0);
+        }""",
+        timeout=timeout,
+    )
+    message = page.locator("#toast").inner_text().strip()
+    return {
+        "preview": page.locator("#restore-dialog").is_visible(),
+        "message": message,
+        "error": page.locator("#toast").evaluate("e=>e.classList.contains('error')"),
+        "inspectionComplete": page.locator("#import-backup").evaluate("e=>e instanceof HTMLInputElement && e.files?.length === 0"),
+    }
+
 def load_test_module(path: str | Path, name: str):
     resolved = Path(path)
     spec = importlib.util.spec_from_file_location(name, resolved)
@@ -92,12 +195,60 @@ def load_browser_qa(name: str = "revision_director_browser_qa"):
     return load_test_module(TESTS / "browser-qa.spec.py", name)
 
 
+
+def wait_for_app_ready(page: Page, *, timeout: int = 10_000) -> None:
+    page.wait_for_function(
+        """() => {
+          const fatal=document.querySelector('#fatal-error');
+          if (fatal && fatal.offsetParent !== null) return true;
+          const ownership=document.documentElement.dataset.reviewOwnership;
+          return typeof window.RevisionDirector === 'object'
+            && ['primary','secondary','faulted'].includes(ownership);
+        }""",
+        timeout=timeout,
+    )
+    if page.locator("#fatal-error").count():
+        assert not page.locator("#fatal-error").is_visible(), "Fatal startup error"
+
+
+def open_rendered_pane(page: Page, pane: str, *, timeout: int = 10_000) -> None:
+    tab = page.locator(f'[data-pane="{pane}"]')
+    panel = page.locator(f'#pane-{pane}')
+    if tab.get_attribute("aria-selected") == "true":
+        panel.wait_for(state="visible", timeout=timeout)
+        return
+    content = page.locator(f'#{pane}-content')
+    marker = f"qa-stale-{pane}"
+    if content.count() and content.locator(":scope > *").count():
+        content.locator(":scope > *").first.evaluate(
+            "(e, marker) => e.setAttribute('data-qa-render-marker', marker)",
+            marker,
+        )
+    tab.click()
+    wait_until(
+        page,
+        lambda: tab.get_attribute("aria-selected") == "true"
+        and panel.is_visible()
+        and (
+            not content.count()
+            or content.locator(f'[data-qa-render-marker="{marker}"]').count() == 0
+        ),
+        timeout=timeout,
+        interval=30,
+        message=f"Timed out waiting for {pane} pane render",
+    )
+
+
+def wait_for_layout(page: Page) -> None:
+    page.evaluate(
+        """() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"""
+    )
+
 def open_html_page(
     browser: Browser,
     html: str,
     *,
     viewport: dict[str, int] | None = None,
-    settle_ms: int = 1_200,
     default_timeout: int = 10_000,
     include_warnings: bool = False,
     auto_accept_dialogs: bool = True,
@@ -108,18 +259,5 @@ def open_html_page(
     if auto_accept_dialogs:
         accept_dialogs(page)
     page.set_content(html, wait_until="load")
-    if settle_ms:
-        page.wait_for_timeout(settle_ms)
-    if page.locator("#fatal-error").count():
-        assert not page.locator("#fatal-error").is_visible(), "Fatal startup error"
+    wait_for_app_ready(page, timeout=default_timeout)
     return page, errors
-
-
-def run_python_scenarios(paths: Iterable[str]) -> None:
-    env = os.environ.copy()
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = str(TESTS) + (os.pathsep + existing if existing else "")
-    for relative in paths:
-        path = SCENARIOS / relative
-        print(f"==> {path.relative_to(ROOT)}", flush=True)
-        subprocess.run([sys.executable, str(path)], cwd=ROOT, env=env, check=True)

@@ -1,11 +1,12 @@
 from __future__ import annotations
 from pathlib import Path
 import importlib.util
-import os
-
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / "tests"))
+from helpers.browser_harness import launch_chromium
 QA_PATH = ROOT / "tests" / "browser-qa.spec.py"
 spec = importlib.util.spec_from_file_location("revision_director_browser_qa", QA_PATH)
 if spec is None or spec.loader is None:
@@ -55,10 +56,11 @@ def start_obligation(page, obligation_id: str) -> None:
         }""",
         obligation_id,
     )
-    page.wait_for_timeout(320)
+    page.locator('.review-card').wait_for(state='visible')
 
 
 def perform_relearn_verification(page, *, successful: bool) -> None:
+    before_events = len(read_state(page)["evidenceEvents"])
     page.locator("#relearn-repair-action").fill(
         "Rebuilt the organism profile, mechanism and discriminators from the source."
     )
@@ -71,7 +73,7 @@ def perform_relearn_verification(page, *, successful: bool) -> None:
     )
     page.locator("#relearn-source-closed").check()
     page.locator('[data-action="check-verification"]').click()
-    page.wait_for_timeout(140)
+    page.locator('[data-action="rate"][data-rating="3"]').wait_for(state="visible")
     if successful:
         qa.check_all_checkpoints(page)
         page.locator('[data-action="rate"][data-rating="3"]').click()
@@ -79,7 +81,13 @@ def perform_relearn_verification(page, *, successful: bool) -> None:
         page.locator("#correction-note").fill("Verification still failed; repair the causal chain again.")
         page.locator("#error-conceptual-misunderstanding").check()
         page.locator('[data-action="rate"][data-rating="1"]').click()
-    page.wait_for_timeout(520)
+    qa.wait_until(
+        page,
+        lambda: len(read_state(page)["evidenceEvents"]) == before_events + 1,
+        timeout=8000,
+        interval=50,
+        message="Corrective FSRS evidence did not persist",
+    )
 
 
 def scenario_corrective_memory_e2e(browser) -> None:
@@ -101,11 +109,17 @@ def scenario_corrective_memory_e2e(browser) -> None:
     if page.locator("#attempt-completed").count():
         page.locator("#attempt-completed").check()
     page.locator('[data-action="reveal"]').click()
-    page.wait_for_timeout(140)
+    page.locator('[data-review-phase="compare"]').wait_for(state="visible")
     page.locator("#correction-note").fill("Could not reconstruct the organism profile independently.")
     page.locator("#error-conceptual-misunderstanding").check()
     page.locator('[data-action="rate"][data-rating="1"]').click()
-    page.wait_for_timeout(560)
+    qa.wait_until(
+        page,
+        lambda: len([item for item in read_state(page)["evidenceEvents"] if item["obligationId"] == memory_id]) == 1,
+        timeout=8000,
+        interval=50,
+        message="Direct memory Again did not persist",
+    )
 
     state = read_state(page)
     memory = next(item for item in state["obligations"] if item["id"] == memory_id)
@@ -119,7 +133,14 @@ def scenario_corrective_memory_e2e(browser) -> None:
     check(len(direct_events) == 1 and direct_events[0]["confirmedRating"] == 1, "Direct Again was not persisted exactly once")
 
     start_obligation(page, relearn["id"])
-    check("WHY THIS RELEARNING EXISTS" in page.locator("#review-content").inner_text(), "Corrective relearning did not expose triggering failure")
+    repair_phase = page.locator('[data-review-phase="relearn-repair"]')
+    repair_phase.wait_for(state="visible")
+    trigger = repair_phase.locator(".trigger-evidence:not(.missing)")
+    check(trigger.count() == 1, "Corrective relearning did not resolve its triggering evidence")
+    check(
+        "Could not reconstruct the organism profile independently." in trigger.inner_text(),
+        "Corrective relearning did not expose the recorded triggering correction",
+    )
     perform_relearn_verification(page, successful=False)
 
     state = read_state(page)
@@ -153,23 +174,31 @@ def scenario_corrective_memory_e2e(browser) -> None:
     check(memory["policyState"]["fsrsCard"]["reps"] == 3, "Successful return did not preserve all three closed-book FSRS observations")
     check(memory["dueAt"] == memory["policyState"]["fsrsCard"]["dueAt"], "Successful return desynchronized obligation and FSRS due dates")
 
+    lifecycle_events = [item for item in state["evidenceEvents"] if item["unitId"] == memory["unitId"]]
+    check(
+        len(lifecycle_events) == 3
+        and sum(item["obligationType"] == "memory-recall" for item in lifecycle_events) == 1
+        and sum(item["obligationType"] == "relearn" for item in lifecycle_events) == 2,
+        "Corrective lifecycle evidence types are incomplete",
+    )
     page.locator('[data-pane="history"]').click()
-    page.wait_for_timeout(180)
-    history_text = page.locator("#history-content").inner_text().lower()
-    check("relearning" in history_text and "recall" in history_text, "Browser history does not expose the corrective lifecycle")
+    page.locator("#pane-history").wait_for(state="visible")
+    history_rows = page.locator("#history-content .record-row").filter(has_text=unit_by_id[memory["unitId"]]["title"])
+    qa.wait_until(
+        page,
+        lambda: history_rows.count() == len(lifecycle_events),
+        timeout=5000,
+        interval=40,
+        message="Browser History did not project every corrective lifecycle event",
+    )
+    check(history_rows.count() == 3, "Browser History does not expose all corrective lifecycle records")
     check(not errors, f"FSRS programme-closure browser errors: {errors}")
     page.close()
 
 
 def main() -> None:
     with sync_playwright() as playwright:
-        executable = os.environ.get("CHROMIUM_EXECUTABLE")
-        if not executable and Path("/usr/bin/chromium").exists():
-            executable = "/usr/bin/chromium"
-        launch_options = {"headless": True, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
-        if executable:
-            launch_options["executable_path"] = executable
-        browser = playwright.chromium.launch(**launch_options)
+        browser = launch_chromium(playwright)
         scenario_corrective_memory_e2e(browser)
         browser.close()
     print("PASS FSRS programme-closure Chromium corrective-memory scenario")

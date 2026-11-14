@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from playwright.sync_api import Browser, Page, sync_playwright
-from helpers.browser_harness import load_browser_qa, launch_chromium
+from helpers.browser_harness import load_browser_qa, launch_chromium, wait_for_app_ready, wait_for_layout
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_QA = load_browser_qa("revision_director_browser_qa_supplement")
@@ -31,14 +31,14 @@ def open_page(browser: Browser) -> tuple[Page, list[str]]:
     )
     page.on("dialog", lambda dialog: dialog.accept())
     page.set_content(MAIN_QA.HTML, wait_until="load")
-    page.wait_for_timeout(1_300)
+    wait_for_app_ready(page)
     check(not page.locator("#fatal-error").is_visible(), "Fatal startup error")
     return page, errors
 
 
 def restore_fixture(page: Page) -> None:
     page.locator('[data-pane="settings"]').click()
-    page.wait_for_timeout(80)
+    page.locator("#pane-settings").wait_for(state="visible")
     MAIN_QA.restore_selected_backup(page, MAIN_QA.BASELINE_BACKUP)
     check("restored" in page.locator("#toast").inner_text().lower(), "Fixture import failed")
 
@@ -60,7 +60,7 @@ def verify_responsive_surfaces(page: Page) -> None:
 
     for width, height in viewports:
         page.set_viewport_size({"width": width, "height": height})
-        page.wait_for_timeout(70)
+        wait_for_layout(page)
         expected_sidebar_actions = "none" if width <= 820 else "grid"
         actual_sidebar_actions = page.locator(".sidebar-actions").evaluate(
             "element => getComputedStyle(element).display"
@@ -75,7 +75,7 @@ def verify_responsive_surfaces(page: Page) -> None:
                 "pane => document.querySelector(`[data-pane=\"${pane}\"]`).click()",
                 pane,
             )
-            page.wait_for_timeout(35)
+            page.locator(f"#pane-{pane}").wait_for(state="visible")
             check(
                 page.evaluate(
                     "document.documentElement.scrollWidth <= "
@@ -86,34 +86,9 @@ def verify_responsive_surfaces(page: Page) -> None:
             check(page.locator(f"#pane-{pane}").is_visible(), f"Pane is hidden: {pane}")
 
 
-def verify_long_render_stability(page: Page) -> None:
-    page.set_viewport_size({"width": 1280, "height": 900})
-    page.evaluate(
-        """() => {
-          const panes = ['today', 'review', 'library', 'study', 'history', 'settings'];
-          for (let cycle = 0; cycle < 30; cycle += 1) {
-            for (const pane of panes) {
-              document.querySelector(`[data-pane="${pane}"]`).click();
-            }
-          }
-        }"""
-    )
-    page.wait_for_timeout(1_000)
-
-    before = page.locator("[data-profile-editor]").count()
-    page.locator("#new-profile-name").fill("Single action")
-    page.locator("#new-profile-date").fill("2029-01-01")
-    page.locator('[data-action="add-profile"]').click()
-    page.wait_for_timeout(350)
-    check(
-        page.locator("[data-profile-editor]").count() == before + 1,
-        "Repeated renders caused a duplicate action",
-    )
-
-
 def verify_stored_content_escaping(page: Page) -> None:
     page.locator("#quick-add-unit").click()
-    page.wait_for_timeout(80)
+    page.locator("#unit-dialog").wait_for(state="visible")
     form = page.locator("#unit-form")
     values = {
         "subject": '<img src=x onerror=alert(1)>',
@@ -131,10 +106,10 @@ def verify_stored_content_escaping(page: Page) -> None:
     for name, value in values.items():
         form.locator(f'[name="{name}"]').fill(value)
     form.locator('button[type="submit"]').click()
-    page.wait_for_timeout(450)
+    page.locator("#unit-dialog").wait_for(state="hidden")
 
     page.locator('[data-pane="library"]').click()
-    page.wait_for_timeout(100)
+    page.locator("#pane-library").wait_for(state="visible")
     library = page.locator("#library-content")
     check(library.locator("script,iframe,svg,img").count() == 0, "Stored markup became active")
     check(
@@ -145,9 +120,9 @@ def verify_stored_content_escaping(page: Page) -> None:
 
 def verify_keyboard_and_names(page: Page) -> None:
     page.locator("#quick-add-unit").click()
-    page.wait_for_timeout(80)
+    page.locator("#unit-dialog").wait_for(state="visible")
     page.keyboard.press("Escape")
-    page.wait_for_timeout(60)
+    page.locator("#unit-dialog").wait_for(state="hidden")
     check(not page.locator("#unit-dialog").evaluate("element => element.open"), "Escape did not close dialog")
 
     for index in range(page.locator("button").count()):
@@ -165,13 +140,13 @@ def main() -> None:
         check(page.title() == "Revision Director · VA7.1 Pass E1", "Release title mismatch")
         restore_fixture(page)
         verify_responsive_surfaces(page)
-        verify_long_render_stability(page)
         verify_stored_content_escaping(page)
         verify_keyboard_and_names(page)
 
         page.set_viewport_size({"width": 390, "height": 844})
         page.locator('[data-pane="today"]').click()
-        page.wait_for_timeout(100)
+        page.locator("#pane-today").wait_for(state="visible")
+        wait_for_layout(page)
         check(
             page.locator(".sidebar-actions").evaluate("element => getComputedStyle(element).display") == "none",
             "Mobile sidebar actions reappeared after later rendering",

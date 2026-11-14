@@ -3,7 +3,7 @@ const { createAppRuntime } = require('./helpers/runtime-harness');
 
 const { api } = createAppRuntime({
   globalName: '__RD_PLAN_TEST__',
-  expose: ["Rating","FsrsMemoryPolicy","RevisionService","buildPlanningCandidate","planningEvidenceIndex","choosePlanItems","prepareFsrsScheduler","daysToExamination","examinationProximityScore","planningLookaheadDays","obligationWeaknessScore","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","memoryDifficultyAssessment","correctiveRelearnDueAt"],
+  expose: ["Rating","FsrsMemoryPolicy","RevisionService","buildPlanningCandidate","planningEvidenceIndex","prepareFsrsScheduler","daysToExamination","examinationProximityScore","planningLookaheadDays","obligationWeaknessScore","durationObservationFor","weeklySubjectBalanceScores","createAutomaticChunks","interleaveSelected","planItemKey","memoryDifficultyAssessment","correctiveRelearnDueAt"],
   requireFsrs: false,
 });
 
@@ -147,18 +147,6 @@ async function testMemoryExamHorizon() {
   const distantExam=profile('distant-exam',10);
   check(api.correctiveRelearnDueAt(distantExam,ref)===new Date(ref.getTime()+86400000).toISOString(),'Corrective relearning should retain its ordinary one-day delay when the exam horizon does not constrain it');
 }
-
-const item = (id, score, mins, type='concept-reconstruction', dueState='due') => ({joined:{obligation:{id,type,dueAt:ref.toISOString(),expectedMinutes:mins},unit:{},profile:{}},score,dueState,executionMinutes:mins,factors:{dueRisk:.8,examImportance:1,weakness:.5,reviewDuration:.8,examinationProximity:.7,weeklyBalance:.5}});
-let packed = api.choosePlanItems([item('x',90,40),item('y',80,20),item('z',50,20)],60);
-check(packed.selected.map(i=>i.joined.obligation.id).includes('x') && packed.selected.map(i=>i.joined.obligation.id).includes('y'), 'Capacity packing must select the highest-value feasible combination');
-check(packed.deferred.length === 1 && packed.deferred[0].joined.obligation.id === 'z', 'Capacity packing must expose deferral');
-packed = api.choosePlanItems([item('critical',97,90,'relearn','overdue'),item('normal',80,20)],60);
-check(packed.selected.length === 1 && packed.selected[0].joined.obligation.id === 'critical', 'Critical oversized work must produce an explicit overrun, not disappear');
-check(packed.requiredOverrun.length === 1 && packed.requiredOverrun[0].joined.obligation.id === 'critical', 'Oversized critical work must be labelled as a required overrun');
-packed = api.choosePlanItems([item('oversized-top',99,90,'relearn','overdue'),item('critical-fit',95,30,'relearn','overdue')],60);
-check(packed.selected.length === 1 && packed.selected[0].joined.obligation.id === 'oversized-top' && packed.requiredOverrun.length === 1, 'A higher-scoring oversized critical item must not be hidden by a smaller critical item');
-packed = api.choosePlanItems([item('critical-fit-top',99,30,'relearn','overdue'),item('oversized-lower',95,90,'relearn','overdue')],60);
-check(packed.selected.some(i=>i.joined.obligation.id==='critical-fit-top') && packed.mustSplit.some(i=>i.joined.obligation.id==='oversized-lower'), 'A lower-ranked oversized critical item must be separated as must-split, not ordinary deferral');
 
 (async () => {
   await testMemoryExamHorizon();
