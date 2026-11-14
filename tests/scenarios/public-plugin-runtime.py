@@ -13,9 +13,9 @@ from helpers.browser_harness import (
     wait_for_toast_outcome,
     wait_until as shared_wait_until,
 )
-from helpers.persistent_browser import create_persistent_frame, persistent_html
+from helpers.persistent_browser import create_simulated_frame, reset_simulated_storage, simulated_storage_html
 from helpers.browser_fixture import open_page as open_fixture_page
-HTML = persistent_html()
+HTML = simulated_storage_html()
 checks = 0
 
 def check(condition: bool, message: str) -> None:
@@ -38,7 +38,7 @@ def wait_local_file_settled(frame, name: str, state: str) -> None:
     wait_until(frame, lambda: name in frame.locator("#settings-content").inner_text())
 
 def boot_frame(page):
-    frame = create_persistent_frame(page, HTML, name="app", width=1440, height=1000)
+    frame = create_simulated_frame(page, HTML, name="app", width=1440, height=1000)
     wait_until(frame, lambda: frame.locator("#fatal-error").count() == 1 and frame.evaluate("typeof window.RevisionDirector === 'object'"))
     wait_until(frame, lambda: frame.evaluate("document.documentElement.dataset.reviewOwnership") in ["primary","secondary","faulted"])
     check(not frame.locator("#fatal-error").is_visible(), "Fatal startup error")
@@ -94,7 +94,8 @@ def main() -> None:
         context = browser.new_context(viewport={"width": 1600, "height": 1100})
         page = context.new_page()
         errors = capture_browser_errors(page)
-        page.set_content("<body><script>window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body></body>")
+        reset_simulated_storage(page)
         frame=boot_frame(page)
 
         check(frame.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version wrong")

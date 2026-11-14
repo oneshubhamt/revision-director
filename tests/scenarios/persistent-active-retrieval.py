@@ -16,17 +16,18 @@ from helpers.browser_harness import (
 )
 from helpers.persistent_browser import (
     BASE_HTML,
-    PERSISTENT_BROWSER_SHIM,
-    create_persistent_frame,
-    host_state_all as state_all,
-    host_state_get as state_get,
-    restore_backup_with_safety_copy,
+    create_simulated_frame,
+    reset_simulated_storage,
+    simulated_state_all as state_all,
+    simulated_state_get as state_get,
+    simulated_storage_html,
 )
+from helpers.browser_fixture import restore_backup_with_safety_copy
 FIXTURE = baseline_backup_path()
 checks = 0
 
-INTEGRITY_HOOK = "window.__RD_B1_INTEGRITY__={RevisionData,RevisionService,Store}; void boot();"
-HTML = BASE_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM, 1).replace("void boot();", INTEGRITY_HOOK, 1)
+INTEGRITY_HOOK = "window.__RD_ACTIVE_RETRIEVAL_INTEGRITY__={RevisionData,RevisionService,Store}; void boot();"
+HTML = simulated_storage_html(base_html=BASE_HTML.replace("void boot();", INTEGRITY_HOOK, 1))
 
 
 def check(condition: bool, message: str) -> None:
@@ -74,7 +75,7 @@ def idb_all(frame, store: str):
 
 
 def boot_frame(page):
-    frame = create_persistent_frame(
+    frame = create_simulated_frame(
         page,
         HTML,
         name="revision-app",
@@ -95,14 +96,15 @@ def main() -> None:
         page = context.new_page()
         browser_errors = capture_browser_errors(page)
         accept_dialogs(page)
-        page.set_content("<body><script>window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body></body>")
+        reset_simulated_storage(page)
 
         frame = boot_frame(page)
 
         # Concurrent hierarchy creation must converge on one root primary key and
         # one child pathLookup entry rather than creating duplicate nodes.
         concurrency = frame.evaluate("""async () => {
-          const api=window.__RD_B1_INTEGRITY__;
+          const api=window.__RD_ACTIVE_RETRIEVAL_INTEGRITY__;
           const data=await api.RevisionData.open();
           const service=new api.RevisionService(data);
           await service.initialize();
@@ -123,7 +125,7 @@ def main() -> None:
         check(len(concurrency["sectionIds"]) == 1 and concurrency["sectionCount"] == 1, "Concurrent child creation bypassed the unique pathLookup index")
 
         page.evaluate("document.querySelector('#app').remove()")
-        page.evaluate("window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}")
+        reset_simulated_storage(page)
         frame = boot_frame(page)
         frame.locator('[data-pane="settings"]').click()
         restore_backup_with_safety_copy(page, frame, FIXTURE)
@@ -157,7 +159,7 @@ def main() -> None:
         page.evaluate("document.querySelector('#app').remove()")
         page.evaluate("""() => {
           const key='revision-director:active-retrieval:v1';
-          const host=window.__RD_PERSISTENT_QA_STATE__;
+          const host=window.__RD_SIMULATED_STORAGE_STATE__;
           const envelope=JSON.parse(host.local[key]);
           envelope.session.revision += 7;
           envelope.session.updatedAt = new Date(Date.now()+60000).toISOString();

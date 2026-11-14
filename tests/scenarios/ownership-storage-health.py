@@ -16,18 +16,19 @@ from helpers.browser_harness import (
 )
 from helpers.persistent_browser import (
     BASE_HTML,
-    PERSISTENT_BROWSER_SHIM,
-    create_persistent_frame,
-    host_state_all as state_all,
-    host_state_get as state_get,
-    restore_backup_with_safety_copy,
+    create_simulated_frame,
+    reset_simulated_storage,
+    simulated_state_all as state_all,
+    simulated_state_get as state_get,
+    simulated_storage_html,
 )
+from helpers.browser_fixture import restore_backup_with_safety_copy
 FIXTURE = baseline_backup_path()
 
-B3_SHARED_SHIM = r"""
+OWNERSHIP_SHARED_SHIM = r"""
 <script>
 (() => {
-  const HOST = parent.__RD_PERSISTENT_QA_STATE__;
+  const HOST = parent.__RD_SIMULATED_STORAGE_STATE__;
   if (!HOST.channels) HOST.channels = {};
   if (!HOST.storage) HOST.storage = { persisted: true, persistResult: true, usage: 1000, quota: 50000000, persistCalls: 0 };
   class SharedBroadcastChannel {
@@ -53,7 +54,7 @@ B3_SHARED_SHIM = r"""
 })();
 </script>
 """
-HTML = BASE_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM + B3_SHARED_SHIM, 1)
+HTML = simulated_storage_html(OWNERSHIP_SHARED_SHIM, base_html=BASE_HTML)
 checks = 0
 
 def check(condition: bool, message: str) -> None:
@@ -66,7 +67,7 @@ def wait_until(frame, predicate, timeout=10000):
     shared_wait_until(frame, predicate, timeout=timeout, interval=60)
 
 def boot_frame(page, name: str):
-    frame = create_persistent_frame(page, HTML, name=name, width=1220, height=860)
+    frame = create_simulated_frame(page, HTML, name=name, width=1220, height=860)
     wait_until(frame, lambda: frame.evaluate("document.documentElement.dataset.reviewOwnership") in ["primary", "secondary", "faulted"])
     check(not frame.locator("#fatal-error").is_visible(), f"Fatal startup error in {name}")
     return frame
@@ -78,12 +79,18 @@ def main() -> None:
         page = context.new_page()
         errors = capture_browser_errors(page)
         accept_dialogs(page)
-        page.set_content("<body style='display:flex;gap:12px;margin:0'><script>window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{},channels:{},storage:{persisted:false,persistResult:false,usage:1000,quota:50000000,persistCalls:0}}</script></body>")
+        page.set_content("<body style='display:flex;gap:12px;margin:0'></body>")
+        reset_simulated_storage(page, {
+            "local": {},
+            "databases": {},
+            "channels": {},
+            "storage": {"persisted": False, "persistResult": False, "usage": 1000, "quota": 50_000_000, "persistCalls": 0},
+        })
 
         first = boot_frame(page, "first")
         check(first.evaluate("document.documentElement.dataset.reviewOwnership") == "primary", "First document did not own review mutation")
         check(first.locator("#ownership-banner").is_hidden(), "Primary owner showed read-only banner")
-        check(page.evaluate("window.__RD_PERSISTENT_QA_STATE__.storage.persistCalls") == 0, "Startup implicitly requested persistent storage")
+        check(page.evaluate("window.__RD_SIMULATED_STORAGE_STATE__.storage.persistCalls") == 0, "Startup implicitly requested persistent storage")
         first.locator('[data-pane="settings"]').click()
         wait_until(first, lambda: first.evaluate("RevisionDirector.runtime.storageHealth().indexedDbAvailable"))
         startup_storage = first.evaluate("RevisionDirector.runtime.storageHealth()")
@@ -125,7 +132,7 @@ def main() -> None:
         wait_until(second, lambda: second.locator("#attempt-text").count() == 1)
         check(second.locator("#attempt-text").input_value() == "Canonical answer before handoff", "Takeover did not hydrate the flushed active draft")
         check(first.locator("#attempt-text").is_disabled(), "Previous owner's review controls remained mutable")
-        lease = json.loads(page.evaluate("window.__RD_PERSISTENT_QA_STATE__.local['revision-director:review-owner:v1']"))
+        lease = json.loads(page.evaluate("window.__RD_SIMULATED_STORAGE_STATE__.local['revision-director:review-owner:v1']"))
         check(lease["tabId"] == second.evaluate("JSON.parse(localStorage.getItem('revision-director:review-owner:v1')).tabId"), "Canonical lease does not belong to the new owner")
 
         # A lifecycle exit releases ownership and the remaining document safely reacquires after release broadcast.
@@ -141,7 +148,7 @@ def main() -> None:
         check(second.evaluate("document.documentElement.dataset.reviewOwnership") == "secondary", "Exiting owner retained ownership")
 
         # Storage persistence and quota reporting.
-        page.evaluate("window.__RD_PERSISTENT_QA_STATE__.storage={persisted:false,persistResult:false,usage:80,quota:100,persistCalls:0}")
+        page.evaluate("window.__RD_SIMULATED_STORAGE_STATE__.storage={persisted:false,persistResult:false,usage:80,quota:100,persistCalls:0}")
         first.evaluate("window.dispatchEvent(new Event('focus'))")
         wait_until(first, lambda: first.locator("#storage-capacity-banner").is_visible())
         wait_until(first, lambda: abs((first.evaluate("RevisionDirector.runtime.storageHealth().usageRatio") or 0) - 0.8) < 1e-9)
@@ -149,12 +156,12 @@ def main() -> None:
         check(warning_storage["level"] == "warning" and warning_storage["persistence"] == "available", f"Passive quota refresh produced the wrong storage state: {warning_storage}")
         first.locator('[data-pane="settings"]').click()
         first.locator('[data-action="refresh-storage"]').click()
-        wait_until(first, lambda: page.evaluate("window.__RD_PERSISTENT_QA_STATE__.storage.persistCalls") == 1)
+        wait_until(first, lambda: page.evaluate("window.__RD_SIMULATED_STORAGE_STATE__.storage.persistCalls") == 1)
         wait_until(first, lambda: first.evaluate("RevisionDirector.runtime.storageHealth().persistence") == "denied")
         denied_storage = first.evaluate("RevisionDirector.runtime.storageHealth()")
         check(denied_storage["persistence"] == "denied" and denied_storage["level"] == "warning", f"Explicit persistence denial was not represented canonically: {denied_storage}")
 
-        page.evaluate("window.__RD_PERSISTENT_QA_STATE__.storage.usage=95; window.__RD_PERSISTENT_QA_STATE__.storage.persisted=true")
+        page.evaluate("window.__RD_SIMULATED_STORAGE_STATE__.storage.usage=95; window.__RD_SIMULATED_STORAGE_STATE__.storage.persisted=true")
         first.locator('[data-action="refresh-storage"]').click()
         wait_until(first, lambda: first.evaluate("RevisionDirector.runtime.storageHealth().level") == "critical")
         critical_storage = first.evaluate("RevisionDirector.runtime.storageHealth()")

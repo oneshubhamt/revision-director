@@ -2,9 +2,9 @@ from __future__ import annotations
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from helpers.browser_harness import ROOT, launch_chromium
-from helpers.persistent_browser import create_persistent_frame, persistent_html
+from helpers.persistent_browser import create_simulated_frame, reset_simulated_storage, simulated_storage_html
 
-HTML = persistent_html()
+HTML = simulated_storage_html()
 checks = 0
 
 
@@ -16,7 +16,7 @@ def check(condition: bool, message: str) -> None:
 
 
 def fresh_host(page) -> None:
-    page.evaluate("window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}")
+    reset_simulated_storage(page)
 
 
 def detach_app(page) -> None:
@@ -24,7 +24,7 @@ def detach_app(page) -> None:
 
 
 def boot(page):
-    return create_persistent_frame(
+    return create_simulated_frame(
         page,
         HTML,
         name="canonical-topology-app",
@@ -52,7 +52,7 @@ def wait_fatal(frame, fragment: str) -> str:
 
 def store_records(page, store: str):
     return page.evaluate("""store => {
-      const raw=window.__RD_PERSISTENT_QA_STATE__.databases['revision-director'];
+      const raw=window.__RD_SIMULATED_STORAGE_STATE__.databases['revision-director'];
       return structuredClone(raw?.stores?.[store]?.records ?? []);
     }""", store)
 
@@ -63,7 +63,8 @@ def main() -> None:
         browser = launch_chromium(playwright)
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
-        page.set_content("<body><script>window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body></body>")
+        reset_simulated_storage(page)
 
         # Missing metadata in an otherwise initialized database must not be regenerated.
         fresh_host(page)
@@ -71,7 +72,7 @@ def main() -> None:
         before_settings = store_records(page, "settings")
         detach_app(page)
         page.evaluate("""() => {
-          const raw=window.__RD_PERSISTENT_QA_STATE__.databases['revision-director'];
+          const raw=window.__RD_SIMULATED_STORAGE_STATE__.databases['revision-director'];
           raw.stores.metadata.records=[];
         }""")
         frame = boot(page)
@@ -84,7 +85,7 @@ def main() -> None:
         frame = boot(page); wait_ready(frame)
         detach_app(page)
         page.evaluate("""() => {
-          const raw=window.__RD_PERSISTENT_QA_STATE__.databases['revision-director'];
+          const raw=window.__RD_SIMULATED_STORAGE_STATE__.databases['revision-director'];
           const now=new Date().toISOString();
           const profile={schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:now,updatedAt:now};
           raw.stores.profiles.records=[[JSON.stringify('p'),profile]];
@@ -102,7 +103,7 @@ def main() -> None:
         frame = boot(page); wait_ready(frame)
         detach_app(page)
         page.evaluate("""() => {
-          const raw=window.__RD_PERSISTENT_QA_STATE__.databases['revision-director'];
+          const raw=window.__RD_SIMULATED_STORAGE_STATE__.databases['revision-director'];
           const now=new Date().toISOString();
           const profile={schemaVersion:1,id:'p',name:'Exam',examDate:'',status:'active',createdAt:now,updatedAt:now};
           raw.stores.profiles.records=[[JSON.stringify('p'),profile]];

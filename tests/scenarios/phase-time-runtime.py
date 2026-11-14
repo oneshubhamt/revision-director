@@ -17,10 +17,11 @@ from helpers.browser_harness import (
 )
 from helpers.persistent_browser import (
     BASE_HTML,
-    PERSISTENT_BROWSER_SHIM,
-    create_persistent_frame,
-    host_state_all as state_all,
-    host_state_get as state_get,
+    create_simulated_frame,
+    reset_simulated_storage,
+    simulated_state_all as state_all,
+    simulated_state_get as state_get,
+    simulated_storage_html,
 )
 BASELINE_BACKUP = baseline_backup_path()
 CLOCK_SHIM = r"""
@@ -44,7 +45,7 @@ TIMING_TEST_HTML = BASE_HTML.replace(
     "const REVIEW_OWNER_STALE_MS = 315_360_000_000;",
     1,
 )
-HTML = TIMING_TEST_HTML.replace("<head>", "<head>" + PERSISTENT_BROWSER_SHIM + CLOCK_SHIM, 1)
+HTML = simulated_storage_html(CLOCK_SHIM, base_html=TIMING_TEST_HTML)
 checks = 0
 
 
@@ -71,7 +72,7 @@ def wait_until(frame, predicate, timeout=6000):
 
 
 def boot_frame(page):
-    frame = create_persistent_frame(
+    frame = create_simulated_frame(
         page,
         HTML,
         name="revision-app",
@@ -168,9 +169,9 @@ def seed_baseline_state(page) -> None:
         ]
         stores[name] = {"keyPath": key_path, "indices": indices, "records": records}
     raw_db = {"version": 3, "stores": stores}
-    page.evaluate(
-        "(raw)=>{ window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{'revision-director':raw}}; }",
-        raw_db,
+    reset_simulated_storage(
+        page,
+        {"local": {}, "databases": {"revision-director": raw_db}},
     )
 
 def main() -> None:
@@ -181,7 +182,7 @@ def main() -> None:
         page = context.new_page()
         errors = capture_browser_errors(page)
         accept_dialogs(page)
-        page.set_content("<body><script>window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body></body>")
         seed_baseline_state(page)
         frame = boot_frame(page)
 
