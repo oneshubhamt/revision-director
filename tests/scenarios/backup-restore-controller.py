@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
-from backup_fixture_codec import baseline_backup_path
+from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
 from helpers.browser_fixture import INDEXEDDB_SHIM
 sys.path.insert(0,str(ROOT/'tests'))
@@ -61,6 +61,10 @@ def main():
             page.locator('[data-action="export-backup"]').click()
         exported=tmp/info.value.suggested_filename;info.value.save_as(str(exported))
         check(exported.suffix=='.rdbackup' and exported.stat().st_size>0,'One-click export failed')
+        payload=decode_file(exported)
+        check(payload['format']=='revision-director-backup' and payload['schemaVersion']==2,'Exported backup identity is invalid')
+        check(all(item.get('schemaVersion')==1 for key in ('profiles','nodes','units','studyEvents','obligations','evidenceEvents','chunks','dailyPlans') for item in payload[key]),'Exported backup contains an unversioned document')
+        check(page.locator('[data-action="reset-data"]').count()==0,'Prototype reset remains in production UI')
         # Start an unfinished retrieval and export it.
         open_rendered_pane(page, 'today')
         page.locator('[data-action="start-due"]').click(); page.locator('#review-content').wait_for(state='visible')
@@ -109,8 +113,15 @@ def main():
         result=wait_for_backup_import_result(page, timeout=5000)
         check(bool(result['message']) and result['error'] and not result['preview'],
               f"Tampered backup did not fail through the rejection UI contract · result={result!r}")
+        semantic=tmp/'semantic-invalid.rdbackup'
+        semantic.write_bytes(encode_payload({**payload,'settings':{**payload['settings'],'activeProfileId':'missing-profile'}}))
+        page.locator('#import-backup').set_input_files([])
+        page.locator('#import-backup').set_input_files(str(semantic))
+        semantic_result=wait_for_backup_import_result(page, timeout=5000)
+        check(bool(semantic_result['message']) and semantic_result['error'] and not semantic_result['preview'],
+              f"Semantically invalid backup did not fail closed · result={semantic_result!r}")
         check(not errors,f'Browser errors: {errors}')
         browser.close()
-    print(f'PASS {checks} Pass D2 browser restore-controller checks')
+    print(f'PASS {checks} browser backup/restore controller checks')
 
 if __name__=='__main__': main()

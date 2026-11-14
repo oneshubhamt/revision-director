@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, launch_chromium, open_html_page, open_rendered_pane, wait_for_layout, wait_until
-from helpers.browser_fixture import INDEXEDDB_SHIM, restore_selected_backup
+from helpers.browser_fixture import INDEXEDDB_SHIM, open_page as open_fixture_page, restore_selected_backup, stored_all
 BASELINE_BACKUP = baseline_backup_path()
 CLOCK_SHIM = r"""
 <script>
@@ -35,6 +35,34 @@ def launch_page(browser, viewport={"width": 1440, "height": 1000}):
 def restore_baseline(page):
     page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
     restore_selected_backup(page, BASELINE_BACKUP)
+
+def exercise_review_keyboard_shortcuts(browser) -> None:
+    page, errors = open_fixture_page(browser, {"width": 1280, "height": 900}, baseline=True)
+    for index in range(page.locator("button").count()):
+        button = page.locator("button").nth(index)
+        name = button.get_attribute("aria-label") or button.inner_text().strip() or button.get_attribute("title")
+        check(bool(name), f"Unnamed button: {index}")
+    page.locator('[data-pane="today"]').click()
+    question_obligations = [
+        item for item in stored_all(page, "obligations")
+        if item["status"] == "active" and item.get("workflow", {}).get("kind") == "questions"
+    ]
+    question_actions = [
+        page.locator(f'[data-action="review-one"][data-id="{item["id"]}"]')
+        for item in question_obligations
+        if page.locator(f'[data-action="review-one"][data-id="{item["id"]}"]').count()
+    ]
+    check(bool(question_actions), "Application workflow missing from accessibility fixture")
+    question_actions[0].click(); page.locator("#attempt-text").wait_for(state="visible")
+    page.locator("#attempt-text").fill("Reasoned answers."); page.locator("#attempt-completed").check()
+    page.locator(".review-card").click(position={"x": 5, "y": 5}); page.keyboard.press("Space"); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
+    check(page.locator('[data-review-phase="compare"]').is_visible(), "Keyboard reveal failed")
+    page.locator("#questions-attempted").fill("10"); page.locator("#questions-correct").fill("8"); page.locator("#questions-partial").fill("1")
+    page.locator(".review-card").click(position={"x": 5, "y": 5}); page.keyboard.press("3"); page.locator("#pane-today").wait_for(state="visible")
+    check(page.locator("#pane-today").evaluate('e=>e.classList.contains("on")'), "Keyboard rating failed")
+    check(not errors, f"Browser errors: {errors}")
+    page.close()
+
 
 def main():
     global checks
@@ -165,7 +193,7 @@ def main():
         check(page.evaluate("document.activeElement?.getAttribute('data-action')") == "toggle-pause", "Overlay focus did not return to pause control")
 
         check(not errors, f"Browser errors: {errors}")
-        page.close(); browser.close()
-    print(f"PASS {checks} Pass C2 browser accessibility and UI-runtime checks")
+        page.close(); exercise_review_keyboard_shortcuts(browser); browser.close()
+    print(f"PASS {checks} browser accessibility and UI-runtime checks")
 
 if __name__ == "__main__": main()

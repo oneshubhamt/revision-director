@@ -10,9 +10,11 @@ from helpers.browser_harness import (
     ROOT,
     capture_browser_errors,
     launch_chromium,
+    wait_for_toast_outcome,
     wait_until as shared_wait_until,
 )
 from helpers.persistent_browser import create_persistent_frame, persistent_html
+from helpers.browser_fixture import open_page as open_fixture_page
 HTML = persistent_html()
 checks = 0
 
@@ -42,13 +44,57 @@ def boot_frame(page):
     check(not frame.locator("#fatal-error").is_visible(), "Fatal startup error")
     return frame
 
+def exercise_intake_and_profile_summary(browser) -> None:
+    page, errors = open_fixture_page(browser, baseline=True)
+    check(page.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version mismatch")
+    invalid = [
+        {"area":"A","task":"T","measure":"M","durationMinutes":10,"activityMode":"evil"},
+        {"area":"A","task":"T","measure":"M","durationMinutes":10,"understanding":99},
+        {"area":"A","task":"T","measure":"M","durationMinutes":10,"occurredAt":"not-a-date"},
+    ]
+    for payload in invalid:
+        result = page.evaluate('async p=>{try{await RevisionDirector.intake.importStudyEvent(p);return "accepted"}catch(e){return String(e.message||e)}}', payload)
+        check(result != "accepted", f"Invalid bridge payload accepted: {payload}")
+    result = page.evaluate('async()=>RevisionDirector.intake.importStudyEvent({area:"Geology",task:"Bridge event",measure:"1 topic",durationMinutes:25,activityMode:"review",understanding:3})')
+    check(bool(result.get("id")), "Valid bridge Study Event failed")
+    page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
+    profile_ids = page.locator("[data-profile-editor]").evaluate_all(
+        "rows => rows.map(row => row.getAttribute('data-profile-editor')).filter(Boolean)"
+    )
+    check(len(profile_ids) == 2, f"Unexpected bridge profile set: {profile_ids}")
+    for profile_id in profile_ids:
+        row = page.locator(f'[data-profile-editor="{profile_id}"]')
+        check(row.count() == 1, f"Profile editor is missing durable identity: {profile_id}")
+        row.locator("[data-profile-status]").select_option("suspended")
+        page.evaluate("document.querySelector('#toast').textContent=''")
+        row.locator('[data-action="save-profile"]').click()
+        wait_for_toast_outcome(
+            page,
+            expect_error=False,
+            timeout=8_000,
+            message=f"Profile suspension did not report successful completion: {profile_id}",
+        )
+        profiles_after_save = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
+        check(
+            next((profile["status"] for profile in profiles_after_save if profile["id"] == profile_id), None) == "suspended",
+            f"Successful profile save did not persist suspension: {profile_id} · {profiles_after_save}",
+        )
+    profiles = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
+    check(all(profile["status"] == "suspended" for profile in profiles), f"Public profile summary did not preserve both suspensions: {profiles}")
+    shared_wait_until(page, lambda: page.evaluate("async()=> (await RevisionDirector.records.getDueSummary()).dueCount") == 0, timeout=5000, interval=40, message="Paused profiles remained due")
+    summary = page.evaluate("RevisionDirector.records.getDueSummary()")
+    check(summary["dueCount"] == 0, f"Paused profiles remained in bridge due summary: {summary}")
+    check(not errors, f"Browser errors: {errors}")
+    page.close()
+
+
 def main() -> None:
     with sync_playwright() as pw:
         browser = launch_chromium(pw)
         context = browser.new_context(viewport={"width": 1600, "height": 1100})
         page = context.new_page()
         errors = capture_browser_errors(page)
-        page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body><script>window.__RD_PLUGIN_QA_STATE__={local:{},databases:{}}</script></body>")
         frame=boot_frame(page)
 
         check(frame.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version wrong")
@@ -115,8 +161,8 @@ def main() -> None:
         check(frame.locator('[data-pane="library"]').is_enabled(), "Application navigation broke after plugin failures")
         # Plugin execution errors are consumed by the loader and recorded as plugin status/diagnostics.
         check(not errors, f"Uncontained browser errors: {errors}")
-        context.close(); browser.close()
-    print(f"PASS {checks} Pass E1 browser plugin-runtime checks")
+        context.close(); exercise_intake_and_profile_summary(browser); browser.close()
+    print(f"PASS {checks} public API and plugin browser checks")
 
 if __name__ == "__main__":
     main()

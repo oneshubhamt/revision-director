@@ -6,9 +6,9 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_until
-from helpers.browser_fixture import INDEXEDDB_SHIM, restore_selected_backup
-CLOCK=r'''<script>(()=>{let current=Date.now();Date.now=()=>current;window.__RD_STAGE_C_CLOCK__={advance(ms){current+=Number(ms)||0;return current;}};})();</script>'''
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_for_layout, wait_until
+from helpers.browser_fixture import INDEXEDDB_SHIM, open_page as open_fixture_page, restore_selected_backup, wait_for_text
+CLOCK=r'''<script>(()=>{let current=Date.now();Date.now=()=>current;window.__RD_UI_BEHAVIOUR_CLOCK__={advance(ms){current+=Number(ms)||0;return current;}};})();</script>'''
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+INDEXEDDB_SHIM+CLOCK,1)
 BASELINE = baseline_backup_path()
 CHECKS=0
@@ -16,6 +16,64 @@ CHECKS=0
 def check(v,msg):
  global CHECKS; CHECKS+=1
  if not v:raise AssertionError(msg)
+
+def exercise_shell_crud(browser) -> None:
+    page, errors = open_fixture_page(browser)
+    check(page.locator("#sb-units").inner_text() == "0", "Clean production database should start empty")
+    check(page.evaluate("async()=> (await RevisionDirector.records.listProfiles()).length") == 0, "Clean production database exposed preloaded profiles")
+    for pane in ("review", "library", "study", "history", "settings", "today"):
+        page.locator(f'[data-pane="{pane}"]') .click()
+        page.locator(f"#pane-{pane}").wait_for(state="visible")
+        check(page.locator(f"#pane-{pane}").evaluate('e=>e.classList.contains("on")'), f"Pane did not open: {pane}")
+
+    page.locator('[data-pane="settings"]').click()
+    page.locator("#settings-content").wait_for(state="visible")
+    storage = page.evaluate("RevisionDirector.runtime.storageHealth()")
+    check(storage["indexedDbAvailable"], "Storage-health contract did not report IndexedDB availability")
+    check(page.locator('[data-action="refresh-storage"]').count() == 1, "Storage-health refresh control is missing")
+    check(page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "fixed-retention", "Clean installations must default to measured fixed-retention scheduling")
+    page.locator("#new-profile-name").fill("IFoS Production Test")
+    page.locator("#new-profile-date").fill("2027-11-01")
+    page.locator('[data-action="add-profile"]').click()
+    page.wait_for_function("() => document.querySelectorAll('[data-profile-editor]').length === 1")
+    check(page.locator("[data-profile-editor]").count() == 1, "First production exam profile was not created")
+
+    page.locator("#quick-add-unit").click()
+    page.locator("#unit-dialog").wait_for(state="visible")
+    form = page.locator("#unit-form")
+    values = {
+        "subject": "Public Administration", "section": "Administrative Thinkers", "topic": "Max Weber",
+        "title": "Weberian bureaucracy core features", "scope": "Authority, hierarchy, rules, merit and impersonality.",
+        "source": "Optional notes pages 10-15", "protocol": "Recall six features and two criticisms without notes.",
+        "successCriteria": "Six features\nTwo criticisms", "workflowPrompt": "State the features and criticisms from memory.",
+        "workflowCheckpoints": "Authority\nHierarchy\nRules\nMerit\nImpersonality\nCriticisms",
+        "firstDueAt": "2026-07-25T08:00",
+    }
+    for name, value in values.items():
+        form.locator(f'[name="{name}"]') .fill(value)
+    form.locator('button[type="submit"]').click()
+    wait_for_text(page, "#sb-units", "1")
+    check(page.locator("#sb-units").inner_text() == "1", "Knowledge Unit creation failed")
+
+    page.locator("#quick-log-study").click()
+    study = page.locator("#study-form")
+    study.locator('[name="area"]').fill("Public Administration")
+    study.locator('[name="task"]').fill("Weber")
+    study.locator('[name="measure"]').fill("Pages 10-15")
+    study.locator('[name="durationMinutes"]').fill("45")
+    study.locator('button[type="submit"]').click()
+    page.locator("#study-dialog").wait_for(state="hidden")
+    page.locator('[data-pane="study"]').click()
+    wait_until(page, lambda: "Weber" in page.locator("#study-content").inner_text(), timeout=5000, interval=40, message="Study Event not displayed")
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    wait_for_layout(page)
+    check(not page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth"), "Horizontal mobile overflow")
+    for pane in ("today", "review", "library", "study", "history", "settings"):
+        check(page.locator(f'[data-pane="{pane}"]') .is_visible(), f"Mobile navigation hidden: {pane}")
+    check(not errors, f"Shell/CRUD browser errors: {errors}")
+    page.close()
+
 
 def main():
  with sync_playwright() as pw:
@@ -56,7 +114,7 @@ def main():
   page.locator('#new-profile-name').wait_for(state='visible')
   before_profiles=page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
   before_ids={profile['id'] for profile in before_profiles}
-  page.locator('#new-profile-name').fill('Stage C single delegated action')
+  page.locator('#new-profile-name').fill('Delegated action profile')
   page.locator('#new-profile-date').fill('2029-01-01')
   page.evaluate("document.querySelector('#toast').textContent=''")
   page.locator('[data-action=add-profile]').click()
@@ -69,7 +127,7 @@ def main():
   )
   after_profiles=page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
   added=[profile for profile in after_profiles if profile['id'] not in before_ids]
-  check(len(added)==1 and added[0]['name']=='Stage C single delegated action','Delegated action duplicated or created the wrong profile')
+  check(len(added)==1 and added[0]['name']=='Delegated action profile','Delegated action duplicated or created the wrong profile')
 
   # Dirty render preserves focus and selection.
   page.locator('[data-pane=library]').click(); page.locator('#pane-library').wait_for(state='visible')
@@ -97,7 +155,7 @@ def main():
   page.locator('[data-action=review-one]').first.click(); page.locator('[data-action=toggle-pause]').wait_for(state='visible')
   for cycle in range(12):
    pause=page.locator('[data-action=toggle-pause]');pause.focus()
-   page.evaluate('__RD_STAGE_C_CLOCK__.advance(130001)')
+   page.evaluate('__RD_UI_BEHAVIOUR_CLOCK__.advance(130001)')
    page.evaluate("window.dispatchEvent(new Event('focus'))")
    overlay=page.locator('#gap-overlay'); overlay.wait_for(state='visible', timeout=5000)
    check(overlay.is_visible(),f'Gap overlay missing on cycle {cycle+1}')
@@ -120,7 +178,7 @@ def main():
    check(page.evaluate("document.activeElement?.getAttribute('data-action')")=='toggle-pause',f'Return focus failed on cycle {cycle+1}')
 
   check(not errors,f'Browser errors: {errors}')
-  page.close();browser.close()
- print(f'PASS {CHECKS} Stage C behavioural and repeated-focus checks')
+  page.close(); exercise_shell_crud(browser); browser.close()
+ print(f'PASS {CHECKS} UI behaviour and repeated-focus checks')
 
 if __name__=='__main__':main()
