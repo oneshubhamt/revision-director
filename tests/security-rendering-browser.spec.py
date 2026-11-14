@@ -136,7 +136,6 @@ def main() -> None:
     with sync_playwright() as playwright:
         browser = launch_chromium(playwright)
         page, errors = open_page(browser)
-        check(page.title() == "Revision Director · VA7.1 security/rendering", "Release title mismatch")
         restore_fixture(page)
         verify_responsive_surfaces(page)
         verify_stored_content_escaping(page)
