@@ -165,7 +165,6 @@ def main():
         page.locator('[data-pane="today"]').click(); page.locator('#pane-today').wait_for(state='visible')
         page.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click(); page.locator('#attempt-text').wait_for(state='visible')
         attempt=page.locator('#attempt-text')
-        check(attempt.count()==1,'Expected text retrieval did not start')
         attempt.fill('data safety safety copy live draft')
         wait_until(page, lambda: 'data safety safety copy live draft' in (page.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") or ''), timeout=5000, interval=40, message='Live draft did not reach emergency recovery')
         ensure_settings(page)

@@ -109,7 +109,6 @@ def main() -> None:
         check(row.count() == 1, "Target unit missing")
         row.locator('[data-action="review-unit"]').click()
         wait_until(frame, lambda: frame.locator("#attempt-text").count() == 1)
-        check(frame.locator("#attempt-text").count() == 1, "Recall workflow did not start")
         frame.locator("#attempt-text").fill("Recovered closed-book answer")
         wait_until(
             frame,
@@ -180,7 +179,12 @@ def main() -> None:
           button.click(); button.click();
         }""")
         try:
-            wait_until(frame, lambda: len(state_all(page, "evidenceEvents")) == before + 1)
+            wait_until(
+                frame,
+                lambda: len(state_all(page, "evidenceEvents")) >= before + 1
+                and (state_get(page, "activeRetrieval", "current") or {}).get("activeIndex") == 1,
+                timeout=10000,
+            )
         except Exception:
             print("toast", frame.locator("#toast").inner_text(), flush=True)
             print("active", state_get(page, "activeRetrieval", "current"), flush=True)
@@ -197,6 +201,10 @@ def main() -> None:
         frame = boot_frame(page)
         wait_until(frame, lambda: frame.locator(".review-card").count() == 1)
         recovered_next = state_get(page, "activeRetrieval", "current")
+        check(
+            state_all(page, "evidenceEvents") == after,
+            "Browser restart revealed delayed or duplicated evidence publication",
+        )
         check(
             recovered_next
             and recovered_next["status"] == "active"

@@ -44,7 +44,6 @@ def main():
             data=exported.read_bytes(); check(len(data)>0,'Exported backup is empty')
             check(data[:2]==b'\x1f\x8b' or data.startswith(b'{"kind":"manifest"'),'Compression detection signature is missing')
             page.locator('#import-backup').set_input_files(str(exported)); page.locator('#restore-dialog').wait_for(state='visible')
-            check(page.locator('#restore-dialog').is_visible(),'Exported archive did not round-trip inspect')
             page.get_by_role('button', name='CANCEL', exact=True).click(); page.locator('#restore-dialog').wait_for(state='hidden')
             lines=FIXTURE.read_text().strip().splitlines(); parsed=[json.loads(x) for x in lines]
             first_chunk=next(x for x in parsed if x.get('kind')=='chunk'); first_chunk['items'][0]['name']='Tampered name'

@@ -283,16 +283,20 @@ def main() -> None:
         guard_active = simulated_state_get(page, 'activeRetrieval', 'current')
         check(guard_active and guard_active['status'] == 'active', 'Guard mismatch did not safely restore an active retry state')
         frame.locator('[data-action="rate"][data-rating="3"]').click()
-        wait_until(frame, lambda: len(simulated_state_all(page, 'evidenceEvents')) == before_guard_evidence + 1)
-        check(len(simulated_state_all(page, 'evidenceEvents')) == before_guard_evidence + 1, 'Retry after guard abort did not commit exactly once')
         wait_until(
             frame,
-            lambda: frame.locator('#pane-today').is_visible()
-            or (
-                frame.locator('[data-review-phase="attempt"]').count() > 0
-                and not frame.locator('[data-review-phase="attempt"]').is_hidden()
+            lambda: len(simulated_state_all(page, 'evidenceEvents')) >= before_guard_evidence + 1
+            and (
+                frame.locator('#pane-today').is_visible()
+                or (
+                    frame.locator('[data-review-phase="attempt"]').count() > 0
+                    and not frame.locator('[data-review-phase="attempt"]').is_hidden()
+                )
             ),
+            timeout=10000,
         )
+        check(len(simulated_state_all(page, 'evidenceEvents')) == before_guard_evidence + 1,
+              'Guard recovery published more than one evidence event after UI settled')
 
         # Re-establish data, then simulate a crash after the committing snapshot but before the atomic evidence transaction.
         import_fixture(page, frame)
@@ -312,8 +316,11 @@ def main() -> None:
         check(resumed['status'] == 'active' and 'commitToken' not in resumed, 'Stale committing snapshot was not safely returned to active state')
         before = len(simulated_state_all(page, 'evidenceEvents'))
         complete_good(frame)
-        wait_until(frame, lambda: len(simulated_state_all(page, 'evidenceEvents')) == before + 1)
-        check(len(simulated_state_all(page, 'evidenceEvents')) == before + 1, 'Retry after committing-state crash duplicated evidence')
+        wait_until(frame, lambda: len(simulated_state_all(page, 'evidenceEvents')) >= before + 1)
+        committed_evidence = simulated_state_all(page, 'evidenceEvents')
+        check(len(committed_evidence) == before + 1
+              and len({entry['id'] for entry in committed_evidence}) == len(committed_evidence),
+              'Retry after committing-state crash produced duplicated evidence')
 
         # A newer completed tombstone must suppress an older active emergency snapshot.
         current = simulated_state_get(page, 'activeRetrieval', 'current')
@@ -326,6 +333,8 @@ def main() -> None:
             set_host_local(page, 'revision-director:active-retrieval:v1', json.dumps(local))
             mutate_raw_record(page, 'activeRetrieval', 'current', "value.status='completed'; value.activeIndex=value.queueTargetIds.length; value.activeTargetId=''; value.commitToken='commit_completed'; value.revision += 10; value.updatedAt='2026-07-28T00:00:00.000Z'; value.phase='attempt'; value.draft.phase='attempt'; value.timeRuntime.currentPhase='attempt';")
             frame = boot_frame(page)
+            check(simulated_state_all(page, 'evidenceEvents') == committed_evidence,
+                  'Commit replay or tombstone recovery republished evidence after reload')
             wait_until(
                 frame,
                 lambda: simulated_state_get(page, 'activeRetrieval', 'current') is None
