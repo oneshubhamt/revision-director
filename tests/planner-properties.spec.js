@@ -140,4 +140,71 @@ for (let caseIndex = 0; caseIndex < CASES; caseIndex += 1) {
   check(expandedCriticalValue >= actualCritical.value, label + ': increasing capacity reduced the attainable critical objective');
 }
 
-console.log('PASS ' + checks + ' seeded planner/oracle property checks across ' + CASES + ' cases');
+// Independent mixed-size oracle: cover oversized critical work, must-split
+// classifications and no-fit fallback without copying the production DP.
+const mixedRandom = mulberry32(0xA11CE);
+const MIXED_CASES = 180;
+for (let caseIndex = 0; caseIndex < MIXED_CASES; caseIndex += 1) {
+  const capacity = integer(mixedRandom, 10, 85);
+  const count = integer(mixedRandom, 1, 9);
+  const candidates = Array.from({length: count}, (_, index) => {
+    const mode = integer(mixedRandom, 0, 4);
+    return item('mixed-' + caseIndex + '-' + index, integer(mixedRandom, 1, 900) / 10,
+      integer(mixedRandom, 1, 140), {
+        type: mode === 0 ? 'relearn' : 'concept-reconstruction',
+        dueState: mode === 1 ? 'overdue' : 'due',
+        dueRisk: mode === 1 ? integer(mixedRandom, 85, 100) / 100
+          : integer(mixedRandom, 0, 84) / 100,
+        dueAt: new Date(BASE_DUE + integer(mixedRandom, -48, 48) * 3600000).toISOString(),
+      });
+  });
+  const before = JSON.stringify(candidates);
+  const actual = api.choosePlanItems(candidates, capacity);
+  const label = 'mixed case ' + caseIndex;
+  assertPartition(candidates, actual, label);
+  check(JSON.stringify(candidates) === before, label + ': planning mutated input records');
+  const ranked = [...candidates].sort((a, b) => b.score - a.score
+    || a.joined.obligation.dueAt.localeCompare(b.joined.obligation.dueAt)
+    || a.joined.obligation.expectedMinutes - b.joined.obligation.expectedMinutes
+    || key(a).localeCompare(key(b)));
+  const criticalItems = ranked.filter(critical);
+  const oversizedCritical = criticalItems.filter(value => duration(value) > capacity);
+  const highestCritical = criticalItems[0];
+  if (highestCritical && duration(highestCritical) > capacity) {
+    check(actual.selected.length === 1 && key(actual.selected[0]) === key(highestCritical),
+      label + ': highest-ranked oversized critical work not selected');
+    check(actual.requiredOverrun.length === 1 && key(actual.requiredOverrun[0]) === key(highestCritical),
+      label + ': required critical overrun not represented');
+    check(JSON.stringify(actual.mustSplit.map(key)) ===
+      JSON.stringify(oversizedCritical.slice(1).map(key)),
+      label + ': other oversized critical items not marked must-split');
+  } else {
+    check(JSON.stringify(actual.mustSplit.map(key)) === JSON.stringify(oversizedCritical.map(key)),
+      label + ': oversized critical classification diverged');
+    const chosenCritical = actual.selected.filter(critical);
+    const expectedCritical = bruteForce(criticalItems, capacity);
+    const foundCritical = selectedObjective(chosenCritical);
+    check(foundCritical.value === expectedCritical.value && foundCritical.used === expectedCritical.used,
+      label + ': critical selection diverged from exhaustive oracle');
+    const remaining = capacity - foundCritical.used;
+    const chosenNormal = actual.selected.filter(value => !critical(value));
+    const expectedNormal = bruteForce(candidates.filter(value => !critical(value)), remaining);
+    const foundNormal = selectedObjective(chosenNormal);
+    if (actual.requiredOverrun.length === 0) {
+      check(foundNormal.value === expectedNormal.value && foundNormal.used === expectedNormal.used,
+        label + ': normal selection diverged from exhaustive oracle');
+      check(actual.selected.reduce((total, value) => total + duration(value), 0) <= capacity,
+        label + ': selected work silently exceeded capacity');
+    } else {
+      check(actual.selected.length === 1 && actual.requiredOverrun.length === 1
+        && key(actual.selected[0]) === key(ranked[0]), label + ': no-fit fallback changed priority');
+      check(ranked.every(value => duration(value) > capacity),
+        label + ': fallback overran even though a fitting item existed');
+    }
+  }
+  const permuted = api.choosePlanItems(shuffle(mixedRandom, candidates), capacity);
+  check(JSON.stringify(canonicalResult(actual)) === JSON.stringify(canonicalResult(permuted)),
+    label + ': disposition depends on input permutation');
+}
+
+console.log('PASS ' + checks + ' seeded planner/oracle property checks across ' + (CASES + MIXED_CASES) + ' cases');
