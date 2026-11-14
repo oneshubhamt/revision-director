@@ -255,6 +255,8 @@ def deep() -> None:
     run(sys.executable, "tools/qa-mutation-probes.py")
     for path in DEEP_NODE_PLAN:
         run("node", path)
+    # Keep full-scale timing envelopes as deep diagnostics, not routine core gates.
+    run("node", "tests/fsrs-scale-benchmark.spec.js", "--performance")
     prepare_hosted_optimizer()
     run(sys.executable, "tests/fsrs-browser-optimizer.spec.py", "full")
 
