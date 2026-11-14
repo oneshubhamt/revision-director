@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from helpers.browser_harness import ROOT, launch_chromium
-from helpers.persistent_browser import create_simulated_frame, reset_simulated_storage, simulated_storage_html
+from helpers.simulated_storage import create_simulated_frame, reset_simulated_storage, simulated_storage_html
 
 HTML = simulated_storage_html()
 checks = 0

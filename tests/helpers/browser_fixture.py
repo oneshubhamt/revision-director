@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from tempfile import TemporaryDirectory
 from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from helpers.browser_harness import open_rendered_pane, select_backup_file, wait_for_app_ready, wait_for_layout, wait_for_toast_outcome, wait_until
-from helpers.persistent_browser import simulated_state_all, simulated_state_get, simulated_storage_html
+from helpers.simulated_storage import simulated_state_all, simulated_state_get, simulated_storage_html
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE_HTML = (ROOT / "index.html").read_text()

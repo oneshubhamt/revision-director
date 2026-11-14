@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, capture_browser_errors, launch_chromium, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
-from helpers.persistent_browser import simulated_storage_html
+from helpers.simulated_storage import simulated_storage_html
 sys.path.insert(0,str(ROOT/'tests'))
 from backup_fixture_codec import decode_file
 HOOK="window.__RD_DATA_SAFETY_STORAGE__={RevisionData,RevisionService,Store,APP_VERSION,DB_NAME,DB_VERSION}; void boot();"
