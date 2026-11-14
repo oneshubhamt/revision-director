@@ -154,6 +154,11 @@ def shared_chromium():
                     process.kill()
                     process.wait(timeout=5)
 
+def assert_python_test_syntax() -> None:
+    for path in sorted(TESTS.rglob("*.py")):
+        compile(path.read_text(), str(path.relative_to(ROOT)), "exec")
+
+
 def assert_test_topology() -> None:
     historical = [*TESTS.glob("pass-*"), *TESTS.glob("stage-*")]
     stale_wrappers = [TESTS / name for name in REMOVED_WRAPPERS if (TESTS / name).exists()]
@@ -165,6 +170,7 @@ def assert_test_topology() -> None:
 
 def core() -> None:
     assert_test_topology()
+    assert_python_test_syntax()
     run(sys.executable, "build/build.py")
     run(sys.executable, "build/checksums.py", "--check")
     run("node", "--check", "dist/app.js")
