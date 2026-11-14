@@ -131,8 +131,26 @@ def main():
 
   # Dirty render preserves focus and selection.
   page.locator('[data-pane=library]').click(); page.locator('#pane-library').wait_for(state='visible')
-  search=page.locator('#library-search');search.fill('Drainage');search.evaluate('e=>e.setSelectionRange(2,6)')
-  wait_until(page, lambda: page.locator('.unit-row').count()==1 and page.evaluate('document.activeElement?.id')=='library-search', timeout=5000, interval=40, message='Filtered library did not settle')
+  search=page.locator('#library-search')
+  search.evaluate("e=>e.setAttribute('data-qa-before-library-render','1')")
+  search.fill('Drainage');search.evaluate('e=>e.setSelectionRange(2,6)')
+  wait_until(
+   page,
+   lambda: page.locator('#library-search[data-qa-before-library-render="1"]').count()==0,
+   timeout=5000,
+   interval=40,
+   message='Debounced library render did not replace the search control',
+  )
+  search=page.locator('#library-search')
+  wait_until(page, lambda: page.locator('.unit-row').count()==1, timeout=3000, interval=40, message='Filtered library did not settle')
+  wait_until(
+   page,
+   lambda: page.evaluate('document.activeElement?.id')=='library-search'
+   and search.evaluate('e=>[e.selectionStart,e.selectionEnd]')==[2,6],
+   timeout=3000,
+   interval=40,
+   message='Dirty library render did not restore focus and selection',
+  )
   check(page.evaluate('document.activeElement?.id')=='library-search','Dirty render lost focus')
   check(search.evaluate('e=>[e.selectionStart,e.selectionEnd]')==[2,6],'Dirty render lost selection')
 
