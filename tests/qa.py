@@ -100,12 +100,27 @@ BROWSER_DOMAIN_PLAN = {
 
 BROWSER_PLAN = tuple(path for group in BROWSER_DOMAIN_PLAN.values() for path in group)
 
+NATIVE_INDEXEDDB_BROWSER_PLAN = (
+    "tests/scenarios/indexeddb-durability.py",
+    "tests/scenarios/native-indexeddb-journey.py",
+)
+
+DURABILITY_BROWSER_PLAN = (
+    "tests/scenarios/phase-time-runtime.py",
+)
+
 DEEP_NODE_PLAN = (
     "tests/fsrs-scheduling-policy-deep.spec.js",
 )
 
 PERFORMANCE_BROWSER_PLAN = (
     "tests/scenarios/planner-performance.py",
+)
+
+SIMULATED_STORAGE_BROWSER_PLAN = (
+    tuple(path for path in BROWSER_PLAN if path not in NATIVE_INDEXEDDB_BROWSER_PLAN)
+    + DURABILITY_BROWSER_PLAN
+    + PERFORMANCE_BROWSER_PLAN
 )
 
 REMOVED_WRAPPERS = (
@@ -204,7 +219,16 @@ def assert_test_topology() -> None:
     ]
     stale_wrappers = [TESTS / name for name in REMOVED_WRAPPERS if (TESTS / name).exists()]
     stale_helper = TESTS / "helpers/suite-runner.js"
-    stale = sorted([*historical, *stale_wrappers, *([stale_helper] if stale_helper.exists() else [])], key=lambda path: path.name)
+    stale_storage_helper = TESTS / "helpers/persistent_browser.py"
+    stale = sorted(
+        [
+            *historical,
+            *stale_wrappers,
+            *([stale_helper] if stale_helper.exists() else []),
+            *([stale_storage_helper] if stale_storage_helper.exists() else []),
+        ],
+        key=lambda path: path.name,
+    )
     if stale:
         raise AssertionError("Obsolete QA entrypoints remain: " + ", ".join(path.name for path in stale))
     historical_label = re.compile(r"\b(?:Pass|Stage)\s+[A-E](?:\d+)?\b|__RD_(?:PASS|STAGE)_[A-Z0-9_]+|programme(?:-closure)?", re.IGNORECASE)
@@ -217,6 +241,47 @@ def assert_test_topology() -> None:
             historical_sources.append(f"{path.relative_to(ROOT)}: {', '.join(matches)}")
     if historical_sources:
         raise AssertionError("Historical QA labels remain: " + "; ".join(historical_sources))
+
+    canonical_storage = (TESTS / "helpers/simulated_storage.py").resolve()
+    legacy_storage_tokens = (
+        "INDEXEDDB_SHIM",
+        "PERSISTENT_BROWSER_SHIM",
+        "__RD_PERSISTENT_QA_STATE__",
+        "create_persistent_frame",
+        "persistent_html",
+        "host_state_all",
+        "host_state_get",
+    )
+    duplicate_simulators = []
+    legacy_storage_sources = []
+    indexeddb_definition = re.compile(r"Object\.defineProperty\(window,\s*['\"]indexedDB['\"]")
+    for path in sorted(TESTS.rglob("*.py")):
+        source = path.read_text()
+        if path.resolve() != canonical_storage and indexeddb_definition.search(source):
+            duplicate_simulators.append(str(path.relative_to(ROOT)))
+        matches = [token for token in legacy_storage_tokens if token in source]
+        if matches:
+            legacy_storage_sources.append(f"{path.relative_to(ROOT)}: {', '.join(matches)}")
+    if duplicate_simulators:
+        raise AssertionError("Duplicate simulated IndexedDB implementations remain: " + ", ".join(duplicate_simulators))
+    if legacy_storage_sources:
+        raise AssertionError("Legacy simulated-storage APIs remain: " + "; ".join(legacy_storage_sources))
+
+    bypasses = []
+    for relative in SIMULATED_STORAGE_BROWSER_PLAN:
+        source = (ROOT / relative).read_text()
+        if "browser_fixture" not in source and "simulated_storage" not in source:
+            bypasses.append(relative)
+    if bypasses:
+        raise AssertionError("Simulated browser entrypoints bypass canonical storage: " + ", ".join(bypasses))
+
+    native_coupling = []
+    for relative in NATIVE_INDEXEDDB_BROWSER_PLAN:
+        source = (ROOT / relative).read_text()
+        if "browser_fixture" in source or "simulated_storage" in source:
+            native_coupling.append(relative)
+    if native_coupling:
+        raise AssertionError("Native IndexedDB witnesses depend on simulated storage: " + ", ".join(native_coupling))
 
 
 def core() -> None:
@@ -257,7 +322,9 @@ def optimizer() -> None:
 
 
 def durability() -> None:
-    run(sys.executable, "tests/scenarios/phase-time-runtime.py")
+    assert_test_topology()
+    for path in DURABILITY_BROWSER_PLAN:
+        run(sys.executable, path)
 
 
 def browser() -> None:

@@ -71,6 +71,19 @@ check(tuple(path for group in qa.BROWSER_DOMAIN_PLAN.values() for path in group)
 check(len(set(qa.BROWSER_PLAN)) == len(qa.BROWSER_PLAN),
       "A browser entrypoint is assigned to multiple product domains")
 check(all(qa.BROWSER_DOMAIN_PLAN.values()), "Browser domain ownership contains an empty group")
+check(set(qa.NATIVE_INDEXEDDB_BROWSER_PLAN) == {
+    "tests/scenarios/indexeddb-durability.py",
+    "tests/scenarios/native-indexeddb-journey.py",
+}, "Native IndexedDB ownership changed without an explicit QA decision")
+check(set(qa.NATIVE_INDEXEDDB_BROWSER_PLAN).issubset(set(qa.BROWSER_PLAN)),
+      "Native IndexedDB witnesses are outside the browser plan")
+check(set(qa.SIMULATED_STORAGE_BROWSER_PLAN).isdisjoint(set(qa.NATIVE_INDEXEDDB_BROWSER_PLAN)),
+      "A browser entrypoint is both simulated-storage and native-IDB")
+check(set(qa.SIMULATED_STORAGE_BROWSER_PLAN)
+      == (set(qa.BROWSER_PLAN) - set(qa.NATIVE_INDEXEDDB_BROWSER_PLAN))
+         | set(qa.DURABILITY_BROWSER_PLAN)
+         | set(qa.PERFORMANCE_BROWSER_PLAN),
+      "Simulated-storage ownership does not cover every non-native browser gate")
 
 commands, events = exercise(qa.full, dependency_present=True)
 for path in qa.STATIC_PYTHON:
@@ -83,8 +96,8 @@ for path in qa.PERFORMANCE_BROWSER_PLAN:
     check(count(commands, (sys.executable, path)) == 1, f"Performance test repeated: {path}")
 for path in qa.DEEP_NODE_PLAN:
     check(count(commands, ("node", path)) == 1, f"Deep test repeated: {path}")
-check(count(commands, (sys.executable, "tests/scenarios/phase-time-runtime.py")) == 1,
-      "Timing journey repeated")
+for path in qa.DURABILITY_BROWSER_PLAN:
+    check(count(commands, (sys.executable, path)) == 1, f"Durability journey repeated or missing: {path}")
 check(count(commands, ("npm", "run", "--prefix", "tools/fsrs-optimizer", "smoke")) == 1,
       "Native optimizer smoke repeated")
 check(not any(item[:2] == ("npm", "ci") for item in commands),
