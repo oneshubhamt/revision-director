@@ -106,8 +106,8 @@ check(count(commands, ("node", "build/build-hosted.mjs")) == 1,
       "Hosted assets built more than once")
 check(count(commands, ("node", "tests/fsrs-scale.spec.js", "--performance")) == 1,
       "Dedicated deep-scale performance witness is missing or repeated")
-check(count(commands, (sys.executable, "tools/qa-mutation-probes.py")) == 1,
-      "Final one-shot mutation audit is missing or repeated")
+check(not any("qa-mutation-probes.py" in " ".join(item) for item in commands),
+      "One-shot mutation audit leaked into permanent QA")
 check(count(commands, (sys.executable, "tests/fsrs-browser-integration.spec.py", "full")) == 1,
       "Full browser optimizer missed or repeated")
 check(not any("qa-baseline.py" in " ".join(item) for item in commands),
@@ -125,11 +125,8 @@ check(not any(item[:2] == ("npm", "ci") for item in commands),
       "Existing optimizer dependencies triggered reinstall")
 check(count(commands, ("node", "build/build-hosted.mjs")) == 1,
       "Standalone browser did not prepare hosted assets exactly once")
-check(
-    len([item for item in commands if item[:1] == (sys.executable,)])
-    == len(qa.BROWSER_PLAN) + 1,
-    "Standalone browser plan missed or added test entrypoints beyond the one-shot mutation audit",
-)
+check(len([item for item in commands if item[:1] == (sys.executable,)]) == len(qa.BROWSER_PLAN),
+      "Standalone browser plan missed or added test entrypoints")
 
 missing_commands: list[tuple[str, ...]] = []
 with (
