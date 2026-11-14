@@ -571,12 +571,33 @@ def scenario_pass_d(browser) -> None:
     chunk_action.click(); page.locator("#chunk-note").wait_for(state="visible")
     page.locator('#chunk-note').fill('Completed the first bounded page range.')
     page.locator('[data-action="complete-chunk"]').click()
-    wait_until(page, lambda: page.locator('.planner-row').filter(has_text='Oversized drainage synthesis').first.locator('[data-action="review-chunk"]').count() == 1, timeout=5000, interval=40, message="Next bounded chunk did not appear")
-    next_chunk = page.locator('.planner-row').filter(has_text='Oversized drainage synthesis').first
-    check(next_chunk.count() == 1 and next_chunk.locator('[data-action="review-chunk"]').count() == 1, 'Completing one chunk did not expose the next bounded chunk')
+    wait_until(
+        page,
+        lambda: (stored_record(page, 'chunks', chunk_id) or {}).get('status') == 'completed',
+        timeout=5000,
+        interval=40,
+        message="Chunk completion did not reach canonical storage",
+    )
     chunk_after = stored_record(page, 'chunks', chunk_id)
     parent_after = stored_record(page, 'obligations', chunk_before['obligationId'])
     check(chunk_after['status'] == 'completed', 'Chunk completion was not persisted')
+    wait_until(
+        page,
+        lambda: page.locator('[data-pane="today"]').get_attribute('aria-selected') == 'true',
+        timeout=5000,
+        interval=40,
+        message="Chunk completion did not return to the Today planner",
+    )
+    next_chunk = page.locator('.planner-row').filter(has_text='Oversized drainage synthesis').first
+    wait_until(
+        page,
+        lambda: next_chunk.locator('[data-action="review-chunk"]').count() == 1
+        and next_chunk.locator('[data-action="review-chunk"]').get_attribute('data-id') != chunk_id,
+        timeout=5000,
+        interval=40,
+        message="Next bounded chunk did not finish rendering",
+    )
+    check(next_chunk.count() == 1 and next_chunk.locator('[data-action="review-chunk"]').count() == 1, 'Completing one chunk did not expose the next bounded chunk')
     check(
         parent_after['dueAt'] == parent_before['dueAt']
         and parent_after['policyState'] == parent_before['policyState'],
