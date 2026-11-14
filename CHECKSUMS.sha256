@@ -1,8 +1,8 @@
 8c8b2ec2d49893ef333988bd18ee8d5e80b1bef40fed6bfae1a9f6b596a882b4  ./build/build-hosted.mjs
 70fed19a149bd1a8009bc1db61868f865ccd1317a06112720772786be2db466b  ./build/build.py
 af876ea5cb9b13c35ab6626f3ba640de3946ffad1329f5c1e6adf4483b67fa81  ./build/checksums.py
-bf9c6c0130ab8721dba7d2e5a75662d948110dbb10a08f073aba309b61644cd9  ./dist/app.js
-c3659b79af5c364824c135c893c654b118af1d8dc5f02a3ff3df25a687e277eb  ./index.html
+a637615980246f095f5eee7ec4f2ee974ba8c2320edee9a3bdc41c7b4495335f  ./dist/app.js
+edaf9ecdc29f2f5d1df81b623fa79a35b9aeb3a5357a3697954dbeadbb42da43  ./index.html
 3f1ce66533302df3a32edbfdfc0b78f0dd34659e4c1f5817162e5ea3c2297215  ./licences/napi-rs-wasm-runtime-MIT.txt
 1bd3352cb6ec47b95dad26b70c152537f4f877f5e790ca00b2dd74df7a0c587c  ./licences/srs-kit-BSD-3-Clause.txt
 8b83a73dd2894ff553d6de6113064b3ad9dfad3f839837b61f3b183881131d01  ./licences/ts-fsrs-MIT.txt
@@ -31,7 +31,7 @@ db4f20d09fa64fa2b60bd157ef951c8e53859eec54b0e0391ab2d245e356c838  ./source/app/4
 0cededf4bb604246ea36f49159cc9145f2581a3e5842b75bc99c8efc13fc2442  ./source/app/45-ui-runtime.ts
 995a2f1a55be2ec3315fb1f228e31c74e2841f9f2d8ba6cb8b9ac0a40ff39015  ./source/app/46-workflow-form-adapter.ts
 625830e17dc53b61be05794420691b2ce7b723288a438a852321517d330c52ca  ./source/app/47-active-retrieval-workspace.ts
-de83508314dd04c6e66615b40d937de62e566e12d965ccc59585cc2d032ddb01  ./source/app/48-settings-workspace.ts
+a5f437079319ee3cb6d39af9417bdbc4f4283e8d7735fe2c87db9a43efa93785  ./source/app/48-settings-workspace.ts
 47df74d18e655e43dbec6d9ce21d5e0eb80b8f1774469eddf7d43048fdf67c74  ./source/app/50-ui-controller.ts
 82f5cb4afd81db6ee8a35817e53a56715233024848e7abcbf36875b2c57800d3  ./source/app/55-extension-runtime.ts
 77963fce015a51c7175b7b3b41faefd32600f5cae6c463f19a836e4333aef11b  ./source/app/60-public-bridge-bootstrap.ts

@@ -15130,6 +15130,10 @@ exports.withFuzzing = withFuzzing;
           const storage = this.service.storageHealth();
           const storageUsage = storage.usageRatio === undefined ? "Usage estimate unavailable" : `${roundTo(storage.usageRatio * 100, 1)}% of browser quota used`;
           const persistenceLabel = storage.persistence === "granted" ? "Persistent storage granted" : storage.persistence === "available" ? "Persistent storage not guaranteed" : storage.persistence === "denied" ? "Persistent storage denied" : "Persistence API unavailable";
+          // Refreshes can finish after someone begins typing. Keep the transient
+          // new-profile draft until it is explicitly committed, without persisting it.
+          const draftName = this.settingsContent.querySelector("#new-profile-name")?.value ?? "";
+          const draftDate = this.settingsContent.querySelector("#new-profile-date")?.value ?? "";
           this.settingsContent.innerHTML = `
           ${this.host.pageHead("SYSTEM CONTROL", "Settings", "Revision Director remains deterministic and local-first; AI can later advise without owning the record.")}
           <form id="settings-form" class="settings-grid">
@@ -15137,7 +15141,7 @@ exports.withFuzzing = withFuzzing;
             <section class="panel settings-card"><h3>Memory scheduling</h3><label>Scheduling policy<select name="memorySchedulingPolicy"><option value="fixed-retention" ${schedulingPolicy.kind === "fixed-retention" ? "selected" : ""}>Fixed retention · 90% default</option><option value="cost-adr" ${schedulingPolicy.kind === "cost-adr" ? "selected" : ""}>Adaptive workload · Cost-ADR · optional preset</option></select></label><label>Fixed-retention target · fixed mode only<input name="desiredRetention" type="number" min="0.75" max="0.97" step="0.01" value="${fixedRetentionValue}"></label><div class="dependency-status"><span>Active policy</span><strong>${schedulingPolicy.kind === "cost-adr" ? `Cost-ADR · cost weight ${FSRS_COST_ADR_PRESET_GOAL_COST_WEIGHT}` : `Fixed · ${roundTo(schedulingPolicy.desiredRetention * 100, 0)}%`}</strong></div><div class="dependency-status"><span>Exact scheduler</span><strong class="${fsrsOk ? "ok" : "bad"}">${fsrsOk ? "ts-fsrs 6.0.0 embedded" : "Unavailable"}</strong></div><p class="helper">The outcome-sensitive FSRS-R2 benchmark selected fixed 90% for new installations. Cost-ADR remains available only as the bounded 1024 preset for explicit comparison; arbitrary Cost-ADR tuning remains unavailable. Existing saved policy choices are preserved until you change them. Switching policy performs an atomic FSRS replay/rebase.</p></section>
             <section class="panel settings-card"><h3>Persistent difficulty</h3><label>Escalate to remediation after established recall failures<input name="difficultyRemediationLapses" type="number" min="2" max="99" value="${settings.memoryDifficultyPolicy.remediationLapses}"></label><label>Persistent difficulty after established recall failures<input name="difficultyPersistentLapses" type="number" min="3" max="100" value="${settings.memoryDifficultyPolicy.persistentDifficultyLapses}"></label><label class="check-option strong-check"><input name="difficultyAutomaticHold" type="checkbox" ${settings.memoryDifficultyPolicy.automaticHold.enabled ? "checked" : ""}>Hold persistent-difficulty memory out of the normal queue after successful remediation</label><label>Automatic-hold failure threshold<input name="difficultyAutomaticHoldLapses" type="number" min="${settings.memoryDifficultyPolicy.persistentDifficultyLapses + 1}" max="1000" value="${settings.memoryDifficultyPolicy.automaticHold.lapseThreshold}"></label><p class="helper">Difficulty is derived from canonical memory history: failures before the first successful retrieval are early-learning failures; only later Again outcomes count as established recall failures. The raw FSRS lapse counter remains scheduler state but does not independently decide host remediation or queue holds.</p></section>
             ${this.fsrsPersonalizationCard(settings, optimizerEvidence)}
-            <section class="panel settings-card"><h3>Add exam profile</h3><label>Name<input id="new-profile-name" placeholder="IFoS 2027, USMLE Step 1..."></label><label>Exam date<input id="new-profile-date" type="date"></label><button class="btn" type="button" data-action="add-profile">ADD PROFILE</button></section>
+            <section class="panel settings-card"><h3>Add exam profile</h3><label>Name<input id="new-profile-name" value="${escapeHtml(draftName)}" placeholder="IFoS 2027, USMLE Step 1..."></label><label>Exam date<input id="new-profile-date" type="date" value="${escapeHtml(draftDate)}"></label><button class="btn" type="button" data-action="add-profile">ADD PROFILE</button></section>
             <section class="panel settings-card"><h3>Backup and recovery</h3><button class="btn" type="button" data-action="export-backup">EXPORT BACKUP</button><label class="btn file-btn">IMPORT BACKUP<input id="import-backup" type="file" accept=".rdbackup,application/x-revision-director-backup,application/gzip,application/octet-stream"></label><p class="helper">Export remains one click. Import verifies and previews the file first, then requires a current-state safety copy and explicit restore confirmation.</p></section>
             ${this.pluginSettingsCard()}
             <section class="panel settings-card"><h3>Storage health</h3><div class="dependency-status"><span>IndexedDB</span><strong class="${storage.indexedDbAvailable ? "ok" : "bad"}">${storage.indexedDbAvailable ? "Available" : "Unavailable"}</strong></div><div class="dependency-status"><span>Persistence</span><strong class="${storage.persistence === "granted" ? "ok" : ""}">${escapeHtml(persistenceLabel)}</strong></div><p class="helper">${escapeHtml(storageUsage)} · ${storage.diagnosticCount} bounded diagnostic record${storage.diagnosticCount === 1 ? "" : "s"}.</p><button class="mini-btn" type="button" data-action="refresh-storage">REFRESH STORAGE STATUS</button></section>
@@ -15211,6 +15215,14 @@ exports.withFuzzing = withFuzzing;
           const name = this.settingsContent.querySelector("#new-profile-name")?.value ?? "";
           const date = this.settingsContent.querySelector("#new-profile-date")?.value ?? "";
           await this.service.createProfile(name, date);
+          // Clear only the submitted draft. Do not erase new text entered while
+          // the asynchronous write was completing.
+          const nameField = this.settingsContent.querySelector("#new-profile-name");
+          const dateField = this.settingsContent.querySelector("#new-profile-date");
+          if (nameField?.value === name)
+              nameField.value = "";
+          if (dateField?.value === date)
+              dateField.value = "";
           await this.host.invalidate("settings");
           this.host.toast("Exam profile created.");
       }
