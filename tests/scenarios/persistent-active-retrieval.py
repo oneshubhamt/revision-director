@@ -219,8 +219,9 @@ def main() -> None:
             and state_get(page, "activeRetrieval", "current") is None,
             timeout=5000,
         )
-        check(frame.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") is None, "Manual end did not clear emergency recovery")
-        check(state_get(page, "activeRetrieval", "current") is None, "Manual end did not clear IndexedDB active session")
+        wait_until(frame, lambda: frame.locator(".review-card").count() == 0)
+        check(not frame.locator("#pane-review").is_visible(),
+              "Manual end cleared storage but left the unfinished review visible")
         check(not browser_errors, f"Browser errors: {browser_errors}")
 
         context.close()

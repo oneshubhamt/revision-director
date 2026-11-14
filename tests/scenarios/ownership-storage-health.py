@@ -181,8 +181,15 @@ def main() -> None:
         for index in range(first.locator("[data-rubric]").count()):
             first.locator("[data-rubric]").nth(index).evaluate("e=>{e.value='4';e.dispatchEvent(new Event('input',{bubbles:true}))}")
         first.locator('[data-action="rate"][data-rating="3"]').click()
-        wait_until(first, lambda: len(state_all(page, "evidenceEvents")) == before + 1)
-        check(len(state_all(page, "evidenceEvents")) == before + 1, "Owner commit did not create exactly one Evidence Event")
+        wait_until(
+            first,
+            lambda: len(state_all(page, "evidenceEvents")) >= before + 1
+            and (state_get(page, "activeRetrieval", "current") or {}).get("status") != "committing"
+            and not first.locator('[data-review-phase="compare"]').is_visible(),
+            timeout=10000,
+        )
+        check(len(state_all(page, "evidenceEvents")) == before + 1,
+              "Settled owner publication wrote duplicate Evidence Events")
         check(second.locator("#quick-add-unit").is_disabled(), "Released secondary document became mutable without ownership")
         check(not errors, f"Browser errors: {errors}")
 

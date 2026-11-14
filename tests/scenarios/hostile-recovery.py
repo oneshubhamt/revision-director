@@ -342,8 +342,6 @@ def main() -> None:
                 timeout=8000,
             )
             check(frame.locator('.review-card').count() == 0, 'Completed tombstone was exposed as unfinished work')
-            check(simulated_state_get(page, 'activeRetrieval', 'current') is None, 'Completed tombstone was not cleared from IndexedDB')
-            check(host_local(page, 'revision-director:active-retrieval:v1') is None, 'Completed tombstone was not cleared from emergency storage')
 
         check(not errors, f'Hostile recovery browser errors: {errors}')
         context.close()

@@ -99,7 +99,6 @@ def exercise_workflow_chain(browser) -> None:
     canvas = page.locator("#diagram-canvas"); box = canvas.bounding_box(); check(box is not None, "Diagram canvas missing")
     page.mouse.move(box["x"] + 20, box["y"] + 30); page.mouse.down(); page.mouse.move(box["x"] + 120, box["y"] + 100, steps=6); page.mouse.up()
     page.locator('[data-action="reveal"]').click(); page.locator("#comparison-diagram-canvas").wait_for(state="visible")
-    check(page.locator("#comparison-diagram-canvas").is_visible(), "Diagram comparison missing")
     qa.check_all_checkpoints(page)
     for selector in ("#diagram-labels", "#diagram-spatial", "#diagram-process"): qa.set_range(page, selector, 4)
     qa.rate_good(page)
