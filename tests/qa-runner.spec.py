@@ -125,8 +125,11 @@ check(not any(item[:2] == ("npm", "ci") for item in commands),
       "Existing optimizer dependencies triggered reinstall")
 check(count(commands, ("node", "build/build-hosted.mjs")) == 1,
       "Standalone browser did not prepare hosted assets exactly once")
-check(len([item for item in commands if item[:1] == (sys.executable,)]) == len(qa.BROWSER_PLAN),
-      "Standalone browser plan missed or added test entrypoints")
+check(
+    len([item for item in commands if item[:1] == (sys.executable,)])
+    == len(qa.BROWSER_PLAN) + 1,
+    "Standalone browser plan missed or added test entrypoints beyond the one-shot mutation audit",
+)
 
 missing_commands: list[tuple[str, ...]] = []
 with (
