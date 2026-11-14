@@ -79,6 +79,12 @@ check(set(qa.NATIVE_INDEXEDDB_BROWSER_PLAN).issubset(set(qa.BROWSER_PLAN)),
       "Native IndexedDB witnesses are outside the browser plan")
 check(set(qa.SIMULATED_STORAGE_BROWSER_PLAN).isdisjoint(set(qa.NATIVE_INDEXEDDB_BROWSER_PLAN)),
       "A browser entrypoint is both simulated-storage and native-IDB")
+check(set(qa.BROWSER_PARALLEL_PLAN) | set(qa.BROWSER_SERIAL_PLAN) == set(qa.BROWSER_PLAN)
+      and set(qa.BROWSER_PARALLEL_PLAN).isdisjoint(set(qa.BROWSER_SERIAL_PLAN)),
+      "Browser concurrency partitions lost or duplicated a witness")
+check(set(qa.NATIVE_INDEXEDDB_BROWSER_PLAN).issubset(set(qa.BROWSER_SERIAL_PLAN))
+      and {"tests/scenarios/hostile-recovery.py", "tests/scenarios/ui-behaviour.py"}.issubset(set(qa.BROWSER_SERIAL_PLAN)),
+      "Native data/recovery or UI focus stress was scheduled concurrently")
 check(set(qa.SIMULATED_STORAGE_BROWSER_PLAN)
       == (set(qa.BROWSER_PLAN) - set(qa.NATIVE_INDEXEDDB_BROWSER_PLAN))
          | set(qa.DURABILITY_BROWSER_PLAN)

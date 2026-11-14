@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 import ast
 from pathlib import Path
@@ -100,6 +101,19 @@ BROWSER_DOMAIN_PLAN = {
 
 BROWSER_PLAN = tuple(path for group in BROWSER_DOMAIN_PLAN.values() for path in group)
 
+# Only independent browser contexts run concurrently. Recovery, ownership,
+# native IndexedDB and UI focus stress stay serial to avoid resource races.
+BROWSER_SERIAL_PLAN = (
+    "tests/scenarios/persistent-active-retrieval.py",
+    "tests/scenarios/ownership-storage-health.py",
+    "tests/scenarios/hostile-recovery.py",
+    "tests/scenarios/indexeddb-durability.py",
+    "tests/scenarios/native-indexeddb-journey.py",
+    "tests/scenarios/ui-behaviour.py",
+)
+BROWSER_PARALLEL_PLAN = tuple(path for path in BROWSER_PLAN if path not in BROWSER_SERIAL_PLAN)
+BROWSER_SAFE_WORKERS = 2
+
 NATIVE_INDEXEDDB_BROWSER_PLAN = (
     "tests/scenarios/indexeddb-durability.py",
     "tests/scenarios/native-indexeddb-journey.py",
@@ -111,6 +125,7 @@ DURABILITY_BROWSER_PLAN = (
 
 DEEP_NODE_PLAN = (
     "tests/fsrs-scheduling-policy-deep.spec.js",
+    "tests/qa-mutation-adequacy.spec.js",
 )
 
 PERFORMANCE_BROWSER_PLAN = (
@@ -136,7 +151,11 @@ def run(*command: str) -> None:
     env = os.environ.copy()
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(TESTS) + (os.pathsep + existing if existing else "")
-    subprocess.run(command, cwd=ROOT, env=env, check=True)
+    started = time.perf_counter()
+    try:
+        subprocess.run(command, cwd=ROOT, env=env, check=True)
+    finally:
+        print(f"QA_PROCESS_TIME {' '.join(command)} {time.perf_counter() - started:.3f}s", flush=True)
 
 
 
@@ -215,6 +234,10 @@ def assert_test_topology() -> None:
     )
     if len(declared) != len(set(declared)):
         raise AssertionError("The QA execution plan runs one or more entrypoints twice")
+    if (set(BROWSER_PARALLEL_PLAN) | set(BROWSER_SERIAL_PLAN) != set(BROWSER_PLAN)
+            or set(BROWSER_PARALLEL_PLAN) & set(BROWSER_SERIAL_PLAN)
+            or BROWSER_SAFE_WORKERS != 2):
+        raise AssertionError("Independent and serial browser ownership is not a complete disjoint partition")
     actual = {
         path.relative_to(ROOT).as_posix()
         for path in TESTS.rglob("*")
@@ -304,7 +327,11 @@ def browser() -> None:
     # browser contexts: each scenario still has isolated storage and JS state.
     context = nullcontext() if os.environ.get("REVISION_DIRECTOR_CDP_ENDPOINT") else shared_chromium()
     with context:
-        for path in BROWSER_PLAN:
+        # Each subprocess creates its own browser context and storage. The
+        # privileged/recovery/UI stress scenarios run in an isolated serial tail.
+        with ThreadPoolExecutor(max_workers=BROWSER_SAFE_WORKERS) as pool:
+            list(pool.map(lambda path: run(sys.executable, path), BROWSER_PARALLEL_PLAN))
+        for path in BROWSER_SERIAL_PLAN:
             run(sys.executable, path)
 
 
