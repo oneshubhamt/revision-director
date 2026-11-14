@@ -271,7 +271,7 @@ def main() -> None:
         check(not errors, f'Hostile recovery browser errors: {errors}')
         context.close()
         browser.close()
-    print(f'PASS {checks} Stage B hostile recovery browser checks')
+    print(f'PASS {checks} hostile recovery hostile recovery browser checks')
 
 if __name__ == '__main__':
     main()

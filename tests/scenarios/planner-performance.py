@@ -242,6 +242,6 @@ def main():
         scenario_hostile_planning_import(browser)
         scenario_large_dataset(browser)
         browser.close()
-    print('PASS 3 Pass D de novo Chromium scenarios')
+    print('PASS 3 planner performance de novo Chromium scenarios')
 
 if __name__=='__main__': main()

@@ -36,8 +36,8 @@ CLOCK_SHIM = r"""
 })();
 </script>
 """
-# Pass B2 advances Date.now() by minutes in milliseconds to exercise phase timing.
-# Keep cross-tab ownership out of this synthetic clock domain; Pass B1 separately
+# phase-time runtime advances Date.now() by minutes in milliseconds to exercise phase timing.
+# Keep cross-tab ownership out of this synthetic clock domain; active retrieval persistence separately
 # exercises the production 15-second ownership lease.
 TIMING_TEST_HTML = BASE_HTML.replace(
     "const REVIEW_OWNER_STALE_MS = 15_000;",
@@ -308,7 +308,7 @@ def main() -> None:
         check(event["timing"]["activeByPhase"]["attempt"] > 0 and event["timing"]["activeByPhase"]["compare"] >= 0, "Phase-specific active time is missing")
         check(not errors, f"Browser errors: {errors}")
         context.close(); browser.close()
-    print(f"PASS {checks} Pass B2 browser timing checks")
+    print(f"PASS {checks} phase-time runtime browser timing checks")
 
 
 if __name__ == "__main__":

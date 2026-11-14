@@ -130,5 +130,5 @@ let checks = 0;
   check(eventsB.some(event => event.state === 'hydrating') && eventsB.some(event => event.state === 'primary'), 'Takeover hydration state was not published');
   check(diagnostics.length === 1, 'Unexpected ownership diagnostics were recorded');
 
-  console.log(`PASS ${checks} Pass B3 ownership and storage-health checks`);
+  console.log(`PASS ${checks} ownership/storage health ownership and storage-health checks`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

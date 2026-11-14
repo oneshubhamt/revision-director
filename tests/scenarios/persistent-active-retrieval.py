@@ -241,7 +241,7 @@ def main() -> None:
 
         context.close()
         browser.close()
-    print(f"PASS {checks} Pass B1 persistent-browser recovery checks")
+    print(f"PASS {checks} active retrieval persistence persistent-browser recovery checks")
 
 
 if __name__ == "__main__":

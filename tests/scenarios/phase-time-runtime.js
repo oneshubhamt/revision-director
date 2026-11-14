@@ -114,4 +114,4 @@ const badDraftSession = {
 };
 mustFail(() => api.canonicalActiveRetrievalSession(badDraftSession), 'Non-boolean review check state was coerced instead of rejected');
 
-console.log(`PASS ${checks} Pass B2 phase-time runtime checks`);
+console.log(`PASS ${checks} phase-time runtime phase-time runtime checks`);

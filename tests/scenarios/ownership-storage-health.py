@@ -180,7 +180,7 @@ def main() -> None:
         check(not errors, f"Browser errors: {errors}")
 
         context.close(); browser.close()
-    print(f"PASS {checks} Pass B3 multi-document ownership checks")
+    print(f"PASS {checks} ownership/storage health multi-document ownership checks")
 
 if __name__ == "__main__":
     main()
