@@ -16,11 +16,9 @@ def check(condition: bool, message: str) -> None:
 
 def exercise_review_keyboard_shortcuts(browser) -> None:
     page, errors = open_page(browser, {"width": 1280, "height": 900}, baseline=True)
-    # Dedicated keyboard commands and input accessibility; general ARIA
-    # navigation/focus is owned by ui-behaviour.py.
-    page.locator('[data-pane="settings"]').click()
-    box = page.locator("#import-backup").bounding_box()
-    check(box is not None and box["height"] >= 44, "Backup input touch target is below 44px")
+    # The complete 44px touch-target contract, including the backup file
+    # input, is owned by responsive-layout.py at all 16 viewport classes.
+    # This journey owns keyboard execution and accessible names.
     for index in range(page.locator("button").count()):
         button = page.locator("button").nth(index)
         name = button.get_attribute("aria-label") or button.inner_text().strip() or button.get_attribute("title")
