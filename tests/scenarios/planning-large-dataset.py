@@ -139,6 +139,14 @@ def scenario_capacity_reflow(browser):
             message='Timed out waiting for split-cycle dissolution',
         )
         row=page.locator('.planner-row').filter(has_text='Capacity reflow obligation').first
+        shared_wait_until(
+            page,
+            lambda: row.locator('[data-action="review-one"]').count() == 1
+            and row.locator('[data-action="review-chunk"]').count() == 0,
+            timeout=8000,
+            interval=40,
+            message='Planner projection did not reflect split-cycle dissolution',
+        )
         check(row.locator('[data-action="review-one"]').count()==1 and row.locator('[data-action="review-chunk"]').count()==0,'Split cycle did not dissolve when parent fit capacity')
         p120=export_payload(page,tmp,'120.rdbackup')
         ob120=next(item for item in p120['obligations'] if item['id']==ob['id'])
