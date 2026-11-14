@@ -402,8 +402,8 @@ def scenario_cost_adr_settings(browser) -> None:
     policy.select_option("cost-adr")
     page.evaluate("document.querySelector('#toast').textContent=''")
     settings.locator('button[type="submit"]').click()
-    wait_until(page, lambda: bool(page.locator("#toast").inner_text().strip()), timeout=8000, interval=40, message="Cost-ADR settings submit did not finish")
-    check(not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Cost-ADR settings submit failed: " + page.locator("#toast").inner_text())
+    wait_until(page, lambda: page.locator("#toast").inner_text().strip() == "Settings saved." or page.locator("#toast").evaluate("e=>e.classList.contains('error')"), timeout=8000, interval=40, message="Cost-ADR settings submit did not finish")
+    check(page.locator("#toast").inner_text().strip() == "Settings saved." and not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Cost-ADR settings submit failed: " + page.locator("#toast").inner_text())
     check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
 
     with TemporaryDirectory() as tmp:
@@ -422,8 +422,8 @@ def scenario_cost_adr_settings(browser) -> None:
     settings.locator('[name="desiredRetention"]').fill("0.90")
     page.evaluate("document.querySelector('#toast').textContent=''")
     settings.locator('button[type="submit"]').click()
-    wait_until(page, lambda: bool(page.locator("#toast").inner_text().strip()), timeout=8000, interval=40, message="Fixed-retention settings submit did not finish")
-    check(not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Fixed-retention settings submit failed: " + page.locator("#toast").inner_text())
+    wait_until(page, lambda: page.locator("#toast").inner_text().strip() == "Settings saved." or page.locator("#toast").evaluate("e=>e.classList.contains('error')"), timeout=8000, interval=40, message="Fixed-retention settings submit did not finish")
+    check(page.locator("#toast").inner_text().strip() == "Settings saved." and not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Fixed-retention settings submit failed: " + page.locator("#toast").inner_text())
     with TemporaryDirectory() as tmp:
         backup_path = str(Path(tmp) / "fixed-retention-settings.rdbackup")
         with page.expect_download() as download_info:
