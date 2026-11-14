@@ -123,6 +123,14 @@ SIMULATED_STORAGE_BROWSER_PLAN = (
     + PERFORMANCE_BROWSER_PLAN
 )
 
+QA_FOOTPRINT_BUDGET = {
+    "files": 56,
+    "bytes": 615_000,
+    "helper_bytes": 34_000,
+    "entrypoints": 48,
+    "browser_entrypoints": 20,
+}
+
 REMOVED_WRAPPERS = (
     "browser-data-safety.spec.py",
     "browser-extensions.spec.py",
@@ -293,6 +301,39 @@ def assert_test_topology() -> None:
             native_coupling.append(relative)
     if native_coupling:
         raise AssertionError("Native IndexedDB witnesses depend on simulated storage: " + ", ".join(native_coupling))
+
+    footprint_files = [
+        path for path in TESTS.rglob("*")
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix != ".pyc"
+    ]
+    helper_files = [path for path in footprint_files if path.parent == TESTS / "helpers"]
+    entrypoints = [
+        path for path in footprint_files
+        if path.name.endswith((".spec.py", ".spec.js"))
+        or (
+            path.parent == TESTS / "scenarios"
+            and path.suffix in {".py", ".js"}
+        )
+    ]
+    footprint = {
+        "files": len(footprint_files),
+        "bytes": sum(path.stat().st_size for path in footprint_files),
+        "helper_bytes": sum(path.stat().st_size for path in helper_files),
+        "entrypoints": len(entrypoints),
+        "browser_entrypoints": len(BROWSER_PLAN),
+    }
+    exceeded = [
+        f"{name}={footprint[name]}>{limit}"
+        for name, limit in QA_FOOTPRINT_BUDGET.items()
+        if footprint[name] > limit
+    ]
+    if exceeded:
+        raise AssertionError(
+            "QA footprint budget exceeded; consolidate or deliberately revise the baseline: "
+            + ", ".join(exceeded)
+        )
 
 
 def core() -> None:

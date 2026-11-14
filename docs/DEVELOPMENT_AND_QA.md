@@ -66,9 +66,42 @@ npm run qa:full
 
 `qa:core` performs exactly one authoritative build, verifies `CHECKSUMS.sha256` read-only, checks the build/architecture contract and HTML structure, and runs the fast non-browser JavaScript regressions. `qa:optimizer` exercises the isolated native optimizer runtime. `qa:browser:durability` is the focused phase-time/durability gate. `qa:browser` runs the ordinary browser matrix against one parent-owned Chromium process, with isolated Playwright contexts for each scenario and only the fast browser/WASM optimizer probe. `qa:browser:performance` keeps the 1,000-unit large-data journey in its own Chromium process so process state and remote-CDP transport cannot distort the measurement. `qa:deep` owns the long FSRS-R2 scheduling experiment and full browser/WASM optimizer training. `qa:full` runs every tier. Browser commands require Playwright and Chromium; local hosted-optimizer runs require `npm ci --prefix tools/fsrs-optimizer` and `npm run build:hosted` if the hosted distribution is not already present.
 
-The Python browser suite shares launch, error-capture, readiness, condition-wait, layout and module-loading primitives from `tests/helpers/browser_harness.py`; scenario ordering belongs only to `tests/qa.py`. Ordinary browser scenarios connect over CDP to one Chromium process but receive fresh incognito contexts so cookies, IndexedDB, localStorage and ownership state remain isolated. Tests whose subject is process persistence or performance deliberately opt out: the native IndexedDB journey launches a persistent profile, closes Chromium and relaunches a new process with the same profile, while the large-data performance tier uses its own local Chromium. The reusable mock IndexedDB shim, host-state access, iframe bootstrapping and safety-copy restore ceremony remain in `tests/helpers/persistent_browser.py`.
+The Python browser suite shares launch, error-capture, readiness, condition-wait, layout and module-loading primitives from `tests/helpers/browser_harness.py`; scenario ordering belongs only to `tests/qa.py`. Ordinary browser scenarios connect over CDP to one Chromium process but receive fresh incognito contexts so cookies, IndexedDB, localStorage and ownership state remain isolated. Tests whose subject is process persistence or performance deliberately opt out: the native IndexedDB journey launches a persistent profile, closes Chromium and relaunches a new process with the same profile, while the large-data performance tier uses its own local Chromium. Simulated browser storage has one canonical boundary: `tests/helpers/simulated_storage.py` owns the IndexedDB/localStorage simulator, shared host state, iframe bootstrapping and deterministic fault injection. `tests/helpers/browser_fixture.py` layers application fixtures and restore ceremony on top. Native IndexedDB is intentionally exercised only by `indexeddb-durability.py` and `native-indexeddb-journey.py`.
 
 Fixed wall-clock sleeps are not the normal synchronization primitive. Browser tests should wait for the state that makes the assertion meaningful: visible/hidden UI state, a specific rendered record, IndexedDB persistence, ownership state, evidence publication, or a controlled-clock transition. Real elapsed waits are retained only where elapsed browser time itself is under test, such as timer/durability behavior.
+
+## Frozen QA baseline
+
+The final QA-consolidation baseline was established on 14 November 2026 after a one-shot adversarial closure audit. Five P0 mutations were injected only into temporary child-process runtime bytes and were all detected by their intended witnesses:
+
+- planner objective inversion → `planner-properties.spec.js`;
+- active-retrieval recovery-precedence inversion → `active-retrieval-persistence.js`;
+- backup final-checksum bypass → `backup-codec.js`;
+- IndexedDB commit-token transaction-fencing bypass → `hostile-recovery.py`;
+- duplicate evidence publication → `persistent-active-retrieval.py`.
+
+The mutation harness was then deleted. Mutation testing is evidence about the suite, not a permanent QA tier.
+
+Three subsequent clean CI runs executed the same repository tree and all passed every core, optimizer, deep, durability, browser and performance gate:
+
+| Run | Wall-clock |
+| --- | ---: |
+| 43576300971 | 154 s |
+| 43576534194 | 173 s |
+| 43576781019 | 158 s |
+
+The observed three-run median is **158 s** and the observed range is **154–173 s**. Runtime is a review budget rather than a hard CI assertion because shared-runner scheduling and dependency setup vary. Investigate rather than automatically fail when a comparable three-run median exceeds **210 s**, or when repeated clean runs become materially less stable.
+
+The deterministic QA footprint baseline is:
+
+- **@@TEST_FILES@@** files under `tests/`;
+- **@@TEST_BYTES@@ bytes** total under `tests/`;
+- **@@HELPER_BYTES@@ bytes** under `tests/helpers/`;
+- **@@ENTRYPOINTS@@** executable test entrypoints;
+- **@@BROWSER_ENTRYPOINTS@@** ordinary browser entrypoints;
+- exactly **2** native-IndexedDB browser witnesses.
+
+`tests/qa.py` hard-enforces modest ceilings of 56 test files, 615,000 total test bytes, 34,000 helper bytes, 48 executable entrypoints and 20 ordinary browser entrypoints. Exceeding a ceiling requires consolidation or an explicit baseline decision; the cap must not be raised merely to make CI green.
 
 ## Required QA discipline
 
@@ -88,7 +121,7 @@ The permanent Node regression matrix includes a multi-year FSRS scale/determinis
 
 Mathematical and stateful regression tests use deterministic seeded cases where broad input coverage is valuable. Planner selection is checked against an independent exhaustive subset oracle on hundreds of small seeded problems; the oracle models the documented critical-first planning policy but does not reuse the production dynamic-programming implementation. It also checks capacity, disposition partitioning, permutation invariance and monotonic attainable critical value as capacity increases.
 
-FSRS scheduling mathematics are not reimplemented in application tests. `tests/fsrs-reference-parity.spec.js` creates an independent scheduler directly from the checksum-pinned upstream ts-fsrs 6.0.0 runtime and compares Revision Director card transitions, replay, previews and retrievability against that reference across deterministic review sequences. Host-owned corrective-relearning, difficulty, persistence and personalization semantics remain separate application-level tests.
+FSRS scheduling mathematics are not reimplemented in application tests. `tests/fsrs-scheduler-reference.spec.js` creates an independent scheduler directly from the checksum-pinned upstream ts-fsrs 6.0.0 runtime and compares Revision Director card transitions, replay, previews and retrievability against that reference across deterministic review sequences. Host-owned corrective-relearning, difficulty, persistence and personalization semantics remain separate application-level tests.
 
 Active-retrieval persistence tests use controlled storage read/write failures as well as deterministic recovery-state precedence cases. They verify that emergency local recovery survives an IndexedDB write failure, subsequent serialized writes recover, a local snapshot remains usable during an IndexedDB read failure, reconciliation resumes afterward, and expected diagnostics are emitted without relying on source-expression scans.
 
@@ -124,7 +157,7 @@ npm run build:hosted
 
 Serve `Revision_Director_Hosted/` over localhost or HTTPS. It includes the local optimizer Worker/WASM by default while still loading them only on demand. The root `index.html` remains the lean single-file portable fallback and contains no optimizer assets. The hosted build writes `optimizer-footprint.json` with the exact HTML, Worker and WASM byte counts.
 
-Native and browser runtimes use one `optimizer-core.mjs` for conversion, chronological split, stock/incumbent held-out gates, final retraining and profile construction. `parity.mjs` independently compares native and WASM conversion, trained weights and evaluation metrics. Browser cancellation is hard cancellation by Worker termination; progress is reported from the binding callback. `tests/fsrs-browser-optimizer.spec.py` provides a fast hosted browser/WASM probe and an optional full optimization mode. In CI the probe self-prepares the hosted distribution from the pinned optimizer lockfile when it is absent so the generic Chromium matrix actually exercises the Worker/WASM boundary. Application regressions additionally verify retrieval-phase-only optimizer duration, unreliable-duration handling, SHA-256 source-snapshot binding, stale-profile rejection, candidate-vs-incumbent provenance, one-transaction personalized→personalized replacement, practical holdout-improvement/calibration gates, early-learning versus established-lapse semantics, exam-bounded corrective relearning and transactional settings behavior. Exact optimizer eligibility and rebase semantics are documented once in `SCHEDULING_AND_PLANNING.md`.
+Native and browser runtimes use one `optimizer-core.mjs` for conversion, chronological split, stock/incumbent held-out gates, final retraining and profile construction. `parity.mjs` independently compares native and WASM conversion, trained weights and evaluation metrics. Browser cancellation is hard cancellation by Worker termination; progress is reported from the binding callback. `tests/fsrs-browser-integration.spec.py` provides a fast hosted browser/WASM probe and an optional full optimization mode. In CI the probe self-prepares the hosted distribution from the pinned optimizer lockfile when it is absent so the generic Chromium matrix actually exercises the Worker/WASM boundary. Application regressions additionally verify retrieval-phase-only optimizer duration, unreliable-duration handling, SHA-256 source-snapshot binding, stale-profile rejection, candidate-vs-incumbent provenance, one-transaction personalized→personalized replacement, practical holdout-improvement/calibration gates, early-learning versus established-lapse semantics, exam-bounded corrective relearning and transactional settings behavior. Exact optimizer eligibility and rebase semantics are documented once in `SCHEDULING_AND_PLANNING.md`.
 
 ## TypeScript 7 checker parallelism
 
