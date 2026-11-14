@@ -94,11 +94,11 @@ The observed three-run median is **158 s** and the observed range is **154–173
 
 The deterministic QA footprint baseline is:
 
-- **@@TEST_FILES@@** files under `tests/`;
-- **@@TEST_BYTES@@ bytes** total under `tests/`;
-- **@@HELPER_BYTES@@ bytes** under `tests/helpers/`;
-- **@@ENTRYPOINTS@@** executable test entrypoints;
-- **@@BROWSER_ENTRYPOINTS@@** ordinary browser entrypoints;
+- **54** files under `tests/`;
+- **597,714 bytes** total under `tests/`;
+- **32,957 bytes** under `tests/helpers/`;
+- **46** executable test entrypoints;
+- **19** ordinary browser entrypoints;
 - exactly **2** native-IndexedDB browser witnesses.
 
 `tests/qa.py` hard-enforces modest ceilings of 56 test files, 615,000 total test bytes, 34,000 helper bytes, 48 executable entrypoints and 20 ordinary browser entrypoints. Exceeding a ceiling requires consolidation or an explicit baseline decision; the cap must not be raised merely to make CI green.
