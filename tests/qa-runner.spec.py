@@ -38,7 +38,6 @@ def fake_chromium(events: list[str]):
 def exercise(action, *, dependency_present: bool) -> tuple[list[tuple[str, ...]], list[str]]:
     commands: list[tuple[str, ...]] = []
     events: list[str] = []
-    original_optimizer_ready = qa._OPTIMIZER_DEPENDENCIES_READY
     original_hosted_ready = qa._HOSTED_PREPARED
     original_endpoint = os.environ.pop("REVISION_DIRECTOR_CDP_ENDPOINT", None)
     try:
@@ -47,11 +46,9 @@ def exercise(action, *, dependency_present: bool) -> tuple[list[tuple[str, ...]]
             patch.object(qa, "shared_chromium", side_effect=lambda: fake_chromium(events)),
             patch.object(qa, "OPTIMIZER_WASM", SimpleNamespace(is_file=lambda: dependency_present)),
         ):
-            qa._OPTIMIZER_DEPENDENCIES_READY = False
             qa._HOSTED_PREPARED = False
             action()
     finally:
-        qa._OPTIMIZER_DEPENDENCIES_READY = original_optimizer_ready
         qa._HOSTED_PREPARED = original_hosted_ready
         if original_endpoint is not None:
             os.environ["REVISION_DIRECTOR_CDP_ENDPOINT"] = original_endpoint
@@ -70,7 +67,7 @@ check(len(set(qa.CORE_NODE_PLAN)) == len(qa.CORE_NODE_PLAN),
       "A Node entrypoint is assigned to multiple product domains")
 check(all(qa.CORE_DOMAIN_PLAN.values()), "Core domain ownership contains an empty group")
 
-commands, events = exercise(qa.full, dependency_present=False)
+commands, events = exercise(qa.full, dependency_present=True)
 for path in qa.STATIC_PYTHON:
     check(count(commands, (sys.executable, path)) == 1, f"Static test repeated: {path}")
 for path in qa.CORE_NODE_PLAN:
@@ -85,14 +82,14 @@ check(count(commands, (sys.executable, "tests/scenarios/phase-time-runtime.py"))
       "Timing journey repeated")
 check(count(commands, ("npm", "run", "--prefix", "tools/fsrs-optimizer", "smoke")) == 1,
       "Native optimizer smoke repeated")
-check(count(commands, ("npm", "ci", "--prefix", "tools/fsrs-optimizer", "--no-audit", "--no-fund")) == 1,
-      "Optimizer dependencies installed more than once")
+check(not any(item[:2] == ("npm", "ci") for item in commands),
+      "QA runner attempted to install dependencies")
 check(count(commands, ("node", "build/build-hosted.mjs")) == 1,
       "Hosted assets built more than once")
 check(count(commands, ("node", "tests/fsrs-scale-benchmark.spec.js", "--performance")) == 1,
       "Dedicated deep-scale performance witness is missing or repeated")
-check(count(commands, (sys.executable, "tools/qa-mutation-probes.py")) == 1,
-      "Deep mutation tests were lost or repeated")
+check(not any("qa-mutation-probes.py" in " ".join(item) for item in commands),
+      "One-shot mutation audit leaked into permanent QA")
 check(count(commands, (sys.executable, "tests/fsrs-browser-optimizer.spec.py", "full")) == 1,
       "Full browser optimizer missed or repeated")
 check(not any("qa-baseline.py" in " ".join(item) for item in commands),
@@ -112,5 +109,20 @@ check(count(commands, ("node", "build/build-hosted.mjs")) == 1,
       "Standalone browser did not prepare hosted assets exactly once")
 check(len([item for item in commands if item[:1] == (sys.executable,)]) == len(qa.BROWSER_PLAN),
       "Standalone browser plan missed or added test entrypoints")
+
+missing_commands: list[tuple[str, ...]] = []
+with (
+    patch.object(qa, "run", side_effect=lambda *args: missing_commands.append(args)),
+    patch.object(qa, "OPTIMIZER_WASM", SimpleNamespace(is_file=lambda: False)),
+):
+    qa._HOSTED_PREPARED = False
+    try:
+        qa.deep()
+        missing_error = ""
+    except AssertionError as error:
+        missing_error = str(error)
+check("optimizer dependencies are missing" in missing_error.lower(),
+      "Deep QA did not fail clearly when its prepared optimizer dependency was absent")
+check(not missing_commands, "Deep QA mutated or executed setup after detecting a missing dependency")
 
 print(f"PASS {checks} QA execution ownership checks")

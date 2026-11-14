@@ -14,7 +14,6 @@ from urllib.request import urlopen
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
 OPTIMIZER_WASM = ROOT / "tools/fsrs-optimizer/node_modules/@open-spaced-repetition/binding-wasm32-wasip1/fsrs-binding.wasm32-wasip1.wasm"
-_OPTIMIZER_DEPENDENCIES_READY = False
 _HOSTED_PREPARED = False
 
 STATIC_PYTHON = (
@@ -201,30 +200,28 @@ def core() -> None:
         run("node", path)
 
 
-def ensure_optimizer_dependencies() -> None:
-    """Install the isolated, locked optimizer dependency once, only if absent."""
-    global _OPTIMIZER_DEPENDENCIES_READY
-    if _OPTIMIZER_DEPENDENCIES_READY:
-        return
+def require_optimizer_dependencies() -> None:
+    """QA validates the prepared toolchain; dependency installation belongs to setup."""
     if not OPTIMIZER_WASM.is_file():
-        run("npm", "ci", "--prefix", "tools/fsrs-optimizer", "--no-audit", "--no-fund")
-    _OPTIMIZER_DEPENDENCIES_READY = True
+        raise AssertionError(
+            "FSRS optimizer dependencies are missing. "
+            "Run `npm ci --prefix tools/fsrs-optimizer --no-audit --no-fund` before optimizer/browser/deep QA."
+        )
 
 
 def prepare_hosted_optimizer() -> None:
-    """Explicit runner-owned preparation; tests must not install or build."""
+    """Build hosted optimizer assets once from an explicitly prepared toolchain."""
     global _HOSTED_PREPARED
     if _HOSTED_PREPARED:
         return
-    ensure_optimizer_dependencies()
-    # The root application was built by the normal core/CI prerequisite.
-    # Do not invoke build:hosted, which would compile the root application again.
+    require_optimizer_dependencies()
+    # The root application is a committed/generated prerequisite; do not rebuild it here.
     run("node", "build/build-hosted.mjs")
     _HOSTED_PREPARED = True
 
 
 def optimizer() -> None:
-    ensure_optimizer_dependencies()
+    require_optimizer_dependencies()
     run("npm", "run", "--prefix", "tools/fsrs-optimizer", "smoke")
 
 
@@ -251,8 +248,6 @@ def performance() -> None:
 
 def deep() -> None:
     assert_test_topology()
-    # Mutation challenges are still a required deep verification, once.
-    run(sys.executable, "tools/qa-mutation-probes.py")
     for path in DEEP_NODE_PLAN:
         run("node", path)
     # Keep full-scale timing envelopes as deep diagnostics, not routine core gates.

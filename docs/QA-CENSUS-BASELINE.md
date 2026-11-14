@@ -1,5 +1,7 @@
 # Revision Director QA — Pass A census and measured baseline
 
+> Historical Pass-A evidence. Pass E closed the temporary measurement programme on 14 Nov 2026. The one-shot profilers and mutation harness referenced below were intentionally removed after their evidence was recorded; the reproduction commands are therefore historical, not current QA instructions. See `docs/QA_PASS_E_CLOSURE.md`.
+
 **Scope:** diagnostic-only census of `working` source tree at `ede3bd30cb296ca11441585d938e208c9ac5f8a3` (14 Nov 2026 UTC). This report and the opt-in profiler are the only Pass A additions; no production source, tests or CI workflow is modified.
 
 ## Source coverage and methods
