@@ -37,10 +37,9 @@ CORE_DOMAIN_PLAN = {
         "tests/fsrs-scale.spec.js",
     ),
     "planner": (
-        "tests/scenarios/adaptive-planning.js",
-        "tests/scenarios/planning-persistence-validation.js",
-        "tests/planning.spec.js",
+        "tests/planner-policy.spec.js",
         "tests/planner-properties.spec.js",
+        "tests/planner-persistence.spec.js",
     ),
     "backup-and-data-safety": (
         "tests/scenarios/backup-codec.js",
@@ -91,7 +90,7 @@ DEEP_NODE_PLAN = (
 )
 
 PERFORMANCE_BROWSER_PLAN = (
-    "tests/scenarios/planning-large-dataset.py",
+    "tests/scenarios/planner-performance.py",
 )
 
 REMOVED_WRAPPERS = (

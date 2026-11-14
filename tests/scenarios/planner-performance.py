@@ -232,7 +232,7 @@ def scenario_large_dataset(browser):
     check(page.locator('#library-content .unit-row').count()==1000,'Large library lost records')
     page.set_viewport_size({'width':390,'height':844}); wait_for_layout(page)
     check(not page.evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth'),'Large dataset caused mobile horizontal overflow')
-    check(not errors,f'Large-dataset errors: {errors}')
+    check(not errors,f'planner-performance errors: {errors}')
     page.close()
 
 def main():

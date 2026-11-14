@@ -176,5 +176,5 @@ async function testMemoryExamHorizon() {
 
   await service.regenerateDailyPlan(ref);
   check(ensureChunkCalls === 2 && persistCalls === 2 && regenerationFlags[1] === true, 'Manual regeneration must remain an explicit mutating command');
-  console.log(`PASS ${checks} Pass C planning scenario checks`);
+  console.log(`PASS ${checks} planner policy checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });
