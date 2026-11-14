@@ -138,14 +138,6 @@ SIMULATED_STORAGE_BROWSER_PLAN = (
     + PERFORMANCE_BROWSER_PLAN
 )
 
-QA_FOOTPRINT_BUDGET = {
-    "files": 56,
-    "bytes": 615_000,
-    "helper_bytes": 34_000,
-    "entrypoints": 48,
-    "browser_entrypoints": 20,
-}
-
 def run(*command: str, isolated_browser: bool = False) -> None:
     print("==>", " ".join(command), flush=True)
     env = os.environ.copy()
@@ -278,8 +270,6 @@ def assert_test_topology() -> None:
             raise AssertionError(f"Native IndexedDB witness imports simulator: {relative}")
         if relative in SIMULATED_STORAGE_BROWSER_PLAN and not simulated:
             raise AssertionError(f"Simulated browser witness skips canonical fixture: {relative}")
-
-    # Footprint is documented as a maintenance metric, not a product gate.
 
 def core() -> None:
     assert_test_topology()
