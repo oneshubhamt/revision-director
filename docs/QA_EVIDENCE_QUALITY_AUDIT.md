@@ -343,3 +343,46 @@ The associated `planner-browser.py` local variable `chunk_after` was also delete
 **QA and unresolved stability:** core/TypeScript, native optimizer, deep FSRS, browser performance, generated artifact sync and browser/durability all passed on the source commit. Browser matrix attempt 1 failed in an **existing** delegated profile creation journey: a settings rerender cleared the filled profile inputs before click, resulting in "Enter an exam-profile name." Browser matrix attempt 2 passed **without code changes**. This is an observed product/UI timing race; it is not a fix and is explicitly assigned to Pass H for source-level diagnosis and repeatable regression testing. Likewise preserve the previous pagehide ownership-handoff flake finding. Neither failure is evidence that a new FSRS, planner, recovery, time, transaction or publication assertion is wrong.
 
 **Outcome:** every Pass G objective now has a corresponding explicit independent or state-machine witness; no existing invariant was removed. Pass H should verify fault sensitivity/mutations, repeat-run stability, realistic median/p95 economics, and correct the known UI ownership/rerender races without weakening the release checks.
+
+
+## Pass H — CI economics, flakiness and adequacy (closure)
+
+**Verified source SHA:** \`27756ac03e09dda24124358f62b15c92efe7aeec\`; all six jobs succeeded on [Actions run 43595206379](https://github.com/oneshubhamt/revision-director/actions/runs/43595206379), first attempt. The same SHA's complete browser/durability job then passed **two unchanged repeats** (three successes total); the browser-performance job also passed an unchanged repeat (two successes). No changes to production sources, generated artifacts, dependencies, workflow YAML, or releases.
+
+### Permanent QA contract
+
+| Layer / command | Required evidence and scheduling |
+|---|---|
+| \`python3 tests/qa.py core\` | Generated build/parity, static/TypeScript contracts, independent FSRS/reference and planner properties, recovery/timing/backup/authority/architecture checks; cheapest routine developer gate |
+| \`optimizer\` | Actual pinned external optimizer smoke; install dependencies in setup, not in QA |
+| \`durability\` | Browser active-time/interruptions, displayed Evidence, persistent session semantics |
+| \`browser\` | All critical candidate/restore/FSRS/recovery/security/accessibility journeys. Independent simulated-context journeys use **at most two isolated Chromium processes**; ownership, hostile recovery, native IndexedDB and UI-focus stress run **serially**. Never parallelize independent CDP Playwright clients inside one Chromium |
+| \`performance\` | 1,000-unit browser rendering/capacity, import and reflow; no duplicate Node knapsack mathematics |
+| \`deep\` | Long-horizon FSRS simulation, full 4,608-event replay budget, real WASM optimizer, and **five genuine in-memory source mutations** against their primary Node oracle |
+| \`full\` / release | All above once, with exact entrypoint ownership; all six existing GitHub CI jobs must be green, including artifact sync and native storage. No workflow changes were made |
+
+**47 executable entrypoints** (46 existing plus \`tests/qa-mutation-adequacy.spec.js\`) remain unique. The runner emits \`QA_PROCESS_TIME\` for each child command and retains the existing \`QA_SCENARIO\` timers. No quick/smoke alias or new CI workflow was added because the existing fast core plus independently scheduled browser/deep/performance gates already cover the release obligation without duplicating expensive tests.
+
+### Cost evidence, reproducibility and limits
+
+Historical pre-H reference: **eight passing browser CI jobs across late Pass D–G commits**; source/tests varied, so this is an operational comparator, **not** a controlled A/B experiment. Post-H: **three passing browser jobs on one unchanged Pass H source SHA**, including two reruns without other scheduled job load. Measurements span from the \`phase-time-runtime.py\` invocation or first standard browser scenario to the last \`QA_PROCESS_TIME\` emission, excluding preparation and CI queue.
+
+| Clocked span | Historical n=8 median | Pass H n=3 median | Historical nearest-rank p95 | Pass H nearest-rank p95 |
+|---|---:|---:|---:|---:|
+| Standard browser scenario matrix | 99.75 s | **74.53 s (−25.3%)** | 111.5 s | **87.85 s** |
+| Browser plus preceding durability/time journey | 119.95 s | **107.42 s (−10.4%)** | 135.2 s | **121.31 s** |
+
+Post-H total-duration observations: **121.31, 91.46, 107.42 seconds**; standard-browser observations **87.85, 70.41, 74.53 seconds**. Nearest-rank p95 with **three samples equals the observed maximum**, *not* a statistically stable tail forecast; historical hardware contention and different suite revisions limit causal interpretation. The source-level gain is credible for the browser portion, while the phase-time scenario's variability limits the end-to-end improvement.
+
+Median per-scenario child timings on Pass H's three runs: phase-time **31.99 s** (max 32.50), UI behavior **10.35 s** (max 13.01), FSRS memory/browser **9.92 s** (max 11.00), hostile recovery **9.71 s** (max 10.53), restore dialog **9.19 s** (max 10.67). Browser-performance process durations in two runs were **35.97 s** and **20.66 s** (median 28.31 s); do **not** infer a stable performance gain from this highly variable two-point sample. Core and deep gates remain complete; deep mutation adequacy added about **0.43 s** in one measured run.
+
+### Adequacy and failure-path reconciliation
+
+- **Mutation kills: 5/5.** Deliberate FSRS-retention forwarding, critical-priority, recovery revision-comparator, elapsed-time arithmetic and guarded deterministic-evidence-ID defects were injected only into *isolated in-memory compiled application copies*. Each designated canonical Node suite failed with a corresponding semantic error. No mutation touched tracked files or generated artifacts.
+- **Deterministic replay and baseline equivalence:** Existing Pass G seeded FSRS reference, exhaustive planner, three-way recovery precedence, timing conservation, exactly-once service publication and native rollback assertions remain. Every test-file diff is in QA; application source and generated artifacts are unchanged from the previously verified Pass G baseline. Full CI, including generated-artifact sync, remained green.
+- **Native persistence:** Real Chromium IndexedDB backup/reload, second-tab read-only ownership, strict transaction rollback on duplicate immutable evidence, and browser restart with exactly one event passed in each of the three completed browser runs. Simulated hostile commits remain a *separate* injected failure witness.
+- **Hostile handoff root cause:** The old test dispatched synthetic \`pagehide\` while leaving the iframe alive, allowing a heartbeat/lease reacquisition before detachment. The fixture now dispatches \`pagehide\` and removes the iframe within one browser task, then asserts the shared owner lease was released. This repairs test fidelity; it is not a speculative production ownership rewrite.
+- **UI timing:** Settings and Library tests now use a forced fresh-pane render barrier before editing input controls; the performance capacity test does likewise. Dirty-library focus/selection still must pass; on failure it now reports focus, selection, filter and visible rows. This removes *test-side interaction with an unfinished render*, not an assertion. It does **not** establish that arbitrary real-user input cannot be lost by an unrelated asynchronous production rerender: that potential product-side race remains worth targeted source work when production/generated artifact edits are authorized.
+- **Rejected optimization:** Concurrent Playwright processes attached to the **same shared CDP Chromium** caused browser-global JavaScript-dialog interference (observed failures in backup/restore). That configuration was rejected. The accepted implementation isolates independent workers in their own Chromium processes and preserves an explicit serial tail for sensitive cases. At most two worker processes run at once.
+
+**Closure confidence:** 3/3 unchanged browser-matrix repetitions plus two passing performance executions are meaningful regression evidence, but are insufficient to claim a zero-flake lifetime or a stable p95 forecast. Keep all release gates, monitor the known host/UI sensitivity, and treat any new intermittent failure as an investigation rather than automatically weakening assertions or silently retrying in CI. Further CI workflow changes require owner approval.
