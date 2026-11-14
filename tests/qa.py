@@ -201,6 +201,8 @@ def deep() -> None:
     for path in DEEP_NODE_PLAN:
         run("node", path)
     run(sys.executable, "tests/fsrs-browser-optimizer.spec.py", "full")
+    run("npm", "ci", "--prefix", "tools/fsrs-optimizer", "--no-audit", "--no-fund")  # Pass E profiling only.
+    run(sys.executable, "tools/qa-baseline.py")  # Remove these two lines after measurement.
 
 
 def full() -> None:
