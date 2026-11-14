@@ -136,7 +136,7 @@ def open_page(browser, viewport=None, baseline: bool = False):
             current_fixture.write_bytes(encode_payload(payload))
             restore_selected_backup(page, current_fixture)
         check(
-            sorted(profile["id"] for profile in page.evaluate("async()=>await RevisionDirector.records.listProfiles()))
+            sorted(profile["id"] for profile in page.evaluate("async()=>await RevisionDirector.records.listProfiles()"))
             == sorted(profile["id"] for profile in payload["profiles"]),
             "Baseline fixture restore did not hydrate the expected profiles",
         )
