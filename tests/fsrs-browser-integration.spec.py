@@ -6,7 +6,7 @@ from threading import Thread
 import argparse
 import json
 from playwright.sync_api import sync_playwright
-from helpers.browser_harness import launch_chromium
+from helpers.browser_harness import launch_chromium, open_rendered_pane, wait_until, wait_for_toast_outcome
 from helpers import browser_fixture as fixture
 from backup_fixture_codec import decode_file
 
@@ -45,7 +45,7 @@ def evidence_csv(full: bool) -> str:
 
 def exercise_scheduling_policy_settings(browser) -> None:
     page, errors = fixture.open_page(browser, {"width": 1365, "height": 950}, baseline=True)
-    fixture.open_rendered_pane(page, "settings")
+    open_rendered_pane(page, "settings")
     settings = page.locator('#settings-form')
     policy = settings.locator('[name="memorySchedulingPolicy"]')
     check(policy.count() == 1, "Memory scheduling policy selector missing")
@@ -54,8 +54,8 @@ def exercise_scheduling_policy_settings(browser) -> None:
     policy.select_option("cost-adr")
     page.evaluate("document.querySelector('#toast').textContent=''")
     settings.locator('button[type="submit"]').click()
-    fixture.wait_until(page, lambda: (fixture.stored_scheduling_policy(page) or {}).get("kind") == "cost-adr", timeout=8000, interval=40, message="Cost-ADR settings did not reach canonical IndexedDB state")
-    fixture.wait_for_toast_outcome(page, expect_error=False, timeout=8_000, message="Cost-ADR settings did not report successful completion")
+    wait_until(page, lambda: (fixture.stored_scheduling_policy(page) or {}).get("kind") == "cost-adr", timeout=8000, interval=40, message="Cost-ADR settings did not reach canonical IndexedDB state")
+    wait_for_toast_outcome(page, expect_error=False, timeout=8_000, message="Cost-ADR settings did not report successful completion")
     check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
 
     with TemporaryDirectory() as tmp:
@@ -74,8 +74,8 @@ def exercise_scheduling_policy_settings(browser) -> None:
     settings.locator('[name="desiredRetention"]').fill("0.90")
     page.evaluate("document.querySelector('#toast').textContent=''")
     settings.locator('button[type="submit"]').click()
-    fixture.wait_until(page, lambda: (fixture.stored_scheduling_policy(page) or {}).get("kind") == "fixed-retention", timeout=8000, interval=40, message="Fixed-retention settings did not reach canonical IndexedDB state")
-    fixture.wait_for_toast_outcome(page, expect_error=False, timeout=8_000, message="Fixed-retention settings did not report successful completion")
+    wait_until(page, lambda: (fixture.stored_scheduling_policy(page) or {}).get("kind") == "fixed-retention", timeout=8000, interval=40, message="Fixed-retention settings did not reach canonical IndexedDB state")
+    wait_for_toast_outcome(page, expect_error=False, timeout=8_000, message="Fixed-retention settings did not report successful completion")
     with TemporaryDirectory() as tmp:
         backup_path = str(Path(tmp) / "fixed-retention-settings.rdbackup")
         with page.expect_download() as download_info:
