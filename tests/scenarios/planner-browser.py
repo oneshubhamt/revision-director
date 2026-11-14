@@ -54,9 +54,7 @@ def exercise_chunk_and_plan_history(browser) -> None:
         interval=40,
         message="Oversized obligation did not finish rendering as a daily chunk",
     )
-    check(chunk_row.count() == 1, 'Oversized obligation was not converted into a daily chunk')
     chunk_action = chunk_row.locator('[data-action="review-chunk"]')
-    check(chunk_action.count() == 1, 'Chunk action missing')
     chunk_row.locator('details.planner-details').evaluate('e=>e.open=true')
     factor_meters = chunk_row.locator('.factor-grid .factor-meter')
     check(factor_meters.count() == 6, 'Planner explanation does not expose all six scoring factors')
@@ -77,9 +75,7 @@ def exercise_chunk_and_plan_history(browser) -> None:
         interval=40,
         message="Chunk completion did not reach canonical storage",
     )
-    chunk_after = stored_record(page, 'chunks', chunk_id)
     parent_after = stored_record(page, 'obligations', chunk_before['obligationId'])
-    check(chunk_after['status'] == 'completed', 'Chunk completion was not persisted')
     wait_until(
         page,
         lambda: page.locator('[data-pane="today"]').get_attribute('aria-selected') == 'true',
@@ -96,7 +92,6 @@ def exercise_chunk_and_plan_history(browser) -> None:
         interval=40,
         message="Next bounded chunk did not finish rendering",
     )
-    check(next_chunk.count() == 1 and next_chunk.locator('[data-action="review-chunk"]').count() == 1, 'Completing one chunk did not expose the next bounded chunk')
     check(
         parent_after['dueAt'] == parent_before['dueAt']
         and parent_after['policyState'] == parent_before['policyState'],
@@ -111,7 +106,6 @@ def exercise_chunk_and_plan_history(browser) -> None:
     page.locator('[data-pane="history"]').click(); page.locator("#pane-history").wait_for(state="visible")
     plan_row = page.locator('#history-content .record-row').filter(has_text=current_plan['studyDayKey'])
     wait_until(page, lambda: plan_row.count() >= 1, timeout=5000, interval=40, message="Persisted daily-plan record was not projected in History")
-    check(plan_row.count() >= 1, 'Persisted daily-plan record was not projected in History')
     check(not errors, f'Planner browser errors: {errors}')
     page.close()
 

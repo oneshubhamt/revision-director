@@ -196,11 +196,9 @@ def main() -> None:
 
         frame.evaluate("__RD_TEST_CLOCK__.advance(10000)")
         wait_until(frame, lambda: displayed_timer_seconds(frame) >= 10)
-        check(displayed_timer_seconds(frame) >= 10, "Active time did not accumulate")
 
         frame.locator('[data-action="toggle-pause"]').click()
         wait_until(frame, lambda: frame.locator("#review-time-state").evaluate("e=>e.classList.contains('paused')"))
-        check(frame.locator("#review-time-state").evaluate("e=>e.classList.contains('paused')"), "Pause state is not visible")
         paused_timer = displayed_timer_seconds(frame)
 
         frame.evaluate("__RD_TEST_CLOCK__.advance(30000); window.dispatchEvent(new Event('focus'))")
@@ -230,7 +228,6 @@ def main() -> None:
         frame.evaluate("__RD_TEST_CLOCK__.advance(130001); window.dispatchEvent(new Event('focus'))")
         frame.locator("#gap-overlay").wait_for(state="visible")
         wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "gap-pending")
-        check(frame.locator("#gap-overlay").is_visible(), "120-second inactive gap was not detected")
         pending = active_session(page)["timeRuntime"]
         check(pending["pendingGap"]["gapMs"] > 120000, "Pending gap was not durably saved")
         frame.locator('[data-gap-action="focus"]').click()
@@ -280,7 +277,6 @@ def main() -> None:
             frame.locator("#attempt-completed").check()
         frame.locator('[data-action="reveal"]').click()
         frame.locator('[data-review-phase="compare"]').wait_for(state="visible")
-        check(frame.locator('[data-review-phase="compare"]').is_visible(), "Source reveal did not enter compare phase")
         frame.locator("#questions-attempted").fill("10")
         frame.locator("#questions-correct").fill("8")
         frame.locator("#questions-partial").fill("1")

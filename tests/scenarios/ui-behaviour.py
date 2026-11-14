@@ -56,7 +56,6 @@ def exercise_shell_crud(browser) -> None:
     form.locator('button[type="submit"]').click()
     wait_until(page, lambda: page.locator("#sb-units").inner_text().strip() == "1",
                timeout=5000, interval=40, message="Unit creation did not reach the sidebar")
-    check(page.locator("#sb-units").inner_text() == "1", "Knowledge Unit creation failed")
 
     page.locator("#quick-log-study").click()
     study = page.locator("#study-form")
@@ -102,13 +101,10 @@ def main():
   check(tab_contract['uniqueKeys']==tab_contract['tabs'] and tab_contract['controlled'],'ARIA tab registry has duplicate or unresolved controls')
   today=page.locator('[data-pane=today]');today.focus();today.press('ArrowRight')
   wait_until(page, lambda: page.locator('[data-pane=review]').get_attribute('aria-selected')=='true', timeout=3000, interval=30, message='ArrowRight failed')
-  check(page.locator('[data-pane=review]').get_attribute('aria-selected')=='true','ArrowRight failed')
   page.locator('[data-pane=review]').press('End')
   wait_until(page, lambda: page.locator('[data-pane=settings]').get_attribute('aria-selected')=='true', timeout=3000, interval=30, message='End failed')
-  check(page.locator('[data-pane=settings]').get_attribute('aria-selected')=='true','End failed')
   page.locator('[data-pane=settings]').press('Home')
   wait_until(page, lambda: today.get_attribute('aria-selected')=='true', timeout=3000, interval=30, message='Home failed')
-  check(today.get_attribute('aria-selected')=='true','Home failed')
   check(page.locator('[role=tab][tabindex="0"]').count()==1,'Roving tabindex invalid')
 
   # Delegated action remains exactly-once after ordinary pane navigation.
@@ -171,8 +167,6 @@ def main():
    interval=40,
    message='Dirty library render did not restore focus and selection',
   )
-  check(page.evaluate('document.activeElement?.id')=='library-search','Dirty render lost focus')
-  check(search.evaluate('e=>[e.selectionStart,e.selectionEnd]')==[2,6],'Dirty render lost selection')
 
   # Native dialog focus and return.
   page.locator('#quick-add-unit').focus();page.locator('#quick-add-unit').click(); page.locator('#unit-dialog').wait_for(state='visible')
@@ -183,10 +177,8 @@ def main():
    interval=30,
    message='Dialog did not establish initial focus',
   )
-  check(page.evaluate("document.activeElement?.getAttribute('name')")=='profileId','Dialog initial focus wrong')
   page.keyboard.press('Escape'); page.locator('#unit-dialog').wait_for(state='hidden')
   wait_until(page, lambda: page.evaluate('document.activeElement?.id')=='quick-add-unit', timeout=3000, interval=30, message='Dialog return focus failed')
-  check(page.evaluate('document.activeElement?.id')=='quick-add-unit','Dialog return focus failed')
 
   # Reduced motion.
   page.emulate_media(reduced_motion='reduce')
@@ -203,7 +195,6 @@ def main():
    page.evaluate('__RD_UI_BEHAVIOUR_CLOCK__.advance(130001)')
    page.evaluate("window.dispatchEvent(new Event('focus'))")
    overlay=page.locator('#gap-overlay'); overlay.wait_for(state='visible', timeout=5000)
-   check(overlay.is_visible(),f'Gap overlay missing on cycle {cycle+1}')
    check(page.locator('.app-shell').evaluate('e=>e.inert'),f'Background not inert on cycle {cycle+1}')
    check(page.evaluate("document.activeElement?.getAttribute('data-gap-action')")=='focus',f'Initial overlay focus wrong on cycle {cycle+1}')
    if cycle==0:
@@ -212,15 +203,13 @@ def main():
     page.keyboard.press('Tab')
     check(page.evaluate("document.activeElement?.getAttribute('data-gap-action')")=='focus','Tab did not wrap')
    page.locator('[data-gap-action=break]').click(); overlay.wait_for(state='hidden', timeout=5000)
-   check(not overlay.is_visible(),f'Gap overlay did not close on cycle {cycle+1}')
    wait_until(
     page,
     lambda: not page.locator('.app-shell').evaluate('e=>e.inert')
     and page.evaluate("document.activeElement?.getAttribute('data-action')")=='toggle-pause',
     timeout=3000,
+    message=f'Gap overlay failed to release background and return focus on cycle {cycle+1}',
    )
-   check(not page.locator('.app-shell').evaluate('e=>e.inert'),f'Background remained inert on cycle {cycle+1}')
-   check(page.evaluate("document.activeElement?.getAttribute('data-action')")=='toggle-pause',f'Return focus failed on cycle {cycle+1}')
 
   check(not errors,f'Browser errors: {errors}')
   page.close(); timed('ui.clean-install-crud', exercise_shell_crud, browser); browser.close()

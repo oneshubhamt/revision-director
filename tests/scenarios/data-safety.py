@@ -131,7 +131,6 @@ def main():
         # Inspection is non-mutating, cancellable, and the same file can be selected again.
         before=page.locator('#sb-units').inner_text()
         open_restore_preview(page, FIXTURE)
-        check(page.locator('#restore-dialog').is_visible(),'Import selection did not open preview')
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated local records')
         # Assert meaningful inspected values rather than an arbitrary number
         # of preview cards (P0-4). These are separate from the archive proof.
@@ -153,10 +152,8 @@ def main():
         check(page.locator('#restore-final-button').is_disabled(),'Restore enabled before safety steps')
         check(page.evaluate("document.activeElement?.getAttribute('data-action')")=='create-restore-safety','Restore preview did not focus the first safety action')
         page.get_by_role('button',name='CANCEL',exact=True).click(); page.locator('#restore-dialog').wait_for(state='hidden')
-        check(not page.locator('#restore-dialog').is_visible(),'Cancel did not close restore preview')
         check(page.locator('#sb-units').inner_text()==before,'Cancel mutated data')
         open_restore_preview(page, FIXTURE)
-        check(page.locator('#restore-dialog').is_visible(),'Same backup could not be reselected after cancellation')
 
         safety=safety_download(page,tmp)
         check(safety.suffix=='.rdbackup','Healthy current state did not create .rdbackup safety copy')
