@@ -337,7 +337,15 @@ def scenario_workflows(browser) -> None:
     page.locator("#correction-note").fill("Relearn toxin syndromes and resistance logic.")
     page.locator("#error-application-failure").check()
     page.locator('[data-action="rate"][data-rating="1"]').click()
-    wait_until(page, lambda: active_workflow_kind(page) == "recall", timeout=5000, interval=40, message="Recall workflow did not follow")
+    wait_until(
+        page,
+        lambda: active_workflow_kind(page) == "recall"
+        and page.locator("#attempt-completed").count() == 1
+        and page.locator("#attempt-completed").is_visible(),
+        timeout=5000,
+        interval=40,
+        message="Recall workflow did not finish rendering",
+    )
     page.locator("#attempt-completed").check(); page.locator('[data-action="reveal"]').click(); page.locator('[data-review-phase="compare"]').wait_for(state="visible")
     check_all_checkpoints(page); rate_good(page)
 
