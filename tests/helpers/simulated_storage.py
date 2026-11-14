@@ -41,10 +41,11 @@ SIMULATED_STORAGE_SHIM = r"""
     const encoded=JSON.stringify(key);
     const patch=clone(fault.patch ?? {});
     setTimeout(()=>{
-      const current=data.records.get(encoded);
-      if(current===undefined) return;
+      const live=db._stores.get(data.name);
+      const current=live?.records.get(encoded);
+      if(current===undefined || !Object.entries(match).every(([name,expected])=>sameKey(current[name],expected))) return;
       const next=Object.assign(clone(current),patch);
-      data.records.set(encoded,next);
+      live.records.set(encoded,next);
       db._persist();
     },0);
   }
@@ -59,6 +60,17 @@ SIMULATED_STORAGE_SHIM = r"""
     constructor(db,names,mode){
       this.db=db; this.names=Array.isArray(names)?names:[names]; this.mode=mode; this.error=null;
       this._pending=0; this._complete=false; this._aborted=false; this._oncomplete=null; this.onabort=null; this.onerror=null;
+      // Provisional writes are visible within this transaction only.
+      // Aborted work must never leak into canonical persisted state.
+      this._view=new Map();
+      for(const name of this.names){
+        const live=db._stores.get(name);
+        if(!live) continue;
+        const data=new StoreData(name,{keyPath:clone(live.keyPath)});
+        data.indices=new Map([...live.indices].map(([key,value])=>[key,clone(value)]));
+        data.records=new Map([...live.records].map(([key,value])=>[key,clone(value)]));
+        this._view.set(name,data);
+      }
       setTimeout(() => this._maybe(), 0);
     }
     set oncomplete(fn){ this._oncomplete=fn; if(this._complete && !this._aborted && fn) setTimeout(()=>fn({target:this}),0); }
@@ -67,7 +79,11 @@ SIMULATED_STORAGE_SHIM = r"""
     _dec(){ if(this._pending>0) this._pending--; this._maybe(); }
     _maybe(){
       if(this._pending===0 && !this._complete && !this._aborted){
-        this._complete=true; this.db._persist();
+        this._complete=true;
+        if(this.mode!=='readonly'){
+          for(const [name,data] of this._view) this.db._stores.set(name,data);
+          this.db._persist();
+        }
         if(this._oncomplete) setTimeout(()=>this._oncomplete({target:this}),0);
       }
     }
@@ -78,7 +94,7 @@ SIMULATED_STORAGE_SHIM = r"""
     }
     objectStore(name){
       if(!this.names.includes(name)) throw new Error('Store not in transaction: '+name);
-      const data=this.db._stores.get(name); if(!data) throw new Error('Missing object store: '+name);
+      const data=this._view.get(name); if(!data) throw new Error('Missing object store: '+name);
       return new ObjStore(this,data);
     }
   }
@@ -99,7 +115,7 @@ SIMULATED_STORAGE_SHIM = r"""
   }
   class ObjStore {
     constructor(tx,data){ this.tx=tx; this.data=data; }
-    createIndex(name,keyPath,opts={}){ this.data.indices.set(name,{keyPath:clone(keyPath),unique:!!opts.unique}); this.tx.db._persist(); return {}; }
+    createIndex(name,keyPath,opts={}){ this.data.indices.set(name,{keyPath:clone(keyPath),unique:!!opts.unique}); return {}; }
     index(name){ const cfg=this.data.indices.get(name); if(!cfg) throw new Error('Missing index: '+name); return new Index(this.tx,this.data,cfg); }
     get(key){ return asyncReq(this.tx,()=>{ const value=this.data.records.get(JSON.stringify(key)); return clone(value); }); }
     getAll(){ return asyncReq(this.tx,()=>[...this.data.records.values()].map(clone)); }
@@ -147,7 +163,7 @@ SIMULATED_STORAGE_SHIM = r"""
     createObjectStore(name,opts={}){
       if(this._stores.has(name)) throw new DOMException('Store exists','ConstraintError');
       const data=new StoreData(name,opts); this._stores.set(name,data); this._persist();
-      return new ObjStore(new Tx(this,[name],'versionchange'),data);
+      return new Tx(this,[name],'versionchange').objectStore(name);
     }
     transaction(names,mode='readonly'){ return new Tx(this,names,mode); }
     close(){}

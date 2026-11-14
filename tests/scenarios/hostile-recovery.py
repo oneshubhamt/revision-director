@@ -24,6 +24,7 @@ from helpers.simulated_storage import (
     simulated_state_all,
     simulated_state_get,
     simulated_storage_html,
+    SIMULATED_STORAGE_SHIM,
 )
 from helpers.browser_fixture import restore_backup_with_safety_copy
 FIXTURE = baseline_backup_path()
@@ -124,6 +125,63 @@ def boot_frame(page):
     check(not frame.locator("#fatal-error").is_visible(), "Fatal startup error")
     return frame
 
+def verify_simulated_transaction_atomicity(page) -> None:
+    """Abort must discard every provisional write, including multi-store writes."""
+    frame = create_simulated_frame(
+        page, "<html><head>" + SIMULATED_STORAGE_SHIM + "</head><body></body></html>",
+        name="qa-atomicity-probe", element_id="qa-atomicity-probe", width=2, height=2,
+    )
+    outcome = frame.evaluate("""async () => {
+      const db=await new Promise((resolve,reject)=>{
+        const req=indexedDB.open('qa-transaction-atomicity',1);
+        req.onupgradeneeded=()=>{
+          req.result.createObjectStore('records',{keyPath:'id'});
+          req.result.createObjectStore('audit',{keyPath:'id'});
+        };
+        req.onsuccess=()=>resolve(req.result);
+        req.onerror=()=>reject(req.error);
+      });
+      const transact=work=>new Promise((resolve,reject)=>{
+        const tx=db.transaction(['records','audit'],'readwrite');
+        tx.onabort=()=>resolve('aborted');
+        tx.oncomplete=()=>resolve('committed');
+        tx.onerror=()=>reject(tx.error);
+        work(tx);
+      });
+      const read=(name,id)=>new Promise((resolve,reject)=>{
+        const tx=db.transaction(name,'readonly');
+        const req=tx.objectStore(name).get(id);
+        req.onsuccess=()=>resolve(req.result ?? null);
+        req.onerror=()=>reject(req.error);
+      });
+      const abandoned=await transact(tx=>{
+        const req=tx.objectStore('records').put({id:'a',value:999});
+        req.onsuccess=()=>tx.abort();
+      });
+      const afterFirstAbort=await read('records','a');
+      const saved=await transact(tx=>tx.objectStore('records').put({id:'a',value:1}));
+      const second=await transact(tx=>{
+        tx.objectStore('records').put({id:'a',value:2});
+        const req=tx.objectStore('audit').put({id:'log',value:2});
+        req.onsuccess=()=>tx.abort();
+      });
+      const result={
+        abandoned,saved,second,afterFirstAbort,
+        record:await read('records','a'),
+        audit:await read('audit','log'),
+      };
+      db.close();
+      return result;
+    }""")
+    check(outcome["abandoned"] == "aborted" and outcome["afterFirstAbort"] is None,
+          f"Aborted insert leaked into simulated storage: {outcome}")
+    check(outcome["saved"] == "committed" and outcome["record"] == {"id": "a", "value": 1},
+          f"Committed record was overwritten by aborted update: {outcome}")
+    check(outcome["second"] == "aborted" and outcome["audit"] is None,
+          f"Aborted multi-store transaction left partial evidence: {outcome}")
+    page.evaluate("document.querySelector('#qa-atomicity-probe')?.remove()")
+
+
 def main() -> None:
     with sync_playwright() as pw:
         browser = launch_chromium(pw)
@@ -133,6 +191,7 @@ def main() -> None:
         accept_dialogs(page)
         page.set_content("<body></body>")
         reset_simulated_storage(page)
+        verify_simulated_transaction_atomicity(page)
 
         # Establish a valid canonical session.
         frame = boot_frame(page)
