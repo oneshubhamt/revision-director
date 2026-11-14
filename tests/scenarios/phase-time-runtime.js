@@ -1,5 +1,6 @@
 'use strict';
 const { createAppRuntime } = require('../helpers/runtime-harness');
+const { mulberry32, integer } = require('../helpers/seeded');
 
 const { api } = createAppRuntime({
   globalName: '__RD_B2_TEST__',
@@ -113,5 +114,100 @@ const badDraftSession = {
   startedAt:new Date(t0).toISOString(),updatedAt:new Date(t0).toISOString(),
 };
 mustFail(() => api.canonicalActiveRetrievalSession(badDraftSession), 'Non-boolean review check state was coerced instead of rejected');
+
+
+/**
+ * Seeded event-ledger oracle. Expected time is accumulated from the input
+ * chronology, not from the runtime's snapshot or summary implementation.
+ * Replaying the same events at a different calendar epoch must preserve
+ * all numeric totals, categories and reliability properties.
+ */
+function exerciseTimingLedger(sequence, epoch) {
+  let now = epoch;
+  const model = api.PhaseTimeRuntime.create('attempt',false,now);
+  const attemptFirst = sequence.attemptFirst;
+  const attemptSecond = sequence.attemptSecond;
+  const compare = sequence.compare;
+  const tail = sequence.tail;
+  now += attemptFirst;
+  model.reconcile(now,'tick');
+  model.pause(now);
+  now += sequence.manualPause;
+  model.resume(now);
+  now += attemptSecond;
+  model.transition('compare','source-reveal',true,now);
+  now += compare;
+  model.reconcile(now,'tick');
+  now += sequence.gap;
+  const gapOpened = model.reconcile(now,'visibility');
+  check(gapOpened.gapOpened && model.status() === 'gap-pending'
+    && model.activeMs() === attemptFirst + attemptSecond + compare,
+    'Long gap was incorrectly accrued before classification');
+  now += sequence.prompt;
+  const record = model.resolveGap(sequence.classification,sequence.splitFocus,now);
+  const focus = sequence.classification === 'focus' ? sequence.gap
+    : sequence.classification === 'split' ? sequence.splitFocus : 0;
+  const excluded = sequence.classification === 'ignore' ? sequence.gap : 0;
+  const breakPart = sequence.gap - focus - excluded;
+  check(record.focusMs === focus && record.breakMs === breakPart
+    && record.ignoredMs === excluded && record.promptMs === sequence.prompt,
+    'A classification failed to partition gap/prompt time');
+  now += tail;
+  model.reconcile(now,'tick');
+  let extra = 0;
+  if (sequence.backwards) {
+    now -= sequence.backwards;
+    check(model.reconcile(now,'tick').backwardClock,
+      'Negative clock movement did not produce a rollback event');
+    now += sequence.forwardAfterRollback;
+    extra = sequence.forwardAfterRollback;
+    model.reconcile(now,'tick');
+  }
+  const expectedAttempt = attemptFirst + attemptSecond;
+  const expectedCompare = compare + focus + tail + extra;
+  const summary = model.summary(now);
+  check(summary.activeByPhase.attempt === expectedAttempt
+    && summary.activeByPhase.compare === expectedCompare
+    && summary.totalActiveMs === expectedAttempt + expectedCompare,
+    'Seeded phase-time conservation diverged from the event ledger');
+  check(summary.classifiedFocusMs === focus && summary.classifiedBreakMs === breakPart
+    && summary.ignoredGapMs === excluded && summary.promptExcludedMs === sequence.prompt,
+    'Seeded gap classification totals do not conserve the input interval');
+  check(summary.pauseMs === sequence.manualPause + breakPart + sequence.prompt
+    && summary.inactiveGapCount === 1,
+    'Pause/prompt ledger differs from independent chronology');
+  check(summary.durationReliable === (excluded === 0)
+    && summary.backwardClockCount === Number(sequence.backwards > 0),
+    'Timing reliability or rollback count differs from the event ledger');
+  const revived = new api.PhaseTimeRuntime(model.snapshot());
+  check(revived.summary(now).totalActiveMs === summary.totalActiveMs
+    && revived.summary(now).classifiedFocusMs === summary.classifiedFocusMs,
+    'Canonical timing snapshot changed accumulated time on rehydration');
+  return {
+    ...summary,sourceRevealAt:undefined,
+  };
+}
+
+const timingRandom = mulberry32(0x71A1E);
+for (let index = 0; index < 64; index += 1) {
+  const classification = ['focus','break','split','ignore'][index % 4];
+  const gap = 120_000 + integer(timingRandom,1,30_000);
+  const sequence = {
+    attemptFirst:integer(timingRandom,1,60_000),
+    attemptSecond:integer(timingRandom,1,60_000),
+    compare:integer(timingRandom,1,60_000),
+    manualPause:integer(timingRandom,1,40_000),
+    gap,classification,
+    splitFocus:classification === 'split' ? integer(timingRandom,0,gap) : 0,
+    prompt:integer(timingRandom,1,15_000),
+    tail:integer(timingRandom,1,50_000),
+    backwards:index % 5 === 0 ? integer(timingRandom,1,5000) : 0,
+    forwardAfterRollback:index % 5 === 0 ? integer(timingRandom,1,5000) : 0,
+  };
+  const first = exerciseTimingLedger(sequence,t0 + index*9_000_000);
+  const translated = exerciseTimingLedger(sequence,t0 + index*9_000_000 + 30*86400_000);
+  check(JSON.stringify(first) === JSON.stringify(translated),
+    'Calendar translation changed the numeric time ledger in case ' + index);
+}
 
 console.log(`PASS ${checks} phase-time runtime phase-time runtime checks`);

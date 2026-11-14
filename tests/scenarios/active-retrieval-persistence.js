@@ -66,6 +66,27 @@ function session(revision, overrides = {}) {
     check(winner.revision === expected.revision && winner.updatedAt === expected.updatedAt, 'Seeded recovery precedence mismatch at case ' + index);
   }
 
+
+  // Independent lexicographic oracle for three-way recovery merges.
+  // Pairwise examples cannot establish associativity/transitive preference.
+  for (let index = 0; index < 96; index += 1) {
+    const candidates = Array.from({length:3},(_,part) => session(
+      integer(random,1,50), {
+        updatedAt:new Date(precedenceBase + integer(random,0,600)*1000 + part).toISOString(),
+      }));
+    const expected = [...candidates].sort((left,right) =>
+      right.revision - left.revision || Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0];
+    const left = api.newerActiveRetrieval(api.newerActiveRetrieval(candidates[0],candidates[1]),candidates[2]);
+    const right = api.newerActiveRetrieval(candidates[0],api.newerActiveRetrieval(candidates[1],candidates[2]));
+    for (const result of [left,right]) {
+      check(result.revision === expected.revision && result.updatedAt === expected.updatedAt,
+        'Three-way recovery precedence is not associative at seed ' + index);
+    }
+    check(api.newerActiveRetrieval(undefined,candidates[0]) === candidates[0]
+      && api.newerActiveRetrieval(candidates[0],undefined) === candidates[0],
+      'Absent recovery copy did not act as identity');
+  }
+
   const db = new Map();
   const writes = [];
   const diagnostics = [];
@@ -139,5 +160,49 @@ function session(revision, overrides = {}) {
     check(diagnosticCodes.includes(expected), 'Expected fault diagnostic missing: ' + expected);
   }
   check(diagnosticCodes.every((code) => ['active-retrieval.indexeddb.write','active-retrieval.previous-write','active-retrieval.indexeddb.read'].includes(code)), 'Unexpected diagnostics escaped controlled fault injection: ' + JSON.stringify(diagnostics));
+
+  // Cross-store reconciliation uses independently ranked (revision, timestamp)
+  // rather than asserting that a particular storage backend always wins.
+  for (let index = 0; index < 36; index += 1) {
+    const local = session(integer(random,1,60),{
+      updatedAt:new Date(precedenceBase + integer(random,1,700)*1000).toISOString(),
+    });
+    const indexed = session(integer(random,1,60),{
+      updatedAt:new Date(precedenceBase + integer(random,1,700)*1000).toISOString(),
+    });
+    const preferLocal = local.revision > indexed.revision
+      || (local.revision === indexed.revision && Date.parse(local.updatedAt) >= Date.parse(indexed.updatedAt));
+    const winner = preferLocal ? local : indexed;
+    const current = new api.ActiveRetrievalPersistence(fakeData);
+    current.forceEmergency(local);
+    db.set(api.Store.ActiveRetrieval + ':current',structuredClone(indexed));
+    const read = await new api.ActiveRetrievalPersistence(fakeData).load();
+    const durable = db.get(api.Store.ActiveRetrieval + ':current');
+    const emergency = JSON.parse(memoryStorage.get(api.ACTIVE_RETRIEVAL_RECOVERY_KEY)).session;
+    check(read.session?.revision === winner.revision && read.session.updatedAt === winner.updatedAt,
+      'Recovery load selected the wrong cross-store revision');
+    check(durable.revision === winner.revision && durable.updatedAt === winner.updatedAt,
+      'Recovery winner was not reconciled to IndexedDB');
+    check(emergency.revision === winner.revision && emergency.updatedAt === winner.updatedAt,
+      'Recovery winner was not reconciled to emergency storage');
+  }
+
+  // A newer completed tombstone must defeat a stale active snapshot in either
+  // backend, including the case where only the local copy is completed.
+  for (const newerLocal of [false,true]) {
+    const active = session(14,{updatedAt:new Date(precedenceBase).toISOString()});
+    const completed = session(15,{
+      status:'completed',activeIndex:1,activeTargetId:'',commitToken:'completed-15',
+      updatedAt:new Date(precedenceBase+1000).toISOString(),
+    });
+    const current = new api.ActiveRetrievalPersistence(fakeData);
+    current.forceEmergency(newerLocal ? completed : active);
+    db.set(api.Store.ActiveRetrieval + ':current',structuredClone(newerLocal ? active : completed));
+    const read = await new api.ActiveRetrievalPersistence(fakeData).load();
+    check(!read.session && !db.has(api.Store.ActiveRetrieval + ':current')
+      && !memoryStorage.has(api.ACTIVE_RETRIEVAL_RECOVERY_KEY),
+      'Newer completed tombstone did not clear both recovery copies');
+  }
+
   console.log(`PASS ${checks} active retrieval persistence durable-active-retrieval checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

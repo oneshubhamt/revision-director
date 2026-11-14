@@ -40,10 +40,10 @@ function observation(index, beforeCard, afterCard, rating, reviewedAt, configura
   };
 }
 
-async function referenceScheduler() {
+async function referenceScheduler(desiredRetention = 0.9) {
   return upstream.DefaultScheduler({
     version:'FSRS-7',
-    desiredRetention:0.9,
+    desiredRetention,
     enableShortTerm:true,
     learningSteps:['1d'],
     relearningSteps:['1d'],
@@ -136,7 +136,59 @@ async function seededParity() {
   console.log('PASS ' + checks + ' upstream FSRS reference/parity checks across ' + SEQUENCES + ' seeded sequences');
 }
 
+
+/**
+ * Independent multi-policy oracle. Production may cache/configure schedulers
+ * differently for each policy; the reference is a fresh upstream scheduler.
+ * Event IDs are deliberately changed on replay: provenance labels must never
+ * alter the mathematical card projection.
+ */
+async function retentionMatrixParity() {
+  const retentions = [0.82, 0.9, 0.95];
+  const fingerprints = new Set();
+  for (let policyIndex = 0; policyIndex < retentions.length; policyIndex += 1) {
+    const retention = retentions[policyIndex];
+    const policy = {kind:'fixed-retention',desiredRetention:retention};
+    await api.prepareFsrsScheduler(policy);
+    const port = api.revisionSchedulerPort(policy);
+    check(!fingerprints.has(port.configuration.fingerprint),
+      'Distinct fixed-retention policies share a configuration fingerprint');
+    fingerprints.add(port.configuration.fingerprint);
+    for (let sequence = 0; sequence < 5; sequence += 1) {
+      const random = mulberry32(0x71F5A11 ^ (policyIndex * 97 + sequence));
+      const direct = await referenceScheduler(retention);
+      const firstAt = new Date(Date.UTC(2027, policyIndex, sequence + 1, 8));
+      const cardId = 'policy-' + policyIndex + '-sequence-' + sequence;
+      let actual = port.newCard(firstAt.toISOString(), cardId);
+      let expected = direct.newCard({now:firstAt,cardId});
+      const history = [];
+      for (let step = 0; step < 10; step += 1) {
+        const last = actual.lastReviewAt ? Date.parse(actual.lastReviewAt) : firstAt.getTime();
+        const reviewedAt = new Date(Math.max(Date.parse(actual.dueAt),last + 3600000)
+          + integer(random,0,36) * 3600000);
+        const rating = integer(random,1,4);
+        const next = port.review(actual,history,rating,reviewedAt);
+        const reference = direct.review({card:expected,grade:upstreamGrade(rating),now:reviewedAt});
+        check(JSON.stringify(next.card) === JSON.stringify(serialize(reference.card)),
+          'FSRS upstream mismatch at retention ' + retention + ', sequence ' + sequence + ', step ' + step);
+        history.push(observation(step,actual,next.card,rating,reviewedAt,port.configuration));
+        const baseline = history[0].beforeCard;
+        const replayed = port.reschedule(baseline,history);
+        check(JSON.stringify(replayed) === JSON.stringify(next.card),
+          'FSRS replay diverged from materialized multi-policy review');
+        const relabeled = history.map((event,index) =>
+          ({...event,evidenceEventId:'different-evidence-' + index}));
+        check(JSON.stringify(port.reschedule(baseline,relabeled)) === JSON.stringify(next.card),
+          'Evidence identifiers influenced the FSRS mathematical result');
+        actual = next.card;
+        expected = reference.card;
+      }
+    }
+  }
+}
+
 (async () => {
   await explicitTransitionBoundary();
   await seededParity();
+  await retentionMatrixParity();
 })().catch((error) => { console.error(error); process.exitCode = 1; });

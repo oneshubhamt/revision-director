@@ -207,4 +207,53 @@ for (let caseIndex = 0; caseIndex < MIXED_CASES; caseIndex += 1) {
     label + ': disposition depends on input permutation');
 }
 
-console.log('PASS ' + checks + ' seeded planner/oracle property checks across ' + (CASES + MIXED_CASES) + ' cases');
+
+/**
+ * Metamorphic frontier: changing the absolute calendar origin or uniformly
+ * scaling integer benefit values cannot alter the optimal chosen identities.
+ * Exhaustive subsets remain the independent oracle at several capacities.
+ */
+const metamorphicRandom = mulberry32(0xA11F01);
+const METAMORPHIC_CASES = 64;
+for (let caseIndex = 0; caseIndex < METAMORPHIC_CASES; caseIndex += 1) {
+  const capacity = integer(metamorphicRandom, 20, 75);
+  const candidates = Array.from({length:integer(metamorphicRandom,3,8)},(_,index) => {
+    const isCritical = integer(metamorphicRandom,0,4) === 0;
+    const dueAt = new Date(BASE_DUE + integer(metamorphicRandom,-30,30)*3600000).toISOString();
+    return item('metamorphic-' + caseIndex + '-' + index,
+      integer(metamorphicRandom,5,110), integer(metamorphicRandom,1,14), {
+        type:isCritical ? 'relearn' : 'concept-reconstruction',
+        dueState:isCritical ? 'overdue' : 'due', dueRisk:isCritical ? .95 : .4,
+        dueAt,
+      });
+  });
+  const unchanged = JSON.stringify(candidates);
+  for (const currentCapacity of [capacity,capacity + 10,capacity + 25]) {
+    const actual = api.choosePlanItems(candidates,currentCapacity);
+    assertPartition(candidates,actual,'metamorphic case ' + caseIndex);
+    const transformed = candidates.map(candidate => ({
+      ...candidate,score:candidate.score * 3,
+      joined:{...candidate.joined,obligation:{
+        ...candidate.joined.obligation,
+        dueAt:new Date(Date.parse(candidate.joined.obligation.dueAt) + 7*86400000).toISOString(),
+      }},
+    }));
+    const changed = api.choosePlanItems(transformed,currentCapacity);
+    check(JSON.stringify(canonicalResult(actual)) === JSON.stringify(canonicalResult(changed)),
+      'Uniform score/calendar translation changed selected work in case ' + caseIndex);
+    const foundCritical = selectedObjective(actual.selected.filter(critical));
+    const oracleCritical = bruteForce(candidates.filter(critical),currentCapacity);
+    check(foundCritical.value === oracleCritical.value && foundCritical.used === oracleCritical.used,
+      'Critical capacity frontier diverged from exhaustive oracle');
+    const remaining = currentCapacity - foundCritical.used;
+    const foundNormal = selectedObjective(actual.selected.filter(value => !critical(value)));
+    const oracleNormal = bruteForce(candidates.filter(value => !critical(value)),remaining);
+    check(foundNormal.value === oracleNormal.value && foundNormal.used === oracleNormal.used,
+      'Normal capacity frontier diverged from exhaustive oracle');
+  }
+  check(JSON.stringify(candidates) === unchanged,
+    'Metamorphic planning mutated caller-owned candidates');
+}
+
+console.log('PASS ' + checks + ' seeded planner/oracle property checks across '
+  + (CASES + MIXED_CASES + METAMORPHIC_CASES) + ' cases');
