@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
-from helpers.browser_fixture import HTML
+from helpers.browser_fixture import HTML, complete_open_restore
 FIXTURE = baseline_backup_path()
 RAW=ROOT/'tests/fixtures/browser-baseline.json'
 checks=0
@@ -17,16 +17,6 @@ checks=0
 def check(value,message):
     global checks; checks+=1
     if not value: raise AssertionError(message)
-
-def complete_restore(page,tmp):
-    with page.expect_download() as di: page.locator('[data-action="create-restore-safety"]').click()
-    out=tmp/di.value.suggested_filename; di.value.save_as(str(out))
-    page.locator('#restore-safety-saved').check(); page.locator('#restore-replace-confirm').check()
-    if page.locator('input[name="restore-active-treatment"]').count(): page.locator('input[name="restore-active-treatment"][value="discard"]').check()
-    page.evaluate("document.querySelector('#toast').textContent=''")
-    page.locator('#restore-final-button').click()
-    page.locator('#restore-dialog').wait_for(state='hidden', timeout=8000)
-    wait_for_toast_outcome(page, expect_error=False, timeout=8000, message='Restore did not report successful completion')
 
 def main():
     global checks
@@ -43,7 +33,7 @@ def main():
             tmp=Path(tmpdir)
             page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
             check(page.locator('#restore-dialog').is_visible(),'Verified archive did not inspect')
-            complete_restore(page,tmp)
+            complete_open_restore(page,page)
             check(page.locator('#sb-units').inner_text()!='0','Restored archive did not populate units')
             page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
             with page.expect_download() as download_info: page.locator('[data-action="export-backup"]').click()

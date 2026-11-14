@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
-from helpers.browser_fixture import HTML
+from helpers.browser_fixture import HTML, complete_open_restore
 sys.path.insert(0,str(ROOT/'tests'))
 FIXTURE = baseline_backup_path()
 checks=0
@@ -19,22 +19,11 @@ def check(v,m):
     global checks; checks+=1
     if not v: raise AssertionError(m)
 
-def restore_selected(page, tmp:Path, treatment:str='discard'):
-    check(page.locator('#restore-dialog').is_visible(),'Restore preview did not open')
-    with page.expect_download() as info:
-        page.locator('[data-action="create-restore-safety"]').click()
-    dl=info.value; safety=tmp/dl.suggested_filename; dl.save_as(str(safety))
-    check(safety.exists() and safety.stat().st_size>0,'Safety copy was not downloaded')
-    check(safety.suffix in ('.rdbackup','.rdrescue'),'Safety copy extension is invalid')
-    if page.locator('input[name="restore-active-treatment"]').count():
-        page.locator(f'input[name="restore-active-treatment"][value="{treatment}"]').check()
-    page.locator('#restore-safety-saved').check()
-    page.locator('#restore-replace-confirm').check()
-    check(page.locator('#restore-final-button').is_enabled(),'Final restore remained disabled')
-    page.evaluate("document.querySelector('#toast').textContent=''")
-    page.locator('#restore-final-button').click()
-    page.locator('#restore-dialog').wait_for(state='hidden', timeout=8000)
-    wait_for_toast_outcome(page, expect_error=False, timeout=8000, message='Restore did not report successful completion')
+def restore_selected(page, treatment: str = "discard") -> None:
+    check(page.locator("#restore-dialog").is_visible(), "Restore preview did not open")
+    result = complete_open_restore(page, page, treatment=treatment)
+    check(result["safetyBytes"] > 0 and result["safetyExtension"] in (".rdbackup", ".rdrescue"),
+          "Restore safety copy is missing or malformed")
 
 def main():
     global checks
@@ -52,7 +41,7 @@ def main():
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated application state')
         proof=page.locator('#restore-preview .restore-proof').first.inner_text()
         check(bool(re.search(r'\b[0-9a-f]{64}\b', proof, re.IGNORECASE)),'Restore preview lacks a complete archive checksum')
-        restore_selected(page,tmp,'discard')
+        restore_selected(page,'discard')
         check(page.locator('#sb-units').inner_text()=='2','Verified restore did not replace records')
         # One-click local export remains simple.
         open_rendered_pane(page, 'settings')
@@ -90,7 +79,7 @@ def main():
             raise AssertionError(f"Active-session backup inspection failed · toast={page.locator('#toast').inner_text()!r}") from error
         check(page.locator('input[name="restore-active-treatment"]').count()==2,'Active-session treatment choices missing')
         check(page.locator('#restore-final-button').is_disabled(),'Restore enabled before active-session treatment')
-        restore_selected(page,tmp,'restore')
+        restore_selected(page,'restore')
         check(page.locator('#pane-review').is_visible(),'Restored unfinished retrieval did not hydrate Review')
         restored=page.locator('#attempt-text')
         if restored.count(): check(restored.input_value()=='Durable active retrieval text','Restored active draft was lost')

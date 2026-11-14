@@ -42,6 +42,43 @@ def check_all_checkpoints(page) -> None:
 
 
 
+
+def complete_open_restore(
+    download_page,
+    app_surface,
+    *,
+    treatment: str = "discard",
+) -> dict[str, object]:
+    """Complete an already inspected restore; verify the mandatory safety artifact."""
+    check(app_surface.locator("#restore-dialog").is_visible(), "Restore preview is not open")
+    with TemporaryDirectory() as tmpdir:
+        with download_page.expect_download() as info:
+            app_surface.locator('[data-action="create-restore-safety"]').click()
+        path = Path(tmpdir) / info.value.suggested_filename
+        info.value.save_as(str(path))
+        suffix = path.suffix
+        size = path.stat().st_size
+        check(size > 0, "Safety copy was not downloaded")
+        check(suffix in (".rdbackup", ".rdrescue"), "Safety copy has an invalid extension")
+    if app_surface.locator('input[name="restore-active-treatment"]').count():
+        app_surface.locator(
+            f'input[name="restore-active-treatment"][value="{treatment}"]'
+        ).check()
+    app_surface.locator("#restore-safety-saved").check()
+    app_surface.locator("#restore-replace-confirm").check()
+    final = app_surface.locator("#restore-final-button")
+    check(final.is_enabled(), "Final restore is disabled after the required confirmations")
+    app_surface.evaluate("document.querySelector('#toast').textContent=''")
+    final.click()
+    app_surface.locator("#restore-dialog").wait_for(state="hidden", timeout=8_000)
+    wait_for_toast_outcome(
+        app_surface,
+        expect_error=False,
+        timeout=8_000,
+        message="Restore did not report a successful terminal outcome",
+    )
+    return {"safetyExtension": suffix, "safetyBytes": size}
+
 def restore_backup_with_safety_copy(
     download_page,
     app_surface,
@@ -63,28 +100,7 @@ def restore_backup_with_safety_copy(
         raise AssertionError(
             f"Restore preview did not open · toast={toast!r} · fatal={fatal!r}"
         ) from error
-    with TemporaryDirectory() as tmpdir:
-        with download_page.expect_download() as info:
-            app_surface.locator('[data-action="create-restore-safety"]').click()
-        path = Path(tmpdir) / info.value.suggested_filename
-        info.value.save_as(str(path))
-        check(path.exists() and path.stat().st_size > 0, "Safety copy was not downloaded")
-    if app_surface.locator('input[name="restore-active-treatment"]').count():
-        app_surface.locator(
-            f'input[name="restore-active-treatment"][value="{treatment}"]'
-        ).check()
-    app_surface.locator("#restore-safety-saved").check()
-    app_surface.locator("#restore-replace-confirm").check()
-    app_surface.evaluate("document.querySelector('#toast').textContent=''")
-    app_surface.locator("#restore-final-button").click()
-    app_surface.locator("#restore-dialog").wait_for(state="hidden", timeout=8_000)
-    wait_for_toast_outcome(
-        app_surface,
-        expect_error=False,
-        timeout=8_000,
-        message="Restore did not report a successful terminal outcome",
-    )
-
+    complete_open_restore(download_page, app_surface, treatment=treatment)
 
 def restore_selected_backup(page, backup_path: str | Path, treatment: str = "discard", wait_ms: int = 900, download_page=None) -> None:
     expected_profile_ids = sorted(item["id"] for item in decode_file(Path(backup_path))["profiles"])
