@@ -1,13 +1,15 @@
 'use strict';
 
+// Use esbuild's parsed import graph: TypeScript 7 has no legacy compiler API.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const ts = require('typescript');
+const esbuild = require('esbuild');
 
 const tests = __dirname;
-const harness = path.join(tests, 'helpers/runtime-harness.js');
-const modules = [
+const root = path.dirname(tests);
+const harness = 'tests/helpers/runtime-harness.js';
+const entries = [
   ...fs.readdirSync(tests).filter(name => name.endsWith('.spec.js') && name !== path.basename(__filename))
     .map(name => path.join(tests, name)),
   ...fs.readdirSync(path.join(tests, 'scenarios')).filter(name => name.endsWith('.js'))
@@ -15,73 +17,86 @@ const modules = [
   ...fs.readdirSync(path.join(tests, 'helpers')).filter(name => name.endsWith('.js'))
     .map(name => path.join(tests, 'helpers', name)),
 ];
-
-function analyze(source, label, allowHarness = false) {
-  const ast = ts.createSourceFile(label, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-  assert.equal(ast.parseDiagnostics.length, 0, label + ': invalid JavaScript syntax');
-  const references = [], literals = [], violations = [];
-  const moduleSpecifier = node => node && ts.isStringLiteralLike(node) ? node.text : null;
-  const record = spec => {
-    references.push(spec);
-    if (!allowHarness && /^(?:node:)?vm$/.test(spec)) violations.push('direct VM import');
-    if (!allowHarness && /(?:^|[/\\])vendor(?:[/\\]|$)/.test(spec))
-      violations.push('direct vendor import');
-  };
-  function visit(node) {
-    if (ts.isStringLiteralLike(node)) literals.push(node.text);
-    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
-      const spec = moduleSpecifier(node.moduleSpecifier);
-      if (spec !== null) record(spec);
-    }
-    if (ts.isCallExpression(node)) {
-      if (ts.isIdentifier(node.expression) && node.expression.text === 'require'
-          || node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-        const spec = node.arguments.length === 1 ? moduleSpecifier(node.arguments[0]) : null;
-        if (spec !== null) record(spec);
+const normalized = value => value.replace(/\\/g, '/');
+const vendorModule = value => /(?:^|[/\\])vendor(?:[/\\]|$)/.test(value);
+const vmModule = value => value === 'vm' || value === 'node:vm';
+function graph(entryPoints, stdin) {
+  return esbuild.buildSync({
+    ...(stdin ? {stdin: {contents: stdin, resolveDir: tests, sourcefile: 'synthetic.js', loader: 'js'}}
+      : {entryPoints}),
+    bundle: true, platform: 'node', format: 'cjs', packages: 'external',
+    external: ['./vendor/*'], absWorkingDir: root,
+    outdir: path.join(root, 'build', 'qa-graph-unwritten'),
+    write: false, metafile: true, logLevel: 'silent',
+  }).metafile.inputs;
+}
+// Compare parsed string tokens, rather than source comments or incidental words.
+function stringLiterals(source) {
+  const literals = [];
+  for (let i = 0; i < source.length;) {
+    if (source[i] === '/' && source[i + 1] === '/') {
+      i = source.indexOf('\n', i + 2);
+      if (i < 0) break;
+    } else if (source[i] === '/' && source[i + 1] === '*') {
+      const end = source.indexOf('*/', i + 2);
+      i = end < 0 ? source.length : end + 2;
+    } else if (source[i] === "'" || source[i] === '"' || source.charCodeAt(i) === 96) {
+      const quote = source[i++];
+      let value = '';
+      while (i < source.length) {
+        if (source[i] === '\\') { i += 2; continue; }
+        if (source[i] === quote) { i++; break; }
+        value += source[i++];
       }
-      if (!allowHarness && ts.isPropertyAccessExpression(node.expression)
-          && node.expression.name.text === 'createContext')
-        violations.push('independent VM context creation');
+      literals.push(value);
+    } else i++;
+  }
+  return literals;
+}
+function explicitVendorFileReference(source) {
+  const literals = stringLiterals(source);
+  return literals.some(value => value.includes('ts-fsrs-6.0.0'))
+    && literals.some(value => value === 'vendor' || vendorModule(value));
+}
+function forbiddenImports(inputs, label) {
+  const violations = [];
+  for (const [name, info] of Object.entries(inputs)) {
+    if (normalized(name) === harness) continue;
+    for (const dependency of info.imports) {
+      if (vmModule(dependency.path)) violations.push(name + ': direct VM import');
+      if (vendorModule(dependency.path)) violations.push(name + ': direct vendor import');
     }
-    ts.forEachChild(node, visit);
   }
-  visit(ast);
-  if (!allowHarness && literals.some(value => value.includes('ts-fsrs-6.0.0'))
-      && literals.some(value => value === 'vendor' || /(?:^|[/\\])vendor(?:[/\\]|$)/.test(value)))
-    violations.push('direct vendored scheduler file access');
-  return {references, violations};
+  assert.deepEqual(violations, [], label + ': bypassed canonical test harness');
 }
 
-// Self-test: executable imports/calls fail; incidental words in strings do not.
-for (const [sample, rejected] of [
-  ["const vm=require('node:vm');vm.createContext({});", true],
-  ["const {createContext}=require('vm');createContext({});", true],
-  ["import vendor from './vendor/runtime.js';", true],
-  ["const p=path.join(root,'vendor','ts-fsrs-6.0.0','index.umd.js');", true],
-  ["const label='vm.createContext('; // inert explanation", false],
-  ["const {createAppRuntime}=require('../helpers/runtime-harness');", false],
+// Negative and benign controls verify a real import graph, not source wording.
+for (const [code, forbidden] of [
+  ["const vm = require('node:vm'); vm.createContext({});", true],
+  ["const {createContext}=require('vm'); createContext({});", true],
+  ["const v=require('./vendor/fake.js');", true],
+  ["const label='vm.createContext('; // inert text", false],
 ]) {
-  assert.equal(analyze(sample, 'fixture.js').violations.length > 0, rejected,
-    'AST architecture probe failed to distinguish behavior from syntax-shaped text');
+  const imports = Object.values(graph([], code)).flatMap(value => value.imports);
+  assert.equal(imports.some(value => vmModule(value.path) || vendorModule(value.path)), forbidden,
+    'Parsed import-graph control failed');
 }
+assert.ok(explicitVendorFileReference("const p=path.join(root,'vendor','ts-fsrs-6.0.0','index.umd.js');"),
+  'Vendor file-path control did not detect direct access');
+assert.ok(!explicitVendorFileReference("// 'vendor/ts-fsrs-6.0.0' is a comment\nconst x=1;"),
+  'Comment produced false-positive vendor access');
 
-const graph = new Map();
-for (const file of modules) {
-  const label = path.relative(tests, file);
-  const parsed = analyze(fs.readFileSync(file, 'utf8'), label, file === harness);
-  assert.deepEqual(parsed.violations, [], label + ': bypasses shared runtime harness');
-  const imports = [];
-  for (const name of parsed.references.filter(ref => ref.startsWith('.'))) {
-    const candidatePath = path.resolve(path.dirname(file), name);
-    const resolved = [candidatePath, candidatePath + '.js', candidatePath + '.mjs',
-      path.join(candidatePath, 'index.js')].find(candidate =>
-        fs.existsSync(candidate) && fs.statSync(candidate).isFile());
-    assert.ok(resolved, label + ': unresolved static import ' + name);
-    imports.push(path.relative(tests, resolved));
+const inputs = graph(entries);
+for (const entry of entries) {
+  const name = normalized(path.relative(root, entry));
+  if (name !== harness) {
+    assert.ok(!explicitVendorFileReference(fs.readFileSync(entry, 'utf8')),
+      name + ': direct vendored runtime load');
   }
-  graph.set(label, imports);
 }
-assert.ok(graph.has('helpers/runtime-harness.js'), 'Canonical harness missing from graph');
-assert.ok([...graph.values()].some(imports => imports.includes('helpers/runtime-harness.js')),
-  'No Node tests depend on canonical harness');
-console.log('PASS AST/import-graph ownership boundary: ' + graph.size + ' files, 6 controls');
+forbiddenImports(inputs, 'Node QA');
+assert.ok(Object.hasOwn(inputs, harness), 'Canonical harness absent from parsed graph');
+assert.ok(Object.values(inputs).some(info => info.imports.some(imp =>
+  normalized(imp.path).endsWith('helpers/runtime-harness.js'))),
+  'Node QA does not import its canonical runtime harness');
+console.log('PASS parsed import-graph harness contract: ' + Object.keys(inputs).length + ' modules, 6 controls');
