@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright
+from scenario_timing import timed
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
@@ -193,7 +194,7 @@ def main() -> None:
         check(frame.locator('[data-pane="library"]').is_enabled(), "Application navigation broke after plugin failures")
         # Plugin execution errors are consumed by the loader and recorded as plugin status/diagnostics.
         check(not errors, f"Uncontained browser errors: {errors}")
-        context.close(); exercise_intake_and_profile_summary(browser); browser.close()
+        context.close(); timed('public-api.intake-profile', exercise_intake_and_profile_summary, browser); browser.close()
     print(f"PASS {checks} public API and plugin browser checks")
 
 if __name__ == "__main__":

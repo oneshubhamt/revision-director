@@ -5,6 +5,7 @@ import json
 import time
 from backup_fixture_codec import decode_file, encode_payload
 from playwright.sync_api import sync_playwright
+from scenario_timing import timed
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
@@ -238,9 +239,9 @@ def scenario_large_dataset(browser):
 def main():
     with sync_playwright() as playwright:
         browser=launch_chromium(playwright)
-        scenario_capacity_reflow(browser)
-        scenario_hostile_planning_import(browser)
-        scenario_large_dataset(browser)
+        timed('planner.capacity-reflow', scenario_capacity_reflow, browser)
+        timed('planner.hostile-import', scenario_hostile_planning_import, browser)
+        timed('planner.large-dataset', scenario_large_dataset, browser)
         browser.close()
     print('PASS 3 planner performance de novo Chromium scenarios')
 

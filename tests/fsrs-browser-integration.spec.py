@@ -6,6 +6,7 @@ from threading import Thread
 import argparse
 import json
 from playwright.sync_api import sync_playwright
+from scenario_timing import timed
 from helpers.browser_harness import launch_chromium, open_rendered_pane, wait_until, wait_for_toast_outcome
 from helpers import browser_fixture as fixture
 from backup_fixture_codec import decode_file
@@ -151,7 +152,7 @@ def run(mode: str) -> None:
                         check(stage in stages, f"Browser optimizer did not report stage: {stage}")
                 print(f"PASS browser/WASM FSRS integration optimizer {mode}: {json.dumps(result, separators=(',', ':'))}")
                 if mode == "probe":
-                    exercise_scheduling_policy_settings(browser)
+                    timed('fsrs.policy-settings', exercise_scheduling_policy_settings, browser)
             finally:
                 browser.close()
     finally:

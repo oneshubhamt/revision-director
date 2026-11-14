@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from playwright.sync_api import Page, sync_playwright
+from scenario_timing import timed
 from helpers.browser_harness import launch_chromium, wait_for_layout, wait_until
 from helpers.browser_fixture import BASELINE_BACKUP, open_page, restore_selected_backup
 
@@ -76,8 +77,8 @@ def main() -> None:
         page, errors = open_page(browser)
         check(not page.locator("#fatal-error").is_visible(), "Fatal startup error")
         restore_fixture(page)
-        verify_stored_content_escaping(page)
-        verify_accessible_names_after_injection(page)
+        timed('security.stored-escaping', verify_stored_content_escaping, page)
+        timed('security.post-injection-a11y', verify_accessible_names_after_injection, page)
 
         page.set_viewport_size({"width": 390, "height": 844})
         page.locator('[data-pane="today"]').click()

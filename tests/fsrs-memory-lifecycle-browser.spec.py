@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from scenario_timing import timed
 
 ROOT = Path(__file__).resolve().parents[1]
 import sys
@@ -311,8 +312,8 @@ def scenario_corrective_memory_e2e(browser) -> None:
 def main() -> None:
     with sync_playwright() as playwright:
         browser = launch_chromium(playwright)
-        exercise_workflow_chain(browser)
-        scenario_corrective_memory_e2e(browser)
+        timed('fsrs.workflow-chain', exercise_workflow_chain, browser)
+        timed('fsrs.corrective-memory', scenario_corrective_memory_e2e, browser)
         browser.close()
     print("PASS FSRS browser workflow chain and corrective-memory lifecycle scenarios")
 

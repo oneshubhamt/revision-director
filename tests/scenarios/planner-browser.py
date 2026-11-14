@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import sys
 from playwright.sync_api import sync_playwright
+from scenario_timing import timed
 from backup_fixture_codec import decode_file
 
 TESTS = Path(__file__).resolve().parents[1]
@@ -138,8 +139,8 @@ def exercise_plan_execution_state(browser) -> None:
 def main() -> None:
     with sync_playwright() as playwright:
         browser = launch_chromium(playwright)
-        exercise_chunk_and_plan_history(browser)
-        exercise_plan_execution_state(browser)
+        timed('planner.chunk-history', exercise_chunk_and_plan_history, browser)
+        timed('planner.execution-state', exercise_plan_execution_state, browser)
         browser.close()
     print(f"PASS {CHECKS} planner browser execution and history checks")
 

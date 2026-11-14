@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from scenario_timing import timed
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
@@ -222,7 +223,7 @@ def main():
    check(page.evaluate("document.activeElement?.getAttribute('data-action')")=='toggle-pause',f'Return focus failed on cycle {cycle+1}')
 
   check(not errors,f'Browser errors: {errors}')
-  page.close(); exercise_shell_crud(browser); browser.close()
+  page.close(); timed('ui.clean-install-crud', exercise_shell_crud, browser); browser.close()
  print(f'PASS {CHECKS} UI behaviour and repeated-focus checks')
 
 if __name__=='__main__':main()
