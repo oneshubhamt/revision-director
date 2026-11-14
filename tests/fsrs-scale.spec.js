@@ -4,7 +4,7 @@ const { performance } = require('perf_hooks');
 const { createAppRuntime } = require('./helpers/runtime-harness');
 
 const { api } = createAppRuntime({
-  globalName: '__RD_PASS4_VERIFY__',
+  globalName: '__RD_FSRS_SCALE__',
   expose: ["Rating","Reschedule","prepareFsrsScheduler","revisionSchedulerPort","memoryReviewObservationIndex","verifyMemoryDatasetIntegrityWithIndex","choosePlanItems"],
   requireFsrs: true,
 });

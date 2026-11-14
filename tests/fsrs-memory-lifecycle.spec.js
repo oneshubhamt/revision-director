@@ -107,7 +107,7 @@ function findMemory(repo){ const value=repo.obligations.find(item=>item.type==='
 function findUnit(repo,id){ const value=repo.units.find(item=>item.id===id); if(!value) throw new Error('Unit missing'); return value; }
 function findProfile(repo,id){ const value=repo.profiles.find(item=>item.id===id); if(!value) throw new Error('Profile missing'); return value; }
 
-async function testProgrammeLifecycleAndRebases(){
+async function testmemory lifecycleLifecycleAndRebases(){
   const payload=JSON.parse(fs.readFileSync(path.join(root,'tests','fixtures','browser-baseline.json'),'utf8'));
   payload.dailyPlans=[]; payload.chunks=[]; payload.activeRetrieval=null; payload.evidenceEvents=[];
   const repo=new MemoryRepo(payload);
@@ -188,6 +188,6 @@ async function testProgrammeLifecycleAndRebases(){
 }
 
 (async()=>{
-  await testProgrammeLifecycleAndRebases();
-  console.log('PASS '+checks+' FSRS programme-closure scheduler/replay/planner/rebase checks');
+  await testmemory lifecycleLifecycleAndRebases();
+  console.log('PASS '+checks+' FSRS memory-lifecycle scheduler/replay/planner/rebase checks');
 })().catch(error=>{console.error(error);process.exitCode=1;});
