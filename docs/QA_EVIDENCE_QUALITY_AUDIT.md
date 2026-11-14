@@ -1,6 +1,6 @@
 # Revision Director — Pass E: invariant-level evidence and redundancy audit
 
-**Source branch:** `working`, snapshot `5b7fcd6e477e9936686c8b24988888cff047f257` (14 Nov 2026). **Status:** audit and profiling, zero test deletions, no production code or workflow changes. The only permanent addition is a tiny diagnostic timer for named browser subjourneys.
+**Historical Pass E baseline:** `working` snapshot `5b7fcd6e477e9936686c8b24988888cff047f257` (14 Nov 2026). The inventory and initial footprint/runner statistics below describe that baseline; the F–H and final source-level reconciliation, including later fixes, are recorded at the end. At the Pass E snapshot no test or production behavior was deleted.
 
 ## Rule and scope
 
@@ -416,3 +416,31 @@ Median per-scenario child timings on Pass H's three runs: phase-time **31.99 s**
 **Final-head build sequencing.** The immediate TypeScript-source commit ran before generated synchronization and correctly failed its strict checksum-freshness gate. The existing `Sync generated artifacts` workflow produced commit `2b35296`, updating the two generated application outputs and checksum manifest. Only the subsequent full six-job run on the synchronized head counts as final acceptance; this is not an excused or silently retried gate failure.
 
 **Closure acceptance:** preserve all 47 execution owners and 94 active protections; acknowledge four intentionally retired superficial proxies; require green TypeScript 7/build+artifact parity, core Node, provider optimizer, deep/reference/WASM/5 mutations, full native/durability browser and performance. A green final-head CI run is the executable release verdict; historical green runs do not substitute for it.
+
+
+## De novo verification of F–H objectives (14 November 2026)
+
+**Audited source:** `f88f915a6d697a605538a30025e9d7d8fd986ee8` on `working`, after reopening the actual present-day owners and implementations rather than accepting prior closure claims. The full [six-job GitHub Actions run 43607031758](https://github.com/oneshubhamt/revision-director/actions/runs/43607031758) succeeded on this source. No application source, generated bundle, dependency, build script, workflow or release configuration changed in this de novo pass; only existing tests were refined.
+
+### Original ledger and ranked findings
+
+- **98/98 registered primary witnesses** resolve to current tracked test files. Domain accounting remains **10 architecture, 18 FSRS, 14 planning, 14 backup, 19 persistence, six timing and 13 presentation/API active semantic protections**, plus **four explicitly retired superficial proxy checks** (A11, B15, U02, U14). File resolution is not equated with proof: the relevant assertions and positive/negative paths were also inspected, with actual CI execution confirming they run.
+- **P0-1–5:** confirmed removed always-true plugin assertion, historical version pin, public-token count proxy, restore-preview card-count proxy, and historical word/filename/footprint rejection. Surviving browser plugin statuses and API/version parity, named theme tokens, decoded backup content/checksum, canonical execution map and parsed import graph all remain.
+- **P1-6–13:** confirmed that the full restore ceremony is owned by `backup-restore-controller.py`, codec/tamper handling remains separate, Node owns FSRS arithmetic, and browser owns evidence/History. Removed/replaced **11 additional exact post-wait assertions** during this de novo pass across the backup codec, data safety, active retrieval, hostile recovery, ownership, and FSRS browser owners. These are *additional* to the 27 original Pass F assertion removals; they do not remove a distinct durable-state or security witness.
+- **P1-14–15 and P2-16–20:** deliberately retained because persisted browser time evidence, 12 overlay-focus cycles, post-injection accessibility, modal geometry, native IndexedDB, real WASM provider and vendor provenance have distinct triggers or failure modes.
+
+**Important historical-contract clarification:** the original inventory's A07 shorthand “one Chromium” applied before Pass H. Current QA runs at most **two isolated Chromium workers** for independent scenarios, plus the shared serial Chromium owner for sensitive state/ownership tests; simulated and native IndexedDB boundaries remain disjoint. The current runner has **47 executable entrypoints** (not the original 46) and validates complete ownership.
+
+### Additional regression gap found and corrected
+
+The earlier two-click and retry browser tests checked `len(evidenceEvents) == before + 1` **immediately after waiting for that identical predicate**. That did not discriminate a late second commit. The tests now wait for a **settled active-session/UI transition**, assert the exact event count, and for active-retrieval and hostile-crash scenarios verify that the **same immutable event collection survives detachment/restart**. The cross-tab owner-commit witness also checks publication after leaving `committing` and the comparison phase. These add independent integration evidence without recoding the Node reference mathematics.
+
+The first follow-up browser pass detected an **incorrect new test assumption**: manual session termination does not have to remove an idle Review card from the DOM. The corrected test asserts that both recovery stores are cleared **and** the application navigates to Today, hiding the active Review pane. This preserves the actual invariant and does not weaken it to obtain green CI. [Follow-up run 43606782474](https://github.com/oneshubhamt/revision-director/actions/runs/43606782474) recorded that failed assertion; the corrected [run 43607031758](https://github.com/oneshubhamt/revision-director/actions/runs/43607031758) passed.
+
+### Reproducibility, cost and remaining limits
+
+The initial strengthened source `c8ec5db` passed **two same-commit browser/durability executions**. The final correction `f88f915` passed the complete six-job matrix including TypeScript 7, checksum/artifact parity, Node, optimizer, deep scheduler, five mutations, performance, native IndexedDB and browser recovery. All **47 test entrypoints** are retained, and real native and simulated failure witnesses remain separate. The original product-side Settings draft preservation remains intact.
+
+**Efficiency must not be overstated.** Pass H's reported **25.3% reduction** was a historical-versus-new **standard-browser-only median** (eight different-revision baseline runs versus three unchanged-source runs), not a controlled demonstration of a 20–35% reduction in *entire routine QA or CI*. Its corresponding browser-plus-timing median gain was **10.4%**. This follow-up's passing source produced **77.9 s standard browser** and **97.9 s including the timing journey** in one CI run; the earlier `c8ec5db` run measured **86.0 s** and **113.2 s**, respectively. These are observations under varying CI load and suite revisions, **not a stable tail or a causal improvement estimate**. Therefore the overall 20–35% provisional routine-cost target is **not independently established**; no risky concurrency escalation, removed release gate or false efficiency claim is justified merely to hit it.
+
+**Final disposition:** no unexplained coverage loss was found, all five targeted mutations remain detected, no known critical data-integrity regression survived the passing final matrix, and no currently reproducing ownership-handoff or form-clear failure was observed in that matrix. This does **not** prove perpetual flake freedom. Continue to treat a future intermittent browser failure as a defect investigation, not an excuse for silent CI retries.
