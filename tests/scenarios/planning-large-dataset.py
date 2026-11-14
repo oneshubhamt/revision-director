@@ -52,7 +52,6 @@ def open_page(browser, viewport=None, *, baseline=True):
     )
     if baseline:
         main_qa.restore_selected_backup(page, main_qa.BASELINE_BACKUP)
-        check('restored' in page.locator('#toast').inner_text().lower(), 'Baseline fixture restore failed')
     return page, errors
 
 
@@ -70,13 +69,13 @@ def set_capacity(page, value: int) -> None:
     form.locator('button[type="submit"]').click()
     shared_wait_until(
         page,
-        lambda: 'settings saved' in page.locator('#toast').inner_text().lower()
+        lambda: (main_qa.stored_record(page, 'settings', 'app') or {}).get('dailyCapacityMinutes') == value
         and page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value),
         timeout=8000,
         interval=80,
         message='Timed out waiting for capacity setting persistence',
     )
-    check('settings saved' in page.locator('#toast').inner_text().lower(), 'Capacity setting did not persist')
+    check((main_qa.stored_record(page, 'settings', 'app') or {}).get('dailyCapacityMinutes') == value, 'Capacity setting did not persist canonically')
     check(page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value), 'Capacity setting rerendered with a stale value')
 
 def add_oversized(page) -> None:

@@ -70,7 +70,6 @@ def import_fixture(page, frame) -> None:
     wait_until(frame, lambda: frame.locator('#pane-settings').is_visible())
     wait_until(frame, lambda: frame.locator('#import-backup').is_enabled())
     restore_backup_with_safety_copy(page, frame, FIXTURE)
-    wait_until(frame, lambda: "restored" in frame.locator('#toast').inner_text().lower())
 
 def start_recall(page, frame, answer: str) -> None:
     frame.locator('[data-pane="library"]').click()

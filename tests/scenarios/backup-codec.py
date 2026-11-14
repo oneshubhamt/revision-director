@@ -8,7 +8,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_backup_import_result, wait_until
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
 base=load_browser_qa('revision_director_backup_codec')
 INDEXEDDB_SHIM=base.INDEXEDDB_SHIM
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+INDEXEDDB_SHIM,1)
@@ -25,8 +25,10 @@ def complete_restore(page,tmp):
     out=tmp/di.value.suggested_filename; di.value.save_as(str(out))
     page.locator('#restore-safety-saved').check(); page.locator('#restore-replace-confirm').check()
     if page.locator('input[name="restore-active-treatment"]').count(): page.locator('input[name="restore-active-treatment"][value="discard"]').check()
+    page.evaluate("document.querySelector('#toast').textContent=''")
     page.locator('#restore-final-button').click()
-    wait_until(page, lambda: not page.locator('#restore-dialog').is_visible() and 'restored' in page.locator('#toast').inner_text().lower(), timeout=8000, interval=40, message='Restore did not complete')
+    page.locator('#restore-dialog').wait_for(state='hidden', timeout=8000)
+    wait_for_toast_outcome(page, expect_error=False, timeout=8000, message='Restore did not report successful completion')
 
 def main():
     global checks
@@ -44,7 +46,6 @@ def main():
             page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
             check(page.locator('#restore-dialog').is_visible(),'Verified archive did not inspect')
             complete_restore(page,tmp)
-            check('verified backup restored' in page.locator('#toast').inner_text().lower(),'Verified archive did not restore')
             check(page.locator('#sb-units').inner_text()!='0','Restored archive did not populate units')
             page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
             with page.expect_download() as download_info: page.locator('[data-action="export-backup"]').click()

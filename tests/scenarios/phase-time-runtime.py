@@ -55,6 +55,11 @@ def check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def displayed_timer_seconds(frame) -> int:
+    minutes, seconds = frame.locator("#review-timer").inner_text().strip().split(":", 1)
+    return int(minutes) * 60 + int(seconds)
+
+
 def wait_until(frame, predicate, timeout=6000):
     shared_wait_until(
         frame,
@@ -185,24 +190,24 @@ def main() -> None:
         frame.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click()
         frame.locator('[data-action="toggle-pause"]').wait_for(state="visible")
         check(frame.locator('[data-action="toggle-pause"]').count() == 1, "Pause control is missing")
-        initial = frame.locator("#review-timer").inner_text()
-        check(initial in ("0:00", "0:01"), f"Unexpected initial timer: {initial}")
+        initial = displayed_timer_seconds(frame)
+        check(0 <= initial <= 1, f"Unexpected initial timer value: {initial}s")
 
         frame.evaluate("__RD_TEST_CLOCK__.advance(10000)")
-        wait_until(frame, lambda: frame.locator("#review-timer").inner_text().startswith("0:1"))
-        check(frame.locator("#review-timer").inner_text().startswith("0:1"), "Active time did not accumulate")
+        wait_until(frame, lambda: displayed_timer_seconds(frame) >= 10)
+        check(displayed_timer_seconds(frame) >= 10, "Active time did not accumulate")
 
         frame.locator('[data-action="toggle-pause"]').click()
-        wait_until(frame, lambda: "PAUSED" in frame.locator("#review-time-state").inner_text().upper())
-        check("PAUSED" in frame.locator("#review-time-state").inner_text().upper(), "Pause state is not visible")
-        paused_timer = frame.locator("#review-timer").inner_text()
+        wait_until(frame, lambda: frame.locator("#review-time-state").evaluate("e=>e.classList.contains('paused')"))
+        check(frame.locator("#review-time-state").evaluate("e=>e.classList.contains('paused')"), "Pause state is not visible")
+        paused_timer = displayed_timer_seconds(frame)
 
         frame.evaluate("__RD_TEST_CLOCK__.advance(30000); window.dispatchEvent(new Event('focus'))")
         wait_until(frame, lambda: active_session(page)["timeRuntime"]["state"] == "paused")
-        check(frame.locator("#review-timer").inner_text() == paused_timer, "Paused interval was counted")
+        check(displayed_timer_seconds(frame) == paused_timer, "Paused interval was counted")
 
         frame.locator('[data-action="toggle-pause"]').click()
-        wait_until(frame, lambda: "PAUSED" not in frame.locator("#review-time-state").inner_text().upper())
+        wait_until(frame, lambda: not frame.locator("#review-time-state").evaluate("e=>e.classList.contains('paused')"))
         frame.evaluate("__RD_TEST_CLOCK__.advance(5000); window.dispatchEvent(new Event('focus'))")
         wait_until(frame, lambda: len(active_session(page)["timeRuntime"]["pauseHistory"]) == 1)
         session = active_session(page)

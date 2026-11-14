@@ -40,7 +40,6 @@ def restore_fixture(page: Page) -> None:
     page.locator('[data-pane="settings"]').click()
     page.locator("#pane-settings").wait_for(state="visible")
     MAIN_QA.restore_selected_backup(page, MAIN_QA.BASELINE_BACKUP)
-    check("restored" in page.locator("#toast").inner_text().lower(), "Fixture import failed")
 
 
 def verify_responsive_surfaces(page: Page) -> None:

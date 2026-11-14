@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from .browser_harness import ROOT, wait_until
+from .browser_harness import ROOT, wait_for_toast_outcome, wait_until
 
 BASE_HTML = (ROOT / "index.html").read_text()
 PERSISTENT_BROWSER_SHIM = r"""
@@ -245,12 +245,12 @@ def restore_backup_with_safety_copy(
         ).check()
     frame.locator("#restore-safety-saved").check()
     frame.locator("#restore-replace-confirm").check()
+    frame.evaluate("document.querySelector('#toast').textContent=''")
     frame.locator("#restore-final-button").click()
-    wait_until(
+    frame.locator("#restore-dialog").wait_for(state="hidden", timeout=8_000)
+    wait_for_toast_outcome(
         frame,
-        lambda: not frame.locator("#restore-dialog").is_visible()
-        and "restored" in frame.locator("#toast").inner_text().lower(),
+        expect_error=False,
         timeout=8_000,
-        interval=40,
-        message="Restore did not complete",
+        message="Restore did not report a successful terminal outcome",
     )

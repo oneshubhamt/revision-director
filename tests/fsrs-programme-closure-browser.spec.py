@@ -105,7 +105,10 @@ def scenario_corrective_memory_e2e(browser) -> None:
     check(memory["policyState"]["fsrsCard"]["scheduleStatus"] == "new", "Browser closure memory must begin with New schedule status")
 
     start_obligation(page, memory_id)
-    check("RECALL" in page.locator("#review-content").inner_text(), "Direct memory recall did not start")
+    active_state = read_state(page)
+    active_target = active_state["activeRetrieval"]["activeTargetId"]
+    active_obligation = next(item for item in active_state["obligations"] if item["id"] == active_target)
+    check(active_target == memory_id and active_obligation["workflow"]["kind"] == "recall", "Direct memory recall did not start")
     if page.locator("#attempt-completed").count():
         page.locator("#attempt-completed").check()
     page.locator('[data-action="reveal"]').click()

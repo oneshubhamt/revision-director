@@ -28,7 +28,6 @@ def main():
   page.set_content(HTML,wait_until='load'); wait_for_app_ready(page)
   page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
   restore_selected_backup(page, BASELINE)
-  check('restored' in page.locator('#toast').inner_text().lower(),'Fixture restore failed')
   for width,height in viewports:
    page.set_viewport_size({'width':width,'height':height}); wait_for_layout(page)
    compact=width<=820

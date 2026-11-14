@@ -127,7 +127,6 @@ def main() -> None:
         frame = boot_frame(page)
         frame.locator('[data-pane="settings"]').click()
         restore_backup_with_safety_copy(page, frame, FIXTURE)
-        check("restored" in frame.locator("#toast").inner_text().lower(), "Fixture import failed")
 
         frame.locator('[data-pane="library"]').click()
         row = frame.locator(".unit-row").filter(has_text="Staphylococcus aureus — recognition and clinical reasoning")
@@ -221,7 +220,14 @@ def main() -> None:
 
         frame = boot_frame(page)
         wait_until(frame, lambda: frame.locator(".review-card").count() == 1)
-        check("2 / 2" in frame.locator("#review-content").inner_text(), "Next queue target did not recover after committed transition")
+        recovered_next = state_get(page, "activeRetrieval", "current")
+        check(
+            recovered_next
+            and recovered_next["status"] == "active"
+            and recovered_next["activeIndex"] == 1
+            and len(recovered_next["queueTargetIds"]) == 2,
+            "Next queue target did not recover after committed transition",
+        )
         frame.locator('[data-action="end-session"]').click()
         wait_until(
             frame,

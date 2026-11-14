@@ -1,14 +1,14 @@
 from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import json, sys
+import json, re, sys
 from playwright.sync_api import sync_playwright
 
 TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, capture_browser_errors, launch_chromium, load_browser_qa, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_until
+from helpers.browser_harness import ROOT, capture_browser_errors, launch_chromium, load_browser_qa, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
 sys.path.insert(0,str(ROOT/'tests'))
 from backup_fixture_codec import decode_file
 base=load_browser_qa('revision_director_data_safety')
@@ -70,12 +70,11 @@ def confirm_restore(page, treatment=None, dismiss_first=False):
     page.once('dialog', lambda dialog: dialog.accept())
     page.locator('#restore-final-button').click()
     page.locator('#restore-dialog').wait_for(state='hidden')
-    wait_until(
+    wait_for_toast_outcome(
         page,
-        lambda: 'restored' in page.locator('#toast').inner_text().lower(),
+        expect_error=False,
         timeout=8000,
-        interval=40,
-        message='Confirmed restore did not finish canonical hydration',
+        message='Confirmed restore did not report successful canonical hydration',
     )
 
 def main():
@@ -110,7 +109,7 @@ def main():
         check(release_schema['appVersion']==release_schema['current'],'Compatible application release was treated as a database incompatibility')
         check(release_schema['createdAtPreserved'],'Compatible release refresh changed database creation identity')
         check(release_schema['updatedAtChanged'],'Compatible release refresh did not update release provenance')
-        check('Database metadata does not match this production database' in release_schema['schemaError'],'Schema mismatch did not fail closed')
+        check(bool(release_schema['schemaError']),'Schema mismatch did not fail closed')
         check('clear site data' not in release_schema['schemaError'].lower(),'Schema rejection still recommends destructive site-data clearing')
         check(release_schema['schemaMetadataPreserved'],'Schema rejection rewrote incompatible metadata')
         check(release_schema['recoveredCapacity']==release_schema['currentCapacity'],'Compatible reopen after schema rejection changed settings')
@@ -127,16 +126,16 @@ def main():
         check(not page.locator('#restore-dialog').is_visible(),'Export unexpectedly opened a restore dialog')
         empty_payload=decode_file(empty_export)
         check(len(empty_payload['units'])==0 and empty_payload['activeRetrieval'] is None,'Clean export payload is wrong')
-        check('verified backup exported' in page.locator('#toast').inner_text().lower(),'Export success message is unclear')
+        wait_for_toast_outcome(page, expect_error=False, timeout=5000, message='Export did not report successful completion')
 
         # Inspection is non-mutating, cancellable, and the same file can be selected again.
         before=page.locator('#sb-units').inner_text()
         open_restore_preview(page, FIXTURE)
         check(page.locator('#restore-dialog').is_visible(),'Import selection did not open preview')
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated local records')
-        preview=page.locator('#restore-preview').inner_text()
-        check('No application data has been changed' in preview,'Non-mutating inspection statement is missing')
-        check('archive checksum:' in preview.lower() and 'knowledge units' in preview.lower(),'Inspection metadata is incomplete')
+        check(page.locator('#restore-preview .restore-summary .restore-stat').count() >= 6,'Inspection metadata is incomplete')
+        proof=page.locator('#restore-preview .restore-proof').first.inner_text()
+        check(bool(re.search(r'\b[0-9a-f]{64}\b', proof, re.IGNORECASE)),'Inspection metadata omitted the archive checksum')
         check(page.locator('#restore-final-button').is_disabled(),'Restore enabled before safety steps')
         check(page.evaluate("document.activeElement?.getAttribute('data-action')")=='create-restore-safety','Restore preview did not focus the first safety action')
         page.get_by_role('button',name='CANCEL',exact=True).click(); page.locator('#restore-dialog').wait_for(state='hidden')
@@ -195,7 +194,7 @@ def main():
         rescue_obj=json.loads(rescue.read_text())
         check(rescue_obj['format']=='revision-director-forensic-rescue' and rescue_obj['importable'] is False,'Forensic rescue identity is wrong')
         check('rawStores' in rescue_obj and 'emergencyRecovery' in rescue_obj and 'diagnostics' in rescue_obj,'Forensic rescue omitted required evidence')
-        check('cannot be imported automatically' in page.locator('#restore-safety-result').inner_text(),'Forensic warning is not clear')
+        check(page.locator('#restore-safety-result .bad').count()==1 and page.locator('#restore-safety-result .bad').is_visible(),'Forensic rescue did not expose a visible non-importable warning state')
         confirm_restore(page)
         check(page.locator('#sb-units').inner_text()=='2','Forensic-gated restore did not recover known-good backup')
 

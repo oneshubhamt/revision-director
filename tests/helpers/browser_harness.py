@@ -140,6 +140,23 @@ def wait_until(
     raise AssertionError(message)
 
 
+def wait_for_toast_outcome(
+    target,
+    *,
+    expect_error: bool = False,
+    timeout: int = 8_000,
+    message: str = "Timed out waiting for action feedback",
+) -> str:
+    wait_until(
+        target,
+        lambda: bool(target.locator("#toast").inner_text().strip())
+        and target.locator("#toast").evaluate("e=>e.classList.contains('error')") is expect_error,
+        timeout=timeout,
+        interval=40,
+        message=message,
+    )
+    return target.locator("#toast").inner_text().strip()
+
 
 def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) -> dict[str, object]:
     page.wait_for_function(

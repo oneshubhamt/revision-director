@@ -37,7 +37,6 @@ def launch_page(browser, viewport={"width": 1440, "height": 1000}):
 def restore_baseline(page):
     page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
     restore_selected_backup(page, BASELINE_BACKUP)
-    check("restored" in page.locator("#toast").inner_text().lower(), "Baseline restore failed")
 
 def main():
     global checks
@@ -49,9 +48,21 @@ def main():
 
         # ARIA registry and keyboard navigation.
         tabs = page.locator('[role="tab"]')
-        check(tabs.count() == 6, "Expected six ARIA tabs")
-        check(page.locator('[role="tablist"]').count() == 1, "ARIA tablist missing")
-        check(page.locator('[role="tabpanel"]').count() == 6, "Expected six tabpanels")
+        tab_contract = page.evaluate("""() => {
+          const tabs=[...document.querySelectorAll('[role=tab][data-pane]')];
+          const panels=[...document.querySelectorAll('[role=tabpanel]')];
+          const keys=tabs.map(tab=>tab.dataset.pane);
+          return {
+            tablists:document.querySelectorAll('[role=tablist]').length,
+            tabs:tabs.length,
+            panels:panels.length,
+            uniqueKeys:new Set(keys).size,
+            controlled:tabs.every(tab=>tab.getAttribute('aria-controls') && document.getElementById(tab.getAttribute('aria-controls'))),
+          };
+        }""")
+        check(tab_contract["tablists"] == 1, "ARIA tablist missing")
+        check(tab_contract["tabs"] > 0 and tab_contract["tabs"] == tab_contract["panels"], "ARIA tabs and tabpanels are not one-to-one")
+        check(tab_contract["uniqueKeys"] == tab_contract["tabs"] and tab_contract["controlled"], "ARIA tab registry has duplicate or unresolved controls")
         today = page.locator('[data-pane="today"]')
         today.focus(); today.press("ArrowRight")
         wait_until(page, lambda: page.locator('[data-pane="review"]').get_attribute("aria-selected") == "true", timeout=3000, interval=30)

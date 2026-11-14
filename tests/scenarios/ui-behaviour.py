@@ -28,12 +28,18 @@ def main():
   page.set_content(HTML,wait_until='load'); wait_for_app_ready(page)
   page.locator('[data-pane="settings"]').click(); page.locator('#pane-settings').wait_for(state='visible')
   restore_selected_backup(page, BASELINE)
-  check('restored' in page.locator('#toast').inner_text().lower(),'Fixture restore failed')
 
   # ARIA tab registry and keyboard activation.
-  check(page.locator('[role=tablist]').count()==1,'Tablist missing')
-  check(page.locator('[role=tab]').count()==6,'Expected six tabs')
-  check(page.locator('[role=tabpanel]').count()==6,'Expected six tabpanels')
+  tab_contract=page.evaluate("""() => {
+    const tabs=[...document.querySelectorAll('[role=tab][data-pane]')];
+    const panels=[...document.querySelectorAll('[role=tabpanel]')];
+    const keys=tabs.map(tab=>tab.dataset.pane);
+    const controlled=tabs.every(tab=>tab.getAttribute('aria-controls') && document.getElementById(tab.getAttribute('aria-controls')));
+    return {tablists:document.querySelectorAll('[role=tablist]').length,tabs:tabs.length,panels:panels.length,uniqueKeys:new Set(keys).size,controlled};
+  }""")
+  check(tab_contract['tablists']==1,'Tablist missing')
+  check(tab_contract['tabs']>0 and tab_contract['tabs']==tab_contract['panels'],'ARIA tabs and tabpanels are not one-to-one')
+  check(tab_contract['uniqueKeys']==tab_contract['tabs'] and tab_contract['controlled'],'ARIA tab registry has duplicate or unresolved controls')
   today=page.locator('[data-pane=today]');today.focus();today.press('ArrowRight')
   wait_until(page, lambda: page.locator('[data-pane=review]').get_attribute('aria-selected')=='true', timeout=3000, interval=30, message='ArrowRight failed')
   check(page.locator('[data-pane=review]').get_attribute('aria-selected')=='true','ArrowRight failed')

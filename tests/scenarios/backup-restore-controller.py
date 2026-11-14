@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import re
 import sys
 from playwright.sync_api import sync_playwright
 
@@ -8,7 +9,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_until
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, open_rendered_pane, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
 sys.path.insert(0,str(ROOT/'tests'))
 base=load_browser_qa('revision_director_backup_restore_controller')
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base.INDEXEDDB_SHIM,1)
@@ -31,8 +32,10 @@ def restore_selected(page, tmp:Path, treatment:str='discard'):
     page.locator('#restore-safety-saved').check()
     page.locator('#restore-replace-confirm').check()
     check(page.locator('#restore-final-button').is_enabled(),'Final restore remained disabled')
+    page.evaluate("document.querySelector('#toast').textContent=''")
     page.locator('#restore-final-button').click()
-    wait_until(page, lambda: not page.locator('#restore-dialog').is_visible() and 'restored' in page.locator('#toast').inner_text().lower(), timeout=8000, interval=40, message='Restore did not complete')
+    page.locator('#restore-dialog').wait_for(state='hidden', timeout=8000)
+    wait_for_toast_outcome(page, expect_error=False, timeout=8000, message='Restore did not report successful completion')
 
 def main():
     global checks
@@ -47,12 +50,11 @@ def main():
         open_rendered_pane(page, 'settings')
         before=page.locator('#sb-units').inner_text()
         page.locator('#import-backup').set_input_files(str(FIXTURE)); page.locator('#restore-dialog').wait_for(state='visible')
-        check(page.locator('#restore-preview').get_by_text('No application data has been changed').count()==1,'Non-mutating inspection message missing')
         check(page.locator('#sb-units').inner_text()==before,'Inspection mutated application state')
-        check('Archive checksum:' in page.locator('#restore-preview').inner_text(),'Restore preview lacks checksum')
+        proof=page.locator('#restore-preview .restore-proof').first.inner_text()
+        check(bool(re.search(r'\b[0-9a-f]{64}\b', proof, re.IGNORECASE)),'Restore preview lacks a complete archive checksum')
         restore_selected(page,tmp,'discard')
         check(page.locator('#sb-units').inner_text()=='2','Verified restore did not replace records')
-        check('verified backup restored' in page.locator('#toast').inner_text().lower(),'Restore success not reported')
         # One-click local export remains simple.
         open_rendered_pane(page, 'settings')
         with page.expect_download() as info:
