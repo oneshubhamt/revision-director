@@ -153,16 +153,21 @@ SIMULATED_STORAGE_SHIM = r"""
     close(){}
   }
 
+  const connections=new Map();
   Object.defineProperty(window,'indexedDB',{configurable:true,value:{
     open(name,version){
       const request=new Req();
       setTimeout(()=>{
         try{
           const raw=HOST.databases[name];
-          const oldVersion=raw?.version ?? 0;
+          let db=connections.get(name);
+          const oldVersion=db?.version ?? raw?.version ?? 0;
           const targetVersion=version ?? (oldVersion || 1);
           if(oldVersion && targetVersion < oldVersion) throw new DOMException('Lower version','VersionError');
-          const db=raw ? DB.restore(name,raw) : new DB(name,targetVersion);
+          if(!db){
+            db=raw ? DB.restore(name,raw) : new DB(name,targetVersion);
+            connections.set(name,db);
+          }
           request.result=db;
           if(targetVersion > oldVersion){
             db.version=targetVersion;
@@ -174,7 +179,15 @@ SIMULATED_STORAGE_SHIM = r"""
       },0);
       return request;
     },
-    deleteDatabase(name){ const request=new Req(); setTimeout(()=>{ delete HOST.databases[name]; if(request.onsuccess) request.onsuccess({target:request}); },0); return request; }
+    deleteDatabase(name){
+      const request=new Req();
+      setTimeout(()=>{
+        connections.delete(name);
+        delete HOST.databases[name];
+        if(request.onsuccess) request.onsuccess({target:request});
+      },0);
+      return request;
+    }
   }});
 })();
 </script>
