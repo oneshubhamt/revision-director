@@ -207,7 +207,7 @@ def assert_test_topology() -> None:
     stale = sorted([*historical, *stale_wrappers, *([stale_helper] if stale_helper.exists() else [])], key=lambda path: path.name)
     if stale:
         raise AssertionError("Obsolete QA entrypoints remain: " + ", ".join(path.name for path in stale))
-    historical_label = re.compile(r"\\b(?:Pass|Stage)\\s+[A-E](?:\\d+)?\\b|programme(?:-closure)?", re.IGNORECASE)
+    historical_label = re.compile(r"\b(?:Pass|Stage)\s+[A-E](?:\d+)?\b|__RD_(?:PASS|STAGE)_[A-Z0-9_]+|programme(?:-closure)?", re.IGNORECASE)
     historical_sources = []
     for path in sorted((*TESTS.rglob("*.py"), *TESTS.rglob("*.js"))):
         if path.resolve() == Path(__file__).resolve():

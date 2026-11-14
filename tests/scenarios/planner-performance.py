@@ -19,7 +19,7 @@ from helpers.browser_harness import (
     wait_for_layout,
     wait_until as shared_wait_until,
 )
-from helpers.browser_fixture import HTML
+from helpers.browser_fixture import BASELINE_BACKUP, HTML, restore_selected_backup, stored_record
 PERFORMANCE_HTML = HTML.replace(
     "void boot();",
     "window.__RD_PERF_QA__={RevisionData,Store,boot};",
@@ -48,7 +48,7 @@ def open_page(browser, viewport=None, *, baseline=True):
         message='Performance restore surface did not become mutable',
     )
     if baseline:
-        main_qa.restore_selected_backup(page, main_qa.BASELINE_BACKUP)
+        restore_selected_backup(page, BASELINE_BACKUP)
     return page, errors
 
 
@@ -66,13 +66,13 @@ def set_capacity(page, value: int) -> None:
     form.locator('button[type="submit"]').click()
     shared_wait_until(
         page,
-        lambda: (main_qa.stored_record(page, 'settings', 'app') or {}).get('dailyCapacityMinutes') == value
+        lambda: (stored_record(page, 'settings', 'app') or {}).get('dailyCapacityMinutes') == value
         and page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value),
         timeout=8000,
         interval=80,
         message='Timed out waiting for capacity setting persistence',
     )
-    check((main_qa.stored_record(page, 'settings', 'app') or {}).get('dailyCapacityMinutes') == value, 'Capacity setting did not persist canonically')
+    check((stored_record(page, 'settings', 'app') or {}).get('dailyCapacityMinutes') == value, 'Capacity setting did not persist canonically')
     check(page.locator('#settings-form [name="dailyCapacityMinutes"]').input_value() == str(value), 'Capacity setting rerendered with a stale value')
 
 def add_oversized(page) -> None:
