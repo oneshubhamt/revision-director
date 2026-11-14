@@ -95,7 +95,7 @@ def main() -> None:
         page = context.new_page()
         browser_errors = capture_browser_errors(page)
         accept_dialogs(page)
-        page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body><script>window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}</script></body>")
 
         frame = boot_frame(page)
 
@@ -123,7 +123,7 @@ def main() -> None:
         check(len(concurrency["sectionIds"]) == 1 and concurrency["sectionCount"] == 1, "Concurrent child creation bypassed the unique pathLookup index")
 
         page.evaluate("document.querySelector('#app').remove()")
-        page.evaluate("window.__RD_B1_QA_STATE__={local:{},databases:{}}")
+        page.evaluate("window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}")
         frame = boot_frame(page)
         frame.locator('[data-pane="settings"]').click()
         restore_backup_with_safety_copy(page, frame, FIXTURE)
@@ -157,7 +157,7 @@ def main() -> None:
         page.evaluate("document.querySelector('#app').remove()")
         page.evaluate("""() => {
           const key='revision-director:active-retrieval:v1';
-          const host=window.__RD_B1_QA_STATE__;
+          const host=window.__RD_PERSISTENT_QA_STATE__;
           const envelope=JSON.parse(host.local[key]);
           envelope.session.revision += 7;
           envelope.session.updatedAt = new Date(Date.now()+60000).toISOString();

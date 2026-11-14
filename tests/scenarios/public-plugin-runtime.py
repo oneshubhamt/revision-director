@@ -94,7 +94,7 @@ def main() -> None:
         context = browser.new_context(viewport={"width": 1600, "height": 1100})
         page = context.new_page()
         errors = capture_browser_errors(page)
-        page.set_content("<body><script>window.__RD_PLUGIN_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body><script>window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}</script></body>")
         frame=boot_frame(page)
 
         check(frame.evaluate("RevisionDirector.version") == "va7.1-pass-f1", "Public API version wrong")

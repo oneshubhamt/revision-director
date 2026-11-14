@@ -9,7 +9,7 @@ BASE_HTML = (ROOT / "index.html").read_text()
 PERSISTENT_BROWSER_SHIM = r"""
 <script>
 (() => {
-  const HOST = parent.__RD_B1_QA_STATE__;
+  const HOST = parent.__RD_PERSISTENT_QA_STATE__;
   if (!HOST.local) HOST.local = {};
   if (!HOST.databases) HOST.databases = {};
 
@@ -196,7 +196,7 @@ def create_persistent_frame(
 
 def host_state_all(page, store: str):
     return page.evaluate("""store => {
-      const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
+      const raw=window.__RD_PERSISTENT_QA_STATE__.databases['revision-director'];
       const records=raw?.stores?.[store]?.records ?? [];
       return records.map(([,value]) => structuredClone(value));
     }""", store)
@@ -204,7 +204,7 @@ def host_state_all(page, store: str):
 
 def host_state_get(page, store: str, key: str):
     return page.evaluate("""([store,key]) => {
-      const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
+      const raw=window.__RD_PERSISTENT_QA_STATE__.databases['revision-director'];
       const records=raw?.stores?.[store]?.records ?? [];
       const found=records.find(([encoded]) => encoded === JSON.stringify(key));
       return found ? structuredClone(found[1]) : null;

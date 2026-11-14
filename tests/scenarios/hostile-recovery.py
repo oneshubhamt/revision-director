@@ -85,14 +85,14 @@ def start_recall(page, frame, answer: str) -> None:
     )
 
 def host_local(page, key: str):
-    return page.evaluate("key => window.__RD_B1_QA_STATE__.local[key] ?? null", key)
+    return page.evaluate("key => window.__RD_PERSISTENT_QA_STATE__.local[key] ?? null", key)
 
 def set_host_local(page, key: str, value) -> None:
-    page.evaluate("([key,value]) => { if(value === null) delete window.__RD_B1_QA_STATE__.local[key]; else window.__RD_B1_QA_STATE__.local[key]=value; }", [key, value])
+    page.evaluate("([key,value]) => { if(value === null) delete window.__RD_PERSISTENT_QA_STATE__.local[key]; else window.__RD_PERSISTENT_QA_STATE__.local[key]=value; }", [key, value])
 
 def mutate_raw_record(page, store: str, key: str, expression: str) -> None:
     page.evaluate(f"""([store,key]) => {{
-      const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
+      const raw=window.__RD_PERSISTENT_QA_STATE__.databases['revision-director'];
       const records=raw.stores[store].records;
       const index=records.findIndex(([encoded]) => encoded === JSON.stringify(key));
       if(index < 0) throw new Error('record missing');
@@ -103,7 +103,7 @@ def mutate_raw_record(page, store: str, key: str, expression: str) -> None:
 
 def delete_raw_record(page, store: str, key: str) -> None:
     page.evaluate("""([store,key]) => {
-      const raw=window.__RD_B1_QA_STATE__.databases['revision-director'];
+      const raw=window.__RD_PERSISTENT_QA_STATE__.databases['revision-director'];
       raw.stores[store].records = raw.stores[store].records.filter(([encoded]) => encoded !== JSON.stringify(key));
     }""", [store, key])
 
@@ -138,7 +138,7 @@ def main() -> None:
         page = context.new_page()
         errors = capture_browser_errors(page)
         accept_dialogs(page)
-        page.set_content("<body><script>window.__RD_B1_QA_STATE__={local:{},databases:{}}</script></body>")
+        page.set_content("<body><script>window.__RD_PERSISTENT_QA_STATE__={local:{},databases:{}}</script></body>")
 
         # Establish a valid canonical session.
         frame = boot_frame(page)
@@ -201,7 +201,7 @@ def main() -> None:
         before_obligation = next(item for item in host_state_all(page, 'obligations') if item['id'] == guarded_target)
         before_guard_evidence = len(host_state_all(page, 'evidenceEvents'))
         prepare_good(frame)
-        page.evaluate("window.__RD_B1_QA_STATE__.sabotageCommit=true")
+        page.evaluate("window.__RD_PERSISTENT_QA_STATE__.sabotageCommit=true")
         frame.locator('[data-action="rate"][data-rating="3"]').click()
         wait_until(
             frame,
