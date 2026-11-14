@@ -29,13 +29,12 @@ CORE_DOMAIN_PLAN = {
         "tests/runtime-harness-ownership.spec.js",
     ),
     "fsrs-scheduler-and-optimizer": (
-        "tests/fsrs-contract-parity.spec.js",
-        "tests/fsrs-reference-parity.spec.js",
-        "tests/fsrs-integration.spec.js",
-        "tests/fsrs-optimizer-core.spec.js",
-        "tests/fsrs-optimizer-policy.spec.js",
-        "tests/fsrs-programme-closure.spec.js",
-        "tests/fsrs-scale-benchmark.spec.js",
+        "tests/fsrs-optimizer-contract.spec.js",
+        "tests/fsrs-scheduler-reference.spec.js",
+        "tests/fsrs-scheduler-integration.spec.js",
+        "tests/fsrs-optimizer.spec.js",
+        "tests/fsrs-memory-lifecycle.spec.js",
+        "tests/fsrs-scale.spec.js",
     ),
     "planner": (
         "tests/scenarios/adaptive-planning.js",
@@ -82,13 +81,13 @@ BROWSER_PLAN = (
     "tests/scenarios/ui-behaviour.py",
     "tests/scenarios/responsive-layout.py",
     "tests/canonical-topology-browser.spec.py",
-    "tests/fsrs-browser-optimizer.spec.py",
-    "tests/fsrs-programme-closure-browser.spec.py",
+    "tests/fsrs-browser-integration.spec.py",
+    "tests/fsrs-memory-lifecycle-browser.spec.py",
     "tests/full-qa-supplement.spec.py",
 )
 
 DEEP_NODE_PLAN = (
-    "tests/fsrs-scheduling-experiments.spec.js",
+    "tests/fsrs-scheduling-policy-deep.spec.js",
 )
 
 PERFORMANCE_BROWSER_PLAN = (
@@ -252,9 +251,9 @@ def deep() -> None:
     for path in DEEP_NODE_PLAN:
         run("node", path)
     # Keep full-scale timing envelopes as deep diagnostics, not routine core gates.
-    run("node", "tests/fsrs-scale-benchmark.spec.js", "--performance")
+    run("node", "tests/fsrs-scale.spec.js", "--performance")
     prepare_hosted_optimizer()
-    run(sys.executable, "tests/fsrs-browser-optimizer.spec.py", "full")
+    run(sys.executable, "tests/fsrs-browser-integration.spec.py", "full")
 
 
 def full() -> None:

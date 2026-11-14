@@ -99,7 +99,7 @@ def run(mode: str) -> None:
                     stages = {item[0] for item in result.get("progress", [])}
                     for stage in ("Train validation candidate", "Retrain final profile on all evidence", "Time-series cross-validation"):
                         check(stage in stages, f"Browser optimizer did not report stage: {stage}")
-                print(f"PASS browser/WASM FSRS optimizer {mode}: {json.dumps(result, separators=(',', ':'))}")
+                print(f"PASS browser/WASM FSRS integration optimizer {mode}: {json.dumps(result, separators=(',', ':'))}")
             finally:
                 browser.close()
     finally:

@@ -197,7 +197,7 @@ def scenario_corrective_memory_e2e(browser) -> None:
         message="Browser History did not project every corrective lifecycle event",
     )
     check(history_rows.count() == 3, "Browser History does not expose all corrective lifecycle records")
-    check(not errors, f"FSRS programme-closure browser errors: {errors}")
+    check(not errors, f"FSRS memory-lifecycle browser errors: {errors}")
     page.close()
 
 
@@ -206,7 +206,7 @@ def main() -> None:
         browser = launch_chromium(playwright)
         scenario_corrective_memory_e2e(browser)
         browser.close()
-    print("PASS FSRS programme-closure Chromium corrective-memory scenario")
+    print("PASS FSRS memory-lifecycle Chromium corrective-memory scenario")
 
 
 if __name__ == "__main__":
