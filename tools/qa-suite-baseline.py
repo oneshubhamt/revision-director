@@ -30,6 +30,8 @@ def main() -> None:
     parser.add_argument("--groups", nargs="+", choices=GROUPS, default=["core", "browser"],
                         help="Execute each selected layer once, in the listed order")
     parser.add_argument("--repeat", type=int, default=1, help="1-10 samples per entrypoint")
+    parser.add_argument("--timeout-seconds", type=int, default=300,
+                        help="Maximum seconds per child process")
     parser.add_argument("--output", type=Path,
                         default=Path(tempfile.gettempdir()) / "revision-director-qa-baseline.json")
     args = parser.parse_args()
@@ -37,6 +39,8 @@ def main() -> None:
         parser.error("--repeat must be between 1 and 10")
     if len(args.groups) != len(set(args.groups)):
         parser.error("--groups contains duplicates")
+    if args.timeout_seconds < 1:
+        parser.error("--timeout-seconds must be positive")
     output = args.output.expanduser().resolve()
     if ROOT in output.parents or output == ROOT:
         parser.error("Place profiling output outside the tracked repository")
@@ -45,8 +49,24 @@ def main() -> None:
     log_dir = log_dir.with_name(log_dir.name + "-logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     output.parent.mkdir(parents=True, exist_ok=True)
+    qa.assert_test_topology()
+    declared = set((*qa.STATIC_PYTHON, *qa.CORE_NODE_PLAN, *qa.BROWSER_PLAN,
+                    *qa.DEEP_NODE_PLAN, *qa.PERFORMANCE_BROWSER_PLAN,
+                    "tests/scenarios/phase-time-runtime.py"))
+    discovered = {
+        path.relative_to(ROOT).as_posix()
+        for base in (ROOT / "tests", ROOT / "tests/scenarios")
+        for path in base.iterdir()
+        if path.is_file() and (
+            path.name.endswith((".spec.js", ".spec.py")) or base.name == "scenarios"
+            and path.suffix in (".js", ".py")
+        )
+    }
+    if discovered != declared:
+        raise SystemExit(f"QA manifest drift: unlisted={sorted(discovered - declared)}, missing={sorted(declared - discovered)}")
     data = {
         "schema": "revision-director.qa-baseline/v1",
+        "inventory": {"testFiles": len(discovered), "smokeEntry": "tools/fsrs-optimizer npm smoke"},
         "recordedAt": datetime.now(timezone.utc).isoformat(),
         "commit": git("rev-parse", "HEAD"),
         "branch": git("branch", "--show-current"),
@@ -80,8 +100,13 @@ def main() -> None:
                 child_env["REVISION_DIRECTOR_CDP_ENDPOINT"] = endpoint
             proc = subprocess.run(command, cwd=ROOT, env=child_env,
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                  text=True, errors="replace", check=False)
+                                  text=True, errors="replace", check=False,
+                                  timeout=args.timeout_seconds)
             code, log = proc.returncode, proc.stdout
+        except subprocess.TimeoutExpired as exc:
+            code = 124
+            log = (exc.stdout or b"").decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+            log += f"\nTimed out after {args.timeout_seconds}s"
         except OSError as exc:
             code, log = 127, str(exc)
         seconds = round(time.perf_counter() - start, 3)
