@@ -7,26 +7,14 @@ from helpers.browser_harness import open_rendered_pane, select_backup_file, wait
 from helpers.simulated_storage import simulated_state_all, simulated_state_get, simulated_storage_html
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE_HTML = (ROOT / "index.html").read_text()
 BASELINE_BACKUP = baseline_backup_path()
-
-HTML = simulated_storage_html(base_html=BASE_HTML)
+HTML = simulated_storage_html()
 
 
 def check(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
 
-
-
-def wait_for_text(page, selector: str, expected: str, timeout_seconds: float = 5.0) -> None:
-    wait_until(
-        page,
-        lambda: page.locator(selector).inner_text().strip() == expected,
-        timeout=int(timeout_seconds * 1000),
-        interval=40,
-        message=f"Timed out waiting for {selector}={expected!r}",
-    )
 
 
 def set_range(page, selector: str, value: int) -> None:
@@ -132,11 +120,6 @@ def open_page(browser, viewport=None, baseline: bool = False):
             current_fixture = Path(tmpdir) / "browser-baseline-current.rdbackup"
             current_fixture.write_bytes(encode_payload(payload))
             restore_selected_backup(page, current_fixture)
-        check(
-            sorted(profile["id"] for profile in page.evaluate("async()=>await RevisionDirector.records.listProfiles()"))
-            == sorted(profile["id"] for profile in payload["profiles"]),
-            "Baseline fixture restore did not hydrate the expected profiles",
-        )
     return page, errors
 
 

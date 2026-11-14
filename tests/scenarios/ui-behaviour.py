@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
 from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_for_layout, wait_until
-from helpers.browser_fixture import open_page as open_fixture_page, restore_selected_backup, wait_for_text
+from helpers.browser_fixture import open_page as open_fixture_page, restore_selected_backup
 from helpers.simulated_storage import simulated_storage_html
 CLOCK=r'''<script>(()=>{let current=Date.now();Date.now=()=>current;window.__RD_UI_BEHAVIOUR_CLOCK__={advance(ms){current+=Number(ms)||0;return current;}};})();</script>'''
 HTML=simulated_storage_html(CLOCK)
@@ -53,7 +53,8 @@ def exercise_shell_crud(browser) -> None:
     for name, value in values.items():
         form.locator(f'[name="{name}"]') .fill(value)
     form.locator('button[type="submit"]').click()
-    wait_for_text(page, "#sb-units", "1")
+    wait_until(page, lambda: page.locator("#sb-units").inner_text().strip() == "1",
+               timeout=5000, interval=40, message="Unit creation did not reach the sidebar")
     check(page.locator("#sb-units").inner_text() == "1", "Knowledge Unit creation failed")
 
     page.locator("#quick-log-study").click()

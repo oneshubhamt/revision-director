@@ -15,7 +15,7 @@ def check(condition: bool, message: str) -> None:
 
 
 def exercise_review_keyboard_shortcuts(browser) -> None:
-    page, errors = open_fixture_page(browser, {"width": 1280, "height": 900}, baseline=True)
+    page, errors = open_page(browser, {"width": 1280, "height": 900}, baseline=True)
     # Dedicated keyboard commands and input accessibility; general ARIA
     # navigation/focus is owned by ui-behaviour.py.
     page.locator('[data-pane="settings"]').click()
