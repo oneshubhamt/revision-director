@@ -1,0 +1,84 @@
+name: QA Pass E measurement
+
+on:
+  push:
+    branches:
+      - working
+
+permissions:
+  contents: read
+
+concurrency:
+  group: revision-director-qa-pass-e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tools/fsrs-optimizer/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install QA dependencies
+        run: |
+          npm ci
+          npm ci --prefix tools/fsrs-optimizer --no-audit --no-fund
+          python3 -m pip install --disable-pip-version-check playwright
+          test -x /usr/bin/chromium
+
+      - name: Measure revised QA topology
+        run: |
+          python3 tools/qa-suite-baseline.py \
+            --groups core optimizer timing browser performance deep mutations \
+            --repeat 3 \
+            --timeout-seconds 600 \
+            --output /tmp/revision-director-pass-e.json
+
+      - name: Summarize Pass E
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, math, statistics
+          from collections import defaultdict
+          from pathlib import Path
+          path=Path("/tmp/revision-director-pass-e.json")
+          if not path.exists():
+              raise SystemExit("Pass-E result file missing")
+          data=json.loads(path.read_text())
+          print("PASS_E_SUMMARY_BEGIN")
+          print("commit", data.get("commit"))
+          print("passed", data.get("passed"))
+          for iteration in range(1,4):
+              per=defaultdict(float)
+              for row in data["samples"]:
+                  if row["iteration"]==iteration:
+                      per[row["group"]]+=float(row["wallSeconds"])
+              print("iteration", iteration, dict((k,round(v,3)) for k,v in per.items()))
+          by_group=defaultdict(lambda: defaultdict(list))
+          for row in data["samples"]:
+              by_group[row["group"]][row["iteration"]].append(float(row["wallSeconds"]))
+          for group, iterations in by_group.items():
+              totals=sorted(sum(values) for values in iterations.values())
+              p95=totals[max(0, math.ceil(0.95*len(totals))-1)]
+              print("group", group, "totals", [round(v,3) for v in totals],
+                    "median", round(statistics.median(totals),3), "p95", round(p95,3))
+          print("setups", data.get("setups"))
+          print("PASS_E_SUMMARY_END")
+          PY
