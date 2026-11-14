@@ -51,13 +51,23 @@ def wait_until(frame, predicate, timeout=10000) -> None:
     )
 
 def remove_frame(page, frame) -> None:
-    frame.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
-    wait_until(
-        frame,
-        lambda: frame.locator("html").get_attribute("data-review-ownership") == "secondary",
-        timeout=5000,
-    )
-    page.evaluate("document.querySelector('#app')?.remove()")
+    # A synthetic pagehide with the iframe still alive permits its heartbeat to
+    # reacquire the lease. Dispatch and detach in one browser task, as real
+    # navigation does, then independently inspect the released shared lease.
+    result = page.evaluate("""() => {
+      const iframe=document.querySelector('#app');
+      if (!(iframe instanceof HTMLIFrameElement) || !iframe.contentWindow)
+        throw new Error('Hostile-recovery app iframe is missing');
+      const child=iframe.contentWindow;
+      child.dispatchEvent(new child.PageTransitionEvent('pagehide'));
+      const state=child.document.documentElement.dataset.reviewOwnership;
+      iframe.remove();
+      return {state,removed:!document.querySelector('#app')};
+    }""")
+    check(result["removed"] and result["state"] != "primary",
+          f"Pagehide failed to relinquish the live UI: {result}")
+    check(host_local(page, 'revision-director:review-owner:v1') is None,
+          f"Detached iframe retained the active ownership lease: {result}")
 
 def import_fixture(page, frame) -> None:
     frame.locator('[data-pane="settings"]').click()
