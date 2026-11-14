@@ -12,7 +12,7 @@ from helpers.browser_harness import ROOT, capture_browser_errors, launch_chromiu
 from helpers.browser_fixture import INDEXEDDB_SHIM
 sys.path.insert(0,str(ROOT/'tests'))
 from backup_fixture_codec import decode_file
-HOOK="window.__RD_STAGE_D_STORAGE__={RevisionData,RevisionService,Store,APP_VERSION,DB_NAME,DB_VERSION}; void boot();"
+HOOK="window.__RD_DATA_SAFETY_STORAGE__={RevisionData,RevisionService,Store,APP_VERSION,DB_NAME,DB_VERSION}; void boot();"
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+INDEXEDDB_SHIM,1).replace('void boot();',HOOK,1)
 FIXTURE = baseline_backup_path()
 RECOVERY_KEY='revision-director:active-retrieval:v1'
@@ -87,7 +87,7 @@ def main():
         page.set_content(HTML,wait_until='load'); wait_for_app_ready(page)
         check(not page.locator('#fatal-error').is_visible(),'Fatal startup error')
         release_schema = page.evaluate("""async()=>{
-          const api=window.__RD_STAGE_D_STORAGE__;
+          const api=window.__RD_DATA_SAFETY_STORAGE__;
           const openDb=()=>new Promise((resolve,reject)=>{const request=indexedDB.open(api.DB_NAME,api.DB_VERSION);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
           const readMetadata=async db=>await new Promise((resolve,reject)=>{const tx=db.transaction(['metadata'],'readonly');const request=tx.objectStore('metadata').get('database');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
           const writeMetadata=async(db,value)=>await new Promise((resolve,reject)=>{const tx=db.transaction(['metadata'],'readwrite');tx.objectStore('metadata').put(value);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error('metadata transaction aborted'))});
@@ -157,15 +157,15 @@ def main():
         page.locator('[data-action="review-one"][data-id="obligation_ms320pr9_uo4n9u1lsoe33"]').click(); page.locator('#attempt-text').wait_for(state='visible')
         attempt=page.locator('#attempt-text')
         check(attempt.count()==1,'Expected text retrieval did not start')
-        attempt.fill('Stage D safety copy live draft')
-        wait_until(page, lambda: 'Stage D safety copy live draft' in (page.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") or ''), timeout=5000, interval=40, message='Live draft did not reach emergency recovery')
+        attempt.fill('data safety safety copy live draft')
+        wait_until(page, lambda: 'data safety safety copy live draft' in (page.evaluate("localStorage.getItem('revision-director:active-retrieval:v1')") or ''), timeout=5000, interval=40, message='Live draft did not reach emergency recovery')
         ensure_settings(page)
         open_restore_preview(page, FIXTURE)
         active_safety=safety_download(page,tmp)
         active_safety_payload=decode_file(active_safety)
         check(active_safety_payload['activeRetrieval'] is not None,'Current-state safety copy omitted unfinished retrieval')
         draft_values=active_safety_payload['activeRetrieval']['draft']['values']
-        check('Stage D safety copy live draft' in draft_values.values(),'Safety copy lost live typed work')
+        check('data safety safety copy live draft' in draft_values.values(),'Safety copy lost live typed work')
         confirm_restore(page)
         check(page.evaluate('(k)=>localStorage.getItem(k)',RECOVERY_KEY) is None,'Discard-only candidate left local emergency recovery behind')
 
@@ -176,7 +176,7 @@ def main():
         active_restore_safety=safety_download(page,tmp)
         confirm_restore(page,treatment='restore')
         check(page.locator('#pane-review').is_visible(),'Restored active retrieval did not hydrate Review')
-        check(page.locator('#attempt-text').input_value()=='Stage D safety copy live draft','Restored active draft text changed')
+        check(page.locator('#attempt-text').input_value()=='data safety safety copy live draft','Restored active draft text changed')
 
         # Reimport the same active backup and explicitly discard its session.
         ensure_settings(page)
@@ -217,6 +217,6 @@ def main():
 
         check(not errors,f'Browser errors: {errors}')
         browser.close()
-    print(f'PASS {checks} Stage D data-safety browser checks')
+    print(f'PASS {checks} data safety data-safety browser checks')
 
 if __name__=='__main__': main()

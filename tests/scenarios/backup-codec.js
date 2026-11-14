@@ -92,5 +92,5 @@ const empty={format:'revision-director-backup',schemaVersion:2,exportedAt:'2026-
  check(chunked.inspection.chunkCount>=4,'Bounded chunking did not split records');
  const chunkLines=new TextDecoder().decode(chunked.bytes).trimEnd().split('\n').map(JSON.parse).filter(x=>x.kind==='chunk'&&x.entityType==='profiles');
  check(chunkLines.every(x=>x.count<=api.BACKUP_ARCHIVE_CHUNK_MAX_ITEMS),'Chunk item limit exceeded');
- console.log(`PASS ${checks} Pass D1 backup-codec checks`);
+ console.log(`PASS ${checks} backup codec backup-codec checks`);
 })().catch(e=>{console.error(e);process.exitCode=1});

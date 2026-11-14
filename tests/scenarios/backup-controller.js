@@ -58,5 +58,5 @@ class FakeService{
  check(forensicResult.inspection.verified&&forensicService.restores===1,'Forensic-gated restore failed');
  const expService=new FakeService();const expController=new api.BackupController(expService);const expCandidate=await expController.inspect((await api.BackupCodec.create(api.validateBackupPayload(empty()),false)).bytes);const expSafety=await expController.createSafetyCopy(expCandidate.id);expController.acknowledgeSafetyCopy(expSafety.proofId);expController.proofs.get(expSafety.proofId).expiresAt='2000-01-01T00:00:00.000Z';
  await mustFail(()=>expController.restore(expCandidate.id,expSafety.proofId,'discard'),'expired');
- console.log(`PASS ${checks} Pass D2 backup-controller checks`);
+ console.log(`PASS ${checks} backup controller backup-controller checks`);
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -139,5 +139,5 @@ function session(revision, overrides = {}) {
     check(diagnosticCodes.includes(expected), 'Expected fault diagnostic missing: ' + expected);
   }
   check(diagnosticCodes.every((code) => ['active-retrieval.indexeddb.write','active-retrieval.previous-write','active-retrieval.indexeddb.read'].includes(code)), 'Unexpected diagnostics escaped controlled fault injection: ' + JSON.stringify(diagnostics));
-  console.log(`PASS ${checks} Pass B1 durable-active-retrieval checks`);
+  console.log(`PASS ${checks} active retrieval persistence durable-active-retrieval checks`);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

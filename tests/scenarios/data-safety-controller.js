@@ -4,7 +4,7 @@ const { createAppRuntime, memoryLocalStorage } = require('../helpers/runtime-har
 const memory = memoryLocalStorage();
 const storage = memory.values;
 const { api } = createAppRuntime({
-  globalName: '__RD_STAGE_D_TEST__',
+  globalName: '__RD_DATA_SAFETY_CONTROLLER__',
   expose: ["APP_VERSION","RevisionService","BackupCodec","BackupController","BACKUP_ARCHIVE_VERSION","BACKUP_SCHEMA_VERSION","validateBackupPayload"],
   context: { localStorage: memory.api },
 });
@@ -24,7 +24,7 @@ class FakeService{
   diagnostics(){return structuredClone(this.diags)}
 }
 (async()=>{
-  check(api.BACKUP_ARCHIVE_VERSION===2&&api.BACKUP_SCHEMA_VERSION===2,'Stage D versions are not closed at v2');
+  check(api.BACKUP_ARCHIVE_VERSION===2&&api.BACKUP_SCHEMA_VERSION===2,'data safety versions are not closed at v2');
 
   const sourceBytes=(await api.BackupCodec.create(api.validateBackupPayload(empty()),false)).bytes;
   const service=new FakeService();
@@ -111,5 +111,5 @@ class FakeService{
   const auditService=new FakeService();auditService.decodeMode='mismatch';
   await mustFail(()=>new api.BackupController(auditService).createVerified(false),'document count');
 
-  console.log(`PASS ${checks} Stage D data-safety controller checks`);
+  console.log(`PASS ${checks} data safety data-safety controller checks`);
 })().catch(e=>{console.error(e);process.exitCode=1});

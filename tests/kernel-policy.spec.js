@@ -196,7 +196,7 @@ async function testFsrs7Integration() {  await api.prepareFsrsScheduler(fixed(.9
   mustFail(() => memory.preview(invalid, new Date(due)), 'Non-current FSRS card shapes must be rejected rather than transformed');
 }
 
-// Pass C planning factors and capacity selection.
+// domain policy planning factors and capacity selection.
 check(api.examinationProximityScore(10) > api.examinationProximityScore(100), 'Closer examinations must raise planning priority');
 check(api.planningLookaheadDays(10) === 3 && api.planningLookaheadDays(200) === .5, 'Planning horizon must contract for distant exams');
 check(api.examImportanceScore(3) > api.examImportanceScore(1), 'Core knowledge must outrank useful knowledge');

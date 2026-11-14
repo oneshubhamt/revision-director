@@ -70,6 +70,6 @@ def main():
                   f"Raw JSON did not fail through the rejection UI contract · result={raw_result!r}")
         check(not errors,f'Browser errors: {errors}')
         browser.close()
-    print(f'PASS {checks} Pass D1 browser codec checks')
+    print(f'PASS {checks} backup codec browser codec checks')
 
 if __name__=='__main__': main()
