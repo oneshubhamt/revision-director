@@ -8,7 +8,7 @@ Inventory **input/trigger → required invariant → failure detected** rather t
 
 **Types:** M mathematical; B behavioural; I integration; S security/authority; A architecture; P presentation; U superficial.
 
-**Coverage:** 21 core Node, three static Python, 19 standard browser, one browser timing, one browser performance and one deep Node experiment = **46 independent entrypoints**; full browser/WASM optimization reuses a browser entrypoint in a more expensive mode. Inventory includes each entrypoint at least once as primary or independent witness. Paths refer to matching files under `tests/` or `tests/scenarios/`.
+**Coverage:** 21 core Node, three static Python, 19 standard browser, one browser timing, one browser performance and one deep Node experiment = **46 active entrypoints**; full browser/WASM optimization reuses a browser entrypoint in a more expensive mode. Inventory includes each entrypoint at least once as primary or independent witness. Paths refer to matching files under `tests/` or `tests/scenarios/`.
 
 **Footprint:** 55 test-related tracked files (includes helper/fixture and the new non-entrypoint timer), 590,150 bytes; helper files 33,991 bytes against a 34,000-byte threshold.
 
