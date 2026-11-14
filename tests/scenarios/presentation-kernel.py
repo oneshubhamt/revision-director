@@ -6,10 +6,10 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, launch_chromium, load_browser_qa, open_html_page, wait_for_app_ready, wait_for_layout
-QA = load_browser_qa("revision_director_presentation_kernel")
+from helpers.browser_harness import ROOT, launch_chromium, open_html_page, wait_for_app_ready, wait_for_layout
+from helpers.browser_fixture import INDEXEDDB_SHIM
 TIME_SHIM = r'''<script>(()=>{const RealDate=Date;const fixed=RealDate.parse('2026-07-27T06:30:00.000Z');class FixedDate extends RealDate{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed}}Object.defineProperty(window,'Date',{configurable:true,value:FixedDate});})();</script>'''
-HTML = (ROOT/'index.html').read_text().replace('<head>', '<head>'+TIME_SHIM+QA.INDEXEDDB_SHIM, 1)
+HTML = (ROOT/'index.html').read_text().replace('<head>', '<head>'+TIME_SHIM+INDEXEDDB_SHIM, 1)
 CHECKS = 0
 
 def check(value: bool, message: str) -> None:

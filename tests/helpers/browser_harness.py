@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import importlib.util
 import os
 import shutil
 import time
@@ -202,20 +201,6 @@ def wait_for_backup_import_result(page: Page, *, timeout: int = 8_000) -> dict[s
         "error": page.locator("#toast").evaluate("e=>e.classList.contains('error')"),
         "inspectionComplete": page.locator("#import-backup").evaluate("e=>e instanceof HTMLInputElement && e.files?.length === 0"),
     }
-
-def load_test_module(path: str | Path, name: str):
-    resolved = Path(path)
-    spec = importlib.util.spec_from_file_location(name, resolved)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load browser test support: {resolved}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def load_browser_qa(name: str = "revision_director_browser_qa"):
-    return load_test_module(TESTS / "browser-qa.spec.py", name)
-
 
 
 def wait_for_app_ready(page: Page, *, timeout: int = 10_000) -> None:

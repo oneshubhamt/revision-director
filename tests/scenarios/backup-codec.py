@@ -8,9 +8,8 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
-base=load_browser_qa('revision_director_backup_codec')
-INDEXEDDB_SHIM=base.INDEXEDDB_SHIM
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_for_backup_import_result, wait_for_toast_outcome, wait_until
+from helpers.browser_fixture import INDEXEDDB_SHIM
 HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+INDEXEDDB_SHIM,1)
 FIXTURE = baseline_backup_path()
 RAW=ROOT/'tests/fixtures/browser-baseline.json'
