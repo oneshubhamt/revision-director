@@ -4,6 +4,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -206,6 +207,14 @@ def assert_test_topology() -> None:
     stale = sorted([*historical, *stale_wrappers, *([stale_helper] if stale_helper.exists() else [])], key=lambda path: path.name)
     if stale:
         raise AssertionError("Obsolete QA entrypoints remain: " + ", ".join(path.name for path in stale))
+    historical_label = re.compile(r"\\b(?:Pass|Stage)\\s+[A-E](?:\\d+)?\\b|programme(?:-closure)?", re.IGNORECASE)
+    historical_sources = []
+    for path in sorted((*TESTS.rglob("*.py"), *TESTS.rglob("*.js"))):
+        matches = sorted(set(match.group(0) for match in historical_label.finditer(path.read_text())))
+        if matches:
+            historical_sources.append(f"{path.relative_to(ROOT)}: {', '.join(matches)}")
+    if historical_sources:
+        raise AssertionError("Historical QA labels remain: " + "; ".join(historical_sources))
 
 
 def core() -> None:
