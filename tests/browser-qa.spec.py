@@ -369,6 +369,13 @@ def scenario_workflows(browser) -> None:
         and item["status"] == "active"
     )
     relearn = page.locator(f'[data-action="review-one"][data-id="{relearn_obligation["id"]}"]')
+    wait_until(
+        page,
+        lambda: relearn.count() == 1 and relearn.is_visible(),
+        timeout=5_000,
+        interval=40,
+        message="Active relearning obligation did not finish rendering",
+    )
     check(relearn.count() == 1, "Active relearning obligation is not represented by one review action")
     relearn.click()
     repair_phase = page.locator('[data-review-phase="relearn-repair"]')
