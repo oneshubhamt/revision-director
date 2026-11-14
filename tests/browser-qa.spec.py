@@ -457,21 +457,16 @@ def scenario_bridge(browser) -> None:
         row.locator("[data-profile-status]").select_option("suspended")
         page.evaluate("document.querySelector('#toast').textContent=''")
         row.locator('[data-action="save-profile"]').click()
-        wait_until(
-            page,
-            lambda profile_id=profile_id: next(
-                (profile["status"] for profile in page.evaluate("async()=>await RevisionDirector.records.listProfiles()") if profile["id"] == profile_id),
-                None,
-            ) == "suspended",
-            timeout=5_000,
-            interval=40,
-            message=f"Profile suspension did not persist: {profile_id}",
-        )
         wait_for_toast_outcome(
             page,
             expect_error=False,
             timeout=8_000,
             message=f"Profile suspension did not report successful completion: {profile_id}",
+        )
+        profiles_after_save = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
+        check(
+            next((profile["status"] for profile in profiles_after_save if profile["id"] == profile_id), None) == "suspended",
+            f"Successful profile save did not persist suspension: {profile_id} · {profiles_after_save}",
         )
     profiles = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
     check(all(profile["status"] == "suspended" for profile in profiles), f"Public profile summary did not preserve both suspensions: {profiles}")

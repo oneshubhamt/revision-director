@@ -149,13 +149,18 @@ def wait_for_toast_outcome(
 ) -> str:
     wait_until(
         target,
-        lambda: bool(target.locator("#toast").inner_text().strip())
-        and target.locator("#toast").evaluate("e=>e.classList.contains('error')") is expect_error,
+        lambda: bool(target.locator("#toast").inner_text().strip()),
         timeout=timeout,
         interval=40,
         message=message,
     )
-    return target.locator("#toast").inner_text().strip()
+    text = target.locator("#toast").inner_text().strip()
+    is_error = target.locator("#toast").evaluate("e=>e.classList.contains('error')")
+    if is_error != expect_error:
+        expected = "error" if expect_error else "success"
+        actual = "error" if is_error else "success"
+        raise AssertionError(f"{message}: expected {expected}, got {actual}: {text}")
+    return text
 
 
 def select_backup_file(page: Page, path: str | Path, *, timeout: int = 8_000) -> dict[str, object]:
