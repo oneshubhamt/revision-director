@@ -116,6 +116,13 @@ def main():
         # Dialog focus capture and restoration.
         page.locator("#quick-add-unit").focus(); page.locator("#quick-add-unit").click(); page.locator("#unit-dialog").wait_for(state="visible")
         check(page.locator("#unit-dialog").get_attribute("open") is not None, "Unit dialog did not open")
+        wait_until(
+            page,
+            lambda: page.evaluate("document.activeElement?.getAttribute('name')") == "profileId",
+            timeout=3000,
+            interval=30,
+            message="Dialog did not establish its initial focus contract",
+        )
         check(page.evaluate("document.activeElement?.getAttribute('name')") == "profileId", "Dialog initial focus is incorrect")
         page.keyboard.press("Escape"); page.locator("#unit-dialog").wait_for(state="hidden")
         wait_until(page, lambda: page.evaluate("document.activeElement?.id") == "quick-add-unit", timeout=3000, interval=30)
@@ -124,8 +131,17 @@ def main():
         # Dirty-state invalidation must preserve focused search and selection.
         open_rendered_pane(page, "library")
         search = page.locator("#library-search")
+        search.evaluate("e=>e.setAttribute('data-qa-before-library-render','1')")
         search.fill("Drainage")
         search.evaluate("e=>e.setSelectionRange(2,6)")
+        wait_until(
+            page,
+            lambda: page.locator('#library-search[data-qa-before-library-render="1"]').count() == 0,
+            timeout=5000,
+            interval=40,
+            message="Debounced library render did not replace the search control",
+        )
+        search = page.locator("#library-search")
         wait_until(
             page,
             lambda: page.locator(".unit-row").count() == 1
