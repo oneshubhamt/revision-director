@@ -28,17 +28,39 @@ def exercise_shell_crud(browser) -> None:
         page.locator(f"#pane-{pane}").wait_for(state="visible")
         check(page.locator(f"#pane-{pane}").evaluate('e=>e.classList.contains("on")'), f"Pane did not open: {pane}")
 
-    page.locator('[data-pane="settings"]').click()
-    page.locator("#settings-content").wait_for(state="visible")
+    open_rendered_pane(page, "settings", force_render=True)
+    wait_until(
+        page,
+        lambda: page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary",
+        timeout=8000,
+        message="Clean-install Settings never became the mutable primary owner",
+    )
     storage = page.evaluate("RevisionDirector.runtime.storageHealth()")
     check(storage["indexedDbAvailable"], "Storage-health contract did not report IndexedDB availability")
     check(page.locator('[data-action="refresh-storage"]').count() == 1, "Storage-health refresh control is missing")
     check(page.locator('#settings-form [name="memorySchedulingPolicy"]').input_value() == "fixed-retention", "Clean installations must default to measured fixed-retention scheduling")
     page.locator("#new-profile-name").fill("IFoS Production Test")
     page.locator("#new-profile-date").fill("2027-11-01")
+    # A real same-pane navigation invalidates Settings. Unsaved user text
+    # must survive its asynchronous form replacement before submission.
+    open_rendered_pane(page, "settings", force_render=True)
+    check(page.locator("#new-profile-name").input_value() == "IFoS Production Test"
+          and page.locator("#new-profile-date").input_value() == "2027-11-01",
+          "Settings rerender discarded the unsaved new-profile draft")
     page.locator('[data-action="add-profile"]').click()
-    page.wait_for_function("() => document.querySelectorAll('[data-profile-editor]').length === 1")
-    check(page.locator("[data-profile-editor]").count() == 1, "First production exam profile was not created")
+    wait_until(
+        page,
+        lambda: page.locator("[data-profile-editor]").count() == 1,
+        timeout=8000,
+        interval=40,
+        message="First production exam profile was not created after draft preservation",
+    )
+    profiles = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
+    check(len(profiles) == 1 and profiles[0]["name"] == "IFoS Production Test",
+          "Profile creation did not persist the intended draft exactly once")
+    check(not page.locator("#new-profile-name").input_value()
+          and not page.locator("#new-profile-date").input_value(),
+          "Successful profile submission did not clear the committed draft")
 
     page.locator("#quick-add-unit").click()
     page.locator("#unit-dialog").wait_for(state="visible")
