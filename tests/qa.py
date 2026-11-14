@@ -210,6 +210,8 @@ def assert_test_topology() -> None:
     historical_label = re.compile(r"\\b(?:Pass|Stage)\\s+[A-E](?:\\d+)?\\b|programme(?:-closure)?", re.IGNORECASE)
     historical_sources = []
     for path in sorted((*TESTS.rglob("*.py"), *TESTS.rglob("*.js"))):
+        if path.resolve() == Path(__file__).resolve():
+            continue
         matches = sorted(set(match.group(0) for match in historical_label.finditer(path.read_text())))
         if matches:
             historical_sources.append(f"{path.relative_to(ROOT)}: {', '.join(matches)}")
