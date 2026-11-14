@@ -455,6 +455,7 @@ def scenario_bridge(browser) -> None:
         row = page.locator(f'[data-profile-editor="{profile_id}"]')
         check(row.count() == 1, f"Profile editor is missing durable identity: {profile_id}")
         row.locator("[data-profile-status]").select_option("suspended")
+        row.evaluate("e=>e.setAttribute('data-qa-render-marker','profile-save')")
         page.evaluate("document.querySelector('#toast').textContent=''")
         row.locator('[data-action="save-profile"]').click()
         wait_until(
@@ -462,10 +463,12 @@ def scenario_bridge(browser) -> None:
             lambda profile_id=profile_id: next(
                 (profile["status"] for profile in page.evaluate("async()=>await RevisionDirector.records.listProfiles()") if profile["id"] == profile_id),
                 None,
-            ) == "suspended",
+            ) == "suspended"
+            and page.locator(f'[data-profile-editor="{profile_id}"][data-qa-render-marker="profile-save"]').count() == 0
+            and page.locator(f'[data-profile-editor="{profile_id}"] [data-profile-status]').input_value() == "suspended",
             timeout=5_000,
             interval=40,
-            message=f"Public profile summary did not reflect suspension: {profile_id}",
+            message=f"Profile suspension did not persist and finish rendering: {profile_id}",
         )
     profiles = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
     check(all(profile["status"] == "suspended" for profile in profiles), f"Public profile summary did not preserve both suspensions: {profiles}")
