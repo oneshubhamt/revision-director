@@ -23,31 +23,48 @@ STATIC_PYTHON = (
     "tests/qa-runner.spec.py",
 )
 
-CORE_NODE_PLAN = (
-    "tests/scenarios/public-plugin-runtime.js",
-    "tests/fsrs-contract-parity.spec.js",
-    "tests/fsrs-reference-parity.spec.js",
-    "tests/fsrs-integration.spec.js",
-    "tests/fsrs-optimizer-core.spec.js",
-    "tests/fsrs-optimizer-policy.spec.js",
-    "tests/fsrs-programme-closure.spec.js",
-    "tests/fsrs-scale-benchmark.spec.js",
-    "tests/kernel-policy.spec.js",
-    "tests/scenarios/adaptive-planning.js",
-    "tests/scenarios/planning-persistence-validation.js",
-    "tests/scenarios/backup-codec.js",
-    "tests/scenarios/backup-controller.js",
-    "tests/scenarios/data-safety-controller.js",
-    "tests/planning.spec.js",
-    "tests/planner-properties.spec.js",
-    "tests/runtime-harness-ownership.spec.js",
-    "tests/scenarios/production-contracts-storage.js",
-    "tests/scenarios/active-retrieval-persistence.js",
-    "tests/scenarios/phase-time-runtime.js",
-    "tests/scenarios/ownership-storage-health.js",
-    "tests/scenarios/reliability-closure.js",
-    "tests/scenarios/presentation-kernel.js",
-)
+CORE_DOMAIN_PLAN = {
+    # Primary owners grouped by product risk; do not duplicate a test entrypoint.
+    "public-api-and-architecture": (
+        "tests/scenarios/public-plugin-runtime.js",
+        "tests/runtime-harness-ownership.spec.js",
+    ),
+    "fsrs-scheduler-and-optimizer": (
+        "tests/fsrs-contract-parity.spec.js",
+        "tests/fsrs-reference-parity.spec.js",
+        "tests/fsrs-integration.spec.js",
+        "tests/fsrs-optimizer-core.spec.js",
+        "tests/fsrs-optimizer-policy.spec.js",
+        "tests/fsrs-programme-closure.spec.js",
+        "tests/fsrs-scale-benchmark.spec.js",
+    ),
+    "planner": (
+        "tests/scenarios/adaptive-planning.js",
+        "tests/scenarios/planning-persistence-validation.js",
+        "tests/planning.spec.js",
+        "tests/planner-properties.spec.js",
+    ),
+    "backup-and-data-safety": (
+        "tests/scenarios/backup-codec.js",
+        "tests/scenarios/backup-controller.js",
+        "tests/scenarios/data-safety-controller.js",
+    ),
+    "domain-policy": (
+        "tests/kernel-policy.spec.js",
+    ),
+    "persistence-recovery-and-time": (
+        "tests/scenarios/production-contracts-storage.js",
+        "tests/scenarios/active-retrieval-persistence.js",
+        "tests/scenarios/phase-time-runtime.js",
+        "tests/scenarios/ownership-storage-health.js",
+        "tests/scenarios/reliability-closure.js",
+    ),
+    "presentation": (
+        "tests/scenarios/presentation-kernel.js",
+    ),
+}
+
+CORE_NODE_PLAN = tuple(path for group in CORE_DOMAIN_PLAN.values() for path in group)
 
 BROWSER_PLAN = (
     "tests/scenarios/backup-codec.py",
