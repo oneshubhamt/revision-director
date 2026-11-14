@@ -34,10 +34,10 @@ def read_state(page):
             request.onsuccess=()=>resolve(request.result);
             request.onerror=()=>reject(request.error||new Error('IndexedDB read failed: '+store));
           });
-          const [units,obligations,evidenceEvents]=await Promise.all([
-            read('units'),read('obligations'),read('evidenceEvents')
+          const [units,obligations,evidenceEvents,activeRetrieval]=await Promise.all([
+            read('units'),read('obligations'),read('evidenceEvents'),read('activeRetrieval')
           ]);
-          return {units,obligations,evidenceEvents};
+          return {units,obligations,evidenceEvents,activeRetrieval};
         }"""
     )
 
@@ -105,8 +105,16 @@ def scenario_corrective_memory_e2e(browser) -> None:
     check(memory["policyState"]["fsrsCard"]["scheduleStatus"] == "new", "Browser closure memory must begin with New schedule status")
 
     start_obligation(page, memory_id)
+    qa.wait_until(
+        page,
+        lambda: bool(read_state(page)["activeRetrieval"])
+        and read_state(page)["activeRetrieval"][0].get("activeTargetId") == memory_id,
+        timeout=8_000,
+        interval=50,
+        message="Direct memory recall did not publish its active retrieval state",
+    )
     active_state = read_state(page)
-    active_target = active_state["activeRetrieval"]["activeTargetId"]
+    active_target = active_state["activeRetrieval"][0]["activeTargetId"]
     active_obligation = next(item for item in active_state["obligations"] if item["id"] == active_target)
     check(active_target == memory_id and active_obligation["workflow"]["kind"] == "recall", "Direct memory recall did not start")
     if page.locator("#attempt-completed").count():
