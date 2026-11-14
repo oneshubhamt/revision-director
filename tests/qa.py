@@ -345,6 +345,7 @@ def browser() -> None:
     # browser contexts: each scenario still has isolated storage and JS state.
     context = nullcontext() if os.environ.get("REVISION_DIRECTOR_CDP_ENDPOINT") else shared_chromium()
     with context:
+        run(sys.executable, "tools/qa-mutation-probes.py")
         for path in BROWSER_PLAN:
             run(sys.executable, path)
 
