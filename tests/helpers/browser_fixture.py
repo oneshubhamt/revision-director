@@ -3,10 +3,9 @@ from pathlib import Path
 from datetime import date, timedelta
 from tempfile import TemporaryDirectory
 from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
-from helpers.browser_harness import open_rendered_pane, select_backup_file, wait_for_app_ready, wait_for_layout, wait_for_toast_outcome, wait_until
+from helpers.browser_harness import open_html_page, wait_for_toast_outcome, wait_until
 from helpers.simulated_storage import simulated_state_all, simulated_state_get, simulated_storage_html
 
-ROOT = Path(__file__).resolve().parents[2]
 BASELINE_BACKUP = baseline_backup_path()
 HTML = simulated_storage_html()
 
@@ -102,13 +101,9 @@ def restore_selected_backup(page, backup_path: str | Path, treatment: str = "dis
     )
 
 def open_page(browser, viewport=None, baseline: bool = False):
-    page = browser.new_page(viewport=viewport or {"width": 1440, "height": 1000})
-    errors: list[tuple[str, str]] = []
-    page.on("console", lambda message: errors.append((message.type, message.text)) if message.type in ("error", "warning") else None)
-    page.on("pageerror", lambda error: errors.append(("pageerror", str(error))))
-    page.on("dialog", lambda dialog: dialog.accept())
-    page.set_content(HTML, wait_until="load")
-    wait_for_app_ready(page)
+    page, errors = open_html_page(
+        browser, HTML, viewport=viewport, default_timeout=30_000, include_warnings=True
+    )
     if baseline:
         page.locator('[data-pane="settings"]').click()
         page.locator("#pane-settings").wait_for(state="visible")

@@ -7,11 +7,8 @@ import time
 from typing import Callable
 
 from playwright.sync_api import Browser, Page, Playwright
-from backup_fixture_codec import baseline_backup_path
 
 ROOT = Path(__file__).resolve().parents[2]
-TESTS = ROOT / "tests"
-BASELINE_BACKUP = baseline_backup_path()
 DEFAULT_CHROMIUM_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"]
 
 
