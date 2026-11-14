@@ -1,18 +1,12 @@
 from __future__ import annotations
 from pathlib import Path
-import importlib.util
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT / "tests"))
 from helpers.browser_harness import launch_chromium
-QA_PATH = ROOT / "tests" / "browser-qa.spec.py"
-spec = importlib.util.spec_from_file_location("revision_director_browser_qa", QA_PATH)
-if spec is None or spec.loader is None:
-    raise RuntimeError("Could not load browser QA helpers")
-qa = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(qa)
+from helpers import browser_fixture as qa
 
 
 def check(condition: bool, message: str) -> None:

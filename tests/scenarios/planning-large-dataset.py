@@ -12,7 +12,6 @@ sys.path.insert(0, str(TESTS))
 from helpers.browser_harness import (
     ROOT,
     launch_chromium,
-    load_browser_qa,
     open_html_page,
     open_rendered_pane,
     wait_for_app_ready,
@@ -20,9 +19,7 @@ from helpers.browser_harness import (
     wait_for_layout,
     wait_until as shared_wait_until,
 )
-# Reuse the exact deterministic IndexedDB-compatible HTML fixture from the main browser suite.
-main_qa = load_browser_qa("revision_director_planning_large_dataset")
-HTML = main_qa.HTML
+from helpers.browser_fixture import HTML
 PERFORMANCE_HTML = HTML.replace(
     "void boot();",
     "window.__RD_PERF_QA__={RevisionData,Store,boot};",

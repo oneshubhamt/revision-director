@@ -6,11 +6,9 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, launch_chromium, load_browser_qa, open_html_page, open_rendered_pane, wait_for_layout, wait_until
-base = load_browser_qa("revision_director_ui_runtime_accessibility")
-INDEXEDDB_SHIM = base.INDEXEDDB_SHIM
+from helpers.browser_harness import ROOT, launch_chromium, open_html_page, open_rendered_pane, wait_for_layout, wait_until
+from helpers.browser_fixture import INDEXEDDB_SHIM, restore_selected_backup
 BASELINE_BACKUP = baseline_backup_path()
-restore_selected_backup = base.restore_selected_backup
 CLOCK_SHIM = r"""
 <script>
 (() => {

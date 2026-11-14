@@ -6,10 +6,9 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, load_browser_qa, wait_for_app_ready, wait_for_layout
-base=load_browser_qa("revision_director_responsive_layout")
-HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+base.INDEXEDDB_SHIM,1)
-restore_selected_backup=base.restore_selected_backup
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_for_layout
+from helpers.browser_fixture import INDEXEDDB_SHIM, restore_selected_backup
+HTML=(ROOT/'index.html').read_text().replace('<head>','<head>'+INDEXEDDB_SHIM,1)
 BASELINE = baseline_backup_path()
 CHECKS=0
 

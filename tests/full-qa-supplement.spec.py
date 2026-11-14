@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from playwright.sync_api import Browser, Page, sync_playwright
-from helpers.browser_harness import load_browser_qa, launch_chromium, wait_for_app_ready, wait_for_layout
+from helpers.browser_harness import launch_chromium, wait_for_app_ready, wait_for_layout
+from helpers.browser_fixture import HTML
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN_QA = load_browser_qa("revision_director_browser_qa_supplement")
 
 CHECKS = 0
 
@@ -30,7 +30,7 @@ def open_page(browser: Browser) -> tuple[Page, list[str]]:
         else None,
     )
     page.on("dialog", lambda dialog: dialog.accept())
-    page.set_content(MAIN_QA.HTML, wait_until="load")
+    page.set_content(HTML, wait_until="load")
     wait_for_app_ready(page)
     check(not page.locator("#fatal-error").is_visible(), "Fatal startup error")
     return page, errors
