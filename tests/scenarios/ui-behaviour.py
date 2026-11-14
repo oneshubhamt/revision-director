@@ -6,7 +6,7 @@ TESTS = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(TESTS))
 from backup_fixture_codec import baseline_backup_path
-from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, wait_for_app_ready, wait_for_layout, wait_until
+from helpers.browser_harness import ROOT, accept_dialogs, capture_browser_errors, launch_chromium, open_rendered_pane, wait_for_app_ready, wait_for_layout, wait_until
 from helpers.browser_fixture import open_page as open_fixture_page, restore_selected_backup
 from helpers.simulated_storage import simulated_storage_html
 CLOCK=r'''<script>(()=>{let current=Date.now();Date.now=()=>current;window.__RD_UI_BEHAVIOUR_CLOCK__={advance(ms){current+=Number(ms)||0;return current;}};})();</script>'''
@@ -111,22 +111,39 @@ def main():
   check(page.locator('[role=tab][tabindex="0"]').count()==1,'Roving tabindex invalid')
 
   # Delegated action remains exactly-once after ordinary pane navigation.
-  page.locator('[data-pane="settings"]').click()
-  page.locator('#pane-settings').wait_for(state='visible')
+  open_rendered_pane(page, "settings")
   page.locator('#new-profile-name').wait_for(state='visible')
   before_profiles=page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
   before_ids={profile['id'] for profile in before_profiles}
   page.locator('#new-profile-name').fill('Delegated action profile')
   page.locator('#new-profile-date').fill('2029-01-01')
-  page.evaluate("document.querySelector('#toast').textContent=''")
-  page.locator('[data-action=add-profile]').click()
   wait_until(
    page,
-   lambda: len(page.evaluate("async()=>await RevisionDirector.records.listProfiles()"))==len(before_profiles)+1,
-   timeout=5000,
-   interval=40,
-   message='Delegated add-profile action did not create exactly one record',
+   lambda: page.locator('#new-profile-name').input_value()=='Delegated action profile'
+   and page.locator('#new-profile-date').input_value()=='2029-01-01'
+   and page.locator('[data-action=add-profile]').is_enabled()
+   and page.evaluate("document.documentElement.dataset.reviewOwnership")=='primary',
+   timeout=5000, interval=40,
+   message='Profile creation controls were not ready for the primary owner',
   )
+  page.evaluate("document.querySelector('#toast').textContent=''")
+  page.locator('[data-action=add-profile]').click()
+  try:
+   wait_until(
+    page,
+    lambda: len(page.evaluate("async()=>await RevisionDirector.records.listProfiles()"))==len(before_profiles)+1,
+    timeout=8000, interval=40,
+    message='Delegated add-profile action did not create exactly one record',
+   )
+  except AssertionError as error:
+   observed=page.evaluate("""async()=>({
+     profiles:(await RevisionDirector.records.listProfiles()).map(p=>({id:p.id,name:p.name})),
+     ownership:document.documentElement.dataset.reviewOwnership,
+     name:document.querySelector('#new-profile-name')?.value,
+     date:document.querySelector('#new-profile-date')?.value,
+     toast:document.querySelector('#toast')?.textContent
+   })""")
+   raise AssertionError(f"Profile creation did not converge after a ready click: {observed}, errors={errors}") from error
   after_profiles=page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
   added=[profile for profile in after_profiles if profile['id'] not in before_ids]
   check(len(added)==1 and added[0]['name']=='Delegated action profile','Delegated action duplicated or created the wrong profile')
