@@ -10,6 +10,7 @@ from helpers.browser_harness import (
     ROOT,
     capture_browser_errors,
     launch_chromium,
+    open_rendered_pane,
     wait_for_toast_outcome,
     wait_until as shared_wait_until,
 )
@@ -57,7 +58,7 @@ def exercise_intake_and_profile_summary(browser) -> None:
         check(result != "accepted", f"Invalid bridge payload accepted: {payload}")
     result = page.evaluate('async()=>RevisionDirector.intake.importStudyEvent({area:"Geology",task:"Bridge event",measure:"1 topic",durationMinutes:25,activityMode:"review",understanding:3})')
     check(bool(result.get("id")), "Valid bridge Study Event failed")
-    page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
+    open_rendered_pane(page, "settings")
     profile_ids = page.locator("[data-profile-editor]").evaluate_all(
         "rows => rows.map(row => row.getAttribute('data-profile-editor')).filter(Boolean)"
     )
@@ -66,18 +67,48 @@ def exercise_intake_and_profile_summary(browser) -> None:
         row = page.locator(f'[data-profile-editor="{profile_id}"]')
         check(row.count() == 1, f"Profile editor is missing durable identity: {profile_id}")
         row.locator("[data-profile-status]").select_option("suspended")
+        shared_wait_until(
+            page,
+            lambda: row.locator("[data-profile-status]").input_value() == "suspended"
+            and row.locator('[data-action="save-profile"]').is_enabled()
+            and page.evaluate("document.documentElement.dataset.reviewOwnership") == "primary",
+            timeout=5_000,
+            interval=40,
+            message=f"Profile editor was not ready to suspend {profile_id}",
+        )
         page.evaluate("document.querySelector('#toast').textContent=''")
         row.locator('[data-action="save-profile"]').click()
+        try:
+            shared_wait_until(
+                page,
+                lambda: next(
+                    (profile["status"] for profile in page.evaluate(
+                        "async()=>await RevisionDirector.records.listProfiles()"
+                    ) if profile["id"] == profile_id), None
+                ) == "suspended",
+                timeout=8_000,
+                interval=40,
+                message=f"Profile suspension did not reach durable state: {profile_id}",
+            )
+        except AssertionError as error:
+            diagnostic = page.evaluate("""async (profileId) => ({
+                profiles:await RevisionDirector.records.listProfiles(),
+                ownership:document.documentElement.dataset.reviewOwnership,
+                selected:document.querySelector('[data-profile-editor="' + profileId + '"] [data-profile-status]')?.value,
+                toast:document.querySelector('#toast')?.textContent
+            })""", profile_id)
+            raise AssertionError(f"Suspension failed for {profile_id}: {diagnostic}, errors={errors}") from error
         wait_for_toast_outcome(
             page,
             expect_error=False,
             timeout=8_000,
             message=f"Profile suspension did not report successful completion: {profile_id}",
         )
-        profiles_after_save = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
         check(
-            next((profile["status"] for profile in profiles_after_save if profile["id"] == profile_id), None) == "suspended",
-            f"Successful profile save did not persist suspension: {profile_id} · {profiles_after_save}",
+            next((profile["status"] for profile in page.evaluate(
+                "async()=>await RevisionDirector.records.listProfiles()"
+            ) if profile["id"] == profile_id), None) == "suspended",
+            f"Profile suspension did not remain durable: {profile_id}",
         )
     profiles = page.evaluate("async()=>await RevisionDirector.records.listProfiles()")
     check(all(profile["status"] == "suspended" for profile in profiles), f"Public profile summary did not preserve both suspensions: {profiles}")
