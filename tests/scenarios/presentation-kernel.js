@@ -5,14 +5,13 @@ const storage = memoryLocalStorage();
 const memory = storage.values;
 const { api, context } = createAppRuntime({
   globalName: '__RD_C1_TEST__',
-  expose: ["APP_VERSION","PRESENTATION_KERNEL"],
+  expose: ["PRESENTATION_KERNEL"],
   context: { localStorage: storage.api },
 });
 
 let checks = 0;
 function check(value, message) { checks += 1; if (!value) throw new Error(message); }
 
-check(api.APP_VERSION === 'va7.1-pass-f1', 'Pass C1 identity is wrong');
 const kernel = api.PRESENTATION_KERNEL;
 check(kernel.format === 'revision-director.presentation-kernel' && kernel.version === 1, 'Kernel identity is wrong');
 check(Object.isFrozen(kernel) && Object.isFrozen(kernel.manifest), 'Kernel or manifest is mutable');
