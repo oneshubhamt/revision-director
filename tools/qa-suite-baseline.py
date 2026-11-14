@@ -77,6 +77,7 @@ def main() -> None:
         "selectedGroups": args.groups,
         "repeat": args.repeat,
         "samples": [],
+        "setups": [],
     }
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "tests") + (
@@ -125,6 +126,15 @@ def main() -> None:
     try:
         for iteration in range(1, args.repeat + 1):
             for group in args.groups:
+                if group in ("browser", "deep"):
+                    begin_setup = time.perf_counter()
+                    qa.prepare_hosted_optimizer()
+                    data["setups"].append({
+                        "group": group, "iteration": iteration,
+                        "step": "prepare-hosted-optimizer",
+                        "wallSeconds": round(time.perf_counter() - begin_setup, 3),
+                    })
+                    save()
                 if group == "core":
                     for label, cmd in [
                         ("build", [sys.executable, "build/build.py"]),

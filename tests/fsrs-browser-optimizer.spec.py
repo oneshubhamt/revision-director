@@ -4,9 +4,6 @@ from pathlib import Path
 from threading import Thread
 import argparse
 import json
-import os
-import shutil
-import subprocess
 from playwright.sync_api import sync_playwright
 from helpers.browser_harness import launch_chromium
 
@@ -18,17 +15,13 @@ def check(value: bool, message: str) -> None:
         raise AssertionError(message)
 
 def ensure_hosted() -> None:
-    if (HOSTED / "index.html").is_file():
-        return
-    if os.environ.get("CI") != "true":
-        raise AssertionError("Build Revision_Director_Hosted first.")
-    subprocess.run(
-        ["npm", "ci", "--prefix", "tools/fsrs-optimizer", "--no-audit", "--no-fund"],
-        cwd=ROOT,
-        check=True,
-    )
-    subprocess.run(["npm", "run", "build:hosted"], cwd=ROOT, check=True)
-    check((HOSTED / "index.html").is_file(), "CI failed to build Revision_Director_Hosted.")
+    required = ("index.html", "fsrs-optimizer.worker.js", "fsrs-binding.wasm32-wasip1.wasm")
+    missing = [name for name in required if not (HOSTED / name).is_file()]
+    if missing:
+        raise AssertionError(
+            "Hosted optimizer assets are missing: " + ", ".join(missing)
+            + ". Prepare them with `npm run build:hosted` before running this test directly."
+        )
 
 def evidence_csv(full: bool) -> str:
     rows: list[tuple[int, str]] = []

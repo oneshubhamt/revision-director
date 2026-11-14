@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import os
@@ -13,10 +13,14 @@ from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
+OPTIMIZER_WASM = ROOT / "tools/fsrs-optimizer/node_modules/@open-spaced-repetition/binding-wasm32-wasip1/fsrs-binding.wasm32-wasip1.wasm"
+_OPTIMIZER_DEPENDENCIES_READY = False
+_HOSTED_PREPARED = False
 
 STATIC_PYTHON = (
     "tests/build-integrity.spec.py",
     "tests/html-sanity.spec.py",
+    "tests/qa-runner.spec.py",
 )
 
 CORE_NODE_PLAN = (
@@ -180,7 +184,30 @@ def core() -> None:
         run("node", path)
 
 
+def ensure_optimizer_dependencies() -> None:
+    """Install the isolated, locked optimizer dependency once, only if absent."""
+    global _OPTIMIZER_DEPENDENCIES_READY
+    if _OPTIMIZER_DEPENDENCIES_READY:
+        return
+    if not OPTIMIZER_WASM.is_file():
+        run("npm", "ci", "--prefix", "tools/fsrs-optimizer", "--no-audit", "--no-fund")
+    _OPTIMIZER_DEPENDENCIES_READY = True
+
+
+def prepare_hosted_optimizer() -> None:
+    """Explicit runner-owned preparation; tests must not install or build."""
+    global _HOSTED_PREPARED
+    if _HOSTED_PREPARED:
+        return
+    ensure_optimizer_dependencies()
+    # The root application was built by the normal core/CI prerequisite.
+    # Do not invoke build:hosted, which would compile the root application again.
+    run("node", "build/build-hosted.mjs")
+    _HOSTED_PREPARED = True
+
+
 def optimizer() -> None:
+    ensure_optimizer_dependencies()
     run("npm", "run", "--prefix", "tools/fsrs-optimizer", "smoke")
 
 
@@ -190,7 +217,11 @@ def durability() -> None:
 
 def browser() -> None:
     assert_test_topology()
-    with shared_chromium():
+    prepare_hosted_optimizer()
+    # A full run already owns Chromium. Preserve independent subprocesses and
+    # browser contexts: each scenario still has isolated storage and JS state.
+    context = nullcontext() if os.environ.get("REVISION_DIRECTOR_CDP_ENDPOINT") else shared_chromium()
+    with context:
         for path in BROWSER_PLAN:
             run(sys.executable, path)
 
@@ -203,20 +234,22 @@ def performance() -> None:
 
 def deep() -> None:
     assert_test_topology()
-    run(sys.executable, "tools/qa-mutation-probes.py")  # Pass E diagnostic; remove after independent verification.
+    # Mutation challenges are still a required deep verification, once.
+    run(sys.executable, "tools/qa-mutation-probes.py")
     for path in DEEP_NODE_PLAN:
         run("node", path)
+    prepare_hosted_optimizer()
     run(sys.executable, "tests/fsrs-browser-optimizer.spec.py", "full")
-    run("npm", "ci", "--prefix", "tools/fsrs-optimizer", "--no-audit", "--no-fund")  # Pass E profiling only.
-    run(sys.executable, "tools/qa-baseline.py")  # Remove these two lines after measurement.
 
 
 def full() -> None:
     core()
     optimizer()
-    durability()
-    browser()
-    performance()
+    prepare_hosted_optimizer()
+    with shared_chromium():
+        durability()
+        browser()
+        performance()
     deep()
 
 
