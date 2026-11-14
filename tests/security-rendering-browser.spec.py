@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from playwright.sync_api import Browser, Page, sync_playwright
-from helpers.browser_harness import launch_chromium, wait_for_app_ready, wait_for_layout
+from helpers.browser_harness import launch_chromium, wait_for_app_ready, wait_for_layout, wait_until
 from helpers.browser_fixture import BASELINE_BACKUP, HTML, restore_selected_backup
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -110,6 +110,13 @@ def verify_stored_content_escaping(page: Page) -> None:
     page.locator('[data-pane="library"]').click()
     page.locator("#pane-library").wait_for(state="visible")
     library = page.locator("#library-content")
+    wait_until(
+        page,
+        lambda: '<svg onload=alert(1)>Visible title' in library.inner_text(),
+        timeout=5_000,
+        interval=40,
+        message="Escaped stored content did not reach the rendered Library",
+    )
     check(library.locator("script,iframe,svg,img").count() == 0, "Stored markup became active")
     check(
         '<svg onload=alert(1)>Visible title' in library.inner_text(),
