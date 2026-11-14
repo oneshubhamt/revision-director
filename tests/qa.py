@@ -146,9 +146,13 @@ QA_FOOTPRINT_BUDGET = {
     "browser_entrypoints": 20,
 }
 
-def run(*command: str) -> None:
+def run(*command: str, isolated_browser: bool = False) -> None:
     print("==>", " ".join(command), flush=True)
     env = os.environ.copy()
+    if isolated_browser:
+        # CDP dialogs are browser-global across independent Playwright
+        # connections; two workers must not share the same Chromium process.
+        env.pop("REVISION_DIRECTOR_CDP_ENDPOINT", None)
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(TESTS) + (os.pathsep + existing if existing else "")
     started = time.perf_counter()
@@ -330,7 +334,7 @@ def browser() -> None:
         # Each subprocess creates its own browser context and storage. The
         # privileged/recovery/UI stress scenarios run in an isolated serial tail.
         with ThreadPoolExecutor(max_workers=BROWSER_SAFE_WORKERS) as pool:
-            list(pool.map(lambda path: run(sys.executable, path), BROWSER_PARALLEL_PLAN))
+            list(pool.map(lambda path: run(sys.executable, path, isolated_browser=True), BROWSER_PARALLEL_PLAN))
         for path in BROWSER_SERIAL_PLAN:
             run(sys.executable, path)
 

@@ -35,14 +35,15 @@ def fake_chromium(events: list[str]):
         events.append("chromium-stop")
 
 
-def exercise(action, *, dependency_present: bool) -> tuple[list[tuple[str, ...]], list[str]]:
+def exercise(action, *, dependency_present: bool) -> tuple[list[tuple[str, ...]], list[str], list[tuple[str, ...]]]:
     commands: list[tuple[str, ...]] = []
     events: list[str] = []
+    isolated: list[tuple[str, ...]] = []
     original_hosted_ready = qa._HOSTED_PREPARED
     original_endpoint = os.environ.pop("REVISION_DIRECTOR_CDP_ENDPOINT", None)
     try:
         with (
-            patch.object(qa, "run", side_effect=lambda *args: commands.append(args)),
+            patch.object(qa, "run", side_effect=lambda *args, **kw: (commands.append(args), isolated.append(args) if kw.get("isolated_browser") else None)),
             patch.object(qa, "shared_chromium", side_effect=lambda: fake_chromium(events)),
             patch.object(qa, "OPTIMIZER_WASM", SimpleNamespace(is_file=lambda: dependency_present)),
         ):
@@ -54,7 +55,7 @@ def exercise(action, *, dependency_present: bool) -> tuple[list[tuple[str, ...]]
             os.environ["REVISION_DIRECTOR_CDP_ENDPOINT"] = original_endpoint
         else:
             os.environ.pop("REVISION_DIRECTOR_CDP_ENDPOINT", None)
-    return commands, events
+    return commands, events, isolated
 
 
 def count(commands: list[tuple[str, ...]], target: tuple[str, ...]) -> int:
@@ -91,7 +92,7 @@ check(set(qa.SIMULATED_STORAGE_BROWSER_PLAN)
          | set(qa.PERFORMANCE_BROWSER_PLAN),
       "Simulated-storage ownership does not cover every non-native browser gate")
 
-commands, events = exercise(qa.full, dependency_present=True)
+commands, events, isolated = exercise(qa.full, dependency_present=True)
 for path in qa.STATIC_PYTHON:
     check(count(commands, (sys.executable, path)) == 1, f"Static test repeated: {path}")
 for path in qa.CORE_NODE_PLAN:
@@ -120,11 +121,15 @@ check(not any("qa-baseline.py" in " ".join(item) for item in commands),
       "Deep test recursively invokes the full-suite profiler")
 check(events == ["chromium-start", "chromium-stop"],
       "Full run did not reuse a single shared Chromium session")
+check({item[1] for item in isolated} == set(qa.BROWSER_PARALLEL_PLAN),
+      "Full QA failed to isolate independent browser processes from the shared CDP endpoint")
+check(not any(item[1] in qa.BROWSER_SERIAL_PLAN for item in isolated),
+      "Recovery/native/ownership witnesses escaped the serial shared-CDP contract")
 check(commands.index(("node", "build/build-hosted.mjs"))
       < commands.index((sys.executable, qa.BROWSER_PLAN[0])),
       "Hosted assets were prepared after browser tests")
 
-commands, events = exercise(qa.browser, dependency_present=True)
+commands, events, isolated = exercise(qa.browser, dependency_present=True)
 check(events == ["chromium-start", "chromium-stop"],
       "Standalone browser suite did not own exactly one Chromium")
 check(not any(item[:2] == ("npm", "ci") for item in commands),
@@ -133,6 +138,19 @@ check(count(commands, ("node", "build/build-hosted.mjs")) == 1,
       "Standalone browser did not prepare hosted assets exactly once")
 check(len([item for item in commands if item[:1] == (sys.executable,)]) == len(qa.BROWSER_PLAN),
       "Standalone browser plan missed or added test entrypoints")
+check({item[1] for item in isolated} == set(qa.BROWSER_PARALLEL_PLAN),
+      "Standalone browser did not isolate each concurrently scheduled browser owner")
+
+captured_environment: list[dict[str, str]] = []
+with (
+    patch.dict(os.environ, {"REVISION_DIRECTOR_CDP_ENDPOINT": "http://127.0.0.1:9000"}),
+    patch.object(qa.subprocess, "run",
+                 side_effect=lambda *args, **kwargs: captured_environment.append(kwargs["env"])),
+):
+    qa.run(sys.executable, "tests/scenarios/backup-codec.py", isolated_browser=True)
+check(len(captured_environment) == 1
+      and "REVISION_DIRECTOR_CDP_ENDPOINT" not in captured_environment[0],
+      "Isolated browser child inherited the shared Chromium CDP endpoint")
 
 missing_commands: list[tuple[str, ...]] = []
 with (
