@@ -188,7 +188,7 @@ def main():
         # Corrupt current relational state after inspection: the controller must provide a forensic rescue, not deadlock.
         ensure_settings(page)
         open_restore_preview(page, FIXTURE)
-        page.evaluate("""async()=>{const db=await new Promise((res,rej)=>{const r=indexedDB.open('revision-director',1);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});await new Promise((res,rej)=>{const tx=db.transaction(['profiles'],'readwrite');tx.objectStore('profiles').put({schemaVersion:1,id:'corrupt-profile'});tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});}""")
+        page.evaluate("""async()=>{const db=await new Promise((res,rej)=>{const r=indexedDB.open('revision-director');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});await new Promise((res,rej)=>{const tx=db.transaction(['profiles'],'readwrite');tx.objectStore('profiles').put({schemaVersion:1,id:'corrupt-profile'});tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});}""")
         rescue=safety_download(page,tmp)
         check(rescue.suffix=='.rdrescue','Corrupted state did not create .rdrescue')
         rescue_obj=json.loads(rescue.read_text())

@@ -47,32 +47,6 @@ def wait_until(frame, predicate, timeout=8000):
     )
 
 
-def idb_get(frame, store: str, key: str):
-    return frame.evaluate("""async ([store,key]) => await new Promise((resolve,reject) => {
-      const open=indexedDB.open('revision-director',2);
-      open.onerror=()=>reject(open.error);
-      open.onsuccess=()=>{
-        const tx=open.result.transaction(store,'readonly');
-        const request=tx.objectStore(store).get(key);
-        request.onerror=()=>reject(request.error);
-        request.onsuccess=()=>resolve(request.result || null);
-      };
-    })""", [store,key])
-
-
-def idb_all(frame, store: str):
-    return frame.evaluate("""async (store) => await new Promise((resolve,reject) => {
-      const open=indexedDB.open('revision-director',2);
-      open.onerror=()=>reject(open.error);
-      open.onsuccess=()=>{
-        const tx=open.result.transaction(store,'readonly');
-        const request=tx.objectStore(store).getAll();
-        request.onerror=()=>reject(request.error);
-        request.onsuccess=()=>resolve(request.result || []);
-      };
-    })""", store)
-
-
 
 def boot_frame(page):
     frame = create_simulated_frame(

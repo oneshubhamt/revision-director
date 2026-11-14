@@ -270,12 +270,21 @@ def assert_test_topology() -> None:
         raise AssertionError("Legacy simulated-storage APIs remain: " + "; ".join(legacy_storage_sources))
 
     bypasses = []
+    pinned_database_opens = []
+    pinned_open = re.compile(r"indexedDB\.open\(\s*['\"]revision-director['\"]\s*,")
     for relative in SIMULATED_STORAGE_BROWSER_PLAN:
         source = (ROOT / relative).read_text()
         if "browser_fixture" not in source and "simulated_storage" not in source:
             bypasses.append(relative)
+        if pinned_open.search(source):
+            pinned_database_opens.append(relative)
     if bypasses:
         raise AssertionError("Simulated browser entrypoints bypass canonical storage: " + ", ".join(bypasses))
+    if pinned_database_opens:
+        raise AssertionError(
+            "Simulated browser tests pin the application IndexedDB version: "
+            + ", ".join(pinned_database_opens)
+        )
 
     native_coupling = []
     for relative in NATIVE_INDEXEDDB_BROWSER_PLAN:
