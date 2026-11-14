@@ -64,6 +64,12 @@ def count(commands: list[tuple[str, ...]], target: tuple[str, ...]) -> int:
     return commands.count(target)
 
 
+check(tuple(path for group in qa.CORE_DOMAIN_PLAN.values() for path in group) == qa.CORE_NODE_PLAN,
+      "Core domain ownership map differs from executable plan")
+check(len(set(qa.CORE_NODE_PLAN)) == len(qa.CORE_NODE_PLAN),
+      "A Node entrypoint is assigned to multiple product domains")
+check(all(qa.CORE_DOMAIN_PLAN.values()), "Core domain ownership contains an empty group")
+
 commands, events = exercise(qa.full, dependency_present=False)
 for path in qa.STATIC_PYTHON:
     check(count(commands, (sys.executable, path)) == 1, f"Static test repeated: {path}")
@@ -83,6 +89,8 @@ check(count(commands, ("npm", "ci", "--prefix", "tools/fsrs-optimizer", "--no-au
       "Optimizer dependencies installed more than once")
 check(count(commands, ("node", "build/build-hosted.mjs")) == 1,
       "Hosted assets built more than once")
+check(count(commands, ("node", "tests/fsrs-scale-benchmark.spec.js", "--performance")) == 1,
+      "Dedicated deep-scale performance witness is missing or repeated")
 check(count(commands, (sys.executable, "tools/qa-mutation-probes.py")) == 1,
       "Deep mutation tests were lost or repeated")
 check(count(commands, (sys.executable, "tests/fsrs-browser-optimizer.spec.py", "full")) == 1,
