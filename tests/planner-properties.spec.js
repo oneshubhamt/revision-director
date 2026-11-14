@@ -231,16 +231,18 @@ for (let caseIndex = 0; caseIndex < METAMORPHIC_CASES; caseIndex += 1) {
   for (const currentCapacity of [capacity,capacity + 10,capacity + 25]) {
     const actual = api.choosePlanItems(candidates,currentCapacity);
     assertPartition(candidates,actual,'metamorphic case ' + caseIndex);
-    const transformed = candidates.map(candidate => ({
-      ...candidate,score:candidate.score * 3,
-      joined:{...candidate.joined,obligation:{
+    const scaled = candidates.map(candidate => ({...candidate,score:candidate.score * 3}));
+    const shifted = candidates.map(candidate => ({
+      ...candidate, joined:{...candidate.joined,obligation:{
         ...candidate.joined.obligation,
         dueAt:new Date(Date.parse(candidate.joined.obligation.dueAt) + 7*86400000).toISOString(),
       }},
     }));
-    const changed = api.choosePlanItems(transformed,currentCapacity);
-    check(JSON.stringify(canonicalResult(actual)) === JSON.stringify(canonicalResult(changed)),
-      'Uniform score/calendar translation changed selected work in case ' + caseIndex);
+    for (const [property,variant] of [['positive score scaling',scaled],['calendar translation',shifted]]) {
+      check(JSON.stringify(canonicalResult(actual)) === JSON.stringify(
+        canonicalResult(api.choosePlanItems(variant,currentCapacity))),
+        property + ' changed the selected work in case ' + caseIndex);
+    }
     const foundCritical = selectedObjective(actual.selected.filter(critical));
     const oracleCritical = bruteForce(candidates.filter(critical),currentCapacity);
     check(foundCritical.value === oracleCritical.value && foundCritical.used === oracleCritical.used,

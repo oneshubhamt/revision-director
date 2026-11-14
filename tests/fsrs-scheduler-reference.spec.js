@@ -133,7 +133,6 @@ async function seededParity() {
       upstreamCard = referenceResult.card;
     }
   }
-  console.log('PASS ' + checks + ' upstream FSRS reference/parity checks across ' + SEQUENCES + ' seeded sequences');
 }
 
 
@@ -191,4 +190,5 @@ async function retentionMatrixParity() {
   await explicitTransitionBoundary();
   await seededParity();
   await retentionMatrixParity();
+  console.log('PASS ' + checks + ' upstream FSRS checks: 12 seeded baseline sequences and 3 fixed-retention matrices');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
