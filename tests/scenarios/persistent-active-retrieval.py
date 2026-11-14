@@ -219,9 +219,11 @@ def main() -> None:
             and state_get(page, "activeRetrieval", "current") is None,
             timeout=5000,
         )
-        wait_until(frame, lambda: frame.locator(".review-card").count() == 0)
-        check(not frame.locator("#pane-review").is_visible(),
-              "Manual end cleared storage but left the unfinished review visible")
+        # A finished session navigates to Today; the Review pane is allowed
+        # to retain an idle placeholder, but must not remain the active view.
+        wait_until(frame, lambda: frame.locator("#pane-today").is_visible())
+        check(frame.locator("#pane-review").is_hidden(),
+              "Manual end cleared storage but did not leave the active Review pane")
         check(not browser_errors, f"Browser errors: {browser_errors}")
 
         context.close()
