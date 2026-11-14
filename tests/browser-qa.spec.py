@@ -6,7 +6,7 @@ import os
 import json
 from backup_fixture_codec import baseline_backup_path, decode_file, encode_payload
 from playwright.sync_api import sync_playwright
-from helpers.browser_harness import launch_chromium, select_backup_file, wait_for_app_ready, wait_for_layout, wait_until
+from helpers.browser_harness import launch_chromium, open_rendered_pane, select_backup_file, wait_for_app_ready, wait_for_layout, wait_until
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_HTML = (ROOT / "index.html").read_text()
@@ -130,6 +130,18 @@ def open_page(browser, viewport=None, baseline: bool = False):
             restore_selected_backup(page, current_fixture)
         check("restored" in page.locator("#toast").inner_text().lower(), "Baseline fixture restore failed")
     return page, errors
+
+
+def stored_scheduling_policy(page):
+    return page.evaluate("""async () => await new Promise((resolve, reject) => {
+      const opened = indexedDB.open('revision-director');
+      opened.onerror = () => reject(opened.error);
+      opened.onsuccess = () => {
+        const request = opened.result.transaction('settings', 'readonly').objectStore('settings').get('app');
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result?.fsrsScheduling?.policy ?? null);
+      };
+    })""")
 
 
 def review_unit(page, title: str) -> None:
@@ -393,7 +405,7 @@ def scenario_bridge(browser) -> None:
 
 def scenario_cost_adr_settings(browser) -> None:
     page, errors = open_page(browser, {"width": 1365, "height": 950}, baseline=True)
-    page.locator('[data-pane="settings"]').click(); page.locator("#pane-settings").wait_for(state="visible")
+    open_rendered_pane(page, "settings")
     settings = page.locator('#settings-form')
     policy = settings.locator('[name="memorySchedulingPolicy"]')
     check(policy.count() == 1, "Memory scheduling policy selector missing")
@@ -405,6 +417,7 @@ def scenario_cost_adr_settings(browser) -> None:
     wait_until(page, lambda: page.locator("#toast").inner_text().strip() == "Settings saved." or page.locator("#toast").evaluate("e=>e.classList.contains('error')"), timeout=8000, interval=40, message="Cost-ADR settings submit did not finish")
     check(page.locator("#toast").inner_text().strip() == "Settings saved." and not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Cost-ADR settings submit failed: " + page.locator("#toast").inner_text())
     check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
+    check(stored_scheduling_policy(page)["kind"] == "cost-adr", "Cost-ADR save completed but canonical IndexedDB policy was not updated")
 
     with TemporaryDirectory() as tmp:
         backup_path = str(Path(tmp) / "cost-adr-settings.rdbackup")
@@ -424,6 +437,7 @@ def scenario_cost_adr_settings(browser) -> None:
     settings.locator('button[type="submit"]').click()
     wait_until(page, lambda: page.locator("#toast").inner_text().strip() == "Settings saved." or page.locator("#toast").evaluate("e=>e.classList.contains('error')"), timeout=8000, interval=40, message="Fixed-retention settings submit did not finish")
     check(page.locator("#toast").inner_text().strip() == "Settings saved." and not page.locator("#toast").evaluate("e=>e.classList.contains('error')"), "Fixed-retention settings submit failed: " + page.locator("#toast").inner_text())
+    check(stored_scheduling_policy(page)["kind"] == "fixed-retention", "Fixed-retention save completed but canonical IndexedDB policy was not updated")
     with TemporaryDirectory() as tmp:
         backup_path = str(Path(tmp) / "fixed-retention-settings.rdbackup")
         with page.expect_download() as download_info:
