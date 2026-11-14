@@ -66,6 +66,11 @@ check(tuple(path for group in qa.CORE_DOMAIN_PLAN.values() for path in group) ==
 check(len(set(qa.CORE_NODE_PLAN)) == len(qa.CORE_NODE_PLAN),
       "A Node entrypoint is assigned to multiple product domains")
 check(all(qa.CORE_DOMAIN_PLAN.values()), "Core domain ownership contains an empty group")
+check(tuple(path for group in qa.BROWSER_DOMAIN_PLAN.values() for path in group) == qa.BROWSER_PLAN,
+      "Browser domain ownership map differs from executable plan")
+check(len(set(qa.BROWSER_PLAN)) == len(qa.BROWSER_PLAN),
+      "A browser entrypoint is assigned to multiple product domains")
+check(all(qa.BROWSER_DOMAIN_PLAN.values()), "Browser domain ownership contains an empty group")
 
 commands, events = exercise(qa.full, dependency_present=True)
 for path in qa.STATIC_PYTHON:

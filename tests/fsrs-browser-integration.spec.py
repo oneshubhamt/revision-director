@@ -1,11 +1,14 @@
 from __future__ import annotations
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import Thread
 import argparse
 import json
 from playwright.sync_api import sync_playwright
 from helpers.browser_harness import launch_chromium
+from helpers import browser_fixture as fixture
+from backup_fixture_codec import decode_file
 
 ROOT = Path(__file__).resolve().parents[1]
 HOSTED = ROOT / "Revision_Director_Hosted"
@@ -39,6 +42,53 @@ def evidence_csv(full: bool) -> str:
             rows.append((start + 24 * 60 * 60 * 1000, f"{start + 24 * 60 * 60 * 1000},card-{card},3,800,2"))
     rows.sort(key=lambda item: (item[0], item[1]))
     return "review_time,card_id,review_rating,review_duration,review_state\n" + "\n".join(row for _, row in rows) + "\n"
+
+def exercise_scheduling_policy_settings(browser) -> None:
+    page, errors = fixture.open_page(browser, {"width": 1365, "height": 950}, baseline=True)
+    fixture.open_rendered_pane(page, "settings")
+    settings = page.locator('#settings-form')
+    policy = settings.locator('[name="memorySchedulingPolicy"]')
+    check(policy.count() == 1, "Memory scheduling policy selector missing")
+    check(policy.input_value() == "fixed-retention", "Restored fixed-retention settings must be preserved instead of being silently migrated to the new default")
+
+    policy.select_option("cost-adr")
+    page.evaluate("document.querySelector('#toast').textContent=''")
+    settings.locator('button[type="submit"]').click()
+    fixture.wait_until(page, lambda: (fixture.stored_scheduling_policy(page) or {}).get("kind") == "cost-adr", timeout=8000, interval=40, message="Cost-ADR settings did not reach canonical IndexedDB state")
+    fixture.wait_for_toast_outcome(page, expect_error=False, timeout=8_000, message="Cost-ADR settings did not report successful completion")
+    check(not page.locator("#fatal-error").is_visible(), "Cost-ADR activation caused a fatal application state")
+
+    with TemporaryDirectory() as tmp:
+        backup_path = str(Path(tmp) / "cost-adr-settings.rdbackup")
+        with page.expect_download() as download_info:
+            page.locator('[data-action="export-backup"]').click()
+        download_info.value.save_as(backup_path)
+        payload = decode_file(Path(backup_path))
+        saved_policy = payload["settings"]["fsrsScheduling"]["policy"]
+        check(saved_policy["kind"] == "cost-adr", "Cost-ADR policy was not persisted in backup state")
+        check(saved_policy["goalCostWeight"] == 1024, "Persisted Cost-ADR goal cost weight is not the bounded preset")
+        check(len(saved_policy["costAdrPolicy"]["coefficients"]) == 15, "Persisted Cost-ADR policy lost upstream coefficient provenance")
+
+    settings = page.locator('#settings-form')
+    settings.locator('[name="memorySchedulingPolicy"]').select_option("fixed-retention")
+    settings.locator('[name="desiredRetention"]').fill("0.90")
+    page.evaluate("document.querySelector('#toast').textContent=''")
+    settings.locator('button[type="submit"]').click()
+    fixture.wait_until(page, lambda: (fixture.stored_scheduling_policy(page) or {}).get("kind") == "fixed-retention", timeout=8000, interval=40, message="Fixed-retention settings did not reach canonical IndexedDB state")
+    fixture.wait_for_toast_outcome(page, expect_error=False, timeout=8_000, message="Fixed-retention settings did not report successful completion")
+    with TemporaryDirectory() as tmp:
+        backup_path = str(Path(tmp) / "fixed-retention-settings.rdbackup")
+        with page.expect_download() as download_info:
+            page.locator('[data-action="export-backup"]').click()
+        download_info.value.save_as(backup_path)
+        payload = decode_file(Path(backup_path))
+        saved_policy = payload["settings"]["fsrsScheduling"]["policy"]
+        check(saved_policy["kind"] == "fixed-retention", f"Fixed-retention policy did not persist: {saved_policy}")
+        check(abs(float(saved_policy["desiredRetention"]) - 0.90) < 1e-12, "Fixed-retention target did not persist at 90%")
+    check(not page.locator("#fatal-error").is_visible(), "Return from Cost-ADR caused a fatal application state")
+    check(not errors, f"Cost-ADR Settings browser errors: {errors}")
+    page.close()
+
 
 def run(mode: str) -> None:
     ensure_hosted()
@@ -100,6 +150,8 @@ def run(mode: str) -> None:
                     for stage in ("Train validation candidate", "Retrain final profile on all evidence", "Time-series cross-validation"):
                         check(stage in stages, f"Browser optimizer did not report stage: {stage}")
                 print(f"PASS browser/WASM FSRS integration optimizer {mode}: {json.dumps(result, separators=(',', ':'))}")
+                if mode == "probe":
+                    exercise_scheduling_policy_settings(browser)
             finally:
                 browser.close()
     finally:

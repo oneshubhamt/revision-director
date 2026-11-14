@@ -63,27 +63,41 @@ CORE_DOMAIN_PLAN = {
 
 CORE_NODE_PLAN = tuple(path for group in CORE_DOMAIN_PLAN.values() for path in group)
 
-BROWSER_PLAN = (
-    "tests/scenarios/backup-codec.py",
-    "tests/scenarios/backup-restore-controller.py",
-    "tests/scenarios/data-safety.py",
-    "tests/scenarios/restore-dialog-accessibility.py",
-    "tests/scenarios/public-plugin-runtime.py",
-    "tests/browser-qa.spec.py",
-    "tests/scenarios/persistent-active-retrieval.py",
-    "tests/scenarios/ownership-storage-health.py",
-    "tests/scenarios/hostile-recovery.py",
-    "tests/scenarios/indexeddb-durability.py",
-    "tests/scenarios/native-indexeddb-journey.py",
-    "tests/scenarios/presentation-kernel.py",
-    "tests/scenarios/ui-runtime-accessibility.py",
-    "tests/scenarios/ui-behaviour.py",
-    "tests/scenarios/responsive-layout.py",
-    "tests/canonical-topology-browser.spec.py",
-    "tests/fsrs-browser-integration.spec.py",
-    "tests/fsrs-memory-lifecycle-browser.spec.py",
-    "tests/full-qa-supplement.spec.py",
-)
+BROWSER_DOMAIN_PLAN = {
+    "backup-and-data-safety": (
+        "tests/scenarios/backup-codec.py",
+        "tests/scenarios/backup-restore-controller.py",
+        "tests/scenarios/data-safety.py",
+        "tests/scenarios/restore-dialog-accessibility.py",
+    ),
+    "public-api-and-plugins": (
+        "tests/scenarios/public-plugin-runtime.py",
+    ),
+    "planner": (
+        "tests/scenarios/planner-browser.py",
+    ),
+    "persistence-and-recovery": (
+        "tests/scenarios/persistent-active-retrieval.py",
+        "tests/scenarios/ownership-storage-health.py",
+        "tests/scenarios/hostile-recovery.py",
+        "tests/scenarios/indexeddb-durability.py",
+        "tests/scenarios/native-indexeddb-journey.py",
+        "tests/canonical-topology-browser.spec.py",
+    ),
+    "presentation-and-accessibility": (
+        "tests/scenarios/presentation-kernel.py",
+        "tests/scenarios/ui-runtime-accessibility.py",
+        "tests/scenarios/ui-behaviour.py",
+        "tests/scenarios/responsive-layout.py",
+        "tests/security-rendering-browser.spec.py",
+    ),
+    "fsrs": (
+        "tests/fsrs-browser-integration.spec.py",
+        "tests/fsrs-memory-lifecycle-browser.spec.py",
+    ),
+}
+
+BROWSER_PLAN = tuple(path for group in BROWSER_DOMAIN_PLAN.values() for path in group)
 
 DEEP_NODE_PLAN = (
     "tests/fsrs-scheduling-policy-deep.spec.js",
@@ -178,7 +192,15 @@ def assert_python_test_syntax() -> None:
 
 
 def assert_test_topology() -> None:
-    historical = [*TESTS.glob("pass-*"), *TESTS.glob("stage-*")]
+    historical = [
+        path for path in TESTS.rglob("*")
+        if path.is_file()
+        and (
+            path.name.lower().startswith(("pass-", "stage-"))
+            or "programme" in path.name.lower()
+            or path.name in {"browser-qa.spec.py", "full-qa-supplement.spec.py"}
+        )
+    ]
     stale_wrappers = [TESTS / name for name in REMOVED_WRAPPERS if (TESTS / name).exists()]
     stale_helper = TESTS / "helpers/suite-runner.js"
     stale = sorted([*historical, *stale_wrappers, *([stale_helper] if stale_helper.exists() else [])], key=lambda path: path.name)
