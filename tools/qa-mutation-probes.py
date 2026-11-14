@@ -35,7 +35,8 @@ PROBES = (
     ("duplicate evidence publication", (sys.executable, "tests/scenarios/persistent-active-retrieval.py"),
      "index.html", "tx.objectStore(Store.EvidenceEvents).add(event);",
      "tx.objectStore(Store.EvidenceEvents).add(event);\n              tx.objectStore(Store.EvidenceEvents).add({ ...event, id: event.id + '-duplicated' });",
-     ("Double rating created duplicate evidence", "Atomic commit did not persist")),
+     ("Double rating created duplicate evidence", "Atomic commit did not persist",
+      'wait_until(frame, lambda: len(state_all(page, "evidenceEvents")) == before + 1)')),
 )
 
 NODE_PRELOAD = """'use strict';
